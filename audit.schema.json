@@ -1,0 +1,484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/rvenutolo/github-repos-audit/main/audit.schema.json",
+  "title": "github-repos-audit snapshot",
+  "description": "One complete reading of the account, as `audit render` writes it to audit.json. The document carries collected facts, the declared repos.toml types and overrides; it carries no verdicts, which live only in the generated README table. Hand-maintained: the Go structs in internal/audit are the encoder, and this file is the contract they are held to. `additionalProperties` is false everywhere, so a new field is a deliberate edit here rather than an accident. Required means the Go tag has no `omitzero`, and therefore that the encoder always emits the key.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["generated_at", "owner", "types", "repos"],
+  "properties": {
+    "generated_at": {
+      "description": "When the run started, in UTC.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "owner": {
+      "description": "The account every repository belongs to: the login of the token the run read with.",
+      "type": "string",
+      "minLength": 1
+    },
+    "types": {
+      "description": "Every repository type repos.toml defines, keyed by type name: what each type expects of each check. Recorded so the document describes the standard each repository was judged against, not only its name. A type no repository uses is listed too. Never empty: config.Parse rejects a repos.toml with no [types.*] entries.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z0-9_-]+$" },
+      "additionalProperties": { "$ref": "#/$defs/type" },
+      "minProperties": 1
+    },
+    "repos": {
+      "description": "Every declared repository, sorted by name case-insensitively. Never empty: config.Parse rejects a repos.toml with no [repos.*] entries.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/repo" }
+    }
+  },
+  "$defs": {
+    "repo": {
+      "description": "Everything known about one repository: what repos.toml declares and what GitHub answered.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "published",
+        "visibility",
+        "topics",
+        "open_pull_requests",
+        "branches",
+        "files",
+        "releases",
+        "branch",
+        "settings"
+      ],
+      "properties": {
+        "name": {
+          "description": "The repository name on GitHub, which is the repos.toml table key.",
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "description": "The declared repos.toml type: a key of the top-level types object. JSON Schema cannot express that cross-reference; config.Parse enforces it.",
+          "type": "string"
+        },
+        "published": {
+          "description": "The declared repos.toml flag: meant for a stranger to find and use.",
+          "type": "boolean"
+        },
+        "overrides": {
+          "description": "The declared repos.toml override list, keyed by check name. Recorded so the document describes the standard each repository was actually held to. The values are free-form: config.validate rejects only an empty one, so an enum here would assert a contract the Go side does not keep.",
+          "type": "object",
+          "propertyNames": {
+            "description": "Every check a repository can be judged on, in the fixed order the gap worklist reports them. internal/rules/schema_test.go asserts this enum equals rules.Checks(), in this order.",
+            "enum": [
+              "readme",
+              "description",
+              "license",
+              "gitignore",
+              "ci_workflows",
+              "required_checks",
+              "ci_green",
+              "renovate",
+              "editorconfig",
+              "flake_nix",
+              "justfile",
+              "homepage",
+              "topics",
+              "community_files",
+              "releases",
+              "changelog",
+              "signed_commits",
+              "tag_ruleset",
+              "direct_push",
+              "secret_scanning",
+              "vuln_reporting",
+              "last_release_age",
+              "last_push",
+              "open_prs",
+              "branches"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minProperties": 1
+        },
+        "visibility": {
+          "description": "Read live and never declared.",
+          "type": "string",
+          "enum": ["public", "private"]
+        },
+        "description": {
+          "description": "The repository description. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "homepage": {
+          "description": "The repository homepage URL. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "topics": {
+          "description": "How many topics the repository carries.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "license": {
+          "description": "The SPDX identifier GitHub detected. NOASSERTION means it found a license file it could not identify, which is not a pass. Left unconstrained: the SPDX list grows, and internal/rules tests only for emptiness and NOASSERTION.",
+          "type": "string",
+          "minLength": 1
+        },
+        "open_pull_requests": {
+          "description": "The count of open pull requests.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "branches": {
+          "description": "How many branches the repository has, the default branch included. Zero for an empty repository. The report shows this count minus the default branch.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "pushed_at": {
+          "description": "The last push to any branch, in UTC. Absent when the repository has never been pushed to.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "default_branch": {
+          "description": "The live default branch name. Absent for an empty repository.",
+          "type": "string",
+          "minLength": 1
+        },
+        "head_oid": {
+          "description": "The default branch's head commit, all forty characters. Abbreviating it silently breaks the smoke suite's cross-check, which answers total_count: 0 for a short SHA with a 200.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "empty": {
+          "description": "A repository with no commits at all: GraphQL answered defaultBranchRef: null. Present only when true.",
+          "type": "boolean",
+          "const": true
+        },
+        "files": { "$ref": "#/$defs/files" },
+        "ci_state": {
+          "description": "The statusCheckRollup state of the head commit. Absent when the rollup was null, which means no check has run on that commit.",
+          "type": "string",
+          "enum": ["SUCCESS", "FAILURE", "PENDING", "ERROR", "EXPECTED"]
+        },
+        "releases": { "$ref": "#/$defs/releases" },
+        "rulesets": {
+          "description": "Every ruleset defined on the repository. Absent when there are none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/ruleset" }
+        },
+        "branch": { "$ref": "#/$defs/branch_rules" },
+        "settings": { "$ref": "#/$defs/settings" }
+      }
+    },
+    "type": {
+      "description": "One type's expectations, keyed by check name. Every check is listed. The required list is in the order the gap worklist reports checks, which internal/rules/schema_test.go asserts equals rules.Checks(); the keys of an emitted document are alphabetical.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readme",
+        "description",
+        "license",
+        "gitignore",
+        "ci_workflows",
+        "required_checks",
+        "ci_green",
+        "renovate",
+        "editorconfig",
+        "flake_nix",
+        "justfile",
+        "homepage",
+        "topics",
+        "community_files",
+        "releases",
+        "changelog",
+        "signed_commits",
+        "tag_ruleset",
+        "direct_push",
+        "secret_scanning",
+        "vuln_reporting",
+        "last_release_age",
+        "last_push",
+        "open_prs",
+        "branches"
+      ],
+      "properties": {
+        "readme": { "$ref": "#/$defs/expectation" },
+        "description": { "$ref": "#/$defs/expectation" },
+        "license": { "$ref": "#/$defs/expectation" },
+        "gitignore": { "$ref": "#/$defs/expectation" },
+        "ci_workflows": { "$ref": "#/$defs/expectation" },
+        "required_checks": { "$ref": "#/$defs/expectation" },
+        "ci_green": { "$ref": "#/$defs/expectation" },
+        "renovate": { "$ref": "#/$defs/expectation" },
+        "editorconfig": { "$ref": "#/$defs/expectation" },
+        "flake_nix": { "$ref": "#/$defs/expectation" },
+        "justfile": { "$ref": "#/$defs/expectation" },
+        "homepage": { "$ref": "#/$defs/expectation" },
+        "topics": { "$ref": "#/$defs/expectation" },
+        "community_files": { "$ref": "#/$defs/expectation" },
+        "releases": { "$ref": "#/$defs/expectation" },
+        "changelog": { "$ref": "#/$defs/expectation" },
+        "signed_commits": { "$ref": "#/$defs/expectation" },
+        "tag_ruleset": { "$ref": "#/$defs/expectation" },
+        "direct_push": { "$ref": "#/$defs/direct_push" },
+        "secret_scanning": { "$ref": "#/$defs/expectation" },
+        "vuln_reporting": { "$ref": "#/$defs/expectation" },
+        "last_release_age": { "$ref": "#/$defs/info_expectation" },
+        "last_push": { "$ref": "#/$defs/info_expectation" },
+        "open_prs": { "$ref": "#/$defs/info_expectation" },
+        "branches": { "$ref": "#/$defs/info_expectation" }
+      }
+    },
+    "expectation": {
+      "description": "What a type asks of a check: required; not_required (never a gap); public (required only of a public repository); public_published (required only of a public, published one); info (shown, never judged).",
+      "enum": ["required", "not_required", "public", "public_published", "info"]
+    },
+    "direct_push": {
+      "description": "Whether a type expects pushing straight to the default branch to be blocked or allowed. Direct push is always judged.",
+      "enum": ["blocked", "allowed"]
+    },
+    "info_expectation": {
+      "description": "A value-only check carries a value and never a pass or fail, so it is shown (info) or left out (not_required), never required.",
+      "enum": ["info", "not_required"]
+    },
+    "files": {
+      "description": "The outcome of every file-existence probe. A probe answers null for a path that does not exist, so an absent file is an ordinary answer rather than an error.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readme",
+        "gitignore",
+        "editorconfig",
+        "flake_nix",
+        "justfile",
+        "changelog",
+        "security",
+        "contributing",
+        "code_of_conduct"
+      ],
+      "properties": {
+        "readme": {
+          "description": "True when any of the six accepted README paths exists. Probes are case-sensitive, so a differently-cased file reads as missing.",
+          "type": "boolean"
+        },
+        "gitignore": {
+          "description": "Matches `.gitignore` exactly. A looser match would report a typo'd `.gitigore` as a pass, which is the very thing this report exists to catch.",
+          "type": "boolean"
+        },
+        "editorconfig": { "type": "boolean" },
+        "flake_nix": { "type": "boolean" },
+        "justfile": {
+          "description": "Satisfied by either `.justfile` or `justfile`.",
+          "type": "boolean"
+        },
+        "changelog": { "type": "boolean" },
+        "security": {
+          "description": "Probed at all three locations GitHub recognises: the root, `.github/` and `docs/`.",
+          "type": "boolean"
+        },
+        "contributing": { "type": "boolean" },
+        "code_of_conduct": { "type": "boolean" },
+        "renovate_config": {
+          "description": "Where the Renovate configuration lives: the first of the seven accepted paths to match. Absent when there is none.",
+          "type": "string",
+          "minLength": 1
+        },
+        "workflows": {
+          "description": "The entries of `.github/workflows`, sorted. Absent when the directory is empty or missing.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "releases": {
+      "description": "A summary of the repository's releases.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "drafts"],
+      "properties": {
+        "total": {
+          "description": "GraphQL's totalCount, which counts drafts.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "drafts": {
+          "description": "How many of the five most recent releases are drafts. The published count is total minus drafts.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_published_at": {
+          "description": "When the most recent non-draft release was published, in UTC. Absent when there is none.",
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ruleset": {
+      "description": "One repository ruleset, with the conditions and rules needed to tell a tag ruleset from a branch one and an active ruleset from an evaluated one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "target", "enforcement"],
+      "properties": {
+        "name": {
+          "description": "The ruleset's name, such as \"protect-main\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "enum": ["BRANCH", "TAG", "PUSH"]
+        },
+        "enforcement": {
+          "description": "Only ACTIVE counts.",
+          "type": "string",
+          "enum": ["ACTIVE", "EVALUATE", "DISABLED"]
+        },
+        "include": {
+          "description": "conditions.refName.include, such as [\"refs/tags/**\"] or [\"~DEFAULT_BRANCH\"]. Absent when empty.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "rules": {
+          "description": "Every rule type the ruleset carries, such as PULL_REQUEST. Left unconstrained: GitHub adds rule types, and internal/rules matches the handful it names rather than switching over the set.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "branch_rules": {
+      "description": "The rule set as evaluated for the default branch, which is precisely the \"can I push straight to it?\" question.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["known"],
+      "properties": {
+        "known": {
+          "description": "False for an empty repository, whose default branch does not exist, so the endpoint is never called.",
+          "type": "boolean"
+        },
+        "types": {
+          "description": "Every rule type in force on the branch, lowercase as REST spells them. Absent when there are none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "required_checks": {
+          "description": "The context name of each required status check. Absent when there are none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "settings": {
+      "description": "Every repository setting the modal computation tracks. Nothing here has a declared expected value: the tool computes the most common value across the repositories where the setting applies and reports the ones that differ.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "has_issues",
+        "has_wiki",
+        "has_projects",
+        "has_discussions",
+        "vulnerability_alerts",
+        "dependabot_security_updates",
+        "merge_commit_allowed",
+        "squash_merge_allowed",
+        "rebase_merge_allowed",
+        "auto_merge_allowed",
+        "delete_branch_on_merge",
+        "sha_pinning_required",
+        "can_approve_pull_requests"
+      ],
+      "properties": {
+        "has_issues": { "type": "boolean" },
+        "has_wiki": { "type": "boolean" },
+        "has_projects": { "type": "boolean" },
+        "has_discussions": { "type": "boolean" },
+        "vulnerability_alerts": {
+          "description": "GraphQL's hasVulnerabilityAlertsEnabled.",
+          "type": "boolean"
+        },
+        "dependabot_security_updates": {
+          "description": "REST's automated-security-fixes.",
+          "type": "boolean"
+        },
+        "merge_commit_allowed": { "type": "boolean" },
+        "squash_merge_allowed": { "type": "boolean" },
+        "rebase_merge_allowed": { "type": "boolean" },
+        "merge_commit_title": {
+          "description": "GraphQL's MergeCommitTitle enum. Absent when GitHub omitted it.",
+          "type": "string",
+          "enum": ["PR_TITLE", "MERGE_MESSAGE"]
+        },
+        "merge_commit_message": {
+          "description": "GraphQL's MergeCommitMessage enum. Absent when GitHub omitted it.",
+          "type": "string",
+          "enum": ["PR_BODY", "PR_TITLE", "BLANK"]
+        },
+        "auto_merge_allowed": { "type": "boolean" },
+        "delete_branch_on_merge": { "type": "boolean" },
+        "secret_scanning": {
+          "description": "Absent when GitHub omitted the security_and_analysis block entirely, which it does for a private repository on a personal plan. Absent means n/a, not disabled.",
+          "type": "string",
+          "enum": ["enabled", "disabled"]
+        },
+        "secret_scanning_push_protection": {
+          "description": "Follows the same convention as secret_scanning.",
+          "type": "string",
+          "enum": ["enabled", "disabled"]
+        },
+        "private_vulnerability_reporting": {
+          "description": "Absent when the endpoint answered 404, which it does for a private repository. Absent means n/a, not disabled.",
+          "type": "boolean"
+        },
+        "actions_policy": {
+          "type": "string",
+          "enum": ["all", "local_only", "selected"]
+        },
+        "sha_pinning_required": {
+          "description": "The actions/permissions sha_pinning_required flag.",
+          "type": "boolean"
+        },
+        "allowed_actions": {
+          "description": "Present only under the \"selected\" policy, where the selected-actions endpoint answers 404 for any other one.",
+          "$ref": "#/$defs/allowed_actions"
+        },
+        "default_workflow_permissions": {
+          "type": "string",
+          "enum": ["read", "write"]
+        },
+        "can_approve_pull_requests": {
+          "description": "Whether the workflow token may approve pull requests.",
+          "type": "boolean"
+        },
+        "actions_access_level": {
+          "description": "Whether this repository's actions are reusable from other repositories. Absent for a public repository, where the endpoint answers 422 — the setting does not exist there.",
+          "type": "string",
+          "enum": ["none", "user", "organization", "enterprise"]
+        }
+      }
+    },
+    "allowed_actions": {
+      "description": "The Actions allowlist.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["github_owned_allowed", "verified_allowed"],
+      "properties": {
+        "github_owned_allowed": { "type": "boolean" },
+        "verified_allowed": { "type": "boolean" },
+        "patterns": {
+          "description": "The allowlist itself, sorted. Absent when empty.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
