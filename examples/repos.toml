@@ -1,0 +1,207 @@
+# An example repos.toml for someone else's account. Copy it into your report
+# repository and replace the [repos.*] tables below with your own
+# repositories: `audit render` refuses to run while repos.toml and the
+# account disagree, so every repository the account has must get an entry
+# here, and every entry here must name a repository the account still has.
+#
+# [types.<name>] a category of repository and what it is expected to have.
+#                Every type lists every check, each set to required,
+#                not_required, public, public_published or info; direct_push
+#                takes blocked or allowed, and last_release_age, last_push,
+#                open_prs and branches take only info or not_required.
+#                A type no repository uses is allowed.
+#
+# [repos.<name>]
+# type      which [types.*] table the repository is judged against
+# published meant for someone else to find and use; default false
+# overrides per-repo exceptions to the type; each needs a reason in a comment
+#
+# A type never implies a visibility, which is always read live from GitHub.
+# An override that names an unknown check is an error, and so is an override
+# that matches what the type already derives: a dead override must be
+# deleted rather than left to rot.
+
+[types.software]
+readme = "required"
+description = "required"
+license = "public"
+gitignore = "required"
+ci_workflows = "required"
+required_checks = "required"
+ci_green = "required"
+renovate = "required"
+editorconfig = "required"
+flake_nix = "required"
+justfile = "required"
+homepage = "public_published"
+topics = "public_published"
+community_files = "public_published"
+releases = "required"
+changelog = "required"
+signed_commits = "required"
+tag_ruleset = "required"
+direct_push = "blocked"
+secret_scanning = "public"
+vuln_reporting = "public"
+last_release_age = "info"
+last_push = "info"
+open_prs = "info"
+branches = "info"
+
+[types.infra]
+readme = "required"
+description = "required"
+license = "public"
+gitignore = "required"
+ci_workflows = "required"
+required_checks = "required"
+ci_green = "required"
+renovate = "required"
+editorconfig = "required"
+flake_nix = "required"
+justfile = "required"
+homepage = "public_published"
+topics = "public_published"
+community_files = "not_required"
+releases = "not_required"
+changelog = "not_required"
+signed_commits = "required"
+tag_ruleset = "required"
+direct_push = "blocked"
+secret_scanning = "public"
+vuln_reporting = "public"
+last_release_age = "not_required"
+last_push = "info"
+open_prs = "info"
+branches = "info"
+
+[types.environment]
+readme = "required"
+description = "required"
+license = "public"
+gitignore = "required"
+ci_workflows = "required"
+required_checks = "required"
+ci_green = "required"
+renovate = "required"
+editorconfig = "required"
+flake_nix = "required"
+justfile = "required"
+homepage = "public_published"
+topics = "public_published"
+community_files = "not_required"
+releases = "not_required"
+changelog = "not_required"
+signed_commits = "required"
+tag_ruleset = "required"
+direct_push = "blocked"
+secret_scanning = "public"
+vuln_reporting = "public"
+last_release_age = "not_required"
+last_push = "info"
+open_prs = "info"
+branches = "info"
+
+[types.config]
+readme = "required"
+description = "required"
+license = "public"
+gitignore = "required"
+ci_workflows = "required"
+required_checks = "required"
+ci_green = "required"
+renovate = "required"
+editorconfig = "required"
+flake_nix = "required"
+justfile = "required"
+homepage = "public_published"
+topics = "public_published"
+community_files = "not_required"
+releases = "not_required"
+changelog = "not_required"
+signed_commits = "required"
+tag_ruleset = "required"
+direct_push = "blocked"
+secret_scanning = "public"
+vuln_reporting = "not_required"
+last_release_age = "not_required"
+last_push = "info"
+open_prs = "info"
+branches = "info"
+
+# Content is data edited by hand: no tooling rows, and direct push allowed.
+[types.content]
+readme = "required"
+description = "required"
+license = "public"
+gitignore = "required"
+ci_workflows = "not_required"
+required_checks = "not_required"
+ci_green = "not_required"
+renovate = "not_required"
+editorconfig = "required"
+flake_nix = "not_required"
+justfile = "not_required"
+homepage = "public_published"
+topics = "public_published"
+community_files = "not_required"
+releases = "not_required"
+changelog = "not_required"
+signed_commits = "required"
+tag_ruleset = "required"
+direct_push = "allowed"
+secret_scanning = "public"
+vuln_reporting = "not_required"
+last_release_age = "not_required"
+last_push = "info"
+open_prs = "info"
+branches = "info"
+
+[types.tools]
+readme = "required"
+description = "required"
+license = "public"
+gitignore = "required"
+ci_workflows = "required"
+required_checks = "required"
+ci_green = "required"
+renovate = "required"
+editorconfig = "required"
+flake_nix = "required"
+justfile = "required"
+homepage = "public_published"
+topics = "public_published"
+community_files = "not_required"
+releases = "not_required"
+changelog = "not_required"
+signed_commits = "required"
+tag_ruleset = "required"
+direct_push = "blocked"
+secret_scanning = "public"
+vuln_reporting = "public"
+last_release_age = "not_required"
+last_push = "info"
+open_prs = "info"
+branches = "info"
+
+[repos.shell-scripts]
+type = "tools"
+
+[repos.web-app]
+type = "software"
+published = true
+
+[repos.go-linter]
+type = "config"
+
+[repos.recipe-site]
+type = "content"
+published = true
+# a recipe has no secrets to scan for
+overrides = { secret_scanning = "not_required" }
+
+[repos.config-files]
+type = "environment"
+
+[repos.mixedCase-flake]
+type = "infra"
