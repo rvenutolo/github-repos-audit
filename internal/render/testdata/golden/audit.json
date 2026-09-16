@@ -1,0 +1,601 @@
+{
+  "generated_at": "2026-09-05T07:30:00Z",
+  "owner": "gh-owner",
+  "types": {
+    "config": {
+      "branches": "info",
+      "changelog": "not_required",
+      "ci_green": "required",
+      "ci_workflows": "required",
+      "community_files": "not_required",
+      "description": "required",
+      "direct_push": "blocked",
+      "editorconfig": "required",
+      "flake_nix": "required",
+      "gitignore": "required",
+      "homepage": "public_published",
+      "justfile": "required",
+      "last_push": "info",
+      "last_release_age": "not_required",
+      "license": "public",
+      "open_prs": "info",
+      "readme": "required",
+      "releases": "not_required",
+      "renovate": "required",
+      "required_checks": "required",
+      "secret_scanning": "public",
+      "signed_commits": "required",
+      "tag_ruleset": "required",
+      "topics": "public_published",
+      "vuln_reporting": "not_required"
+    },
+    "content": {
+      "branches": "info",
+      "changelog": "not_required",
+      "ci_green": "not_required",
+      "ci_workflows": "not_required",
+      "community_files": "not_required",
+      "description": "required",
+      "direct_push": "allowed",
+      "editorconfig": "required",
+      "flake_nix": "not_required",
+      "gitignore": "required",
+      "homepage": "public_published",
+      "justfile": "not_required",
+      "last_push": "info",
+      "last_release_age": "not_required",
+      "license": "public",
+      "open_prs": "info",
+      "readme": "required",
+      "releases": "not_required",
+      "renovate": "not_required",
+      "required_checks": "not_required",
+      "secret_scanning": "public",
+      "signed_commits": "required",
+      "tag_ruleset": "required",
+      "topics": "public_published",
+      "vuln_reporting": "not_required"
+    },
+    "environment": {
+      "branches": "info",
+      "changelog": "not_required",
+      "ci_green": "required",
+      "ci_workflows": "required",
+      "community_files": "not_required",
+      "description": "required",
+      "direct_push": "blocked",
+      "editorconfig": "required",
+      "flake_nix": "required",
+      "gitignore": "required",
+      "homepage": "public_published",
+      "justfile": "required",
+      "last_push": "info",
+      "last_release_age": "not_required",
+      "license": "public",
+      "open_prs": "info",
+      "readme": "required",
+      "releases": "not_required",
+      "renovate": "required",
+      "required_checks": "required",
+      "secret_scanning": "public",
+      "signed_commits": "required",
+      "tag_ruleset": "required",
+      "topics": "public_published",
+      "vuln_reporting": "public"
+    },
+    "infra": {
+      "branches": "info",
+      "changelog": "not_required",
+      "ci_green": "required",
+      "ci_workflows": "required",
+      "community_files": "not_required",
+      "description": "required",
+      "direct_push": "blocked",
+      "editorconfig": "required",
+      "flake_nix": "required",
+      "gitignore": "required",
+      "homepage": "public_published",
+      "justfile": "required",
+      "last_push": "info",
+      "last_release_age": "not_required",
+      "license": "public",
+      "open_prs": "info",
+      "readme": "required",
+      "releases": "not_required",
+      "renovate": "required",
+      "required_checks": "required",
+      "secret_scanning": "public",
+      "signed_commits": "required",
+      "tag_ruleset": "required",
+      "topics": "public_published",
+      "vuln_reporting": "public"
+    },
+    "software": {
+      "branches": "info",
+      "changelog": "required",
+      "ci_green": "required",
+      "ci_workflows": "required",
+      "community_files": "public_published",
+      "description": "required",
+      "direct_push": "blocked",
+      "editorconfig": "required",
+      "flake_nix": "required",
+      "gitignore": "required",
+      "homepage": "public_published",
+      "justfile": "required",
+      "last_push": "info",
+      "last_release_age": "info",
+      "license": "public",
+      "open_prs": "info",
+      "readme": "required",
+      "releases": "required",
+      "renovate": "required",
+      "required_checks": "required",
+      "secret_scanning": "public",
+      "signed_commits": "required",
+      "tag_ruleset": "required",
+      "topics": "public_published",
+      "vuln_reporting": "public"
+    },
+    "tools": {
+      "branches": "info",
+      "changelog": "not_required",
+      "ci_green": "required",
+      "ci_workflows": "required",
+      "community_files": "not_required",
+      "description": "required",
+      "direct_push": "blocked",
+      "editorconfig": "required",
+      "flake_nix": "required",
+      "gitignore": "required",
+      "homepage": "public_published",
+      "justfile": "required",
+      "last_push": "info",
+      "last_release_age": "not_required",
+      "license": "public",
+      "open_prs": "info",
+      "readme": "required",
+      "releases": "not_required",
+      "renovate": "required",
+      "required_checks": "required",
+      "secret_scanning": "public",
+      "signed_commits": "required",
+      "tag_ruleset": "required",
+      "topics": "public_published",
+      "vuln_reporting": "public"
+    }
+  },
+  "repos": [
+    {
+      "name": "mixedCase-flake",
+      "type": "software",
+      "published": true,
+      "visibility": "public",
+      "description": "a flake | with a pipe in its description",
+      "homepage": "https://example.invalid/mixedcase-flake",
+      "topics": 4,
+      "license": "MIT",
+      "open_pull_requests": 0,
+      "branches": 1,
+      "pushed_at": "2026-08-24T12:00:00Z",
+      "default_branch": "main",
+      "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "files": {
+        "readme": true,
+        "gitignore": true,
+        "editorconfig": true,
+        "flake_nix": true,
+        "justfile": true,
+        "changelog": true,
+        "security": true,
+        "contributing": false,
+        "code_of_conduct": false,
+        "renovate_config": ".github/renovate.json5",
+        "workflows": [
+          "ci.yml"
+        ]
+      },
+      "ci_state": "SUCCESS",
+      "releases": {
+        "total": 4,
+        "drafts": 1,
+        "last_published_at": "2026-04-02T12:00:00Z"
+      },
+      "rulesets": [
+        {
+          "name": "ruleset-02",
+          "target": "TAG",
+          "enforcement": "ACTIVE",
+          "include": [
+            "refs/tags/v*"
+          ]
+        },
+        {
+          "name": "protect-main",
+          "target": "BRANCH",
+          "enforcement": "ACTIVE",
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "rules": [
+            "PULL_REQUEST"
+          ]
+        }
+      ],
+      "branch": {
+        "known": true,
+        "types": [
+          "pull_request",
+          "required_signatures",
+          "required_status_checks"
+        ],
+        "required_checks": [
+          "gate (ubuntu-latest)",
+          "commitlint"
+        ]
+      },
+      "settings": {
+        "has_issues": true,
+        "has_wiki": false,
+        "has_projects": true,
+        "has_discussions": false,
+        "vulnerability_alerts": true,
+        "dependabot_security_updates": true,
+        "merge_commit_allowed": true,
+        "squash_merge_allowed": false,
+        "rebase_merge_allowed": false,
+        "merge_commit_title": "PR_TITLE",
+        "merge_commit_message": "PR_BODY",
+        "auto_merge_allowed": true,
+        "delete_branch_on_merge": true,
+        "secret_scanning": "enabled",
+        "secret_scanning_push_protection": "enabled",
+        "private_vulnerability_reporting": true,
+        "actions_policy": "selected",
+        "sha_pinning_required": true,
+        "allowed_actions": {
+          "github_owned_allowed": true,
+          "verified_allowed": false,
+          "patterns": [
+            "step-security/*"
+          ]
+        },
+        "default_workflow_permissions": "read",
+        "can_approve_pull_requests": false
+      }
+    },
+    {
+      "name": "cipher-lib",
+      "type": "content",
+      "published": false,
+      "visibility": "public",
+      "description": "the cipher-lib repository",
+      "topics": 6,
+      "open_pull_requests": 0,
+      "branches": 1,
+      "pushed_at": "2026-08-24T12:00:00Z",
+      "default_branch": "main",
+      "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "files": {
+        "readme": true,
+        "gitignore": true,
+        "editorconfig": true,
+        "flake_nix": false,
+        "justfile": false,
+        "changelog": false,
+        "security": false,
+        "contributing": false,
+        "code_of_conduct": false
+      },
+      "releases": {
+        "total": 0,
+        "drafts": 0
+      },
+      "rulesets": [
+        {
+          "name": "protect-tags",
+          "target": "TAG",
+          "enforcement": "ACTIVE",
+          "include": [
+            "refs/tags/**"
+          ]
+        },
+        {
+          "name": "protect-main",
+          "target": "BRANCH",
+          "enforcement": "ACTIVE",
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "rules": [
+            "PULL_REQUEST"
+          ]
+        }
+      ],
+      "branch": {
+        "known": true,
+        "types": [
+          "pull_request",
+          "required_signatures",
+          "required_status_checks"
+        ],
+        "required_checks": [
+          "gate (ubuntu-latest)",
+          "commitlint"
+        ]
+      },
+      "settings": {
+        "has_issues": true,
+        "has_wiki": false,
+        "has_projects": false,
+        "has_discussions": false,
+        "vulnerability_alerts": true,
+        "dependabot_security_updates": true,
+        "merge_commit_allowed": true,
+        "squash_merge_allowed": false,
+        "rebase_merge_allowed": false,
+        "merge_commit_title": "PR_TITLE",
+        "merge_commit_message": "PR_BODY",
+        "auto_merge_allowed": true,
+        "delete_branch_on_merge": true,
+        "secret_scanning": "disabled",
+        "secret_scanning_push_protection": "disabled",
+        "private_vulnerability_reporting": false,
+        "actions_policy": "selected",
+        "sha_pinning_required": true,
+        "allowed_actions": {
+          "github_owned_allowed": true,
+          "verified_allowed": false,
+          "patterns": [
+            "step-security/*"
+          ]
+        },
+        "default_workflow_permissions": "read",
+        "can_approve_pull_requests": false
+      }
+    },
+    {
+      "name": "github-repos-audit",
+      "type": "tools",
+      "published": false,
+      "visibility": "private",
+      "description": "the github-repos-audit repository",
+      "topics": 0,
+      "open_pull_requests": 0,
+      "branches": 4,
+      "pushed_at": "2026-08-24T12:00:00Z",
+      "default_branch": "main",
+      "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "files": {
+        "readme": true,
+        "gitignore": true,
+        "editorconfig": true,
+        "flake_nix": true,
+        "justfile": true,
+        "changelog": false,
+        "security": false,
+        "contributing": false,
+        "code_of_conduct": false,
+        "renovate_config": "renovate.json",
+        "workflows": [
+          "ci.yml"
+        ]
+      },
+      "ci_state": "PENDING",
+      "releases": {
+        "total": 0,
+        "drafts": 0
+      },
+      "rulesets": [
+        {
+          "name": "protect-tags",
+          "target": "TAG",
+          "enforcement": "ACTIVE",
+          "include": [
+            "refs/tags/**"
+          ]
+        },
+        {
+          "name": "protect-main",
+          "target": "BRANCH",
+          "enforcement": "ACTIVE",
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "rules": [
+            "PULL_REQUEST"
+          ]
+        }
+      ],
+      "branch": {
+        "known": true,
+        "types": [
+          "pull_request",
+          "required_signatures",
+          "required_status_checks"
+        ],
+        "required_checks": [
+          "merge-gate"
+        ]
+      },
+      "settings": {
+        "has_issues": true,
+        "has_wiki": false,
+        "has_projects": false,
+        "has_discussions": false,
+        "vulnerability_alerts": true,
+        "dependabot_security_updates": true,
+        "merge_commit_allowed": true,
+        "squash_merge_allowed": false,
+        "rebase_merge_allowed": false,
+        "merge_commit_title": "PR_TITLE",
+        "merge_commit_message": "PR_BODY",
+        "auto_merge_allowed": true,
+        "delete_branch_on_merge": true,
+        "actions_policy": "selected",
+        "sha_pinning_required": true,
+        "allowed_actions": {
+          "github_owned_allowed": true,
+          "verified_allowed": false,
+          "patterns": [
+            "step-security/*"
+          ]
+        },
+        "default_workflow_permissions": "read",
+        "can_approve_pull_requests": false,
+        "actions_access_level": "none"
+      }
+    },
+    {
+      "name": "go-linter",
+      "type": "config",
+      "published": false,
+      "visibility": "private",
+      "topics": 0,
+      "open_pull_requests": 0,
+      "branches": 0,
+      "empty": true,
+      "files": {
+        "readme": false,
+        "gitignore": false,
+        "editorconfig": false,
+        "flake_nix": false,
+        "justfile": false,
+        "changelog": false,
+        "security": false,
+        "contributing": false,
+        "code_of_conduct": false
+      },
+      "releases": {
+        "total": 0,
+        "drafts": 0
+      },
+      "branch": {
+        "known": false
+      },
+      "settings": {
+        "has_issues": true,
+        "has_wiki": false,
+        "has_projects": false,
+        "has_discussions": false,
+        "vulnerability_alerts": true,
+        "dependabot_security_updates": true,
+        "merge_commit_allowed": true,
+        "squash_merge_allowed": false,
+        "rebase_merge_allowed": false,
+        "merge_commit_title": "PR_TITLE",
+        "merge_commit_message": "PR_BODY",
+        "auto_merge_allowed": true,
+        "delete_branch_on_merge": true,
+        "actions_policy": "selected",
+        "sha_pinning_required": true,
+        "allowed_actions": {
+          "github_owned_allowed": true,
+          "verified_allowed": false,
+          "patterns": [
+            "step-security/*"
+          ]
+        },
+        "default_workflow_permissions": "read",
+        "can_approve_pull_requests": false,
+        "actions_access_level": "none"
+      }
+    },
+    {
+      "name": "web-app",
+      "type": "config",
+      "published": false,
+      "overrides": {
+        "flake_nix": "not_required"
+      },
+      "visibility": "private",
+      "description": "the web-app repository",
+      "topics": 0,
+      "open_pull_requests": 0,
+      "branches": 1,
+      "pushed_at": "2026-08-24T12:00:00Z",
+      "default_branch": "main",
+      "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "files": {
+        "readme": true,
+        "gitignore": false,
+        "editorconfig": true,
+        "flake_nix": false,
+        "justfile": true,
+        "changelog": false,
+        "security": false,
+        "contributing": false,
+        "code_of_conduct": false,
+        "renovate_config": "renovate.json",
+        "workflows": [
+          "ci.yml"
+        ]
+      },
+      "ci_state": "SUCCESS",
+      "releases": {
+        "total": 0,
+        "drafts": 0
+      },
+      "rulesets": [
+        {
+          "name": "protect-tags",
+          "target": "TAG",
+          "enforcement": "ACTIVE",
+          "include": [
+            "refs/tags/**"
+          ]
+        },
+        {
+          "name": "protect-main",
+          "target": "BRANCH",
+          "enforcement": "ACTIVE",
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "rules": [
+            "PULL_REQUEST"
+          ]
+        }
+      ],
+      "branch": {
+        "known": true,
+        "types": [
+          "pull_request",
+          "required_signatures",
+          "required_status_checks"
+        ],
+        "required_checks": [
+          "gate (ubuntu-latest)",
+          "commitlint"
+        ]
+      },
+      "settings": {
+        "has_issues": true,
+        "has_wiki": true,
+        "has_projects": false,
+        "has_discussions": false,
+        "vulnerability_alerts": true,
+        "dependabot_security_updates": true,
+        "merge_commit_allowed": true,
+        "squash_merge_allowed": false,
+        "rebase_merge_allowed": false,
+        "merge_commit_title": "PR_TITLE",
+        "merge_commit_message": "PR_BODY",
+        "auto_merge_allowed": true,
+        "delete_branch_on_merge": true,
+        "actions_policy": "selected",
+        "sha_pinning_required": true,
+        "allowed_actions": {
+          "github_owned_allowed": true,
+          "verified_allowed": false,
+          "patterns": [
+            "step-security/*"
+          ]
+        },
+        "default_workflow_permissions": "read",
+        "can_approve_pull_requests": false,
+        "actions_access_level": "none"
+      }
+    }
+  ]
+}
