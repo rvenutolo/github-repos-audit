@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/refresh-pull-request against a stub gh, so the
+#              files it commits are proved to come from --dir without any call
+#              reaching GitHub. The stub answers the few reads the script
+#              makes and records every argument list it was handed.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# @description Write a gh stand-in that logs each call and answers the reads.
+# @arg $1 dir directory to put the stub in
+# @arg $2 log file each call is appended to
+function write_stub() {
+  local -r dir="$1" log="$2"
+  cat > "${dir}/gh" << STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '${log}'
+case "\$*" in
+  'api repos/gh-owner/report --jq .default_branch') echo main ;;
+  'api repos/gh-owner/report/git/ref/heads/main --jq .object.sha') echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001 ;;
+  'api repos/gh-owner/report/git/ref/heads/chore/refresh-audit') exit 1 ;;
+  pr\ list*) echo '' ;;
+  *) : ;;
+esac
+STUB
+  chmod +x "${dir}/gh"
+}
+
+function main() {
+  # work is intentionally not local: the EXIT trap below fires after main
+  # returns, in the script's global scope, so a local would already be
+  # unset by then and set -u would fault on the trap's own cleanup line.
+  local rc=0
+  work="$(mktemp --directory)"
+  trap 'rm -rf -- "${work}"' EXIT
+
+  mkdir --parents "${work}/bin" "${work}/report"
+  printf '# report from --dir\n' > "${work}/report/README.md"
+  printf '{"owner":"gh-owner"}\n' > "${work}/report/audit.json"
+  write_stub "${work}/bin" "${work}/calls.log"
+
+  PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+    "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/report" > /dev/null 2>&1 || {
+    ci::log 'FAIL: refresh-pull-request --dir exited non-zero'
+    rc=1
+  }
+
+  local want_readme want_audit
+  want_readme="readme=$(base64 --wrap=0 < "${work}/report/README.md")"
+  want_audit="audit=$(base64 --wrap=0 < "${work}/report/audit.json")"
+  if ! grep --quiet --fixed-strings -- "${want_readme}" "${work}/calls.log"; then
+    ci::log 'FAIL: the commit did not carry README.md from --dir'
+    rc=1
+  fi
+  if ! grep --quiet --fixed-strings -- "${want_audit}" "${work}/calls.log"; then
+    ci::log 'FAIL: the commit did not carry audit.json from --dir'
+    rc=1
+  fi
+
+  if PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+    "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/missing" > /dev/null 2>&1; then
+    ci::log 'FAIL: a --dir without README.md and audit.json was accepted'
+    rc=1
+  fi
+
+  local usage_got=0
+  PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+    "${REPO_DIR}/.ci/refresh-pull-request" --bogus > /dev/null 2>&1 || usage_got=$?
+  if [[ "${usage_got}" != 2 ]]; then
+    ci::log "FAIL: an unknown argument: exit ${usage_got}, want 2"
+    rc=1
+  fi
+
+  # --dir with no value must be the same usage error (exit 2) as an unknown
+  # argument, not the exit 1 that "${2:?...}" would give by faulting through
+  # set -u: the two are otherwise indistinguishable from a runtime failure.
+  local dir_got=0
+  PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+    "${REPO_DIR}/.ci/refresh-pull-request" --dir > /dev/null 2>&1 || dir_got=$?
+  if [[ "${dir_got}" != 2 ]]; then
+    ci::log "FAIL: --dir with no value: exit ${dir_got}, want 2"
+    rc=1
+  fi
+
+  ((rc == 0)) && ci::log 'refresh-pull-request: every case passed'
+  return "${rc}"
+}
+
+main "$@"

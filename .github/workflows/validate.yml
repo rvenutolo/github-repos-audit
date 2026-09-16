@@ -1,0 +1,74 @@
+name: validate
+
+# Validate the CALLER's configuration and rendered report without changing
+# anything. The caller is a report repository holding only repos.toml, the
+# generated README.md and audit.json; this workflow is the tool.
+#
+# The tool is checked out at the workspace root, so .ci/in-devshell and every
+# .ci script find their own repository through `git rev-parse --show-toplevel`,
+# and the caller lands under report/, which is what --config names. Every
+# formatting and schema tool below reads its config by walking up from the
+# file it is given, so a config at the workspace root (the tool) applies to a
+# file under report/ with no --config flag needed.
+on:
+  workflow_call: {}
+
+permissions: {}
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+      # The tool, at the exact commit the caller pinned.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+      # The caller's own repository, which holds the config and the report.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: report
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      - name: Validate the configuration
+        run: ./.ci/in-devshell go run ./cmd/audit validate --config report/repos.toml
+
+      - name: Check the report's formatting
+        run: |
+          ./.ci/in-devshell prettier --check report/README.md
+          ./.ci/in-devshell markdownlint-cli2 report/README.md
+
+      - name: Validate audit.json against the schema
+        # Absent on a report repository's first run, which is not a failure.
+        run: |
+          if [[ -f report/audit.json ]]; then
+            ./.ci/in-devshell check-jsonschema --schemafile audit.schema.json report/audit.json
+          else
+            echo 'report/audit.json does not exist yet; nothing to validate.'
+          fi

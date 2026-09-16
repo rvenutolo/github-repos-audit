@@ -1,0 +1,73 @@
+# Tools the repo's own tooling shells out to. Every entry is justified by a
+# real call site. This file is data: one tool per line, `#` comments and blank
+# lines ignored, no shebang and no executable bit.
+#
+# .ci/check-devshell-provides reads this file in both directions:
+# - forward: every entry here must resolve on PATH inside the devShell;
+# - reverse: every devShell package must be where one of these binaries
+#   RESOLVES on PATH, or back a formatter .treefmt.nix enables.
+#
+# That second escape is why gofumpt, nixfmt and taplo are absent: treefmt runs
+# them from the Nix store, never through PATH.
+
+# run-all-checks: go build, go vet, go test, `go run ./cmd/audit validate`
+go
+# invoked by .ci/run-lint-checks
+golangci-lint
+# run-all-checks runs `govulncheck ./...` after the tests
+govulncheck
+# .ci/run-lint-checks (verify) and .ci/run-fixers (write); treefmt drives it too
+shfmt
+# the end-to-end test shells out to `prettier --check` on the golden README;
+# validate.yml also runs it, on the caller's report/README.md
+prettier
+# .ci/run-lint-checks lints every tracked shell script
+shellcheck
+# invoked by .ci/run-lint-checks
+yamllint
+# invoked by .ci/run-lint-checks
+actionlint
+# invoked by .ci/run-lint-checks
+zizmor
+# invoked by .ci/run-lint-checks and .ci/run-fixers; validate.yml also runs
+# it, on the caller's report/README.md
+markdownlint-cli2
+# .ci/run-lint-checks: every tracked file no formatter owns
+editorconfig-checker
+# .ci/run-lint-checks: the links README.md carries
+lychee
+# invoked by .ci/run-lint-checks and .ci/run-fixers
+typos
+# invoked by .ci/run-lint-checks (whole-tree scan of the tracked files)
+gitleaks
+# .ci/run-lint-checks: the golden audit.json fixture against audit.schema.json;
+# validate.yml also runs it, on the caller's report/audit.json when present
+check-jsonschema
+# invoked by .ci/run-lint-checks
+statix
+# invoked by .ci/run-lint-checks
+deadnix
+# invoked by .ci/run-lint-checks; the binary name, not its `renovate` package
+renovate-config-validator
+# every script derives the repo root via `git rev-parse`
+git
+# internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset
+gh
+# the task runner .justfile documents; .ci/run-lint-checks runs `just --fmt`
+just
+# invoked by .githooks/commit-msg
+commitlint
+# the gate's own nix; flake.nix pins it as nix.out
+nix
+
+# The baseline userland the gates shell out to. Declared so it is a dependency
+# rather than an inherited nixpkgs internal.
+# .ci/run-lint-checks copies the tracked tree for gitleaks with `cp --parents`
+cp
+# .ci/run-lint-checks creates the gitleaks scan directory with it
+mktemp
+# .ci/refresh-pull-request and .ci/fuzz-pull-request encode the files they
+# commit for createCommitOnBranch
+base64
+# .ci/run-lint-checks feeds the tracked file list to cp through xargs
+xargs

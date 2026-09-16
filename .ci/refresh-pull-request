@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+
+# @description Commit the freshly rendered README.md and audit.json, read from
+#              --dir (default the repository root), to the refresh branch and
+#              open, or update, the pull request that carries them.
+#
+#              Everything here is a write, which is why none of it lives in the
+#              Go binary: the collector is provably read-only, and every
+#              mutation is in this one script and the workflow that calls it.
+#
+#              The commit goes through the GraphQL createCommitOnBranch
+#              mutation rather than `git push`, for two reasons. The protect-
+#              main ruleset requires signed commits and GitHub refuses to merge
+#              a pull request carrying unsigned ones, so a plain push from the
+#              runner would open a pull request that could never merge; commits
+#              made through the API are GitHub-signed. And the mutation takes
+#              both files in one fileChanges input, where the Contents API
+#              writes one file per commit — two files would otherwise mean two
+#              commits a night.
+#
+#              expectedHeadOid gives optimistic concurrency for free: if the
+#              default branch moved between the read and the write, the
+#              mutation fails rather than clobbering.
+# @option --dir <dir> directory holding README.md and audit.json
+# @exitcode 0 the pull request is open and carries the new report
+# @exitcode 1 something went wrong; nothing partial is left behind
+# @exitcode 2 a usage error: an unknown argument, or --dir with no value
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly BRANCH='chore/refresh-audit'
+readonly TITLE='chore: refresh the repository audit'
+
+# @description Queue the merge behind the branch protection, so the nightly
+#              report lands unattended but only ever behind a green gate and
+#              commitlint.
+#
+#              This is safe now and was not before: while required_checks
+#              named only the always-green merge-gate placeholder, auto-merge
+#              would have fired before the real gate had started.
+# @arg $1 repo   owner/name
+# @arg $2 target pull request number or head branch
+function enable_auto_merge() {
+  local -r repo="$1" target="$2"
+  ci::log "enabling auto-merge on ${target}"
+  if gh pr merge "${target}" --repo "${repo}" --merge --auto; then
+    return 0
+  fi
+  # --auto is refused when the pull request is ALREADY mergeable, which happens
+  # if every required check has reported by the time this runs. A plain merge
+  # is then the same outcome, and branch protection still refuses it if
+  # anything is red — so this is a fallback, not a bypass.
+  ci::log 'auto-merge refused; the checks may already have reported, so merging directly'
+  gh pr merge "${target}" --repo "${repo}" --merge
+}
+
+# @description Reset the refresh branch onto the default branch, commit the
+#              rendered report to it through the API, and open or update the
+#              pull request that carries it.
+# @arg $@ optionally --dir <dir>; default the repository root
+function main() {
+  local dir="${REPO_DIR}" repo base_branch base_sha existing
+  while (($# > 0)); do
+    case "$1" in
+      --dir)
+        # A plain usage error (exit 2), not the "${2:?...}" form: that form
+        # faults through set -u into an unhandled "unbound variable" exit 1,
+        # which is indistinguishable from the runtime-failure path below.
+        if (($# < 2)); then
+          printf '%s: --dir needs a directory\n' "${0##*/}" >&2
+          exit 2
+        fi
+        dir="$2"
+        shift 2
+        ;;
+      *)
+        printf '%s: unknown argument %q\n' "${0##*/}" "$1" >&2
+        exit 2
+        ;;
+    esac
+  done
+  local -r readme="${dir}/README.md" audit="${dir}/audit.json"
+  if [[ ! -f "${readme}" || ! -f "${audit}" ]]; then
+    printf '%s: %s must hold README.md and audit.json\n' "${0##*/}" "${dir}" >&2
+    exit 1
+  fi
+
+  repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}"
+  base_branch="$(gh api "repos/${repo}" --jq '.default_branch')"
+  base_sha="$(gh api "repos/${repo}/git/ref/heads/${base_branch}" --jq '.object.sha')"
+  ci::log "base ${base_branch} at ${base_sha}"
+
+  # Note the open pull request BEFORE touching the branch. Resetting the branch
+  # onto the base makes its head momentarily identical to the base, and GitHub
+  # closes a pull request the instant that is true. Without this, every run
+  # would abandon yesterday's pull request and open a new number, leaving a
+  # trail of auto-closed ones — the opposite of "at most one refresh pull
+  # request exists at a time".
+  existing="$(gh pr list --repo "${repo}" --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
+
+  # Recreate the branch from the current base rather than reusing yesterday's,
+  # so the diff is always against current main and a red refresh pull request
+  # is replaced rather than stacked on.
+  if gh api "repos/${repo}/git/ref/heads/${BRANCH}" > '/dev/null' 2>&1; then
+    ci::log "resetting ${BRANCH} onto ${base_sha}"
+    gh api --method PATCH "repos/${repo}/git/refs/heads/${BRANCH}" \
+      --field "sha=${base_sha}" --field 'force=true' > '/dev/null'
+  else
+    ci::log "creating ${BRANCH} at ${base_sha}"
+    gh api --method POST "repos/${repo}/git/refs" \
+      --field "ref=refs/heads/${BRANCH}" --field "sha=${base_sha}" > '/dev/null'
+  fi
+
+  ci::log 'committing README.md and audit.json in one signed commit'
+  # shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
+  gh api graphql \
+    --field "repo=${repo}" \
+    --field "branch=${BRANCH}" \
+    --field "oid=${base_sha}" \
+    --field "readme=$(base64 --wrap=0 < "${readme}")" \
+    --field "audit=$(base64 --wrap=0 < "${audit}")" \
+    --raw-field 'query=
+      mutation($repo: String!, $branch: String!, $oid: GitObjectID!, $readme: Base64String!, $audit: Base64String!) {
+        createCommitOnBranch(input: {
+          branch: { repositoryNameWithOwner: $repo, branchName: $branch }
+          expectedHeadOid: $oid
+          message: { headline: "chore: refresh the repository audit" }
+          fileChanges: { additions: [
+            { path: "README.md", contents: $readme }
+            { path: "audit.json", contents: $audit }
+          ] }
+        }) { commit { oid } }
+      }' > '/dev/null'
+
+  if [[ -n "${existing}" ]]; then
+    if [[ "$(gh pr view "${existing}" --repo "${repo}" --json state --jq '.state')" == 'CLOSED' ]]; then
+      ci::log "reopening #${existing}, closed while the branch was momentarily equal to ${base_branch}"
+      gh pr reopen "${existing}" --repo "${repo}" > '/dev/null'
+    fi
+    ci::log "pull request #${existing} now carries the new report"
+    enable_auto_merge "${repo}" "${existing}"
+    return 0
+  fi
+
+  ci::log 'opening the pull request'
+  # GITHUB_WORKFLOW is always set in Actions and, in a called workflow, holds
+  # the CALLER's workflow name rather than this repository's own — the README
+  # tells callers to name their caller workflow refresh.yml, but nothing
+  # requires that, so the body cannot hardcode a filename that may not exist
+  # in the reader's repository.
+  local workflow_name="${GITHUB_WORKFLOW:-the scheduled refresh workflow}"
+  gh pr create --repo "${repo}" --base "${base_branch}" --head "${BRANCH}" \
+    --title "${TITLE}" \
+    --body "Generated by ${workflow_name}. Read-only against GitHub; the report itself is the only change."
+  enable_auto_merge "${repo}" "${BRANCH}"
+}
+
+main "$@"

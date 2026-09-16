@@ -1,0 +1,16 @@
+# Go build and test artefacts
+/audit
+coverage.out
+coverage-integration.out
+
+# lychee's link-check cache
+.lycheecache
+
+# Nix / direnv
+.direnv/
+result
+
+# Planning artefacts. Already covered by the global gitignore; repeated here so
+# a clone on another machine cannot commit them with `git add -A`.
+docs/superpowers/
+.claude/

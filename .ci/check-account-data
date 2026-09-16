@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+
+# @description Fail when any commit in a revision range carries an account's
+#              login or repository names, in its tree, in a path name, or in
+#              its message. The pre-push hook runs it before anything reaches
+#              a public repository; it needs no network, so it is testable
+#              offline.
+#
+#              Allowed: the tool's own authorship lines, where the login is
+#              part of `<login>/github-repos-audit` (the module path, the
+#              schema $id, `uses:` examples) and LICENSE. The tool's own name
+#              and its -report and -archive siblings are never treated as
+#              account data.
+#
+#              Repository names match only where they are shaped like a
+#              repository — `<login>/<name>`, `"name": "<name>"` and
+#              `` `<name>` `` — because short names such as "scripts" are also
+#              ordinary words. The login matches anywhere else.
+#
+#              Output names commits and paths only, never the matched text --
+#              except a path-name hit, reported as "path name": there the
+#              path itself is the leaked data, so it is never printed either.
+# @option --login <login> the account whose data must not appear
+# @option --names <file> one repository name per line
+# @option --range <revs> the revisions to scan, as git rev-list takes them
+# @exitcode 0 nothing found
+# @exitcode 1 account data found
+# @exitcode 2 usage error
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+readonly SELF_NAMES='github-repos-audit|github-repos-audit-report|github-repos-audit-archive'
+
+function usage() {
+  printf 'usage: %s --login LOGIN --names FILE --range REVS\n' "${0##*/}" >&2
+  exit 2
+}
+
+# @description Escape a literal for an extended regular expression.
+# @arg $1 text
+function ere_quote() {
+  printf '%s' "$1" | sed 's/[][\.*^$+?(){}|/]/\\&/g'
+}
+
+# @description Run `git grep` with the given arguments and print any
+#              matching lines on stdout, the way `git grep` itself would.
+#              Exit 1 (no match) is expected and yields empty output; any
+#              status above 1 -- a bad regex, a corrupt object -- means the
+#              scan itself failed rather than found nothing, so it aborts
+#              the whole script instead of being swallowed the way a bare
+#              `|| true` used to swallow it. Relies on the caller never
+#              wrapping the call in its own `|| true`, so this exit still
+#              trips `set -e`/`inherit_errexit` at the call site.
+# @arg $@ arguments to pass to `git grep`
+function scan_grep() {
+  local rc=0 out
+  out="$(git grep "$@")" || rc=$?
+  if ((rc > 1)); then
+    printf '%s: git grep failed (exit %s)\n' "${0##*/}" "${rc}" >&2
+    exit 1
+  fi
+  printf '%s' "${out}"
+}
+
+# @description Test whether TEXT matches any pattern in the file at PATTERNS,
+#              the plain-`grep` counterpart to scan_grep above (the message
+#              check runs `grep` over already-fetched text, not `git grep`
+#              over a commit). Exit 1 (no match) is expected and returns
+#              failure; anything above 1 -- a bad pattern file, a read
+#              failure -- aborts the scan rather than being read as "no
+#              match", which a bare `grep --quiet ... || true`-shaped `if`
+#              could not tell apart from a genuine non-match.
+# @arg $1 text
+# @arg $2 patterns file
+# @exitcode 0 text matches a pattern
+# @exitcode 1 text matches no pattern
+function scan_match() {
+  local rc=0
+  printf '%s\n' "$1" | grep --quiet --ignore-case --extended-regexp --file="$2" && return 0 || rc=$?
+  if ((rc > 1)); then
+    printf '%s: grep failed (exit %s)\n' "${0##*/}" "${rc}" >&2
+    exit 1
+  fi
+  return 1
+}
+
+function main() {
+  local login='' names='' range=''
+  while (($# > 0)); do
+    case "$1" in
+      --login)
+        login="${2:-}"
+        shift 2 || usage
+        ;;
+      --names)
+        names="${2:-}"
+        shift 2 || usage
+        ;;
+      --range)
+        range="${2:-}"
+        shift 2 || usage
+        ;;
+      *) usage ;;
+    esac
+  done
+  [[ -n "${login}" && -r "${names}" && -n "${range}" ]] || usage
+
+  # patterns and revs are intentionally not local: the EXIT trap below fires
+  # after main returns, in the script's global scope, so a local would
+  # already be unset by then and set -u would fault on the trap's own
+  # cleanup line.
+  local quoted_login name
+  patterns="$(mktemp)"
+  revs="$(mktemp)"
+  trap 'rm -f -- "${patterns}" "${revs}"' EXIT
+  quoted_login="$(ere_quote "${login}")"
+
+  while IFS= read -r name || [[ -n "${name}" ]]; do
+    [[ -z "${name}" ]] && continue
+    [[ "${name}" =~ ^(${SELF_NAMES})$ ]] && continue
+    local q
+    q="$(ere_quote "${name}")"
+    {
+      printf '%s/%s([^A-Za-z0-9._-]|$)\n' "${quoted_login}" "${q}"
+      printf '"name": *"%s"\n' "${q}"
+      # shellcheck disable=SC2016 # the backticks are the pattern being
+      # searched for (a Markdown-backticked name), not a command substitution
+      printf '`%s`\n' "${q}"
+      # A whole path segment: a directory or file literally named after the
+      # repository, the shape the tree's own path names are checked against
+      # below. Bounded by "/" (or the start/end of the path) rather than
+      # word characters, so it stays as narrow as the other name-shaped
+      # patterns above and does not start matching the name inside prose.
+      printf '(^|/)%s(/|$)\n' "${q}"
+    } >> "${patterns}"
+  done < "${names}"
+  # The login anywhere, once the allowed authorship form is stripped (below).
+  printf '(^|[^A-Za-z0-9-])%s([^A-Za-z0-9-]|$)\n' "${quoted_login}" >> "${patterns}"
+
+  local -r allowed="${quoted_login}/(${SELF_NAMES})([^A-Za-z0-9._-]|$)"
+  local found=0 commit path line binary_path text_paths text_matches binary_matches paths stripped_paths
+  # A plain command, not a process substitution: `git rev-list` failing (an
+  # unresolvable range from a remote sha absent locally, a pruned or
+  # rewritten ref) must abort the scan under set -e, not print "fatal:
+  # Invalid revision range" to stderr while the loop below silently sees no
+  # commits and the script still exits 0.
+  git rev-list "${range}" > "${revs}"
+  while IFS= read -r commit; do
+    # Message, checked first: git log's own failure (a corrupt object, a
+    # shallow clone missing the commit) must abort the scan rather than be
+    # silently read as "no match". Checking it before the tree/binary/path
+    # passes below means a commit whose object cannot be read at all is
+    # caught here, with a message naming the actual failure, rather than by
+    # whichever of those passes happens to touch the object first.
+    #
+    # Its exit status is captured on its own, before sed or grep ever run:
+    # under set -o pipefail a pipeline's status is the RIGHTMOST failure, so
+    # `git log | sed | grep --quiet` would report grep's exit 1 (no match,
+    # since sed passes empty input through) and bury a failing git log
+    # underneath it.
+    local log_rc=0 message
+    message="$(git log --format=%B -1 "${commit}")" || log_rc=$?
+    if ((log_rc != 0)); then
+      printf '%s: git log failed (exit %s) on commit %s\n' "${0##*/}" "${log_rc}" "${commit}" >&2
+      exit 1
+    fi
+    message="$(printf '%s' "${message}" | sed --regexp-extended "s#${allowed}##Ig")"
+    if scan_match "${message}" "${patterns}"; then
+      printf 'commit %s: message\n' "${commit}"
+      found=1
+    fi
+    # Text paths that -I actually searched, so the binary pass below can tell
+    # a path IT alone matched (skipped by -I) from one both passes matched.
+    text_paths="$(scan_grep -I --ignore-case --name-only --extended-regexp -f "${patterns}" "${commit}" --)"
+    # Tree: every matching line, the allowed form removed, then re-tested.
+    text_matches="$(scan_grep -I --ignore-case --extended-regexp -f "${patterns}" "${commit}" --)"
+    while IFS= read -r line; do
+      [[ -z "${line}" ]] && continue
+      path="${line#"${commit}":}"
+      path="${path%%:*}"
+      [[ "${path}" == 'LICENSE' ]] && continue
+      local content="${line#"${commit}:${path}:"}"
+      content="$(printf '%s' "${content}" | sed --regexp-extended "s#${allowed}##Ig")"
+      if printf '%s\n' "${content}" | grep --quiet --ignore-case --extended-regexp --file="${patterns}"; then
+        printf 'commit %s: %s\n' "${commit}" "${path}"
+        found=1
+      fi
+    done <<< "${text_matches}"
+    # Binary: git grep -I silently skips any blob with a NUL byte, which
+    # would otherwise let account data hide inside a binary file. --text
+    # forces the same patterns over binary content too; a path that only
+    # this pass finds (absent from text_paths) has no line to show the
+    # allowed-occurrence stripping, so any such match is reported as a
+    # finding outright, never re-tested and never quoted.
+    binary_matches="$(scan_grep --text --ignore-case --name-only --extended-regexp -f "${patterns}" "${commit}" --)"
+    while IFS= read -r binary_path; do
+      [[ -z "${binary_path}" ]] && continue
+      if ! grep --quiet --fixed-strings --line-regexp -- "${binary_path}" <<< "${text_paths}"; then
+        # git grep --name-only over a commit still prefixes "<commit>:", the
+        # same as the text loop above; strip it so the reported path matches
+        # what the tree actually contains, not the commit sha repeated twice.
+        printf 'commit %s: %s (binary)\n' "${commit}" "${binary_path#"${commit}":}"
+        found=1
+      fi
+    done <<< "${binary_matches}"
+    # Names: neither pass above looks at a path or directory NAME, only at
+    # blob content, so a commit that adds e.g. testdata/marker-repo/x.json
+    # with otherwise clean content would pass both. The fixture scrub's one
+    # manual step was renaming directories away from real repository names;
+    # this is what actually checks that it stuck. Reported as "path name",
+    # never the path itself, because here the path IS the leaked data.
+    paths="$(git ls-tree -r --name-only "${commit}")"
+    stripped_paths="$(printf '%s\n' "${paths}" | sed --regexp-extended "s#${allowed}##Ig")"
+    if printf '%s\n' "${stripped_paths}" | grep --quiet --ignore-case --extended-regexp --file="${patterns}"; then
+      printf 'commit %s: path name\n' "${commit}"
+      found=1
+    fi
+  done < "${revs}"
+
+  # A finding is a designed nonzero return, not a crash: drop the ERR trap so
+  # the findings above are the last thing the reader sees, matching the other
+  # governance scripts (check-coverage, check-devshell-provides,
+  # check-uses-sha-pinned).
+  trap - ERR
+  return "${found}"
+}
+
+main "$@"

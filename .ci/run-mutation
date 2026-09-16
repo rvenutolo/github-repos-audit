@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+
+# @description Mutation-test one package with gremlins, under a memory cap.
+#
+#              NEVER PART OF THE GATE, and the omission from run-all-checks is
+#              deliberate rather than an oversight. Two independent reasons:
+#              a meaningful fraction of surviving mutants are EQUIVALENT
+#              mutants -- semantically identical to the original and unkillable
+#              by any test -- so a numeric threshold produces false failures
+#              rather than signal; and the run is minutes on a package the size
+#              of internal/github. The output is meant to be read by a human
+#              and turned into specific test cases.
+#
+#              ON THE MEMORY CAP, which is the reason this script exists at all
+#              rather than the recipe calling gremlins directly.
+#
+#              A mutant is a deliberate bug, and one class of deliberate bug is
+#              an unbounded loop: flip `i < n` to `i > n`, or `own++` to
+#              `own--`, and a test that appended to a slice now appends until
+#              the machine dies. Writing this, an uncapped run did exactly
+#              that -- a mutated predicate drove render.test to 31 GB, the
+#              kernel OOM killer fired, and because the victim shared a cgroup
+#              with the terminal that started it, systemd tore down the whole
+#              scope and took the terminal with it.
+#
+#              `ulimit -v` is the guard. It is a bash builtin, so it adds no
+#              tool and no .ci/required-tools entry, and rlimits are inherited
+#              across fork and exec, so ONE call here caps gremlins and every
+#              `go test` child it spawns. A runaway then dies in-process with
+#              `fatal error: out of memory` and the kernel OOM killer is never
+#              involved, so nothing outside this process tree is ever at risk.
+#              `-v` caps virtual address space, which is worth checking against
+#              the race detector because it reserves enormous VA -- verified
+#              that `go test -race ./internal/rules/` passes at 4 GiB.
+#
+#              The worst case is WORKERS * MEMORY_MIB, which is why the worker
+#              count is bounded here and not left at gremlins' default of one
+#              per core.
+#
+#              THE TIMEOUT IS NOT THE SAFETY DEVICE. gremlins derives its
+#              per-mutant timeout from how long the coverage run took, and this
+#              suite is fast enough (~60ms) that the derived timeout lands
+#              below the time `go test` needs merely to COMPILE -- so at the
+#              default coefficient every mutant is misreported as TIMED OUT and
+#              the efficacy figure reads 0.00%. The coefficient has to be large
+#              here for the run to mean anything, and raising it is precisely
+#              what removed the accidental brake the night of the OOM. Memory
+#              is the brake. The coefficient is only there to stop gremlins
+#              lying about the results.
+#
+#              A mutant killed by the cap is reported KILLED rather than as its
+#              own category, which mildly inflates the efficacy figure. That is
+#              accepted: it did cause an observable failure.
+# @arg $1 package the package to mutate, e.g. ./internal/rules/
+# @exitcode 0 the mutation run completed (survivors are not a failure)
+# @exitcode 1 gremlins failed to run
+# @exitcode 2 no package was given
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# @description Cap memory, then mutation-test the given package.
+# @arg $1 package the package to mutate
+function main() {
+  if (($# != 1)); then
+    printf 'usage: %s <package>\n' "${0##*/}" >&2
+    exit 2
+  fi
+  local -r package="$1"
+
+  local -r memory_mib="${MUTATE_MEMORY_MIB:-4096}"
+  local -r workers="${MUTATE_WORKERS:-4}"
+  local -r coefficient="${MUTATE_TIMEOUT_COEFFICIENT:-200}"
+
+  cd "${REPO_DIR}"
+
+  ci::log "mutating ${package} with $(gremlins --version)"
+  ci::log "cap: ${memory_mib} MiB per process, ${workers} workers => $((memory_mib * workers)) MiB worst case"
+
+  # Read BEFORE the cap is applied: `ulimit -v` is irreversible in this shell.
+  ulimit -v $((memory_mib * 1024))
+
+  local rc=0
+  gremlins unleash \
+    --workers "${workers}" \
+    --timeout-coefficient "${coefficient}" \
+    "${package}" || rc=$?
+
+  if ((rc != 0)); then
+    ci::log 'gremlins failed to run; this is a tool failure, not a surviving mutant'
+    trap - ERR
+    return 1
+  fi
+
+  ci::log 'read the LIVED lines above: each is a behaviour change no test noticed'
+  trap - ERR
+  return 0
+}
+
+main "$@"

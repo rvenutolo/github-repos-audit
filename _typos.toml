@@ -1,0 +1,13 @@
+# typos runs over every tracked text file (.ci/run-lint-checks). flake.lock is
+# Renovate-rewritten weekly and auto-merged; typos' hash heuristic already
+# skips its narHash/rev values, so this exclusion is defensive: a false
+# positive there would red a lock bump nobody reads. testdata/ holds verbatim
+# API captures and golden fixtures whose payloads this project does not
+# control.
+#
+# README.md is deliberately NOT excluded. It is hand-written documentation
+# with no generated block in this repository, so a misspelling in it is an
+# ordinary typo in prose the maintainers wrote themselves, not a false
+# positive worth suppressing.
+[files]
+extend-exclude = ["flake.lock", "testdata/**"]

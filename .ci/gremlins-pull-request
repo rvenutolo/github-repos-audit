@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+
+# @description File the gremlins version bump `nix-update` just made as a pull
+#              request.
+#
+#              gremlins is hand-packaged in nix/gremlins.nix because nixpkgs
+#              does not ship it, and a hand-packaged Go tool carries a
+#              vendorHash that no human can compute by reading anything. That
+#              is the same hash that killed the flake package in #33 -- but for
+#              a DIFFERENT reason than here. There, the hash came from this
+#              repo's go.mod, so every Renovate bump invalidated it and turned
+#              the gate red. Here it comes from gremlins' own go.mod at a fixed
+#              tag, so nothing this repo does can invalidate it, and the only
+#              event that moves it is an upstream release.
+#
+#              Renovate cannot do this job: its postUpgradeTasks, which is what
+#              would recompute a hash after a version bump, is self-hosted
+#              only and this repo is on the hosted app. That is exactly what
+#              #48 recorded. `nix-update` computes both hashes directly, so
+#              this workflow does what Renovate structurally cannot.
+#
+#              The commit goes through createCommitOnBranch for the same reason
+#              .ci/refresh-pull-request does: the protect-main ruleset requires
+#              signed commits, and commits made through the API are
+#              GitHub-signed where a push from a runner would not be.
+#
+#              One branch per version, never reset onto the base: a bump that
+#              is already filed must not be refiled every month, and a bump
+#              someone is still reviewing must not be clobbered.
+# @noargs
+# @exitcode 0 the bump was filed, or there was nothing to file
+# @exitcode 1 a bump was found but could not be filed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly PACKAGE_FILE='nix/gremlins.nix'
+
+# @description Queue the merge behind the branch protection. Same shape as
+#              .ci/refresh-pull-request: --auto is REFUSED when the pull
+#              request is already mergeable, which happens if every required
+#              check has reported by the time this runs.
+# @arg $1 repo   owner/name
+# @arg $2 target the pull request to merge
+function enable_auto_merge() {
+  local -r repo="$1" target="$2"
+
+  ci::log "enabling auto-merge on ${target}"
+  if gh pr merge "${target}" --repo "${repo}" --merge --auto; then
+    return 0
+  fi
+  ci::log 'auto-merge refused; the checks may already have reported, so merging directly'
+  gh pr merge "${target}" --repo "${repo}" --merge
+}
+
+# @description File the working tree's bump, if there is one.
+# @noargs
+function main() {
+  cd "${REPO_DIR}"
+
+  local repo
+  repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}"
+
+  # nix-update rewrites the file in place, so a clean file means the pinned
+  # version is already the latest release. Not a failure: it is the normal
+  # outcome of almost every run, since gremlins releases roughly annually.
+  if git diff --quiet -- "${PACKAGE_FILE}"; then
+    ci::log "${PACKAGE_FILE} is unchanged; gremlins is already at its latest release"
+    return 0
+  fi
+
+  # The version nix-update just wrote, read back from the file rather than
+  # passed in, so the branch name cannot disagree with the commit's contents.
+  local version
+  version="$(sed -n 's/^  version = "\(.*\)";$/\1/p' "${PACKAGE_FILE}")"
+  if [[ -z "${version}" ]]; then
+    ci::log "could not read the version out of ${PACKAGE_FILE}"
+    return 1
+  fi
+  readonly version
+
+  local -r branch="build/gremlins-${version}"
+  local -r headline="build: bump gremlins to ${version}"
+
+  if gh api "repos/${repo}/git/ref/heads/${branch}" > '/dev/null' 2>&1; then
+    ci::log "${branch} already exists; gremlins ${version} is already filed"
+    return 0
+  fi
+
+  local base base_sha
+  base="$(gh api "repos/${repo}" --jq '.default_branch')"
+  base_sha="$(gh api "repos/${repo}/git/ref/heads/${base}" --jq '.object.sha')"
+  readonly base base_sha
+  ci::log "base ${base} at ${base_sha}"
+
+  ci::log "creating ${branch} at ${base_sha}"
+  gh api --method POST "repos/${repo}/git/refs" \
+    --field "ref=refs/heads/${branch}" --field "sha=${base_sha}" > '/dev/null'
+
+  ci::log "committing ${PACKAGE_FILE}"
+  # shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
+  gh api graphql \
+    --field "repo=${repo}" \
+    --field "branch=${branch}" \
+    --field "oid=${base_sha}" \
+    --field "message=${headline}" \
+    --field "path=${PACKAGE_FILE}" \
+    --field "contents=$(base64 --wrap=0 < "${REPO_DIR}/${PACKAGE_FILE}")" \
+    --raw-field 'query=
+      mutation(
+        $repo: String!
+        $branch: String!
+        $oid: GitObjectID!
+        $message: String!
+        $path: String!
+        $contents: Base64String!
+      ) {
+        createCommitOnBranch(input: {
+          branch: { repositoryNameWithOwner: $repo, branchName: $branch }
+          expectedHeadOid: $oid
+          message: { headline: $message }
+          fileChanges: { additions: [{ path: $path, contents: $contents }] }
+        }) { commit { oid } }
+      }' > '/dev/null'
+
+  ci::log 'opening the pull request'
+  gh pr create --repo "${repo}" --base "${base}" --head "${branch}" \
+    --title "${headline}" \
+    --body "$(
+      printf '%s\n' \
+        "nix-update bumped gremlins to ${version} and recomputed both hashes." \
+        '' \
+        'The workflow that opened this already built the package and ran a real' \
+        'mutation pass with it, which is the only place that happens: a flake' \
+        'check EVALUATES its packages but never builds them, so the gate on' \
+        'this pull request cannot tell whether gremlins compiles.' \
+        '' \
+        'Nothing else in the repository depends on this tool; the gate is' \
+        'unaffected by it either way.'
+    )"
+
+  enable_auto_merge "${repo}" "${branch}"
+
+  trap - ERR
+  return 0
+}
+
+main "$@"

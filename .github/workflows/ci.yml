@@ -1,0 +1,107 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # The gate is pinned by flake.lock, but it still depends on cache.nixos.org,
+  # the Nix installer and the Go module proxy. A weekly run catches those
+  # breaking in a week nobody pushed, and it is the only thing that notices a
+  # govulncheck advisory published against code that has not changed.
+  # :47 because on-the-hour slots are the most contended on GitHub's scheduler.
+  schedule:
+    - cron: "47 12 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  # event_name is in the key so a scheduled run (ref = main) cannot be
+  # cancelled by a push to main landing in the same window.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The whole gate - `just check` locally - under the flake's pinned tools.
+  gate:
+    name: gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          # Nix installer and binary cache, GitHub for the flake inputs and for
+          # actions/checkout itself, the Go module proxy and checksum database
+          # for `go build`, and vuln.go.dev for govulncheck. lychee runs
+          # anonymously now, so it needs nothing of its own here.
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+            vuln.go.dev:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+      - name: Run the full gate
+        # The flake's bash rather than the runner's. Not needed on ubuntu
+        # (bash 5), kept so a macOS leg (stock bash 3.2, no inherit_errexit)
+        # can be added without touching this step. The inner .ci/in-devshell
+        # run is still --ignore-environment, so the hermetic boundary is
+        # unchanged.
+        shell: nix develop --command bash -o errexit {0}
+        # lychee runs anonymously because every link left in this repository
+        # is public; the report it used to check lived in a separate
+        # repository this one no longer carries. No AUDIT_TOKEN is needed
+        # here, so the tool repository holds none at all.
+        run: ./.ci/in-devshell ./run-all-checks
+
+  commitlint:
+    name: commitlint
+    # pull_request only: merge-commit subjects on main are not conventional.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Private repo: listing the PR's commits needs this; contents alone is
+      # enough on a public repo.
+      pull-requests: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          disable-sudo: true
+          allowed-endpoints: >-
+            api.github.com:443
+            auth.docker.io:443
+            codeload.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            production.cloudflare.docker.com:443
+            registry-1.docker.io:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1

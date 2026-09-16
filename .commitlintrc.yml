@@ -1,0 +1,21 @@
+extends:
+  - "@commitlint/config-conventional"
+rules:
+  # Bodies carry long paths and URLs; subject-length checks stay in effect.
+  body-max-line-length: [0, always, Infinity]
+  # Explicit rather than inherited: flake.lock bumps auto-merge unattended,
+  # so the allowed types must not move with config-conventional's default.
+  type-enum:
+    - 2
+    - always
+    - - build
+      - chore
+      - ci
+      - docs
+      - feat
+      - fix
+      - perf
+      - refactor
+      - revert
+      - style
+      - test

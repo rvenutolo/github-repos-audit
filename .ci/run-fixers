@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+# Run every auto-fixer `nix fmt` does not drive: shfmt --write over the
+# extensionless bash scripts treefmt cannot see, markdownlint-cli2 --fix and
+# typos --write-changes. The writing counterpart of .ci/run-lint-checks. Exit
+# codes aggregate. A non-zero exit does not mean nothing was written:
+# markdownlint reports unfixable rules and typos leaves ambiguous words alone.
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# @description Run every auto-fixer and aggregate their exit codes.
+# @noargs
+function main() {
+  local rc=0
+  cd "${REPO_DIR}"
+
+  ci::log 'running shfmt --write'
+  local -a files=()
+  mapfile -t files < <(ci::shell_files)
+  if ((${#files[@]} > 0)); then
+    shfmt --write --indent 2 --case-indent --binary-next-line --space-redirects "${files[@]}" || rc=1
+  fi
+
+  ci::log 'running markdownlint-cli2 --fix'
+  local -a md_files=()
+  mapfile -t md_files < <(git ls-files '*.md' ':(exclude,glob)**/testdata/**')
+  markdownlint-cli2 --fix "${md_files[@]}" || rc=1
+
+  ci::log 'running typos --write-changes'
+  local -a text_files=()
+  mapfile -t text_files < <(git grep -I --files-with-matches '')
+  typos --write-changes "${text_files[@]}" || rc=1
+
+  if ((rc != 0)); then
+    ci::log 'a fixer failed or left something it could not fix; see above'
+  fi
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

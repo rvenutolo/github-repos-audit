@@ -1,0 +1,108 @@
+name: smoke
+
+# Run the live integration suite against a real account, read-only. The caller
+# names the account and the two fixture repositories; this workflow is the
+# tool being exercised.
+#
+# The tool is checked out at the workspace root, so .ci/in-devshell and every
+# .ci script find their own repository through `git rev-parse --show-toplevel`.
+# audit.yml and validate.yml also check the caller out under report/, because
+# they read repos.toml and the rendered report from it; this workflow reads
+# neither, only the tool's own code and the owner/public-repo/private-repo
+# inputs and AUDIT_TOKEN secret, so it takes the one checkout it needs and no
+# more.
+on:
+  workflow_call:
+    inputs:
+      owner:
+        description: GitHub account or organisation the fixture repositories live under.
+        type: string
+        required: true
+      public-repo:
+        description: Name of the public fixture repository.
+        type: string
+        required: true
+      private-repo:
+        description: Name of the private fixture repository.
+        type: string
+        required: true
+    secrets:
+      AUDIT_TOKEN:
+        description: Read-only token for every repository on the account.
+        required: true
+
+permissions: {}
+
+jobs:
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      # Neither harden-runner nor a checkout is needed for inputs or secrets
+      # to be in scope — both are available from the moment the job starts —
+      # so this runs first, before either, and fails as cheaply as possible.
+      - name: Refuse to run with an empty input or token
+        # `required: true` on a workflow_call input OR secret rejects a
+        # missing value, not an empty string: a caller passing
+        # ${{ vars.SMOKE_OWNER }} for an unset repository variable, or an
+        # empty AUDIT_TOKEN secret, satisfies the requirement with "". Either
+        # one then makes targets() or ResolveToken() in
+        # internal/github/live_integration_test.go treat the environment as
+        # unset and skip the whole suite, so the weekly run reports green
+        # having tested nothing. This step is what actually closes that gap,
+        # by failing loudly before the devshell is even built. The regex
+        # matches an all-whitespace value too, not just a truly empty one, so
+        # a stray space in a repository variable fails the same way instead
+        # of slipping through -z. The token is never echoed or put in a
+        # message — only the fact that it is empty is reported.
+        run: |
+          fail=0
+          [[ "${SMOKE_OWNER}" =~ ^[[:space:]]*$ ]] && { echo 'owner input is empty' >&2; fail=1; }
+          [[ "${SMOKE_PUBLIC_REPO}" =~ ^[[:space:]]*$ ]] && { echo 'public-repo input is empty' >&2; fail=1; }
+          [[ "${SMOKE_PRIVATE_REPO}" =~ ^[[:space:]]*$ ]] && { echo 'private-repo input is empty' >&2; fail=1; }
+          [[ "${SMOKE_TOKEN}" =~ ^[[:space:]]*$ ]] && { echo 'AUDIT_TOKEN is empty' >&2; fail=1; }
+          exit "${fail}"
+        env:
+          SMOKE_OWNER: ${{ inputs.owner }}
+          SMOKE_PUBLIC_REPO: ${{ inputs.public-repo }}
+          SMOKE_PRIVATE_REPO: ${{ inputs.private-repo }}
+          SMOKE_TOKEN: ${{ secrets.AUDIT_TOKEN }}
+
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+      # The tool, at the exact commit the caller pinned.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      - name: Run the live suite
+        env:
+          GITHUB_TOKEN: ${{ secrets.AUDIT_TOKEN }}
+          SMOKE_OWNER: ${{ inputs.owner }}
+          SMOKE_PUBLIC_REPO: ${{ inputs.public-repo }}
+          SMOKE_PRIVATE_REPO: ${{ inputs.private-repo }}
+        run: ./.ci/in-devshell go test -tags=integration ./internal/github/... -count=1

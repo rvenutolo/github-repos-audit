@@ -1,0 +1,267 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/check-account-data against a throwaway repository.
+#              Every name in it is an inert marker, not a real account or
+#              repository.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly LOGIN='marker-login'
+readonly NAME='marker-repo'
+
+# @description Commit one file with the given content and message.
+# @arg $1 repo
+# @arg $2 path
+# @arg $3 content
+# @arg $4 message
+function commit_file() {
+  printf '%s\n' "$3" > "$1/$2"
+  git -C "$1" add -- "$2"
+  git -C "$1" commit --quiet --no-verify --message "$4"
+}
+
+# @description Create a fresh, empty throwaway repository under its own
+#              temporary directory (with a sibling "names" file, as `expect`
+#              expects) and print the repository's path. A case that must be
+#              the ONLY thing in its tree needs one of these rather than the
+#              shared `repo`: the tree scan greps each commit's whole tree,
+#              not its diff, so an earlier case's file (owner.go, link.md)
+#              would otherwise keep every later "clean" range finding
+#              something regardless of the case actually under test.
+# @stdout the new repository's absolute path
+function new_case_repo() {
+  local work repo
+  work="$(mktemp --directory)"
+  repo="${work}/repo"
+  mkdir --parents "${repo}"
+  printf '%s\ngithub-repos-audit\n' "${NAME}" > "${work}/names"
+  git -C "${repo}" init --quiet --initial-branch=main
+  git -C "${repo}" config user.name 'Marker'
+  git -C "${repo}" config user.email 'marker@example.invalid'
+  git -C "${repo}" config commit.gpgsign false
+  printf '%s\n' "${repo}"
+}
+
+# @description Run the scan over base..HEAD and compare the exit status.
+# @arg $1 repo
+# @arg $2 base revision
+# @arg $3 expected exit status
+# @arg $4 case name
+function expect() {
+  local -r repo="$1" base="$2" want="$3" name="$4"
+  local out got=0
+  out="$(cd "${repo}" && "${REPO_DIR}/.ci/check-account-data" \
+    --login "${LOGIN}" --names "${repo}/../names" --range "${base}..HEAD" 2>&1)" || got=$?
+  if [[ "${got}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: exit ${got}, want ${want}"
+    return 1
+  fi
+  if [[ "${out}" == *"${NAME}"* || "${out}" == *"marker-login/"* ]]; then
+    ci::log "FAIL: ${name}: the output quoted the matched text"
+    return 1
+  fi
+  # Regression guard: a finding (or its absence) is check-account-data's
+  # designed return, not a crash, so its stderr must never carry the ERR
+  # trap's own "ERROR: line ..." line — including on the "want 0" cases,
+  # where a stray trap firing would otherwise go unnoticed.
+  if [[ "${out}" == *'ERROR:'* ]]; then
+    ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
+    return 1
+  fi
+}
+
+function main() {
+  # work is intentionally not local: the EXIT trap below fires after main
+  # returns, in the script's global scope, so a local would already be
+  # unset by then and set -u would fault on the trap's own cleanup line.
+  local repo base rc=0 out got
+  work="$(mktemp --directory)"
+  trap 'rm -rf -- "${work}"' EXIT
+  repo="${work}/repo"
+  mkdir --parents "${repo}"
+  printf '%s\ngithub-repos-audit\n' "${NAME}" > "${work}/names"
+
+  git -C "${repo}" init --quiet --initial-branch=main
+  git -C "${repo}" config user.name 'Marker'
+  git -C "${repo}" config user.email 'marker@example.invalid'
+  git -C "${repo}" config commit.gpgsign false
+
+  commit_file "${repo}" go.mod "module github.com/${LOGIN}/github-repos-audit" 'chore: start'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+
+  commit_file "${repo}" notes.md "the word ${NAME} in prose is not a repository" 'docs: prose'
+  expect "${repo}" "${base}" 0 'prose and the allowed module path' || rc=1
+
+  commit_file "${repo}" fixture.json "{\"name\": \"${NAME}\"}" 'test: add fixture'
+  expect "${repo}" "${base}" 1 'a repository name in a name field' || rc=1
+
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  git -C "${repo}" rm --quiet fixture.json
+  git -C "${repo}" commit --quiet --no-verify --message "chore: drop ${LOGIN}/${NAME}"
+  expect "${repo}" "${base}" 1 'a login/name in a commit message' || rc=1
+
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  commit_file "${repo}" owner.go "const owner = \"${LOGIN}\"" 'test: owner'
+  expect "${repo}" "${base}" 1 'the bare login outside the allowed lines' || rc=1
+
+  # Its own repository, not the shared one: by this point the shared repo's
+  # tree already carries owner.go, which alone guarantees exit 1 regardless
+  # of whether the backtick pattern does anything at all.
+  local backtick_repo backtick_base
+  backtick_repo="$(new_case_repo)"
+  commit_file "${backtick_repo}" go.mod "module github.com/${LOGIN}/github-repos-audit" 'chore: start'
+  backtick_base="$(git -C "${backtick_repo}" rev-parse HEAD)"
+  commit_file "${backtick_repo}" link.md "see \`${NAME}\`" 'docs: backticked'
+  expect "${backtick_repo}" "${backtick_base}" 1 'a backticked repository name' || rc=1
+  rm -rf -- "${backtick_repo%/repo}"
+
+  # A deliberately unresolvable range (a remote sha absent locally, a pruned
+  # or rewritten ref) must abort the scan, not be misread by the caller as
+  # "nothing found": `git rev-list` fails, and that failure has to reach the
+  # scan's own exit status rather than being hidden by a process
+  # substitution the way `while ... done < <(git rev-list ...)` used to hide
+  # it from `set -e`.
+  local unresolvable_out unresolvable_got=0
+  unresolvable_out="$(cd "${repo}" && "${REPO_DIR}/.ci/check-account-data" \
+    --login "${LOGIN}" --names "${repo}/../names" \
+    --range 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef..HEAD' 2>&1)" || unresolvable_got=$?
+  if [[ "${unresolvable_got}" == 0 ]]; then
+    ci::log "FAIL: an unresolvable range: exit 0, want non-zero (output: ${unresolvable_out})"
+    rc=1
+  fi
+
+  # A directory literally named after the repository, with otherwise clean
+  # content, must be caught by the path-name pass: content-only scans (the
+  # tree and binary passes above) never look at a path or directory name, so
+  # nothing else in the tool would catch this. Its own repository, so the
+  # only account-shaped thing in the tree is the directory name itself.
+  local path_repo path_base
+  path_repo="$(new_case_repo)"
+  commit_file "${path_repo}" README.md 'nothing account-shaped here' 'chore: start'
+  path_base="$(git -C "${path_repo}" rev-parse HEAD)"
+  mkdir --parents "${path_repo}/testdata/${NAME}"
+  printf 'clean content only\n' > "${path_repo}/testdata/${NAME}/x.json"
+  git -C "${path_repo}" add -- "testdata/${NAME}/x.json"
+  git -C "${path_repo}" commit --quiet --no-verify --message 'test: path name'
+  expect "${path_repo}" "${path_base}" 1 'a repository name as a path segment, with clean content' || rc=1
+  rm -rf -- "${path_repo%/repo}"
+
+  # A git log failure (not merely "no match") must abort the scan, and it
+  # must be the message check's OWN guard that catches it, not a lucky
+  # abort from some other pass on the same object. A commit object cannot
+  # be corrupted without also breaking the tree scan that runs against the
+  # very same object, so exit status alone cannot tell the two apart: the
+  # tree scan's pre-existing scan_grep guard would abort just as surely if
+  # the message check's own guard were deleted entirely. What separates
+  # them is which pass runs first and which failure message it prints, so
+  # this asserts on both.
+  #
+  # Reaching the message check's own git-log call at all needs a commit
+  # whose raw object git never has to open just to learn it exists: with a
+  # commit-graph written before the corruption, `git rev-list` can
+  # enumerate an INTERMEDIATE commit's parent linkage straight from the
+  # graph, while `git log --format=%B` -- which needs the commit message
+  # the graph does not store -- must open that same (corrupt) object and
+  # fails. Checking the message first in the loop (this fix's other half)
+  # means that failure is what the scan reports, not the tree scan's.
+  local corrupt_repo corrupt_base corrupt_mid corrupt_tip corrupt_obj
+  corrupt_repo="$(new_case_repo)"
+  commit_file "${corrupt_repo}" README.md 'nothing account-shaped here' 'chore: start'
+  corrupt_base="$(git -C "${corrupt_repo}" rev-parse HEAD)"
+  commit_file "${corrupt_repo}" mid.md 'still nothing account-shaped here' 'chore: mid'
+  corrupt_mid="$(git -C "${corrupt_repo}" rev-parse HEAD)"
+  commit_file "${corrupt_repo}" tip.md 'and still nothing account-shaped here' 'chore: tip'
+  corrupt_tip="$(git -C "${corrupt_repo}" rev-parse HEAD)"
+  git -C "${corrupt_repo}" commit-graph write --reachable
+  corrupt_obj="${corrupt_repo}/.git/objects/${corrupt_mid:0:2}/${corrupt_mid:2}"
+  if [[ -f "${corrupt_obj}" ]]; then
+    chmod u+w -- "${corrupt_obj}"
+    printf 'not a git object' > "${corrupt_obj}"
+    local corrupt_got=0 corrupt_out
+    corrupt_out="$(cd "${corrupt_repo}" && "${REPO_DIR}/.ci/check-account-data" \
+      --login "${LOGIN}" --names "${corrupt_repo}/../names" \
+      --range "${corrupt_base}..${corrupt_tip}" 2>&1)" || corrupt_got=$?
+    if [[ "${corrupt_got}" == 0 ]]; then
+      ci::log "FAIL: a git log failure on a corrupted commit: exit 0, want non-zero"
+      rc=1
+    elif [[ "${corrupt_out}" != *'git log failed'* ]]; then
+      ci::log "FAIL: a git log failure on a corrupted commit: aborted, but not via the message check's own guard (output: ${corrupt_out})"
+      rc=1
+    fi
+  else
+    ci::log 'FAIL: could not locate the loose object to corrupt for the git log failure case'
+    rc=1
+  fi
+  rm -rf -- "${corrupt_repo%/repo}"
+
+  # A NUL byte makes git grep -I (used by the tree scan) skip the file
+  # entirely, so a blob with the login hidden inside it must still be caught
+  # by the dedicated binary pass, reported by path, with the login itself
+  # never printed. Uses a fresh throwaway repository, not the one above: the
+  # tree scan greps the whole tree at each commit in range, not just its
+  # diff, so a file left behind by an earlier case (owner.go, link.md) would
+  # otherwise keep every later "clean" range finding something regardless.
+  local binary_work binary_repo
+  binary_work="$(mktemp --directory)"
+  binary_repo="${binary_work}/repo"
+  mkdir --parents "${binary_repo}"
+  git -C "${binary_repo}" init --quiet --initial-branch=main
+  git -C "${binary_repo}" config user.name 'Marker'
+  git -C "${binary_repo}" config user.email 'marker@example.invalid'
+  git -C "${binary_repo}" config commit.gpgsign false
+  commit_file "${binary_repo}" README.md 'nothing account-shaped here' 'chore: start'
+  base="$(git -C "${binary_repo}" rev-parse HEAD)"
+  printf 'prefix\0%s\0suffix\n' "${LOGIN}" > "${binary_repo}/blob.bin"
+  git -C "${binary_repo}" add -- blob.bin
+  git -C "${binary_repo}" commit --quiet --no-verify --message 'test: binary blob'
+  local binary_sha want_line
+  binary_sha="$(git -C "${binary_repo}" rev-parse HEAD)"
+  want_line="commit ${binary_sha}: blob.bin (binary)"
+  out="$(cd "${binary_repo}" && "${REPO_DIR}/.ci/check-account-data" \
+    --login "${LOGIN}" --names "${work}/names" --range "${base}..HEAD" 2>&1)" || got=$?
+  if [[ "${got:-0}" != 1 ]]; then
+    ci::log "FAIL: a login hidden in a binary blob: exit ${got:-0}, want 1"
+    rc=1
+  elif [[ "${out}" != *"${want_line}"* ]]; then
+    # An exact match on "commit <sha>: blob.bin (binary)" -- not merely a
+    # substring like "blob.bin" -- so a path still carrying its "<commit>:"
+    # prefix (reporting "commit <sha>: <sha>:blob.bin (binary)") fails here.
+    ci::log 'FAIL: a login hidden in a binary blob: the exact expected line was not reported'
+    rc=1
+  elif [[ "${out}" == *"${LOGIN}"* ]]; then
+    ci::log 'FAIL: a login hidden in a binary blob: the output quoted the matched text'
+    rc=1
+  elif [[ "${out}" == *'ERROR:'* ]]; then
+    ci::log 'FAIL: a login hidden in a binary blob: the ERR trap fired on a designed return'
+    rc=1
+  fi
+  unset got
+  rm -rf -- "${binary_work}"
+
+  local usage_got=0
+  (cd "${repo}" && "${REPO_DIR}/.ci/check-account-data" --login "${LOGIN}" > /dev/null 2>&1) || usage_got=$?
+  # Exactly 2, not merely non-zero: a usage error degrading into the
+  # runtime-failure exit code (1) would otherwise go unnoticed.
+  if [[ "${usage_got}" != 2 ]]; then
+    ci::log "FAIL: missing arguments: exit ${usage_got}, want 2"
+    rc=1
+  fi
+
+  ((rc == 0)) && ci::log 'check-account-data: every case passed'
+  return "${rc}"
+}
+
+main "$@"

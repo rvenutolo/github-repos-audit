@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+# @description Fuzz every `Fuzz` target in the tree for a bounded time.
+#
+#              `go test ./...` runs a fuzz target against its seed corpus and
+#              nothing else: without `-fuzz`, no input is ever generated. This
+#              script is the only thing in the repo that actually fuzzes, and
+#              it is deliberately not part of the gate — fuzzing is unbounded
+#              work and the pull request gate must stay deterministic.
+#
+#              One target per invocation, because `go test -fuzz` accepts
+#              exactly one target and exactly one package at a time. Targets
+#              are discovered rather than listed here, so a new `Fuzz` function
+#              is fuzzed the moment it is written.
+#
+#              No `-race`: it costs roughly an order of magnitude in executions
+#              per second, and the gate already runs every seed corpus under
+#              the race detector.
+#
+#              Exit codes aggregate rather than fail fast, so one run finds
+#              every crasher rather than the first. A failing target writes its
+#              input to <pkg>/testdata/fuzz/<Target>/<hash>; that file is the
+#              entire value of the run, and .ci/fuzz-pull-request is what
+#              carries it out of a scheduled workflow.
+# @arg $1 duration the Go duration to spend on each target, e.g. 30s or 5m
+# @exitcode 0 every target survived its budget
+# @exitcode 1 a target failed, or a package could not be listed or built
+# @exitcode 2 no duration was given
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# @description Discover every fuzz target, fuzz each for the given duration,
+#              and print a per-target summary.
+# @arg $1 duration the Go duration to spend on each target
+function main() {
+  if (($# != 1)); then
+    printf 'usage: %s <duration>\n' "${0##*/}" >&2
+    exit 2
+  fi
+  local -r duration="$1"
+
+  cd "${REPO_DIR}"
+
+  local rc=0
+  local -a packages=() targets=() results=()
+  mapfile -t packages < <(go list ./...)
+  if ((${#packages[@]} == 0)); then
+    ci::log 'no packages found - this is a failure, not a clean pass'
+    exit 1
+  fi
+
+  local pkg listing line target result
+  for pkg in "${packages[@]}"; do
+    # `go test -list` prints the matching names and then the usual
+    # `ok <pkg> <time>` line, so the names are filtered out by prefix. Captured
+    # rather than piped: a package whose test binary does not build must fail
+    # here, and a `| grep ... || true` pipeline would swallow that.
+    if ! listing="$(go test -list '^Fuzz' "${pkg}")"; then
+      ci::log "could not list the fuzz targets in ${pkg}"
+      rc=1
+      continue
+    fi
+    targets=()
+    while IFS= read -r line; do
+      if [[ "${line}" == Fuzz* ]]; then
+        targets+=("${line}")
+      fi
+    done <<< "${listing}"
+
+    for target in "${targets[@]}"; do
+      ci::log "fuzzing ${target} in ${pkg} for ${duration}"
+      if go test "${pkg}" -run '^$' -fuzz "^${target}\$" -fuzztime "${duration}"; then
+        results+=("PASS ${pkg} ${target}")
+      else
+        results+=("FAIL ${pkg} ${target}")
+        rc=1
+      fi
+    done
+  done
+
+  if ((${#results[@]} == 0)); then
+    ci::log 'no fuzz targets found - this is a failure, not a clean pass'
+    exit 1
+  fi
+
+  ci::log "fuzzed ${#results[@]} target(s) for ${duration} each:"
+  for result in "${results[@]}"; do
+    ci::log "  ${result}"
+  done
+  if ((rc != 0)); then
+    ci::log 'a target failed; its input is under <pkg>/testdata/fuzz/<Target>/'
+  fi
+
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

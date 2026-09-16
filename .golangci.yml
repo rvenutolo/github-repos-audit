@@ -1,0 +1,171 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  # The live suite is behind //go:build integration and never runs in the gate,
+  # but it is still code this project owns. Without the tag here golangci-lint
+  # cannot see the file at all, and it would rot unlinted.
+  build-tags:
+    - integration
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose # HTTP response bodies closed
+    - containedctx # no context.Context stored in a struct
+    - copyloopvar # redundant v := v on 1.22+
+    - depguard # bans the not-approved libraries
+    - durationcheck # duration * duration mistakes
+    - errchkjson # json.Marshal errors that cannot be ignored
+    - errname # ErrX / XError naming
+    - errorlint # %w, errors.Is/As instead of == and type switches
+    - exhaustive # switch covers every enum value
+    - forbidigo # bans fmt.Print* diagnostics, http.Get, time.Sleep
+    - gochecknoglobals # no package-level mutable state
+    - gochecknoinits # no init()
+    - gocritic
+    - gosec
+    - intrange # for i := range n on 1.22+
+    - misspell
+    - modernize # rewrites to newer stdlib idioms, gated on the go directive
+    - musttag # every marshalled struct field carries a tag
+    - nakedret # no naked returns
+    - nilerr # returns nil error when err != nil
+    - noctx # HTTP requests without context
+    - nolintlint # every nolint has a linter and a reason
+    - paralleltest # every test calls t.Parallel
+    - perfsprint
+    - prealloc
+    - revive # doc comments, naming, error strings
+    - rowserrcheck # sql.Rows.Err checked
+    - sloglint # slog: consistent attr style, no mixed key/value and Attr
+    - sqlclosecheck # sql.Rows and Stmt closed
+    - tagliatelle # json tags are snake_case
+    - testifylint # harmless if testify is absent; guards the ban
+    - thelper # t.Helper() in helpers
+    - tparallel # t.Parallel usage consistent
+    - unconvert
+    - unparam
+    - usestdlibvars # http.MethodGet, http.StatusOK
+    - wastedassign
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: github.com/stretchr/testify
+              desc: compare with == and cmp.Diff; check errors with errors.Is
+            - pkg: github.com/onsi/gomega
+              desc: compare with == and cmp.Diff
+            - pkg: go.uber.org/mock
+              desc: write a hand-rolled fake
+            - pkg: github.com/golang/mock
+              desc: write a hand-rolled fake
+            - pkg: go.uber.org/zap
+              desc: log/slog only
+            - pkg: github.com/rs/zerolog
+              desc: log/slog only
+            - pkg: github.com/sirupsen/logrus
+              desc: log/slog only
+            - pkg: github.com/go-chi/chi
+              desc: http.ServeMux supports method and wildcard patterns
+            - pkg: github.com/gin-gonic/gin
+              desc: net/http only
+            - pkg: github.com/labstack/echo
+              desc: net/http only
+            - pkg: github.com/gorilla/mux
+              desc: http.ServeMux supports method and wildcard patterns
+            - pkg: github.com/spf13/viper
+              desc: flags, then getenv, then a JSON or TOML file
+            - pkg: github.com/samber/lo
+              desc: use slices, maps and a plain loop
+            - pkg: github.com/google/wire
+              desc: wire dependencies by hand in main
+            - pkg: go.uber.org/fx
+              desc: wire dependencies by hand in main
+            - pkg: gopkg.in/yaml.v3
+              desc: unmaintained; repos.toml is TOML via github.com/BurntSushi/toml
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^fmt\.Print(f|ln)?$
+          msg: diagnostics go through slog; CLI output goes to the injected writer
+        - pattern: ^http\.(Get|Post|Head|PostForm)$
+          msg: construct an http.Client with a Timeout and use NewRequestWithContext
+        - pattern: ^http\.ListenAndServe(TLS)?$
+          msg: construct an http.Server with timeouts
+        - pattern: ^time\.Sleep$
+          msg: synchronise with channels, a WaitGroup or testing/synctest
+        - pattern: ^time\.Tick$
+          msg: time.NewTicker with defer Stop
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # reorders structs for size, not readability
+        - shadow # too noisy on idiomatic err shadowing
+    nakedret:
+      max-func-lines: 0 # default 30 allows naked returns in short functions
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      # Listing any rule replaces revive's defaults, so the defaults are spelled out.
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+          arguments: ["checkPrivateReceivers"]
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    sloglint:
+      attr-only: false
+      no-mixed-args: true
+      kv-only: false
+      no-global: all
+      context: scope
+      static-msg: true
+      key-naming-case: snake
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters: [gosec, unparam, gochecknoglobals, forbidigo]
+      - path: cmd/
+        linters: [forbidigo] # main prints the final error line with fmt.Fprintln
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/rvenutolo/github-repos-audit

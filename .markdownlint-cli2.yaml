@@ -1,0 +1,6 @@
+config:
+  # prettier owns line wrapping; tables and link-heavy lines run long.
+  MD013: false
+  # The repo title and its own "Per-repo settings" entry share a name.
+  MD024:
+    siblings_only: true

@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+
+# Run every verify-only linter: golangci-lint over the Go tree, shellcheck and
+# shfmt over the tracked shell scripts, just --fmt, statix and deadnix,
+# actionlint and zizmor over the workflows, yamllint,
+# renovate-config-validator, check-jsonschema over the golden audit.json
+# fixture, markdownlint, lychee, editorconfig-checker, typos,
+# a merge-conflict-marker scan and a whole-tree gitleaks scan. Formatting of
+# everything else is `nix flake check`'s job. Exit codes aggregate rather than
+# fail fast, so one run surfaces every failing category. Must run inside the
+# devShell.
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# @description Run every verify-only linter and aggregate their exit codes.
+# @noargs
+function main() {
+  local rc=0
+  cd "${REPO_DIR}"
+
+  ci::log 'running golangci-lint'
+  golangci-lint run ./... || rc=1
+
+  local -a files=()
+  mapfile -t files < <(ci::shell_files)
+  if ((${#files[@]} == 0)); then
+    ci::log 'no shell files found - this is a failure, not a clean pass'
+    rc=1
+  fi
+
+  ci::log 'running shellcheck'
+  # LC_ALL: the hermetic shell sets no locale and shellcheck then dies on any
+  # non-ASCII character in a finding.
+  LC_ALL=C.UTF-8 shellcheck --external-sources "${files[@]}" || rc=1
+
+  ci::log 'running shfmt (verify only)'
+  shfmt --list --diff --indent 2 --case-indent --binary-next-line --space-redirects "${files[@]}" || rc=1
+
+  ci::log 'running just --fmt (verify only)'
+  # --unstable: `--fmt` is still an unstable subcommand.
+  just --fmt --check --unstable --justfile "${REPO_DIR}/.justfile" || rc=1
+
+  ci::log 'running statix and deadnix'
+  local -a nix_files=()
+  mapfile -t nix_files < <(git ls-files '*.nix')
+  if ((${#nix_files[@]} == 0)); then
+    ci::log 'no nix files found - this is a failure, not a clean pass'
+    rc=1
+  fi
+  local nix_file
+  for nix_file in "${nix_files[@]}"; do
+    statix check "${nix_file}" || rc=1
+  done
+  deadnix --fail "${nix_files[@]}" || rc=1
+
+  ci::log 'running actionlint'
+  local -a workflow_files=()
+  mapfile -t workflow_files < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml')
+  if ((${#workflow_files[@]} == 0)); then
+    ci::log 'workflow_files list is empty - this is a failure, not a clean pass'
+    rc=1
+  else
+    # actionlint 1.7.12 (nixpkgs' current package) predates the
+    # self-repository reusable-workflow syntax: `job.workflow_repository` and
+    # `job.workflow_sha` were only added to the job context on 2026-09-03, and
+    # `$/` for a same-repository `uses:` is newer still, so all three are
+    # flagged as unknown. TODO: drop these three -ignore patterns once
+    # nixpkgs packages an actionlint release that understands them
+    # (https://github.com/rhysd/actionlint/issues, no tracking issue number
+    # yet as of this writing).
+    actionlint \
+      -ignore 'property "workflow_repository" is not defined' \
+      -ignore 'property "workflow_sha" is not defined' \
+      -ignore 'specifying action "\$/[^"]*" in invalid format because ref is missing' \
+      "${workflow_files[@]}" || rc=1
+  fi
+
+  ci::log 'running zizmor'
+  # --no-online-audits: the gate needs no network for this; the online audits
+  # only ask whether a `uses:` ref is a tag, which .ci/check-uses-sha-pinned
+  # already answers offline.
+  zizmor --no-online-audits "${REPO_DIR}/.github/" || rc=1
+
+  ci::log 'running yamllint'
+  local -a yaml_files=()
+  mapfile -t yaml_files < <(git ls-files '*.yml' '*.yaml')
+  if ((${#yaml_files[@]} == 0)); then
+    ci::log 'yaml_files list is empty - this is a failure, not a clean pass'
+    rc=1
+  else
+    yamllint --strict "${yaml_files[@]}" || rc=1
+  fi
+
+  ci::log 'running renovate-config-validator'
+  # --no-global: a config named on the command line is otherwise validated
+  # against the self-hosted schema, and renovate.json is a repo config.
+  renovate-config-validator --no-global "${REPO_DIR}/renovate.json" || rc=1
+
+  ci::log 'running check-jsonschema'
+  # --check-metaschema first: a validator silently ignores a keyword it does
+  # not know, so a typo'd `additionalProperties` would leave the schema
+  # asserting nothing while every instance still passed.
+  check-jsonschema --check-metaschema "${REPO_DIR}/audit.schema.json" || rc=1
+  # Then the golden fixture the end-to-end test writes: this repository
+  # carries no rendered audit.json of its own, so the golden is the only
+  # document the schema has left to check itself against.
+  check-jsonschema --schemafile "${REPO_DIR}/audit.schema.json" \
+    "${REPO_DIR}/internal/render/testdata/golden/audit.json" || rc=1
+
+  ci::log 'running markdownlint'
+  local -a md_files=()
+  # :(exclude,glob) drops every testdata/ directory: golden files are
+  # byte-exact fixtures whose links are fabricated, so linting or
+  # link-checking them is meaningless. The glob magic is what makes ** cross a
+  # directory separator, which a bare pathspec does not.
+  mapfile -t md_files < <(git ls-files '*.md' ':(exclude,glob)**/testdata/**')
+  if ((${#md_files[@]} == 0)); then
+    ci::log 'md_files list is empty - this is a failure, not a clean pass'
+    rc=1
+  else
+    markdownlint-cli2 "${md_files[@]}" || rc=1
+  fi
+
+  ci::log 'running lychee'
+  # The generated table that linked to private repositories lived in the
+  # report, which this repository no longer carries, so every link left is
+  # public and an anonymous run is enough. A token is still used when one is in
+  # scope, because api.github.com rate-limits anonymous callers and CI has the
+  # built-in token for free.
+  local -a lychee_auth=()
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    lychee_auth=(--github-token "${GITHUB_TOKEN}")
+  fi
+  # --include only github.com: every link the generator emits is a
+  # repository URL. A homepage is rendered as inline code rather than a
+  # link, precisely so the gate never depends on a third-party host being
+  # up, and so an egress-blocked runner cannot fail on one.
+  lychee --no-progress --max-concurrency 4 --cache --max-cache-age 1d \
+    "${lychee_auth[@]+"${lychee_auth[@]}"}" \
+    --include 'https://github\.com/.*' "${md_files[@]}" || rc=1
+
+  ci::log 'running editorconfig-checker'
+  # Every tracked file no formatter owns: .gitignore, LICENSE, CODEOWNERS and
+  # friends still have indentation, trailing-whitespace and final-newline
+  # conventions. Files a formatter DOES own are excluded in
+  # .editorconfig-checker.json, so two tools never disagree about one byte.
+  editorconfig-checker || rc=1
+
+  ci::log 'running typos'
+  # Every tracked text file. A bare `typos` skips hidden paths (.ci, .github)
+  # and walks untracked ones.
+  local -a text_files=()
+  mapfile -t text_files < <(git grep -I --files-with-matches '')
+  if ((${#text_files[@]} == 0)); then
+    ci::log 'text_files list is empty - this is a failure, not a clean pass'
+    rc=1
+  else
+    typos "${text_files[@]}" || rc=1
+  fi
+
+  ci::log 'running merge-conflict marker check'
+  # `git grep` exits 1 when nothing matches, which is the pass; a hit lists the
+  # file and line.
+  if git grep --line-number --extended-regexp '^(<{7}|={7}|>{7})( |$)'; then
+    ci::log 'unresolved merge-conflict markers found'
+    rc=1
+  fi
+
+  ci::log 'running gitleaks over the tracked tree'
+  # `gitleaks dir` does not honour .gitignore, so scanning `.` locally would
+  # crawl .direnv/. Copy the tracked files (working-tree content) into a temp
+  # dir and scan that.
+  local scan_dir
+  scan_dir="$(mktemp --directory)"
+  # Double-quoted outside, single inside, so the path is baked in at install
+  # time: scan_dir is local to main, and on every exit path the shell's EXIT
+  # trap fires only after main's locals are gone, so a deferred expansion
+  # would evaluate empty and silently no-op instead of cleaning up.
+  # shellcheck disable=SC2064 # expand now (into the literal path), not later
+  trap "rm --recursive --force -- '${scan_dir}'" EXIT
+  ci::log "gitleaks paths below are relative to ${scan_dir}"
+  if git ls-files -z | xargs --null --no-run-if-empty --max-args=500 cp --parents --target-directory="${scan_dir}"; then
+    gitleaks dir "${scan_dir}" --redact --no-banner || rc=1
+  else
+    ci::log 'could not copy the tracked tree for gitleaks; skipping the scan'
+    rc=1
+  fi
+
+  if ((rc != 0)); then
+    ci::log 'one or more linters failed'
+  fi
+  # A gate reporting its own verdict is not a crash: drop the ERR trap so the
+  # diagnostics above are the last thing the reader sees.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

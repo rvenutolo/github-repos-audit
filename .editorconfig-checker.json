@@ -1,0 +1,17 @@
+{
+  "Exclude": [
+    "^flake\\.lock$",
+    "^go\\.sum$",
+    "^testdata/",
+    "\\.go$",
+    "\\.nix$",
+    "\\.md$",
+    "\\.json$",
+    "\\.ya?ml$",
+    "\\.toml$",
+    "\\.sh$",
+    "\\.bash$",
+    "^\\.envrc$",
+    "^\\.justfile$"
+  ]
+}

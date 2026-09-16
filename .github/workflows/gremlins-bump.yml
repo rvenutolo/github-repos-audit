@@ -1,0 +1,117 @@
+name: gremlins-bump
+
+# Keep the hand-packaged gremlins current, without a human computing a hash.
+#
+# gremlins is not in nixpkgs, so nix/gremlins.nix packages it by hand, and that
+# means a vendorHash. Renovate cannot maintain one: postUpgradeTasks is
+# self-hosted only and this repo is on the hosted app, which is what #48
+# recorded and what led to reverting the flake package in #33. `nix-update`
+# recomputes both the source hash and the vendorHash directly, so this workflow
+# does the job Renovate structurally cannot.
+#
+# Monthly, not nightly: gremlins releases roughly annually (v0.6.0 in December
+# 2025, with a handful of commits since), so almost every run will find nothing
+# and exit having changed no files. That is the intended steady state — the
+# workflow earns its keep by never leaving a stale pinned tool for someone to
+# notice, not by volume.
+#
+# This workflow is the ONLY place gremlins is built and exercised. `nix flake
+# check` evaluates the packages attribute set but does not build it, which is
+# deliberate — see the comment on the packages attribute set in flake.nix —
+# so a gremlins that fails to compile would pass the gate unnoticed. The
+# build and mutation steps below are the compensating control, and they run
+# BEFORE the pull request is opened.
+on:
+  schedule:
+    # :23 on the 4th, because on-the-hour slots are the most contended on
+    # GitHub's scheduler and the 1st is the most contended day.
+    - cron: "23 5 4 * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  # Two runs must not race on the same bump branch.
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: bump
+    runs-on: ubuntu-latest
+    # A cold Nix store plus a gremlins build plus a mutation pass. Most runs
+    # exit at the "unchanged" step in under five minutes.
+    timeout-minutes: 30
+    # contents: read is for actions/checkout and nothing else. The pull request
+    # is opened with REFRESH_TOKEN, for the same reason the refresh and the
+    # fuzz workflows use it: nothing the built-in token creates triggers a
+    # workflow run, so the bump would sit without checks and never auto-merge.
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          # proxy.golang.org and sum.golang.org are here because building
+          # gremlins fetches ITS Go modules — this is the workflow that needs
+          # them, and the reason gremlins lives in a devShell the gate never
+          # enters is so no gate job has to open them.
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      - name: Bump gremlins to its latest release
+        run: nix run nixpkgs#nix-update -- --flake --version=stable gremlins
+
+      - name: Report what changed
+        id: bump
+        run: |
+          if git diff --quiet -- nix/gremlins.nix; then
+            echo 'changed=false' >> "${GITHUB_OUTPUT}"
+            echo 'gremlins is already at its latest release'
+          else
+            echo 'changed=true' >> "${GITHUB_OUTPUT}"
+            git --no-pager diff -- nix/gremlins.nix
+          fi
+
+      # Everything below only runs on an actual bump, and every step of it runs
+      # BEFORE the pull request is opened: the gate cannot catch a gremlins that
+      # does not build, so a bump that fails here must never become a pull
+      # request at all.
+      - name: Build the bumped package
+        if: steps.bump.outputs.changed == 'true'
+        run: nix build .#gremlins --no-link --print-out-paths
+
+      - name: Prove the bumped gremlins still mutates
+        if: steps.bump.outputs.changed == 'true'
+        # A build only proves it compiles. This proves the tool still does the
+        # one thing the repo wants from it, against the package `just mutate`
+        # defaults to.
+        run: just mutate
+
+      - name: File the bump as a pull request
+        if: steps.bump.outputs.changed == 'true'
+        # REFRESH_TOKEN reaches this repository alone, with Contents and Pull
+        # requests write and nothing else.
+        env:
+          GH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: ./.ci/in-devshell ./.ci/gremlins-pull-request

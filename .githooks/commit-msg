@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+# Git commit-msg hook: validates the message against Conventional Commits via
+# commitlint, inside the devShell so the same commitlint runs locally and in CI.
+
+set -Eeuo pipefail
+# Git runs hooks under the HOST bash, before .ci/in-devshell enters the
+# devShell, so the host's version is whatever the machine ships. `shopt -s
+# inherit_errexit` below is a bash 4.4 builtin option: on stock macOS bash 3.2
+# the shell aborts with `shopt: inherit_errexit: invalid shell option name`,
+# which tells a coworker nothing about what to install. Check first, and say
+# what to do. Must stay ABOVE the `shopt` line it is protecting.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required to run this hook (found %s.%s). On macOS: brew install bash.\n' \
+    "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
+  exit 1
+fi
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# @description Run commitlint over the message file git hands the hook.
+# @arg $1 msg_file path to the file holding the commit message
+function main() {
+  local -r msg_file="$1"
+  local repo_dir
+  repo_dir="$(git rev-parse --show-toplevel)"
+  "${repo_dir}/.ci/in-devshell" commitlint --edit "${msg_file}"
+}
+
+main "$@"

@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+
+# The full verification gate, verify-only: formatting (nix flake check), the
+# governance lints, the lint suite, module tidiness and sums, the Go build,
+# vet, tests, the coverage baseline, govulncheck and the offline config
+# validation. Exit codes aggregate so one run surfaces every failing
+# category. Every caller (just check, .githooks/pre-push, CI) runs this
+# through .ci/in-devshell, so local and CI runs cannot drift.
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# @description Warn about untracked files: `nix flake check` evaluates the git
+#              tree, so an untracked file is invisible to the formatting gate
+#              and passes vacuously. Warn, never fail.
+# @noargs
+function warn_untracked() {
+  local -a untracked=()
+  mapfile -t untracked < <(git -C "${REPO_DIR}" ls-files --others --exclude-standard)
+  if ((${#untracked[@]} == 0)); then
+    return 0
+  fi
+  ci::log 'untracked files are invisible to nix flake check; git add them:'
+  local file
+  for file in "${untracked[@]}"; do
+    ci::log "  untracked: ${file}"
+  done
+}
+
+# @description Run every gate category in order and aggregate the exit codes.
+# @noargs
+function main() {
+  local rc=0
+  cd "${REPO_DIR}"
+  warn_untracked
+
+  ci::log 'running nix flake check (formatting)'
+  nix flake check --no-eval-cache "${REPO_DIR}" || rc=1
+
+  ci::log 'running governance checks'
+  "${REPO_DIR}/.ci/check-devshell-provides" || rc=1
+  "${REPO_DIR}/.ci/check-uses-sha-pinned" || rc=1
+  "${REPO_DIR}/.ci/test-refresh-pull-request" || rc=1
+  "${REPO_DIR}/.ci/test-check-account-data" || rc=1
+
+  ci::log 'running lint checks'
+  "${REPO_DIR}/.ci/run-lint-checks" || rc=1
+
+  ci::log 'checking module tidiness and sums'
+  go mod tidy -diff || rc=1
+  go mod verify || rc=1
+
+  ci::log 'running go build and go vet'
+  go build ./... || rc=1
+  go vet ./... || rc=1
+
+  ci::log 'running go test'
+  # -shuffle=on randomises the order within each package, so an accidental
+  # dependency between two tests fails here rather than surfacing later as an
+  # unreproducible flake. The seed is printed on failure; replay it with
+  # `go test -shuffle=<seed>`.
+  go test ./... -race -shuffle=on -cover -coverprofile=coverage.out || rc=1
+
+  ci::log 'checking coverage against the recorded baseline'
+  # Runs even when go test failed: the profile a partial run leaves behind
+  # still says which packages lost coverage, and reporting that alongside the
+  # failure beats making it wait for the next run.
+  "${REPO_DIR}/.ci/check-coverage" || rc=1
+
+  ci::log 'running govulncheck'
+  # Reports only vulnerabilities in code paths this binary actually reaches, so
+  # a finding is a real exposure. Never `|| true`: that converts a security
+  # gate into a log line, for every future advisory as well as this one.
+  govulncheck ./... || rc=1
+
+  ci::log 'running audit validate (offline config gate)'
+  # The tool repository carries no repos.toml of its own; the examples are the
+  # only configuration there is to validate.
+  go run ./cmd/audit validate --config examples/repos.toml || rc=1
+  go run ./cmd/audit validate --config examples/repos.invalid.toml && {
+    ci::log 'FAIL: examples/repos.invalid.toml was accepted; validate has stopped rejecting a dead override'
+    rc=1
+  }
+
+  if ((rc != 0)); then
+    ci::log 'one or more checks failed'
+  fi
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

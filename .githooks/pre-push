@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+# Git pre-push hook: runs the full gate inside the devShell and aborts the push
+# if it fails. Bypass with `git push --no-verify`.
+
+set -Eeuo pipefail
+# Git runs hooks under the HOST bash, before .ci/in-devshell enters the
+# devShell, so the host's version is whatever the machine ships. `shopt -s
+# inherit_errexit` below is a bash 4.4 builtin option: on stock macOS bash 3.2
+# the shell aborts with `shopt: inherit_errexit: invalid shell option name`,
+# which tells a coworker nothing about what to install. Check first, and say
+# what to do. Must stay ABOVE the `shopt` line it is protecting.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required to run this hook (found %s.%s). On macOS: brew install bash.\n' \
+    "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
+  exit 1
+fi
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# names is deliberately global, not local to scan_if_public: the EXIT trap
+# below must clean it up on every exit path out of that function, including
+# the two `exit 1`s, which a RETURN trap never sees, and it fires after the
+# function that set it has already returned, so a local would be out of
+# scope and unbound under set -u by the time the trap runs.
+names=''
+trap 'rm -f -- "${names}"' EXIT
+
+# @description Run the full local gate through .ci/in-devshell, then, when the
+#              push goes to a public repository, refuse it if any outgoing
+#              commit carries the pushing account's login or repository names.
+# @arg $1 remote name
+# @arg $2 remote url
+function main() {
+  local -r remote_url="${2:-}"
+  local repo_dir updates=()
+  repo_dir="$(git rev-parse --show-toplevel)"
+  mapfile -t updates # "<local ref> <local sha> <remote ref> <remote sha>" per line, from git
+
+  printf 'pre-push: running the full local gate\n' >&2
+  # lychee checks README's links. The generated report with its private links
+  # lives in the report repository now, so every link left here is public and
+  # the gate needs no token to pass. A token is still used when `gh` has one,
+  # because an authenticated lychee run gets a saner api.github.com rate
+  # limit; `|| true` means a contributor with no `gh` login (or no `gh` at
+  # all) still reaches the gate rather than failing here under `set -e`. gh
+  # runs outside the devShell so it sees the host's auth; .ci/in-devshell
+  # keeps GITHUB_TOKEN across the boundary.
+  local -a gate_env=()
+  local token=''
+  token="$(gh auth token --hostname github.com 2> /dev/null || true)"
+  # zizmor treats GITHUB_TOKEN="" (set but empty) as an error distinct from
+  # unset, so the variable is added to the child's environment only when
+  # there is an actual token to give it.
+  if [[ -n "${token}" ]]; then
+    gate_env=(GITHUB_TOKEN="${token}")
+  fi
+  if ! env "${gate_env[@]}" \
+    "${repo_dir}/.ci/in-devshell" "${repo_dir}/run-all-checks"; then
+    printf 'pre-push: gate failed - fix, or rerun with --no-verify to bypass\n' >&2
+    exit 1
+  fi
+  printf 'pre-push: gate passed\n' >&2
+
+  scan_if_public "${repo_dir}" "${remote_url}" "${updates[@]}"
+}
+
+# @description Scan outgoing commits for account data when the remote is public.
+#              Anything that cannot be determined blocks the push: a public
+#              leak cannot be taken back.
+# @arg $1 repository root
+# @arg $2 remote url
+# @arg $@ the ref updates git passed on stdin
+function scan_if_public() {
+  local -r repo_dir="$1" remote_url="$2"
+  shift 2
+  local slug visibility login
+  # ssh://git@github.com/owner/repo(.git), git@github.com:owner/repo(.git) and
+  # https://github.com/owner/repo(.git), with an optional trailing slash.
+  slug="$(printf '%s' "${remote_url}" \
+    | sed --regexp-extended 's#^(ssh://git@github\.com/|git@github\.com:|https://github\.com/)##; s#\.git$##; s#/$##')"
+  # A URL rewritten by a git insteadOf rule (or any other host/shape this
+  # does not recognise) leaves slug not matching owner/repo. Guessing at the
+  # visibility of something we cannot even name is exactly the kind of gap a
+  # last-line-of-defence scan must not have, so refuse rather than skip.
+  if [[ ! "${slug}" =~ ^[^/]+/[^/]+$ ]]; then
+    printf 'pre-push: could not parse a GitHub owner/repo from the remote URL; refusing the push\n' >&2
+    exit 1
+  fi
+
+  if ! visibility="$(gh repo view "${slug}" --json visibility --jq .visibility 2> /dev/null)"; then
+    visibility='UNKNOWN'
+  fi
+  if [[ "${visibility}" == 'PRIVATE' || "${visibility}" == 'INTERNAL' ]]; then
+    return 0
+  fi
+
+  printf 'pre-push: %s is %s; scanning outgoing commits for account data\n' "${slug}" "${visibility,,}" >&2
+  names="$(mktemp)"
+  if ! login="$(gh api user --jq .login)" \
+    || ! gh repo list "${login}" --limit 1000 --json name --jq '.[].name' > "${names}"; then
+    printf 'pre-push: could not list the account'"'"'s repositories; refusing the push\n' >&2
+    exit 1
+  fi
+
+  local update local_sha remote_sha range
+  for update in "$@"; do
+    IFS=' ' read -r _ local_sha _ remote_sha <<< "${update}"
+    [[ "${local_sha}" =~ ^0+$ ]] && continue # a deletion sends no commits
+    if [[ "${remote_sha}" =~ ^0+$ ]]; then
+      range="${local_sha}"
+    else
+      range="${remote_sha}..${local_sha}"
+    fi
+    if ! "${repo_dir}/.ci/check-account-data" --login "${login}" --names "${names}" --range "${range}"; then
+      printf 'pre-push: account data found in the commits above; refusing the push\n' >&2
+      exit 1
+    fi
+  done
+}
+
+main "$@"

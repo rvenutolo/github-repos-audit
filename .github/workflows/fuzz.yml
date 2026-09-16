@@ -1,0 +1,118 @@
+name: fuzz
+
+# Actually fuzz the fuzz targets.
+#
+# The gate runs every `Fuzz` function against its seed corpus and nothing more:
+# without `-fuzz`, no input is ever generated. This workflow is where inputs
+# are generated, and it is kept out of ci.yml deliberately — fuzzing is
+# unbounded work and the pull request gate must stay deterministic.
+#
+# Twice a week rather than weekly, because GitHub evicts a cache seven days
+# after its last access: a weekly run sits exactly on that boundary and the
+# corpus would keep cold-starting from the seeds.
+#
+# A crasher becomes a pull request rather than a red X, because the failing
+# input lives only in the runner's working tree and a discarded run discards
+# it. The run still fails afterwards, so a finding also arrives by mail.
+on:
+  schedule:
+    # :17 because on-the-hour slots are the most contended on GitHub's
+    # scheduler. Sunday and Wednesday: gaps of three and four days.
+    - cron: "17 4 * * 0,3"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Fuzz time per target, as a Go duration.
+        required: false
+        default: 5m
+
+permissions: {}
+
+concurrency:
+  # Two runs must not race on the same corpus cache or the same crasher branch.
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-latest
+    # Three targets at the 5m default plus the Nix and Go restores is roughly
+    # twenty minutes; the rest is headroom for a longer dispatched duration.
+    timeout-minutes: 45
+    # contents: read is for actions/checkout and nothing else. The pull request
+    # a crasher produces is opened with REFRESH_TOKEN, for the same reason the
+    # refresh uses it: nothing the built-in token creates triggers a workflow
+    # run, so its pull request would sit without checks forever — and a red
+    # gate on the input is the entire point here.
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      # The generated corpus lives at $GOCACHE/fuzz, and .ci/in-devshell keeps
+      # HOME but no GO* variables, so GOCACHE resolves under ~/.cache — the
+      # same assumption the setup action's Go cache already makes. That cache
+      # is keyed on go.sum, so on an unchanged go.sum it is an exact hit and
+      # never saves; without this pair the corpus would reset to the seeds
+      # every run. restore/save rather than actions/cache, because the latter
+      # skips its save when the job fails, which is exactly the run whose
+      # corpus is worth keeping.
+      - name: Restore the fuzz corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+
+      - name: Fuzz every target
+        id: fuzz
+        # The job must reach the filing step even when a target fails; the last
+        # step turns that failure back into a red run.
+        continue-on-error: true
+        env:
+          # Through the environment, never interpolated into the script.
+          DURATION: ${{ inputs.duration || '5m' }}
+        run: ./.ci/in-devshell ./.ci/run-fuzz "${DURATION}"
+
+      - name: File any new crasher as a pull request
+        # REFRESH_TOKEN reaches this repository alone, with Contents and Pull
+        # requests write and nothing else.
+        env:
+          GH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: ./.ci/in-devshell ./.ci/fuzz-pull-request
+
+      - name: Save the fuzz corpus
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: fuzz-corpus-${{ github.run_id }}
+
+      - name: Fail because fuzzing found a crasher
+        if: steps.fuzz.outcome == 'failure'
+        run: exit 1

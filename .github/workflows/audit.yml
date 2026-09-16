@@ -1,0 +1,88 @@
+name: audit
+
+# Render a report into the CALLER's repository and open the pull request that
+# carries it. The caller is a report repository holding only repos.toml, the
+# generated README.md and audit.json; this workflow is the tool.
+#
+# The tool is checked out at the workspace root, so .ci/in-devshell and every
+# .ci script find their own repository through `git rev-parse --show-toplevel`,
+# and the caller lands under report/, which is what --config and --dir name.
+on:
+  workflow_call:
+    secrets:
+      AUDIT_TOKEN:
+        description: Read-only token for every repository on the account.
+        required: true
+      REFRESH_TOKEN:
+        description: Token for the caller alone, with Contents and Pull requests write.
+        required: true
+
+permissions: {}
+
+jobs:
+  refresh:
+    name: refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # contents: read is for the two checkouts and nothing else. The built-in
+    # token cannot read the audited repositories, so the reads use AUDIT_TOKEN,
+    # and anything it created would trigger no workflow run, so the writes use
+    # REFRESH_TOKEN.
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+      # The tool, at the exact commit the caller pinned.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+      # The caller's own repository, which holds the config and the report.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: report
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      - name: Render the report
+        id: render
+        # AUDIT_TOKEN reads every repository on the account and can write
+        # nothing. render prints one machine-readable line, which is already
+        # $GITHUB_OUTPUT syntax, so nothing here parses anything.
+        env:
+          GITHUB_TOKEN: ${{ secrets.AUDIT_TOKEN }}
+        run: >-
+          ./.ci/in-devshell go run ./cmd/audit render
+          --config report/repos.toml --dir report >>"${GITHUB_OUTPUT}"
+
+      - name: Commit the report, open the pull request and queue the merge
+        if: steps.render.outputs.material-change == 'true'
+        # GITHUB_REPOSITORY is the caller's in a called workflow, which is
+        # exactly the repository the pull request belongs in.
+        env:
+          GH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+        run: ./.ci/in-devshell ./.ci/refresh-pull-request --dir report
+
+      - name: Report that nothing material changed
+        if: steps.render.outputs.material-change != 'true'
+        run: echo 'No material change since the last report; no pull request opened.'

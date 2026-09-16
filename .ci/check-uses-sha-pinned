@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+
+# @description Assert every `uses:` in every workflow and composite action is
+#              pinned to a 40-character commit SHA and carries a trailing
+#              version comment. Local actions are exempt, either workspace-
+#              relative (`./.github/...`) or self-repository (`$/...`): both
+#              are this repo's own tree, already pinned by the checkout.
+#
+#              A self-repository (`$/...`) ref is checked for a different
+#              defect instead: nothing else in the gate verifies that the path
+#              after `$/` actually exists. actionlint does not understand the
+#              `$/` syntax yet (see .ci/run-lint-checks' -ignore list) and so
+#              never flags a bad one, and there is no zizmor config that would.
+#              A `$/<path>` names a local composite action, which git tracks
+#              as a FILE (`<path>/action.yml` or `<path>/action.yaml`), not a
+#              directory, so the check looks for that file with `git
+#              ls-files` rather than testing the directory on disk.
+# @noargs
+# @exitcode 0 every uses: is SHA-pinned with a version comment, and every $/
+#             local-action path resolves to a tracked action.yml
+# @exitcode 1 at least one is not
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# @description Scan every tracked workflow and composite action for `uses:` lines.
+# @noargs
+function main() {
+  local rc=0 count=0 file line lineno ref target
+  local -a files=()
+  local -a patterns=(
+    '.github/workflows/*.yml'
+    '.github/workflows/*.yaml'
+    '.github/actions/*/action.yml'
+    '.github/actions/*/action.yaml'
+  )
+  mapfile -t files < <(git -C "${REPO_DIR}" ls-files "${patterns[@]}")
+
+  if ((${#files[@]} == 0)); then
+    printf 'FAIL: no workflow files tracked - the scan looks broken\n' >&2
+    return 1
+  fi
+
+  for file in "${files[@]}"; do
+    lineno=0
+    while IFS= read -r line; do
+      lineno=$((lineno + 1))
+      [[ "${line}" =~ ^[[:space:]]*-?[[:space:]]*uses:[[:space:]]*(.*)$ ]] || continue
+      ref="${BASH_REMATCH[1]}"
+      # Workspace-relative local actions (./) are this repo's own tree,
+      # already pinned by the checkout, and need no pin of their own.
+      [[ "${ref}" == './'* ]] && continue
+      if [[ "${ref}" == '$/'* ]]; then
+        # A self-repository ref also needs no SHA pin, for the same reason,
+        # but nothing else checks that the path after $/ actually exists —
+        # renaming .github/actions/setup would silently break every caller of
+        # it otherwise. A local composite action is tracked as the FILE
+        # <path>/action.yml (or .yaml), never as a bare directory, so that is
+        # what git ls-files is asked for.
+        target="${ref#\$/}"
+        target="${target%%[[:space:]]*}"
+        target="${target%%#*}"
+        if ! git -C "${REPO_DIR}" ls-files --error-unmatch -- "${target}/action.yml" &> /dev/null \
+          && ! git -C "${REPO_DIR}" ls-files --error-unmatch -- "${target}/action.yaml" &> /dev/null; then
+          printf 'FAIL: %s:%s $/ ref names a path with no tracked action.yml: %s\n' \
+            "${file}" "${lineno}" "${target}" >&2
+          rc=1
+        fi
+        continue
+      fi
+      count=$((count + 1))
+      if [[ ! "${ref}" =~ @[0-9a-f]{40}[[:space:]]*\#[[:space:]]*v?[0-9] ]]; then
+        printf 'FAIL: %s:%s not SHA-pinned with a version comment: %s\n' \
+          "${file}" "${lineno}" "${ref}" >&2
+        rc=1
+      fi
+    done < "${REPO_DIR}/${file}"
+  done
+
+  if ((count == 0)); then
+    printf 'FAIL: workflow files exist but contain no external "uses:" — scan looks broken\n' >&2
+    rc=1
+  fi
+  # A gate reporting its own verdict is not a crash: drop the ERR trap so the
+  # diagnostics above are the last thing the reader sees (#43, invariant 6).
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"
