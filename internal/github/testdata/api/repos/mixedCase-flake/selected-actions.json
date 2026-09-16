@@ -1,0 +1,22 @@
+{
+  "github_owned_allowed": true,
+  "patterns_allowed": [
+    "example-org/action-01@*",
+    "example-org/action-02@*",
+    "example-org/action-03@*",
+    "example-org/action-04@*",
+    "example-org/action-05@*",
+    "example-org/action-06@*",
+    "example-org/action-07@*",
+    "example-org/action-08@*",
+    "example-org/action-09@*",
+    "example-org/action-10@*",
+    "example-org/action-11@*",
+    "example-org/action-12@*",
+    "example-org/action-13@*",
+    "example-org/action-14@*",
+    "example-org/action-15@*",
+    "example-org/action-16@*"
+  ],
+  "verified_allowed": false
+}

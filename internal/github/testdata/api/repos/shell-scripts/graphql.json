@@ -1,0 +1,186 @@
+{
+  "data": {
+    "repository": {
+      "description": "Placeholder description.",
+      "homepage_url": "https://example.com/shell-scripts",
+      "visibility": "PUBLIC",
+      "pushed_at": "2025-09-05T01:39:25Z",
+      "license_info": {
+        "spdx_id": "GPL-3.0"
+      },
+      "topics": {
+        "total_count": 5
+      },
+      "open_pull_requests": {
+        "total_count": 1
+      },
+      "branches": {
+        "total_count": 2
+      },
+      "has_issues": true,
+      "has_wiki": false,
+      "has_projects": false,
+      "has_discussions": false,
+      "vulnerability_alerts": true,
+      "merge_commit_allowed": true,
+      "squash_merge_allowed": false,
+      "rebase_merge_allowed": false,
+      "auto_merge_allowed": true,
+      "delete_branch_on_merge": true,
+      "merge_commit_title": "PR_TITLE",
+      "merge_commit_message": "PR_BODY",
+      "default_branch_ref": {
+        "name": "main",
+        "target": {
+          "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
+          "status_check_rollup": {
+            "state": "SUCCESS"
+          }
+        }
+      },
+      "rulesets": {
+        "nodes": [
+          {
+            "name": "ruleset-01",
+            "target": "BRANCH",
+            "enforcement": "ACTIVE",
+            "conditions": {
+              "ref_name": {
+                "include": [
+                  "~DEFAULT_BRANCH"
+                ]
+              }
+            },
+            "rules": {
+              "nodes": [
+                {
+                  "type": "DELETION"
+                },
+                {
+                  "type": "NON_FAST_FORWARD"
+                },
+                {
+                  "type": "REQUIRED_SIGNATURES"
+                },
+                {
+                  "type": "PULL_REQUEST"
+                },
+                {
+                  "type": "REQUIRED_STATUS_CHECKS"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ruleset-03",
+            "target": "TAG",
+            "enforcement": "ACTIVE",
+            "conditions": {
+              "ref_name": {
+                "include": [
+                  "refs/tags/**"
+                ]
+              }
+            },
+            "rules": {
+              "nodes": [
+                {
+                  "type": "UPDATE"
+                },
+                {
+                  "type": "DELETION"
+                },
+                {
+                  "type": "NON_FAST_FORWARD"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "releases": {
+        "total_count": 0,
+        "nodes": []
+      },
+      "readme_md": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000d"
+      },
+      "readme_github_md": null,
+      "readme_docs_md": null,
+      "readme_rst": null,
+      "readme_txt": null,
+      "readme_plain": null,
+      "gitignore": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000e"
+      },
+      "editorconfig": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000f"
+      },
+      "flake_nix": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0010"
+      },
+      "changelog_md": null,
+      "justfile_dot": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0011"
+      },
+      "justfile_plain": null,
+      "security_root": null,
+      "security_github": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0012"
+      },
+      "security_docs": null,
+      "contributing_root": null,
+      "contributing_github": null,
+      "contributing_docs": null,
+      "coc_root": null,
+      "coc_github": null,
+      "coc_docs": null,
+      "renovate_json": null,
+      "renovate_json5": null,
+      "renovaterc": null,
+      "renovaterc_json": null,
+      "renovaterc_json5": null,
+      "renovate_github_json": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0013"
+      },
+      "renovate_github_json5": null,
+      "workflows": {
+        "entries": [
+          {
+            "name": "ci.yml"
+          },
+          {
+            "name": "workflow-29.yml"
+          },
+          {
+            "name": "workflow-06.yml"
+          },
+          {
+            "name": "workflow-10.yml"
+          },
+          {
+            "name": "workflow-12.yml"
+          },
+          {
+            "name": "workflow-30.yml"
+          },
+          {
+            "name": "workflow-13.yml"
+          },
+          {
+            "name": "workflow-15.yml"
+          },
+          {
+            "name": "workflow-16.yml"
+          },
+          {
+            "name": "workflow-31.yml"
+          },
+          {
+            "name": "workflow-32.yml"
+          }
+        ]
+      }
+    }
+  }
+}

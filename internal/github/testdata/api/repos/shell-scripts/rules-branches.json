@@ -1,0 +1,80 @@
+[
+  {
+    "type": "deletion",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/shell-scripts",
+    "ruleset_id": 2000003
+  },
+  {
+    "type": "non_fast_forward",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/shell-scripts",
+    "ruleset_id": 2000003
+  },
+  {
+    "type": "required_signatures",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/shell-scripts",
+    "ruleset_id": 2000003
+  },
+  {
+    "type": "pull_request",
+    "parameters": {
+      "required_approving_review_count": 0,
+      "dismiss_stale_reviews_on_push": false,
+      "required_reviewers": [],
+      "require_code_owner_review": false,
+      "require_last_push_approval": false,
+      "required_review_thread_resolution": true,
+      "require_extra_approval_for_unattributed_changes": true,
+      "allowed_merge_methods": [
+        "merge"
+      ]
+    },
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/shell-scripts",
+    "ruleset_id": 2000003
+  },
+  {
+    "type": "required_status_checks",
+    "parameters": {
+      "strict_required_status_checks_policy": true,
+      "do_not_enforce_on_create": false,
+      "required_status_checks": [
+        {
+          "context": "check-30"
+        },
+        {
+          "context": "check-31"
+        },
+        {
+          "context": "check-06"
+        },
+        {
+          "context": "check-11"
+        },
+        {
+          "context": "check-14"
+        },
+        {
+          "context": "check-32"
+        },
+        {
+          "context": "check-33"
+        },
+        {
+          "context": "check-17"
+        },
+        {
+          "context": "check-34"
+        },
+        {
+          "context": "check-35"
+        }
+      ]
+    },
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/shell-scripts",
+    "ruleset_id": 2000003
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "type": "deletion",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/pkg-index",
+    "ruleset_id": 2000002
+  },
+  {
+    "type": "required_signatures",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/pkg-index",
+    "ruleset_id": 2000002
+  },
+  {
+    "type": "non_fast_forward",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/pkg-index",
+    "ruleset_id": 2000002
+  }
+]

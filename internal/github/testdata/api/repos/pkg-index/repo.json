@@ -1,0 +1,30 @@
+{
+  "id": 1000010,
+  "node_id": "R_ghowner000010",
+  "name": "pkg-index",
+  "full_name": "gh-owner/pkg-index",
+  "private": false,
+  "description": null,
+  "fork": false,
+  "archived": false,
+  "disabled": false,
+  "visibility": "public",
+  "default_branch": "main",
+  "security_and_analysis": {
+    "secret_scanning": {
+      "status": "enabled"
+    },
+    "secret_scanning_push_protection": {
+      "status": "enabled"
+    },
+    "dependabot_security_updates": {
+      "status": "disabled"
+    },
+    "secret_scanning_non_provider_patterns": {
+      "status": "disabled"
+    },
+    "secret_scanning_validity_checks": {
+      "status": "disabled"
+    }
+  }
+}

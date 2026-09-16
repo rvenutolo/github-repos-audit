@@ -1,0 +1,265 @@
+{
+  "data": {
+    "repository": {
+      "description": "Placeholder description.",
+      "homepage_url": "https://example.com/mixedCase-flake",
+      "visibility": "PUBLIC",
+      "pushed_at": "2025-09-05T04:04:54Z",
+      "license_info": {
+        "spdx_id": "MIT"
+      },
+      "topics": {
+        "total_count": 5
+      },
+      "open_pull_requests": {
+        "total_count": 0
+      },
+      "branches": {
+        "total_count": 1
+      },
+      "has_issues": true,
+      "has_wiki": false,
+      "has_projects": true,
+      "has_discussions": false,
+      "vulnerability_alerts": true,
+      "merge_commit_allowed": true,
+      "squash_merge_allowed": false,
+      "rebase_merge_allowed": false,
+      "auto_merge_allowed": true,
+      "delete_branch_on_merge": true,
+      "merge_commit_title": "PR_TITLE",
+      "merge_commit_message": "PR_BODY",
+      "default_branch_ref": {
+        "name": "main",
+        "target": {
+          "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001",
+          "status_check_rollup": {
+            "state": "SUCCESS"
+          }
+        }
+      },
+      "rulesets": {
+        "nodes": [
+          {
+            "name": "ruleset-01",
+            "target": "BRANCH",
+            "enforcement": "ACTIVE",
+            "conditions": {
+              "ref_name": {
+                "include": [
+                  "~DEFAULT_BRANCH"
+                ]
+              }
+            },
+            "rules": {
+              "nodes": [
+                {
+                  "type": "DELETION"
+                },
+                {
+                  "type": "NON_FAST_FORWARD"
+                },
+                {
+                  "type": "REQUIRED_SIGNATURES"
+                },
+                {
+                  "type": "PULL_REQUEST"
+                },
+                {
+                  "type": "REQUIRED_STATUS_CHECKS"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ruleset-02",
+            "target": "TAG",
+            "enforcement": "ACTIVE",
+            "conditions": {
+              "ref_name": {
+                "include": [
+                  "refs/tags/[0-9]{8}-[0-9a-f]{7,40}"
+                ]
+              }
+            },
+            "rules": {
+              "nodes": [
+                {
+                  "type": "DELETION"
+                },
+                {
+                  "type": "UPDATE"
+                },
+                {
+                  "type": "NON_FAST_FORWARD"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "releases": {
+        "total_count": 23,
+        "nodes": [
+          {
+            "is_draft": false,
+            "published_at": "2025-09-01T10:14:28Z"
+          },
+          {
+            "is_draft": false,
+            "published_at": "2025-08-29T10:36:25Z"
+          },
+          {
+            "is_draft": false,
+            "published_at": "2025-08-25T05:40:53Z"
+          },
+          {
+            "is_draft": false,
+            "published_at": "2025-08-24T05:46:42Z"
+          },
+          {
+            "is_draft": false,
+            "published_at": "2025-08-17T05:40:53Z"
+          }
+        ]
+      },
+      "readme_md": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002"
+      },
+      "readme_github_md": null,
+      "readme_docs_md": null,
+      "readme_rst": null,
+      "readme_txt": null,
+      "readme_plain": null,
+      "gitignore": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0003"
+      },
+      "editorconfig": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0004"
+      },
+      "flake_nix": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0005"
+      },
+      "changelog_md": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0006"
+      },
+      "justfile_dot": null,
+      "justfile_plain": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0007"
+      },
+      "security_root": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0008"
+      },
+      "security_github": null,
+      "security_docs": null,
+      "contributing_root": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0009"
+      },
+      "contributing_github": null,
+      "contributing_docs": null,
+      "coc_root": null,
+      "coc_github": null,
+      "coc_docs": null,
+      "renovate_json": {
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000a"
+      },
+      "renovate_json5": null,
+      "renovaterc": null,
+      "renovaterc_json": null,
+      "renovaterc_json5": null,
+      "renovate_github_json": null,
+      "renovate_github_json5": null,
+      "workflows": {
+        "entries": [
+          {
+            "name": "workflow-01.yml"
+          },
+          {
+            "name": "workflow-02.yml"
+          },
+          {
+            "name": "workflow-03.yml"
+          },
+          {
+            "name": "ci.yml"
+          },
+          {
+            "name": "workflow-04.yml"
+          },
+          {
+            "name": "workflow-05.yml"
+          },
+          {
+            "name": "workflow-06.yml"
+          },
+          {
+            "name": "workflow-07.yml"
+          },
+          {
+            "name": "workflow-08.yml"
+          },
+          {
+            "name": "workflow-09.yml"
+          },
+          {
+            "name": "workflow-10.yml"
+          },
+          {
+            "name": "workflow-11.yml"
+          },
+          {
+            "name": "workflow-12.yml"
+          },
+          {
+            "name": "workflow-13.yml"
+          },
+          {
+            "name": "workflow-14.yml"
+          },
+          {
+            "name": "workflow-15.yml"
+          },
+          {
+            "name": "workflow-16.yml"
+          },
+          {
+            "name": "workflow-17.yml"
+          },
+          {
+            "name": "workflow-18.yml"
+          },
+          {
+            "name": "workflow-19.yml"
+          },
+          {
+            "name": "workflow-20.yml"
+          },
+          {
+            "name": "workflow-21.yml"
+          },
+          {
+            "name": "workflow-22.yml"
+          },
+          {
+            "name": "workflow-23.yml"
+          },
+          {
+            "name": "workflow-24.yml"
+          },
+          {
+            "name": "workflow-25.yml"
+          },
+          {
+            "name": "workflow-26.yml"
+          },
+          {
+            "name": "workflow-27.yml"
+          },
+          {
+            "name": "workflow-28.yml"
+          }
+        ]
+      }
+    }
+  }
+}

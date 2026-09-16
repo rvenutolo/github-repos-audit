@@ -1,0 +1,138 @@
+{
+  "data": {
+    "repository": {
+      "description": "Placeholder description.",
+      "homepage_url": "",
+      "visibility": "PRIVATE",
+      "pushed_at": "2025-09-02T01:44:53Z",
+      "license_info": null,
+      "topics": {
+        "total_count": 0
+      },
+      "open_pull_requests": {
+        "total_count": 0
+      },
+      "branches": {
+        "total_count": 1
+      },
+      "has_issues": true,
+      "has_wiki": false,
+      "has_projects": false,
+      "has_discussions": false,
+      "vulnerability_alerts": true,
+      "merge_commit_allowed": true,
+      "squash_merge_allowed": false,
+      "rebase_merge_allowed": false,
+      "auto_merge_allowed": true,
+      "delete_branch_on_merge": true,
+      "merge_commit_title": "PR_TITLE",
+      "merge_commit_message": "PR_BODY",
+      "default_branch_ref": {
+        "name": "main",
+        "target": {
+          "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
+          "status_check_rollup": null
+        }
+      },
+      "rulesets": {
+        "nodes": [
+          {
+            "name": "ruleset-01",
+            "target": "BRANCH",
+            "enforcement": "ACTIVE",
+            "conditions": {
+              "ref_name": {
+                "include": [
+                  "~DEFAULT_BRANCH"
+                ]
+              }
+            },
+            "rules": {
+              "nodes": [
+                {
+                  "type": "DELETION"
+                },
+                {
+                  "type": "REQUIRED_SIGNATURES"
+                },
+                {
+                  "type": "PULL_REQUEST"
+                },
+                {
+                  "type": "REQUIRED_STATUS_CHECKS"
+                },
+                {
+                  "type": "NON_FAST_FORWARD"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ruleset-03",
+            "target": "TAG",
+            "enforcement": "ACTIVE",
+            "conditions": {
+              "ref_name": {
+                "include": [
+                  "refs/tags/**"
+                ]
+              }
+            },
+            "rules": {
+              "nodes": [
+                {
+                  "type": "UPDATE"
+                },
+                {
+                  "type": "DELETION"
+                },
+                {
+                  "type": "NON_FAST_FORWARD"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "releases": {
+        "total_count": 0,
+        "nodes": []
+      },
+      "readme_md": null,
+      "readme_github_md": null,
+      "readme_docs_md": null,
+      "readme_rst": null,
+      "readme_txt": null,
+      "readme_plain": null,
+      "gitignore": null,
+      "editorconfig": null,
+      "flake_nix": null,
+      "changelog_md": null,
+      "justfile_dot": null,
+      "justfile_plain": null,
+      "security_root": null,
+      "security_github": null,
+      "security_docs": null,
+      "contributing_root": null,
+      "contributing_github": null,
+      "contributing_docs": null,
+      "coc_root": null,
+      "coc_github": null,
+      "coc_docs": null,
+      "renovate_json": null,
+      "renovate_json5": null,
+      "renovaterc": null,
+      "renovaterc_json": null,
+      "renovaterc_json5": null,
+      "renovate_github_json": null,
+      "renovate_github_json5": null,
+      "workflows": {
+        "entries": [
+          {
+            "name": "workflow-33.yml"
+          }
+        ]
+      }
+    }
+  }
+}

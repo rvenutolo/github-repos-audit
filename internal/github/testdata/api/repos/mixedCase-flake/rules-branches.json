@@ -1,0 +1,166 @@
+[
+  {
+    "type": "deletion",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/mixedCase-flake",
+    "ruleset_id": 2000001
+  },
+  {
+    "type": "non_fast_forward",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/mixedCase-flake",
+    "ruleset_id": 2000001
+  },
+  {
+    "type": "required_signatures",
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/mixedCase-flake",
+    "ruleset_id": 2000001
+  },
+  {
+    "type": "pull_request",
+    "parameters": {
+      "required_approving_review_count": 0,
+      "dismiss_stale_reviews_on_push": false,
+      "required_reviewers": [],
+      "require_code_owner_review": false,
+      "require_last_push_approval": false,
+      "required_review_thread_resolution": true,
+      "require_extra_approval_for_unattributed_changes": true,
+      "allowed_merge_methods": [
+        "merge"
+      ]
+    },
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/mixedCase-flake",
+    "ruleset_id": 2000001
+  },
+  {
+    "type": "required_status_checks",
+    "parameters": {
+      "strict_required_status_checks_policy": true,
+      "do_not_enforce_on_create": false,
+      "required_status_checks": [
+        {
+          "context": "check-01",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-02",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-03",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-04",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-05",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-06",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-07",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-08",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-09",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-10",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-11",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-12",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-13",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-14",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-15",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-16",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-17",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-18",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-19",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-20",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-21",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-22",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-23",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-24",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-25",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-26",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-27",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-28",
+          "integration_id": 3000001
+        },
+        {
+          "context": "check-29",
+          "integration_id": 3000001
+        }
+      ]
+    },
+    "ruleset_source_type": "Repository",
+    "ruleset_source": "gh-owner/mixedCase-flake",
+    "ruleset_id": 2000001
+  }
+]

@@ -1,0 +1,5 @@
+{
+  "message": "Access policy only applies to internal and private repositories.",
+  "documentation_url": "https://docs.github.com/rest/actions/permissions#get-the-level-of-access-for-workflows-outside-of-the-repository",
+  "status": "422"
+}

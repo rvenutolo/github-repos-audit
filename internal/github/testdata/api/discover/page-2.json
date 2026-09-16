@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1000005,
+    "node_id": "R_ghowner000005",
+    "name": "web-app",
+    "full_name": "gh-owner/web-app",
+    "private": true,
+    "fork": false,
+    "archived": false,
+    "disabled": false,
+    "visibility": "private",
+    "default_branch": "main"
+  },
+  {
+    "id": 1000006,
+    "node_id": "R_ghowner000006",
+    "name": "shell-scripts",
+    "full_name": "gh-owner/shell-scripts",
+    "private": false,
+    "fork": false,
+    "archived": false,
+    "disabled": false,
+    "visibility": "public",
+    "default_branch": "main"
+  },
+  {
+    "id": 1000007,
+    "node_id": "R_ghowner000007",
+    "name": "updater",
+    "full_name": "gh-owner/updater",
+    "private": false,
+    "fork": true,
+    "archived": false,
+    "disabled": false,
+    "visibility": "public",
+    "default_branch": "main"
+  }
+]
