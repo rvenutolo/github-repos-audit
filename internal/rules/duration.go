@@ -81,10 +81,15 @@ func ParseRenovateDuration(s string) (time.Duration, bool) {
 		}
 		total += ms
 	}
-	if total < 0 || total > float64(math.MaxInt64)/float64(time.Millisecond) {
+	// The range check is on the nanosecond product, not on total: a total
+	// just under MaxInt64/1e6 can still round up to 2^63 when multiplied,
+	// and converting that to an int64 wraps to a negative duration.
+	// float64(math.MaxInt64) is itself 2^63, so >= is the exact bound.
+	ns := total * float64(time.Millisecond)
+	if total < 0 || ns >= float64(math.MaxInt64) {
 		return 0, false
 	}
-	return time.Duration(total * float64(time.Millisecond)), true
+	return time.Duration(ns), true
 }
 
 // splitRenovate mirrors String.prototype.split with a capturing regex: the

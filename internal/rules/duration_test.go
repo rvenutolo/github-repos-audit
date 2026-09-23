@@ -117,6 +117,9 @@ func TestParseRenovateDuration_beyondRenovatesTable(t *testing.T) {
 	for _, in := range []string{
 		"-7 days",           // a negative age is not a quarantine
 		"99999999999 years", // overflows time.Duration
+		// Under MaxInt64 ms-to-ns before rounding, but the product rounds
+		// up to 2^63, which no time.Duration holds.
+		"9223372036854.7758 ms",
 		"7 dayz", "{{arg0}}", "null",
 		"1.5 months", "2 mo", "1 MONTHS", // ms 2.1.3 (Renovate's pin) has no months/mo unit
 	} {
