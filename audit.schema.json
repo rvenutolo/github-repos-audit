@@ -378,13 +378,18 @@
       }
     },
     "identity_standard": {
-      "description": "The account holder's git identity standard. canonical is the one correct identity, written \"Name <email>\"; match is an unanchored RE2 expression tested against each commit identity's \"Name <email>\", and whatever it matches is the account holder's.",
+      "description": "The account holder's git identity standard. canonical is the one correct identity, written \"Name <email>\"; match is an unanchored RE2 expression tested against each commit identity's \"Name <email>\", and whatever it matches is the account holder's. Identities listed in accepted are the account holder's but never wrong.",
       "type": "object",
       "additionalProperties": false,
       "required": ["canonical", "match"],
       "properties": {
         "canonical": { "type": "string", "minLength": 1 },
-        "match": { "type": "string", "minLength": 1 }
+        "match": { "type": "string", "minLength": 1 },
+        "accepted": {
+          "description": "Further identities, each written \"Name <email>\", that are the account holder's and acceptable though not canonical — GitHub's web-flow noreply identity, typically. Absent when none are declared.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
       }
     },
     "ruleset": {

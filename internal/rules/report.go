@@ -152,14 +152,17 @@ type Report struct {
 type IdentityLine struct {
 	// Repo is the repository.
 	Repo string
-	// Identities is the distinct identities, canonical first, then by name,
-	// then email. Two spellings of an address differing only in case are one
-	// identity.
+	// Identities is the distinct identities: the canonical one first, then
+	// the accepted ones, then the wrong ones, each group by name, then email.
+	// Two spellings of an address differing only in case are one identity.
 	Identities []IdentityEntry
-	// Mixed reports two or more distinct identities: the history switched.
+	// Mixed reports two or more distinct identities that are canonical or
+	// wrong: the history switched between identities that matter. Accepted
+	// identities do not count, since a web-UI merge beside the owner's own
+	// commits is not a switch anyone needs to rewrite.
 	Mixed bool
-	// Canonical reports that every identity is the canonical one.
-	Canonical bool
+	// Clean reports that no identity is wrong: each is canonical or accepted.
+	Clean bool
 }
 
 // IdentityEntry is one of the account holder's identities in a repository's
@@ -167,11 +170,15 @@ type IdentityLine struct {
 type IdentityEntry struct {
 	// Name is the author or committer name.
 	Name string
-	// Email is the address. For the canonical identity it is the canonical's
-	// own spelling, whatever capitalisation the commits used.
+	// Email is the address. For the canonical identity and for an accepted
+	// one it is the standard's own spelling, whatever capitalisation the
+	// commits used.
 	Email string
 	// Canonical reports that this is the canonical identity.
 	Canonical bool
+	// Accepted reports that this is one of the accepted identities. At most
+	// one of Canonical and Accepted is true.
+	Accepted bool
 }
 
 // String writes the entry the way git prints an identity, "Name <email>".

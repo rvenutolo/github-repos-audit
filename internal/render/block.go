@@ -176,7 +176,7 @@ func identitiesSection(rep *rules.Report) string {
 		switch {
 		case line.Mixed:
 			b.WriteString(" — mixed")
-		case !line.Canonical:
+		case !line.Clean:
 			b.WriteString(" — not canonical")
 		}
 		b.WriteString("\n")

@@ -135,8 +135,8 @@ func TestParse_keepsTheIdentityStandard(t *testing.T) {
 		t.Fatalf("Parse() error = %v, want nil", err)
 	}
 	want := audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
-	if cfg.Identity != want {
-		t.Errorf("Parse() identity = %+v, want %+v", cfg.Identity, want)
+	if diff := cmp.Diff(want, cfg.Identity); diff != "" {
+		t.Errorf("Parse() identity mismatch (-want +got):\n%s", diff)
 	}
 }
 

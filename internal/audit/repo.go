@@ -273,4 +273,10 @@ type IdentityStandard struct {
 	Canonical string `json:"canonical"`
 	// Match is an RE2 expression, unanchored, tested against "Name <email>".
 	Match string `json:"match"`
+	// Accepted is further identities, each written "Name <email>", that are
+	// the account holder's and acceptable in a history although they are not
+	// canonical: GitHub's web-flow noreply identity, typically, which every
+	// merge made in the web UI adds back, so it can never be rewritten away.
+	// Nil when nothing beyond Canonical is accepted.
+	Accepted []string `json:"accepted,omitzero"`
 }

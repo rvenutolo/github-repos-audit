@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/render"
 )
@@ -370,8 +372,8 @@ func TestRunJSON_recordsTheIdentityStandard(t *testing.T) {
 	}
 	// standard-types.toml's [identity] table, which scratchProject copies.
 	want := audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
-	if snap.Identity != want {
-		t.Errorf("snapshot identity = %+v, want %+v", snap.Identity, want)
+	if diff := cmp.Diff(want, snap.Identity); diff != "" {
+		t.Errorf("snapshot identity mismatch (-want +got):\n%s", diff)
 	}
 }
 

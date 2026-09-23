@@ -126,7 +126,11 @@ func evaluateOne(r audit.Repo) (map[rules.Check]rules.Cell, error) {
 // every snapshot judged against those types needs once any of them judges
 // git_identity: a judged check with no standard is an Evaluate error.
 func fixtureIdentity() audit.IdentityStandard {
-	return audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
+	return audit.IdentityStandard{
+		Canonical: "Pat Example <pat@example.com>",
+		Match:     " Example <",
+		Accepted:  []string{"Pat Example <12345+pat@users.noreply.github.com>"},
+	}
 }
 
 // toolsRepos builds several private `tools` fixtures at once, which is the

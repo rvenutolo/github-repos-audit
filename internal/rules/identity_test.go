@@ -87,6 +87,74 @@ func TestIdentityProblems(t *testing.T) {
 			audit.IdentityStandard{},
 			[]string{`identity.canonical = ""`, "identity.match: missing"},
 		},
+		{
+			"accepted identities",
+			audit.IdentityStandard{
+				Canonical: "Pat Example <pat@example.com>", Match: " Example <",
+				Accepted: []string{"Pat Example <12345+pat@users.noreply.github.com>"},
+			},
+			nil,
+		},
+		{
+			"an empty accepted list",
+			audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <", Accepted: []string{}},
+			nil,
+		},
+		{
+			"a malformed accepted identity",
+			audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <", Accepted: []string{"Pat Example"}},
+			[]string{`identity.accepted[0] = "Pat Example" (want "Name <email>")`},
+		},
+		{
+			"an accepted identity match does not catch",
+			audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <", Accepted: []string{"Robin Other <robin@example.org>"}},
+			[]string{"identity.accepted[0] does not match identity.match"},
+		},
+		{
+			// Case in the address is not a different identity, so this is the
+			// canonical one restated.
+			"an accepted identity that is the canonical one",
+			audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <", Accepted: []string{"Pat Example <Pat@Example.com>"}},
+			[]string{"identity.accepted[0] is identity.canonical"},
+		},
+		{
+			"an accepted identity repeated in another case",
+			audit.IdentityStandard{
+				Canonical: "Pat Example <pat@example.com>", Match: " Example <",
+				Accepted: []string{"Pat Example <12345+pat@users.noreply.github.com>", "Pat Example <patrick@example.org>", "Pat Example <12345+PAT@users.noreply.github.com>"},
+			},
+			[]string{"identity.accepted[2] repeats identity.accepted[0]"},
+		},
+		{
+			"every accepted problem at once",
+			audit.IdentityStandard{
+				Canonical: "Pat Example <pat@example.com>", Match: " Example <",
+				Accepted: []string{"x", "Robin Other <robin@example.org>", "Pat Example <pat@example.com>"},
+			},
+			[]string{
+				`identity.accepted[0] = "x" (want "Name <email>")`,
+				"identity.accepted[1] does not match identity.match",
+				"identity.accepted[2] is identity.canonical",
+			},
+		},
+		{
+			// Nothing to compare an entry with: only the canonical problem.
+			"a malformed canonical skips the canonical comparison",
+			audit.IdentityStandard{Canonical: "Pat Example", Match: " Example <", Accepted: []string{"Pat Example <pat@example.com>"}},
+			[]string{`identity.canonical = "Pat Example" (want "Name <email>")`},
+		},
+		{
+			"a bad expression skips the match comparison",
+			audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: "(unclosed", Accepted: []string{"Robin Other <robin@example.org>"}},
+			[]string{"identity.match: error parsing regexp"},
+		},
+		{
+			// A malformed entry is not an identity, so two of them repeat
+			// nothing.
+			"malformed entries are never repeats",
+			audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <", Accepted: []string{"bad", "bad"}},
+			[]string{`identity.accepted[0] = "bad"`, `identity.accepted[1] = "bad"`},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

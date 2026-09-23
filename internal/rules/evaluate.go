@@ -194,10 +194,10 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard
 }
 
 // observeIdentity judges the account holder's identities in the default
-// branch's history against the canonical one. A repository with none of them
-// is n/a, not a pass: there is nothing of the owner's to judge, and a tick
-// would claim a history was checked and found right when nothing in it was
-// the owner's at all.
+// branch's history: any that is neither canonical nor accepted is wrong. A
+// repository with none of them is n/a, not a pass: there is nothing of the
+// owner's to judge, and a tick would claim a history was checked and found
+// right when nothing in it was the owner's at all.
 func observeIdentity(r audit.Repo, std *identityStandard) observation {
 	if r.Empty {
 		return observation{unknown: true}
@@ -208,7 +208,7 @@ func observeIdentity(r audit.Repo, std *identityStandard) observation {
 	}
 	wrong := 0
 	for _, id := range mine {
-		if !sameIdentity(id, std.canonical) {
+		if std.kind(id) == kindWrong {
 			wrong++
 		}
 	}
