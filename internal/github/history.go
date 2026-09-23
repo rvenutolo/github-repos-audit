@@ -24,6 +24,12 @@ type fetchHistoryPage func(ctx context.Context, cursor string) (*history, error)
 // judgement, and judgements are internal/rules' alone.
 func walkHistory(ctx context.Context, first *history, next fetchHistoryPage) ([]audit.Identity, error) {
 	seen := map[audit.Identity]struct{}{}
+	// lastCursor is the cursor the previous request was made with, "" before
+	// any request. A page promising a next cursor equal to it would be asked
+	// for again next time round, forever: the server repeating a cursor
+	// instead of advancing it is indistinguishable from a stuck walk, so this
+	// aborts rather than looping until the context is cancelled.
+	var lastCursor string
 	for page := first; page != nil; {
 		for _, n := range page.Nodes {
 			for _, a := range []*gitActor{n.Author, n.Committer} {
@@ -40,6 +46,10 @@ func walkHistory(ctx context.Context, first *history, next fetchHistoryPage) ([]
 			// Asking again without a cursor would return page one forever.
 			return nil, fmt.Errorf("history: %w: next page promised but no end cursor", errGraphQL)
 		}
+		if cursor == lastCursor {
+			return nil, fmt.Errorf("history: %w: cursor did not advance", errGraphQL)
+		}
+		lastCursor = cursor
 		var err error
 		if page, err = next(ctx, cursor); err != nil {
 			return nil, err
@@ -64,17 +74,21 @@ func deref(s *string) string {
 }
 
 // identities walks the default branch's history. An empty repository has no
-// history and so no identities; that is an answer, not an error. A live
-// answer for a non-empty repository always carries history, because the query
-// asks for it; its absence is tolerated only so hand-built fixtures without it
-// still decode.
+// ref at all, and that is an answer, not an error: there is no history to
+// walk. A repository with a ref but no history in the first answer is a
+// different shape entirely — the query always asks for history, so its
+// absence there means the page came back malformed, and rendering that as
+// "no identities" would present a gap as a clean answer. That aborts instead.
 //
 // Every later page is asked of the head commit's oid rather than the branch:
 // the first page already describes that commit, and a push landing mid-walk
 // would otherwise splice a second history onto the first.
 func (c *Client) identities(ctx context.Context, name string, r *repository) ([]audit.Identity, error) {
-	if r.DefaultBranchRef == nil || r.DefaultBranchRef.Target == nil || r.DefaultBranchRef.Target.History == nil {
+	if r.DefaultBranchRef == nil || r.DefaultBranchRef.Target == nil {
 		return nil, nil
+	}
+	if r.DefaultBranchRef.Target.History == nil {
+		return nil, fmt.Errorf("history: %w: no history in response", errGraphQL)
 	}
 	oid := r.DefaultBranchRef.Target.OID
 	return walkHistory(ctx, r.DefaultBranchRef.Target.History, func(ctx context.Context, cursor string) (*history, error) {

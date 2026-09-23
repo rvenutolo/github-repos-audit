@@ -298,6 +298,36 @@ func TestWalkHistory_guards(t *testing.T) {
 	}
 }
 
+// TestWalkHistory_abortsOnAStuckCursor covers a server that repeats the
+// cursor it was just asked for instead of advancing it. Asking again would
+// fetch the same page forever, so the walk aborts on the second sighting
+// rather than looping until the context is cancelled; the stub is asked only
+// once, for the cursor the page it returns then repeats.
+func TestWalkHistory_abortsOnAStuckCursor(t *testing.T) {
+	t.Parallel()
+
+	first := &history{
+		PageInfo: pageInfo{HasNextPage: true, EndCursor: new("cursor-02")},
+		Nodes: []historyNode{{
+			Author: &gitActor{Name: new("Pat Example"), Email: new("pat@example.com")},
+		}},
+	}
+	calls := 0
+	got, err := walkHistory(t.Context(), first, func(context.Context, string) (*history, error) {
+		calls++
+		return &history{PageInfo: pageInfo{HasNextPage: true, EndCursor: new("cursor-02")}}, nil
+	})
+	if !errors.Is(err, errGraphQL) || !strings.Contains(err.Error(), "cursor did not advance") {
+		t.Fatalf("walkHistory() error = %v, want a cursor-did-not-advance graphql error", err)
+	}
+	if got != nil {
+		t.Errorf("walkHistory() = %v alongside an error, want nil", got)
+	}
+	if calls != 1 {
+		t.Errorf("next page fetched %d times, want 1", calls)
+	}
+}
+
 // TestWalkHistory_recordsExactStrings pins what the walk records: every
 // actor on every page, null halves as "", null actors not at all, no case
 // folding, and one entry per distinct pair in byte order.
@@ -401,9 +431,9 @@ func TestClient_identities_abortsWhenTheCommitIsGone(t *testing.T) {
 	}
 }
 
-// TestClient_identities_noHistoryIsNoIdentities covers the answers that carry
-// no history to walk: an empty repository, a ref with no target, and a target
-// without the history selection. None of them is an error.
+// TestClient_identities_noHistoryIsNoIdentities covers the two answers that
+// carry no history to walk and are not an error: an empty repository, and a
+// ref with no target. Neither reaches the network.
 func TestClient_identities_noHistoryIsNoIdentities(t *testing.T) {
 	t.Parallel()
 
@@ -411,12 +441,31 @@ func TestClient_identities_noHistoryIsNoIdentities(t *testing.T) {
 	for name, r := range map[string]*repository{
 		"empty repository": {},
 		"no target":        {DefaultBranchRef: &branchRef{Name: "main"}},
-		"no history on it": {DefaultBranchRef: &branchRef{Name: "main", Target: &commit{OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014"}}},
 	} {
 		got, err := c.identities(t.Context(), "web-app", r)
 		if err != nil || got != nil {
 			t.Errorf("%s: identities() = %v, %v, want nil, nil", name, got, err)
 		}
+	}
+}
+
+// TestClient_identities_abortsWhenTheFirstAnswerHasNoHistory covers a target
+// present without the history selection. The query always asks for history,
+// so its absence means the first answer came back malformed; reading that as
+// "no identities" would render a gap as a clean answer, so it aborts instead.
+// The fake server is never called: the malformed shape is in the repository
+// value handed in, not in a page fetched over the wire.
+func TestClient_identities_abortsWhenTheFirstAnswerHasNoHistory(t *testing.T) {
+	t.Parallel()
+
+	c := graphQLServer(t, `{"errors":[{"message":"no request was expected"}]}`)
+	r := &repository{DefaultBranchRef: &branchRef{Name: "main", Target: &commit{OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014"}}}
+	got, err := c.identities(t.Context(), "web-app", r)
+	if !errors.Is(err, errGraphQL) || !strings.Contains(err.Error(), "no history in response") {
+		t.Fatalf("identities() error = %v, want a no-history graphql error", err)
+	}
+	if got != nil {
+		t.Errorf("identities() = %v alongside an error, want nil", got)
 	}
 }
 
