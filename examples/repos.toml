@@ -207,7 +207,7 @@ branches = "info"
 # canonical is the one identity your commits should carry; match is an RE2
 # regular expression, unanchored, tested against each commit's "Name <email>"
 # for author and committer alike — whatever it matches is yours. A plain word
-# means "contains"; " Example <" means "a name ending in Example".
+# means "contains"; " Example <" means "a name whose last word is Example".
 [identity]
 canonical = "Pat Example <pat@example.com>"
 match = " Example <"

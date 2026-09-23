@@ -1,6 +1,7 @@
 # The six repository types this project judged against when the matrix lived
-# in Go, as [types.*] tables. A test fixture: rules, render and cmd/audit tests
-# read it, so they do not move when this repository's own repos.toml does.
+# in Go, as [types.*] tables, plus the [identity] table git_identity needs. A
+# test fixture: rules, render and cmd/audit tests read it, so they do not move
+# when this repository's own repos.toml does.
 
 [types.software]
 readme = "required"

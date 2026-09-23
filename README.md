@@ -170,7 +170,8 @@ match = " Example <"
 - `match` is a Go (RE2) regular expression, unanchored, tested against each
   commit author's and committer's `Name <email>`; whatever it matches is
   yours. A plain word means "contains": `'(?i)yourname'` matches your name in
-  any case, anywhere, and `' Yourname <'` matches a name ending in it. It can
+  any case, anywhere, and `' Yourname <'` matches a name whose last word is
+  Yourname (the leading space rules out a one-word name). It can
   match on the address instead, which survives a change of name:
   `'@yourdomain\.example>$'`. `canonical` must itself match.
 
@@ -226,7 +227,11 @@ restated — and with `git_identity` judged by no type, so it needs no
   which ones its history carries, marking the mixed and non-canonical ones —
   overridden repositories included, since it is the list to rewrite from.
   Reading the history costs one extra request per 100 commits beyond the
-  first hundred.
+  first hundred. A commit made through GitHub's web UI is recorded under the
+  account's web-flow identity (a `…@users.noreply.github.com` address), not
+  the identity the account normally commits as; if `match` is written broadly
+  enough to catch that address, those commits count as non-canonical, so
+  choose `match` (or write `canonical` to match it) deliberately.
 - **secret_scanning**, **vuln_reporting** — the two security features
   GitHub can enable on a repository.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
