@@ -17,6 +17,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
 )
 
@@ -45,6 +46,11 @@ type Config struct {
 	Types rules.Types
 	// Repos is keyed by repository name.
 	Repos map[string]Repo
+	// Identity is the [identity] table: the account holder's canonical git
+	// identity and the expression saying which identities are theirs. Zero
+	// when repos.toml has no [identity] table, which it may omit only when
+	// nothing judges git_identity.
+	Identity audit.IdentityStandard
 }
 
 // Names returns every declared repository name, sorted case-insensitively so
@@ -58,8 +64,16 @@ func (c *Config) Names() []string {
 // fileShape mirrors repos.toml exactly. Decoding into it rather than into Repo
 // keeps the wire format separate from the validated value.
 type fileShape struct {
-	Types rules.Types           `toml:"types"`
-	Repos map[string]entryShape `toml:"repos"`
+	Types    rules.Types           `toml:"types"`
+	Repos    map[string]entryShape `toml:"repos"`
+	Identity *identityShape        `toml:"identity"`
+}
+
+// identityShape mirrors [identity]. A pointer in fileShape, so an empty table
+// is present-but-wrong rather than indistinguishable from no table at all.
+type identityShape struct {
+	Canonical string `toml:"canonical"`
+	Match     string `toml:"match"`
 }
 
 type entryShape struct {
@@ -120,10 +134,44 @@ func Parse(r io.Reader) (*Config, error) {
 		problems = append(problems, errs...)
 		cfg.Repos[name] = repo
 	}
+	std, errs := identityProblems(raw)
+	problems = append(problems, errs...)
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("%w: %w", ErrInvalid, errors.Join(problems...))
 	}
+	cfg.Identity = std
 	return cfg, nil
+}
+
+// identityProblems checks [identity] against whether anything judges
+// git_identity: needed and absent is an error, and so is present and unused —
+// a dead setting, rejected for the same reason a dead override is. Any word or
+// override other than not_required counts as judging, info included: an
+// informational cell still says how many identities are wrong, which needs a
+// standard to count against.
+func identityProblems(raw fileShape) (audit.IdentityStandard, []error) {
+	key := rules.CheckGitIdentity.String()
+	needed := false
+	for _, entries := range raw.Types {
+		if w := entries[key]; w != "" && w != rules.OverrideNotRequired {
+			needed = true
+		}
+	}
+	for _, e := range raw.Repos {
+		if v, ok := e.Overrides[key]; ok && v != rules.OverrideNotRequired {
+			needed = true
+		}
+	}
+	switch {
+	case raw.Identity == nil && needed:
+		return audit.IdentityStandard{}, []error{errors.New("git_identity is judged but repos.toml has no [identity] table")}
+	case raw.Identity == nil:
+		return audit.IdentityStandard{}, nil
+	case !needed:
+		return audit.IdentityStandard{}, []error{errors.New("[identity] is set but no type or override judges git_identity")}
+	}
+	std := audit.IdentityStandard{Canonical: raw.Identity.Canonical, Match: raw.Identity.Match}
+	return std, rules.IdentityProblems(std)
 }
 
 // validate turns one raw entry into a Repo, returning every problem it found

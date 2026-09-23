@@ -20,6 +20,7 @@ Hand-written prose.
 - **No .justfile** (1) — go-linter
 - **No CONTRIBUTING.md** (1) — mixedCase-flake
 - **No CODE_OF_CONDUCT.md** (1) — mixedCase-flake
+- **Commits under a non-canonical git identity** (2) — github-repos-audit, mixedCase-flake
 - **No tag ruleset** (1) — go-linter
 - **Direct push to the default branch allowed** (1) — go-linter
 - **Direct push to the default branch blocked** (1) — cipher-lib
@@ -47,13 +48,13 @@ Hand-written prose.
 
 ## Policy
 
-| Repository                                                           | Direct push | Signed | CI workflows | Required checks | Tag ruleset  | Secret scanning | Vuln. reporting |
-| -------------------------------------------------------------------- | ----------- | ------ | ------------ | --------------- | ------------ | --------------- | --------------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | ✗ blocked   | ✓      | n/a          | 2               | default      | ✗               | n/a             |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ blocked   | ✓      | ✓            | ✗               | default      | n/a             | n/a             |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗ allowed   | n/a    | ✗            | n/a             | ✗            | n/a             | n/a             |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ blocked   | ✓      | ✓            | 2               | `ruleset-02` | ✓               | ✓               |
-| [web-app](https://github.com/gh-owner/web-app)                       | ✓ blocked   | ✓      | ✓            | 2               | default      | n/a             | n/a             |
+| Repository                                                           | Direct push | Signed | Identity  | CI workflows | Required checks | Tag ruleset  | Secret scanning | Vuln. reporting |
+| -------------------------------------------------------------------- | ----------- | ------ | --------- | ------------ | --------------- | ------------ | --------------- | --------------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | ✗ blocked   | ✓      | n/a       | n/a          | 2               | default      | ✗               | n/a             |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | ✗               | default      | n/a             | n/a             |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗ allowed   | n/a    | n/a       | ✗            | n/a             | ✗            | n/a             | n/a             |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | 2               | `ruleset-02` | ✓               | ✓               |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✓ blocked   | ✓      | ✓         | ✓            | 2               | default      | n/a             | n/a             |
 
 ## Activity
 
@@ -64,6 +65,12 @@ Hand-written prose.
 | [go-linter](https://github.com/gh-owner/go-linter)                   | never     | ✗       | 0        | 0        | 0        | n/a          |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 11d       | SUCCESS | 0        | 0        | 3        | 5mo          |
 | [web-app](https://github.com/gh-owner/web-app)                       | 11d       | SUCCESS | 0        | 0        | 0        | n/a          |
+
+## Git identities
+
+- **github-repos-audit** — `Pat Example <pat@example.org>` — not canonical
+- **mixedCase-flake** — `Pat Example <pat@example.com>` (canonical), `Patrick Example <patrick@example.org>` — mixed
+- **web-app** — `Pat Example <pat@example.com>` (canonical)
 
 ## Settings exceptions
 

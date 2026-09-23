@@ -130,7 +130,7 @@ never in the tool's own code path.
 
 ## `repos.toml` reference
 
-`repos.toml` is the only file you hand-maintain. It has two kinds of table.
+`repos.toml` is the only file you hand-maintain. It has three kinds of table.
 
 `[types.<name>]` defines a category of repository and what it expects. A type
 lists every check the tool knows, each set to one of:
@@ -157,12 +157,34 @@ Each `[repos.<name>]` entry declares a `type`, and optionally `published` and
 per-repository `overrides`. Visibility is never declared; it is always read
 live from GitHub.
 
+`[identity]` declares your git identity, for the `git_identity` check:
+
+```toml
+[identity]
+canonical = "Pat Example <pat@example.com>"
+match = " Example <"
+```
+
+- `canonical` is the one identity your commits should carry, written
+  `Name <email>` the way git prints it.
+- `match` is a Go (RE2) regular expression, unanchored, tested against each
+  commit author's and committer's `Name <email>`; whatever it matches is
+  yours. A plain word means "contains": `'(?i)yourname'` matches your name in
+  any case, anywhere, and `' Yourname <'` matches a name ending in it. It can
+  match on the address instead, which survives a change of name:
+  `'@yourdomain\.example>$'`. `canonical` must itself match.
+
+The table is required once any type or override judges `git_identity` (with
+any word but `not_required`), and refused when nothing does, for the same
+reason a dead override is.
+
 An override that names an unknown check is an error, and so is an override
 that agrees with what the repository's type already derives — a dead
 override is deleted rather than left to rot. `required` is never accepted on
 a value-only check. `examples/repos.invalid.toml` is a worked example of the
 dead-override error: it is a copy of `examples/repos.toml` with one override
-restated, and `audit validate` is expected to reject it.
+restated — and with `git_identity` judged by no type, so it needs no
+`[identity]` table — and `audit validate` is expected to reject it.
 
 ## The checks
 
@@ -193,6 +215,18 @@ restated, and `audit validate` is expected to reject it.
 - **signed_commits**, **tag_ruleset**, **direct_push** — whether commit
   signing is required, whether tags are protected by a ruleset, and whether
   a push straight to the default branch is possible at all.
+- **git_identity** — every author and committer on the default branch's full
+  history whose `Name <email>` matches `[identity].match` must be exactly
+  `[identity].canonical`, the address compared without regard to case. Fails
+  with the number of wrong identities; a history that always used the wrong
+  one fails as surely as one that switched. n/a for an empty repository, or
+  one with none of your commits at all. Other people's and bots' identities
+  are recorded in `audit.json` but never judged. The Git identities section
+  of the report lists, for every repository with any of your identities,
+  which ones its history carries, marking the mixed and non-canonical ones —
+  overridden repositories included, since it is the list to rewrite from.
+  Reading the history costs one extra request per 100 commits beyond the
+  first hundred.
 - **secret_scanning**, **vuln_reporting** — the two security features
   GitHub can enable on a repository.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain

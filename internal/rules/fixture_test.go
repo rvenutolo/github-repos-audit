@@ -115,11 +115,18 @@ func published(r audit.Repo) audit.Repo {
 
 // evaluateOne runs one repository through the rules and returns its cells.
 func evaluateOne(r audit.Repo) (map[rules.Check]rules.Cell, error) {
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{r}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}})
 	if err != nil {
 		return nil, err
 	}
 	return rep.Repos[0].Cells, nil
+}
+
+// fixtureIdentity is the [identity] table standard-types.toml declares, which
+// every snapshot judged against those types needs once any of them judges
+// git_identity: a judged check with no standard is an Evaluate error.
+func fixtureIdentity() audit.IdentityStandard {
+	return audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
 }
 
 // toolsRepos builds several private `tools` fixtures at once, which is the
@@ -143,8 +150,10 @@ func publicToolsRepos(names ...string) []audit.Repo {
 
 // table builds one complete type table: every check listed at a word it
 // accepts — required, blocked for direct push, info for the value-only checks,
-// "7 days" for the release-age threshold — with set overriding individual
-// words. A key in set that is not a check is
+// "7 days" for the release-age threshold, not_required for git_identity —
+// with set overriding individual words. git_identity defaults to not_required
+// because most tests are about other checks, and a judged git_identity would
+// make each of them declare an identity standard it has no interest in. A key in set that is not a check is
 // added as well, so a test can build an unknown-check table the same way.
 func table(set map[string]string) map[string]string {
 	out := make(map[string]string, len(rules.Checks())+len(set))
@@ -156,6 +165,8 @@ func table(set map[string]string) map[string]string {
 			out[c.String()] = "info"
 		case c.Threshold():
 			out[c.String()] = "7 days"
+		case c == rules.CheckGitIdentity:
+			out[c.String()] = rules.OverrideNotRequired
 		default:
 			out[c.String()] = rules.OverrideRequired
 		}

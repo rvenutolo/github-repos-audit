@@ -21,6 +21,10 @@ type Snapshot struct {
 	// recorded so audit.json describes the standard each repository was held
 	// to, not only the name of it.
 	Types map[string]map[string]string `json:"types"`
+	// Identity is repos.toml's [identity] table, recorded so audit.json says
+	// which identity the history was held to. Absent when nothing judges
+	// git_identity.
+	Identity IdentityStandard `json:"identity,omitzero"`
 	// Repos is sorted by name, case-insensitively.
 	Repos []Repo `json:"repos"`
 }

@@ -29,6 +29,10 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/repo" }
+    },
+    "identity": {
+      "description": "repos.toml's [identity] table: the identity git_identity holds the account holder's commits to. Absent when nothing judges git_identity, which is also the only case repos.toml may omit the table.",
+      "$ref": "#/$defs/identity_standard"
     }
   },
   "$defs": {
@@ -87,6 +91,7 @@
               "releases",
               "changelog",
               "signed_commits",
+              "git_identity",
               "tag_ruleset",
               "direct_push",
               "secret_scanning",
@@ -205,6 +210,7 @@
         "releases",
         "changelog",
         "signed_commits",
+        "git_identity",
         "tag_ruleset",
         "direct_push",
         "secret_scanning",
@@ -233,6 +239,7 @@
         "releases": { "$ref": "#/$defs/expectation" },
         "changelog": { "$ref": "#/$defs/expectation" },
         "signed_commits": { "$ref": "#/$defs/expectation" },
+        "git_identity": { "$ref": "#/$defs/expectation" },
         "tag_ruleset": { "$ref": "#/$defs/expectation" },
         "direct_push": { "$ref": "#/$defs/direct_push" },
         "secret_scanning": { "$ref": "#/$defs/expectation" },
@@ -368,6 +375,16 @@
       "properties": {
         "name": { "type": "string" },
         "email": { "type": "string" }
+      }
+    },
+    "identity_standard": {
+      "description": "The account holder's git identity standard. canonical is the one correct identity, written \"Name <email>\"; match is an unanchored RE2 expression tested against each commit identity's \"Name <email>\", and whatever it matches is the account holder's.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical", "match"],
+      "properties": {
+        "canonical": { "type": "string", "minLength": 1 },
+        "match": { "type": "string", "minLength": 1 }
       }
     },
     "ruleset": {

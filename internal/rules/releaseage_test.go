@@ -85,7 +85,7 @@ func TestEvaluate_minReleaseAgeReachesTheWorklist(t *testing.T) {
 	short := withAge(fixture("short", "tools"), "3 days", "")
 	fine := withAge(fixture("fine", "tools"), "7 days", "")
 	excused := withOverride(noRenovate(fixture("excused", "tools")), "14 days")
-	rep, err := rules.Evaluate(&audit.Snapshot{Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{excused, fine, short}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{excused, fine, short}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}

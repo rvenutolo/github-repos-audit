@@ -31,6 +31,7 @@ var gapLabels = map[Check]string{
 	CheckReleases:              "No releases",
 	CheckChangelog:             "No CHANGELOG.md",
 	CheckSignedCommits:         "Signed commits not required",
+	CheckGitIdentity:           "Commits under a non-canonical git identity",
 	CheckTagRuleset:            "No tag ruleset",
 	CheckSecretScanning:        "Secret scanning off",
 	CheckVulnReporting:         "Private vulnerability reporting off",

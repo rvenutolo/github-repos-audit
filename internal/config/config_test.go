@@ -12,14 +12,18 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/config"
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
 )
 
 // typeTable writes one complete [types.<name>] table: every check at a word it
 // accepts — required, blocked for direct push, info for the value-only checks,
-// "7 days" for the release-age threshold — with set replacing words (a key
-// that is not a check is written too) and drop leaving checks out.
+// "7 days" for the release-age threshold, not_required for git_identity —
+// with set replacing words (a key that is not a check is written too) and drop
+// leaving checks out. git_identity defaults to not_required because most cases
+// are about something else, and a judged git_identity would make each of them
+// carry an [identity] table it has no interest in.
 func typeTable(name string, set map[string]string, drop ...string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[types.%s]\n", name)
@@ -36,6 +40,8 @@ func typeTable(name string, set map[string]string, drop ...string) string {
 			word = "info"
 		case c.Threshold():
 			word = "7 days"
+		case c == rules.CheckGitIdentity:
+			word = rules.OverrideNotRequired
 		}
 		if w, ok := set[key]; ok {
 			word = w
@@ -113,6 +119,62 @@ func TestParse_acceptsAThresholdOverride(t *testing.T) {
 	}
 }
 
+// identityTable is the fixture [identity] table, the vocabulary
+// internal/fixturevocab allows.
+const identityTable = "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\nmatch = \" Example <\"\n\n"
+
+// judgedTools is a tools type that judges git_identity.
+var judgedTools = typeTable("tools", map[string]string{"git_identity": rules.OverrideRequired})
+
+func TestParse_keepsTheIdentityStandard(t *testing.T) {
+	t.Parallel()
+
+	in := judgedTools + identityTable + "[repos.alpha]\ntype = \"tools\"\n"
+	cfg, err := config.Parse(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("Parse() error = %v, want nil", err)
+	}
+	want := audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
+	if cfg.Identity != want {
+		t.Errorf("Parse() identity = %+v, want %+v", cfg.Identity, want)
+	}
+}
+
+// TestParse_identityOverrideMakesTheTableNeeded: one repository opting in is
+// enough to need the table, and then the table is not dead.
+func TestParse_identityOverrideMakesTheTableNeeded(t *testing.T) {
+	t.Parallel()
+
+	in := typeTable("tools", nil) + identityTable + "[repos.alpha]\ntype = \"tools\"\noverrides = { git_identity = \"required\" }\n"
+	if _, err := config.Parse(strings.NewReader(in)); err != nil {
+		t.Errorf("Parse() error = %v, want nil", err)
+	}
+}
+
+// TestParse_anEmptyIdentityTableIsPresent: [identity] with nothing under it is
+// a table written wrong, not a table left out, so the errors name its fields
+// rather than claiming it is missing.
+func TestParse_anEmptyIdentityTableIsPresent(t *testing.T) {
+	t.Parallel()
+
+	in := judgedTools + "[identity]\n\n[repos.alpha]\ntype = \"tools\"\n"
+	_, err := config.Parse(strings.NewReader(in))
+	if err == nil {
+		t.Fatal("Parse() error = nil, want the empty table's problems")
+	}
+	if !errors.Is(err, config.ErrInvalid) {
+		t.Errorf("Parse() error = %v, want it to wrap ErrInvalid", err)
+	}
+	for _, want := range []string{`identity.canonical = ""`, "identity.match: missing"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse() error = %q, want it to contain %q", err.Error(), want)
+		}
+	}
+	if strings.Contains(err.Error(), "no [identity] table") {
+		t.Errorf("Parse() error = %q, want no claim that the table is missing", err.Error())
+	}
+}
+
 func TestParse_keepsTheTypesTable(t *testing.T) {
 	t.Parallel()
 
@@ -131,6 +193,8 @@ func TestParse_keepsTheTypesTable(t *testing.T) {
 				entries[c.String()] = "info"
 			case c.Threshold():
 				entries[c.String()] = "7 days"
+			case c == rules.CheckGitIdentity:
+				entries[c.String()] = rules.OverrideNotRequired
 			default:
 				entries[c.String()] = rules.OverrideRequired
 			}
@@ -252,6 +316,36 @@ var rejectedFiles = []struct {
 		name:     "required on the threshold check",
 		in:       toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { renovate_min_release_age = \"required\" }\n",
 		contains: `alpha: override renovate_min_release_age = "required" (want a duration like "7 days", not_required or info)`,
+	},
+	{
+		name:     "git_identity required with no [identity] table",
+		in:       judgedTools + "[repos.alpha]\ntype = \"tools\"\n",
+		contains: "git_identity is judged but repos.toml has no [identity] table",
+	},
+	{
+		name:     "git_identity info with no [identity] table",
+		in:       typeTable("tools", map[string]string{"git_identity": "info"}) + "[repos.alpha]\ntype = \"tools\"\n",
+		contains: "git_identity is judged but repos.toml has no [identity] table",
+	},
+	{
+		name:     "a git_identity override with no [identity] table",
+		in:       typeTable("tools", nil) + "[repos.alpha]\ntype = \"tools\"\noverrides = { git_identity = \"required\" }\n",
+		contains: "git_identity is judged but repos.toml has no [identity] table",
+	},
+	{
+		name:     "an [identity] table nothing judges",
+		in:       typeTable("tools", nil) + identityTable + "[repos.alpha]\ntype = \"tools\"\n",
+		contains: "[identity] is set but no type or override judges git_identity",
+	},
+	{
+		name:     "an unknown key under [identity]",
+		in:       judgedTools + "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\nmatch = \" Example <\"\nname = \"x\"\n\n[repos.alpha]\ntype = \"tools\"\n",
+		contains: "identity.name",
+	},
+	{
+		name:     "a canonical identity the match expression rejects",
+		in:       judgedTools + "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\nmatch = \"Robin\"\n\n[repos.alpha]\ntype = \"tools\"\n",
+		contains: "identity.canonical does not match identity.match",
 	},
 	{
 		name:     "no entries at all",

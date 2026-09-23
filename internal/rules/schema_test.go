@@ -35,6 +35,7 @@ type schema struct {
 			} `json:"propertyNames"` //nolint:tagliatelle // a JSON Schema keyword; the spec spells it, this project does not
 			AdditionalProperties ref `json:"additionalProperties"` //nolint:tagliatelle // a JSON Schema keyword; the spec spells it, this project does not
 		} `json:"types"`
+		Identity ref `json:"identity"`
 	} `json:"properties"`
 	Defs struct {
 		Repo struct {
@@ -119,6 +120,21 @@ func TestSchema_typesAreRequired(t *testing.T) {
 	}
 	if got, want := s.Properties.Types.PropertyNames.Pattern, "^[a-z0-9_-]+$"; got != want {
 		t.Errorf("properties.types.propertyNames.pattern = %q, want %q", got, want)
+	}
+}
+
+// TestSchema_identityIsOptional: the [identity] table is recorded as it was
+// declared, and a repos.toml that judges no git_identity declares none, so the
+// key is omitted rather than written empty and must not be required.
+func TestSchema_identityIsOptional(t *testing.T) {
+	t.Parallel()
+
+	s := loadSchema(t)
+	if slices.Contains(s.Required, "identity") {
+		t.Errorf("required = %q, want it not to include identity", s.Required)
+	}
+	if got, want := s.Properties.Identity.Ref, "#/$defs/identity_standard"; got != want {
+		t.Errorf("properties.identity.$ref = %q, want %q", got, want)
 	}
 }
 
