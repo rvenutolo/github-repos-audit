@@ -244,3 +244,22 @@ type AllowedActions struct {
 	// Patterns is the allowlist itself, sorted.
 	Patterns []string `json:"patterns,omitzero"`
 }
+
+// Identity is one git identity as a commit records it, for its author or its
+// committer. It is recorded exactly as the commit spells it: deciding that two
+// spellings are the same person is internal/rules' business.
+type Identity struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// IdentityStandard is repos.toml's [identity] table: the one identity the
+// account's own commits should carry, and the regular expression that says
+// which collected identities are the account holder's at all. It is recorded
+// on the snapshot so audit.json describes the standard it was judged by.
+type IdentityStandard struct {
+	// Canonical is written "Name <email>".
+	Canonical string `json:"canonical"`
+	// Match is an RE2 expression, unanchored, tested against "Name <email>".
+	Match string `json:"match"`
+}
