@@ -31,7 +31,7 @@ var fakeRepos = []string{
 	"blank-repo", "cipher-lib", "compiler-config", "config-files", "go-linter",
 	"hook-guard", "java-demo", "media-server", "mixedCase-flake", "pkg-index",
 	"private-notes", "recipe-site", "shell-scripts", "updater", "web-app",
-	"github-repos-audit", "alpha", "bravo",
+	"github-repos-audit", "alpha", "bravo", "preset-store",
 }
 
 // rule says what the scalar at a key path may hold. want describes the
