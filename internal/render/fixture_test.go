@@ -29,7 +29,11 @@ var standardTypes = sync.OnceValue(func() rules.Types {
 // every snapshot judged against those types needs once any of them judges
 // git_identity: a judged check with no standard is an Evaluate error.
 func fixtureIdentity() audit.IdentityStandard {
-	return audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
+	return audit.IdentityStandard{
+		Canonical: "Pat Example <pat@example.com>",
+		Match:     " Example <",
+		Accepted:  []string{"Pat Example <12345+pat@users.noreply.github.com>"},
+	}
 }
 
 // renderedAt is the instant every golden file is rendered against, so the
@@ -105,8 +109,9 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // cell is n/a, a public-but-unpublished repository carrying topics it is not
 // judged on, an empty repository, one deviation on each of two settings, a
 // minimum release age that falls short and another that is unresolved, and
-// git identities that are mixed, consistently non-canonical, only someone
-// else's, and absent altogether.
+// git identities that are mixed (beside an accepted one), canonical beside
+// an accepted one, consistently non-canonical, only someone else's, and
+// absent altogether.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -127,8 +132,10 @@ func fullSnapshot() *audit.Snapshot {
 	soft.Settings.PrivateVulnerabilityReporting = new(true)
 	soft.Settings.ActionsAccessLevel = ""
 	soft.Settings.HasProjects = true // the one deviation on projects
-	// Its history switched identity: mixed.
+	// Its history switched identity: mixed. The web-flow noreply identity
+	// beside them is accepted and does not count toward it.
 	soft.Identities = []audit.Identity{
+		{Name: "Pat Example", Email: "12345+pat@users.noreply.github.com"},
 		{Name: "Pat Example", Email: "pat@example.com"},
 		{Name: "Patrick Example", Email: "patrick@example.org"},
 		{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"},
@@ -186,6 +193,12 @@ func fullSnapshot() *audit.Snapshot {
 	cfg.Settings.HasWiki = true // the one deviation on wiki
 	// A preset it extends is missing, so its release age is unresolved.
 	cfg.Renovate = audit.Renovate{MinReleaseAgeError: "preset github>gh-owner/preset-store:go: not found"}
+	// Its own commits and web-UI merges: canonical and accepted, a pass.
+	cfg.Identities = []audit.Identity{
+		{Name: "Pat Example", Email: "12345+pat@users.noreply.github.com"},
+		{Name: "Pat Example", Email: "pat@example.com"},
+		{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"},
+	}
 
 	return &audit.Snapshot{
 		GeneratedAt: renderedAt,

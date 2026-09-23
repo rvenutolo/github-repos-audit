@@ -63,8 +63,8 @@
 ## Git identities
 
 - **github-repos-audit** — `Pat Example <pat@example.org>` — not canonical
-- **mixedCase-flake** — `Pat Example <pat@example.com>` (canonical), `Patrick Example <patrick@example.org>` — mixed
-- **web-app** — `Pat Example <pat@example.com>` (canonical)
+- **mixedCase-flake** — `Pat Example <pat@example.com>` (canonical), `Pat Example <12345+pat@users.noreply.github.com>` (accepted), `Patrick Example <patrick@example.org>` — mixed
+- **web-app** — `Pat Example <pat@example.com>` (canonical), `Pat Example <12345+pat@users.noreply.github.com>` (accepted)
 
 ## Settings exceptions
 

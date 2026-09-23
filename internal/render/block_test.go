@@ -324,13 +324,16 @@ func TestBlock_noConsensusWithoutExceptions(t *testing.T) {
 }
 
 // Identities the Git identities tests use: the fixture vocabulary only. The
-// bot and GitHub identities never appear in Markdown, because their addresses
-// name a real host.
+// bot and GitHub identities never appear in Markdown, since they are never
+// the owner's; the fake noreply address does, as an accepted identity, and
+// internal/fixturevocab holds it to the identity vocabulary rather than the
+// host scan.
 var (
 	patCanonical = audit.Identity{Name: "Pat Example", Email: "pat@example.com"}
 	patOther     = audit.Identity{Name: "Pat Example", Email: "pat@example.org"}
 	patrick      = audit.Identity{Name: "Patrick Example", Email: "patrick@example.org"}
 	robin        = audit.Identity{Name: "Robin Other", Email: "robin@example.org"}
+	patNoreply   = audit.Identity{Name: "Pat Example", Email: "12345+pat@users.noreply.github.com"}
 )
 
 // withTypesWord is standardTypes with git_identity at word in every type.
@@ -398,10 +401,13 @@ func TestBlock_gitIdentities(t *testing.T) {
 	charlie := baseRepo("charlie", "tools")
 	charlie.Identities = []audit.Identity{patOther}
 	delta := baseRepo("delta", "tools")
-	delta.Identities = []audit.Identity{patCanonical}
+	delta.Identities = []audit.Identity{patNoreply, patCanonical}
+	// Only the accepted identity: listed, tagged, and still a pass.
+	echo := baseRepo("echo", "tools")
+	echo.Identities = []audit.Identity{patNoreply}
 	snap := &audit.Snapshot{
 		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),
-		Repos: []audit.Repo{alpha, bravo, charlie, delta},
+		Repos: []audit.Repo{alpha, bravo, charlie, delta, echo},
 	}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
@@ -411,7 +417,8 @@ func TestBlock_gitIdentities(t *testing.T) {
 	want := "## Git identities\n\n" +
 		"- **alpha** — `Pat Example <pat@example.com>` (canonical), `Patrick Example <patrick@example.org>` — mixed\n" +
 		"- **charlie** — `Pat Example <pat@example.org>` — not canonical\n" +
-		"- **delta** — `Pat Example <pat@example.com>` (canonical)\n"
+		"- **delta** — `Pat Example <pat@example.com>` (canonical), `Pat Example <12345+pat@users.noreply.github.com>` (accepted)\n" +
+		"- **echo** — `Pat Example <12345+pat@users.noreply.github.com>` (accepted)\n"
 	if !strings.Contains(got, want) {
 		t.Fatalf("Block() should contain\n%s\ngot:\n%s", want, got)
 	}
@@ -439,6 +446,9 @@ func TestBlock_gitIdentities(t *testing.T) {
 	}
 	if cells := policyCells(t, got, "delta"); cells["Identity"] != "✓" {
 		t.Errorf("delta's Identity cell = %q, want %q", cells["Identity"], "✓")
+	}
+	if cells := policyCells(t, got, "echo"); cells["Identity"] != "✓" {
+		t.Errorf("echo's Identity cell = %q, want %q", cells["Identity"], "✓")
 	}
 }
 
@@ -485,9 +495,11 @@ func TestBlock_identityInfoCells(t *testing.T) {
 	fine.Identities = []audit.Identity{patCanonical}
 	wrong := baseRepo("bravo", "tools")
 	wrong.Identities = []audit.Identity{patOther}
+	accepted := baseRepo("charlie", "tools")
+	accepted.Identities = []audit.Identity{patNoreply}
 	snap := &audit.Snapshot{
 		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord("info"), Identity: fixtureIdentity(),
-		Repos: []audit.Repo{fine, wrong},
+		Repos: []audit.Repo{fine, wrong, accepted},
 	}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -498,6 +510,9 @@ func TestBlock_identityInfoCells(t *testing.T) {
 	}
 	if cell := policyCells(t, got, "bravo")["Identity"]; cell != "1 wrong" {
 		t.Errorf("bravo's Identity cell = %q, want %q", cell, "1 wrong")
+	}
+	if cell := policyCells(t, got, "charlie")["Identity"]; cell != "n/a" {
+		t.Errorf("charlie's Identity cell = %q, want n/a", cell)
 	}
 }
 

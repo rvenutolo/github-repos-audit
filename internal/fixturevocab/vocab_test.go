@@ -38,12 +38,14 @@ var fakeRepos = []string{
 // fakeIdentityNames and fakeIdentityEmails are the only git identities a
 // fixture or golden may carry. A captured history would carry the account
 // holder's real name and address, which is exactly what this test exists to
-// keep out; the bot and GitHub entries are GitHub's own public identities.
+// keep out; the bot and GitHub entries are GitHub's own public identities,
+// and 12345+pat@users.noreply.github.com stands for the fake owner's web-flow
+// noreply address.
 var (
 	fakeIdentityNames  = []string{"Pat Example", "Patrick Example", "Robin Other", "renovate[bot]", "GitHub"}
 	fakeIdentityEmails = []string{
 		"pat@example.com", "Pat@Example.com", "pat@example.org", "patrick@example.org", "robin@example.org",
-		"29139614+renovate[bot]@users.noreply.github.com", "noreply@github.com",
+		"29139614+renovate[bot]@users.noreply.github.com", "noreply@github.com", "12345+pat@users.noreply.github.com",
 	}
 )
 
@@ -309,6 +311,7 @@ var snapshotRules = []rule{
 	// report, so a golden may carry only the fixture standard.
 	{regexp.MustCompile(`^identity\.canonical$`), func(v any) bool { return v == "Pat Example <pat@example.com>" }, "the fixture canonical identity"},
 	{regexp.MustCompile(`^identity\.match$`), func(v any) bool { return v == " Example <" }, "the fixture identity match"},
+	{regexp.MustCompile(`^identity\.accepted\[\]$`), func(v any) bool { return v == "Pat Example <12345+pat@users.noreply.github.com>" }, "the fixture accepted identity"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
@@ -453,9 +456,10 @@ var gapListName = regexp.MustCompile(`^- \*\*.+\*\* \(\d+\) — (.+)$`)
 var identityBullet = regexp.MustCompile(`^- \*\*(.+?)\*\* — (.+?)(?: — (?:mixed|not canonical))?$`)
 
 // identityList is the whole of a bullet's identity list: backticked
-// identities, each optionally marked canonical, separated by ", ". Anything
-// else between the spans — free text that could carry a real name — fails it.
-var identityList = regexp.MustCompile("^`[^`]+`(?: \\(canonical\\))?(?:, `[^`]+`(?: \\(canonical\\))?)*$")
+// identities, each optionally tagged canonical or accepted — never both —
+// separated by ", ". Anything else between the spans — free text that could
+// carry a real name — fails it.
+var identityList = regexp.MustCompile("^`[^`]+`(?: \\((?:canonical|accepted)\\))?(?:, `[^`]+`(?: \\((?:canonical|accepted)\\))?)*$")
 
 // identitySpan extracts each backticked identity from an identityList.
 var identitySpan = regexp.MustCompile("`([^`]+)`")
@@ -577,6 +581,13 @@ func checkMarkdown(text string) []string {
 			problems = append(problems, fmt.Sprintf("line %d: a github.io link", n))
 		case avatarLink.MatchString(line):
 			problems = append(problems, fmt.Sprintf("line %d: an avatar link that identifies an account by id", n))
+		case inIdentities:
+			// A Git identities line has already been held, span by span, to the
+			// fake identity vocabulary by checkIdentityLine, which also rejects
+			// anything that is not a well-formed bullet. An address there may
+			// legitimately end in users.noreply.github.com — GitHub's web-flow
+			// identity — which is not a link and names no repository, so the
+			// host scan has nothing to decompose and would only misfire.
 		default:
 			decomposed := false
 			for _, re := range githubHostPatterns {
@@ -678,12 +689,13 @@ func TestCheck_rejectsAForeignIdentityStandard(t *testing.T) {
 	for _, doc := range []string{
 		`{"identity": {"canonical": "Jane Doe <jane@corp.test>", "match": " Example <"}}`,
 		`{"identity": {"canonical": "Pat Example <pat@example.com>", "match": "(?i)jane"}}`,
+		`{"identity": {"canonical": "Pat Example <pat@example.com>", "match": " Example <", "accepted": ["Jane Doe <jane@corp.test>"]}}`,
 	} {
 		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
 			t.Errorf("check(%s) found no problem, want one", doc)
 		}
 	}
-	fixture := `{"identity": {"canonical": "Pat Example <pat@example.com>", "match": " Example <"}}`
+	fixture := `{"identity": {"canonical": "Pat Example <pat@example.com>", "match": " Example <", "accepted": ["Pat Example <12345+pat@users.noreply.github.com>"]}}`
 	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
 		t.Errorf("check(the fixture standard) = %q, want no problem", got)
 	}
@@ -834,6 +846,15 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 		"a line in the section that is not a bullet": "" +
 			"## Git identities\n\n" +
 			"Jane Doe committed here too.",
+		"a real-shaped identity tagged accepted": "" +
+			"## Git identities\n\n" +
+			"- **web-app** — `Pat Example <pat@example.com>` (canonical), `Jane Doe <jane@corp.test>` (accepted)",
+		"a real-shaped noreply identity tagged accepted": "" +
+			"## Git identities\n\n" +
+			"- **web-app** — `Pat Example <pat@example.com>` (canonical), `Jane Doe <1+jane@users.noreply.github.com>` (accepted)",
+		"an identity tagged twice": "" +
+			"## Git identities\n\n" +
+			"- **web-app** — `Pat Example <pat@example.com>` (canonical) (accepted)",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -858,6 +879,7 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"- **alpha** — `Pat Example <pat@example.com>` (canonical), `Patrick Example <patrick@example.org>` — mixed\n" +
 			"- **web-app** — `Pat Example <pat@example.org>` — not canonical\n" +
 			"- **bravo** — `Pat Example <pat@example.com>` (canonical)\n" +
+			"- **go-linter** — `Pat Example <pat@example.com>` (canonical), `Pat Example <12345+pat@users.noreply.github.com>` (accepted)\n" +
 			"\n" +
 			"## Overrides\n\n" +
 			"- **web-app** — `flake_nix` is `not_required`",
