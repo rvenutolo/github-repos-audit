@@ -124,6 +124,10 @@ func TestResolve(t *testing.T) {
 			renovate.Result{},
 		},
 		{
+			"stabilityDays migrates past an explicit null", `{"minimumReleaseAge": null, "stabilityDays": 3}`,
+			renovate.Result{MinReleaseAge: "3 days", Source: "renovate.json"},
+		},
+		{
 			"minimumReleaseAge beats stabilityDays in one layer", `{"stabilityDays": 5, "minimumReleaseAge": "2 days"}`,
 			renovate.Result{MinReleaseAge: "2 days", Source: "renovate.json"},
 		},

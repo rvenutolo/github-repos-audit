@@ -171,19 +171,20 @@ func (r resolver) preset(ctx context.Context, ref string, stack []string) (assig
 // ownAssignment reads the file's own minimumReleaseAge, or its legacy
 // stabilityDays migrated as Renovate migrates it.
 func ownAssignment(source string, cfg map[string]any) (assignment, error) {
-	if v, has := cfg["minimumReleaseAge"]; has {
-		switch x := v.(type) {
-		case nil:
-			return assignment{set: true, source: source}, nil
-		case string:
-			if strings.Contains(x, "{{") {
-				return assignment{}, unresolvedError{source + ": minimumReleaseAge is a {{template}}"}
-			}
-			return assignment{set: true, value: x, source: source}, nil
-		default:
+	mra, hasMRA := cfg["minimumReleaseAge"]
+	if hasMRA && mra != nil {
+		x, ok := mra.(string)
+		if !ok {
 			return assignment{}, unresolvedError{source + ": minimumReleaseAge is not a string"}
 		}
+		if strings.Contains(x, "{{") {
+			return assignment{}, unresolvedError{source + ": minimumReleaseAge is a {{template}}"}
+		}
+		return assignment{set: true, value: x, source: source}, nil
 	}
+	// Renovate migrates stabilityDays with setSafely, which writes unless
+	// minimumReleaseAge is already non-null: an explicit null is no bar,
+	// so {"minimumReleaseAge": null, "stabilityDays": 3} means "3 days".
 	if v, has := cfg["stabilityDays"]; has {
 		n, ok := v.(float64)
 		if !ok || n < 0 || n != math.Trunc(n) {
@@ -197,6 +198,11 @@ func ownAssignment(source string, cfg map[string]any) (assignment, error) {
 		default:
 			return assignment{set: true, value: fmt.Sprintf("%d days", int64(n)), source: source}, nil
 		}
+	}
+	if hasMRA {
+		// An explicit null with no stabilityDays: set, to nothing, which
+		// clears whatever an extended preset said.
+		return assignment{set: true, source: source}, nil
 	}
 	return assignment{}, nil
 }
