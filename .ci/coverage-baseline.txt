@@ -9,6 +9,7 @@ github.com/rvenutolo/github-repos-audit/cmd/audit 91.3%
 github.com/rvenutolo/github-repos-audit/internal/audit n/a
 github.com/rvenutolo/github-repos-audit/internal/config 100.0%
 github.com/rvenutolo/github-repos-audit/internal/fixturevocab n/a
-github.com/rvenutolo/github-repos-audit/internal/github 98.5%
+github.com/rvenutolo/github-repos-audit/internal/github 98.7%
 github.com/rvenutolo/github-repos-audit/internal/render 96.6%
-github.com/rvenutolo/github-repos-audit/internal/rules 98.8%
+github.com/rvenutolo/github-repos-audit/internal/renovate 99.0%
+github.com/rvenutolo/github-repos-audit/internal/rules 98.5%

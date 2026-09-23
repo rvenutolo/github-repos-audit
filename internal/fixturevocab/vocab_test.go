@@ -2,6 +2,7 @@ package fixturevocab_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -31,7 +32,7 @@ var fakeRepos = []string{
 	"blank-repo", "cipher-lib", "compiler-config", "config-files", "go-linter",
 	"hook-guard", "java-demo", "media-server", "mixedCase-flake", "pkg-index",
 	"private-notes", "recipe-site", "shell-scripts", "updater", "web-app",
-	"github-repos-audit", "alpha", "bravo",
+	"github-repos-audit", "alpha", "bravo", "preset-store",
 }
 
 // rule says what the scalar at a key path may hold. want describes the
@@ -63,6 +64,29 @@ func isOwnerSlashRepo(v any) bool {
 	s, ok := str(v)
 	owner, name, found := strings.Cut(s, "/")
 	return ok && found && owner == fakeOwner && slices.Contains(fakeRepos, name)
+}
+
+// presetRef finds owner/repo pairs where Renovate would read them: after a
+// github> or local> prefix, or bare at the start of a string or after a
+// quote, bracket or space. ".github/renovate.json" is a path, not a pair,
+// and is left alone because a dot cannot start a match.
+var presetRef = regexp.MustCompile(`(?:github>|local>|^|["'\[\s])([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)`)
+
+// namesOnlyFakeRepos accepts a string whose every owner/repo pair is
+// gh-owner and a fake repository. A Renovate preset reference or the error
+// text quoting one names a repository the same way a full_name does, so it
+// is held to the same vocabulary.
+func namesOnlyFakeRepos(v any) bool {
+	s, ok := str(v)
+	if !ok {
+		return false
+	}
+	for _, m := range presetRef.FindAllStringSubmatch(s, -1) {
+		if m[1] != fakeOwner || !slices.Contains(fakeRepos, m[2]) {
+			return false
+		}
+	}
+	return true
 }
 
 // pipeDescription is the one deliberate escaping fixture: a description
@@ -151,6 +175,23 @@ func keepNil(paths ...string) rule {
 	return rule{path: regexp.MustCompile(`^(` + strings.Join(paths, "|") + `)$`), ok: isNil, want: "null (never populated in this fixture set)"}
 }
 
+// renovateProbes is the alternation of the seven Renovate config probes. A
+// present one is an object whose oid, text and flags are ruled separately;
+// an absent one is null.
+const renovateProbes = `(renovate_json|renovate_json5|renovaterc|renovaterc_json|renovaterc_json5|renovate_github_json|renovate_github_json5)`
+
+// isFakeBase64Content decodes a contents-API content field — base64 wrapped
+// with newlines, as GitHub sends it — and holds the text to namesOnlyFakeRepos.
+// Content that does not decode is rejected: it cannot be checked.
+func isFakeBase64Content(v any) bool {
+	s, ok := str(v)
+	if !ok {
+		return false
+	}
+	text, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(s, "\n", ""))
+	return err == nil && namesOnlyFakeRepos(string(text))
+}
+
 var apiRules = []rule{
 	{regexp.MustCompile(`^(\[\]\.)?name$`), isFakeRepo, "a fake repository name"},
 	{regexp.MustCompile(`^((\[\]\.)?full_name|\[\]\.ruleset_source)$`), isOwnerSlashRepo, "gh-owner/<fake>"},
@@ -169,6 +210,13 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
 	{regexp.MustCompile(`^size$`), matches(`^(0|1024)$`), "0 or 1024"},
+	// A Renovate config's text is repository content, and the only account
+	// data it can carry is a preset reference naming a repository, so it is
+	// held to the same vocabulary as a full_name.
+	{regexp.MustCompile(`^data\.repository\.` + renovateProbes + `\.text$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
+	// A preset file read through the contents API is the same content,
+	// base64-encoded, so it is decoded before the same check.
+	{regexp.MustCompile(`^content$`), isFakeBase64Content, "base64 of text naming only gh-owner/<fake> repositories"},
 	keep(
 		`access_level`, `allowed_actions`, `\[\]\.archived`, `archived`, `\[\]\.disabled`, `disabled`,
 		`\[\]\.fork`, `fork`, `\[\]\.private`, `private`, `\[\]\.visibility`, `visibility`,
@@ -190,6 +238,9 @@ var apiRules = []rule{
 		`data\.repository\.license_info\.spdx_id`,
 		`data\.repository\.releases\.nodes\[\]\.is_draft`,
 		`data\.repository\.rulesets\.nodes\[\]\.(enforcement|target|conditions\.ref_name\.include\[\]|rules\.nodes\[\]\.type)`,
+		`data\.repository\.`+renovateProbes+`\.(is_truncated|is_binary)`,
+		// The contents API's envelope: "file" and "base64" are GitHub's words.
+		`type`, `encoding`,
 	),
 	// keepNil covers fields this fixture set never records with a real
 	// value: a REST field only some repositories' fixtures include, or a
@@ -204,7 +255,7 @@ var apiRules = []rule{
 		`data\.repository\.(security_root|security_github|security_docs)`,
 		`data\.repository\.(contributing_root|contributing_github|contributing_docs)`,
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
-		`data\.repository\.(renovate_json|renovate_json5|renovaterc|renovaterc_json|renovaterc_json5|renovate_github_json|renovate_github_json5)`,
+		`data\.repository\.`+renovateProbes,
 	),
 }
 
@@ -219,6 +270,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.branch\.required_checks\[\]$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^repos\[\]\.settings\.allowed_actions\.patterns\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`^(generated_at|repos\[\]\.pushed_at|repos\[\]\.releases\.last_published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
+	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
 		`repos\[\]\.(branches|ci_state|default_branch|empty|license|open_pull_requests|published|topics|type|visibility)`,
@@ -226,6 +278,8 @@ var snapshotRules = []rule{
 		`repos\[\]\.files\.[a-z_]+`,
 		`repos\[\]\.overrides\.[a-z_]+`,
 		`repos\[\]\.releases\.(drafts|total)`,
+		// A duration such as "7 days" is never account data.
+		`repos\[\]\.renovate\.min_release_age`,
 		`repos\[\]\.rulesets\[\]\.(enforcement|include\[\]|rules\[\]|target)`,
 		`repos\[\]\.settings\.[a-z_]+`,
 		`repos\[\]\.settings\.allowed_actions\.(github_owned_allowed|verified_allowed)`,
@@ -500,6 +554,11 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 		{name: "id outside the synthetic pattern", doc: `{"id": 987654321}`},
 		{name: "unknown key path", doc: `{"brand_new_field": true}`},
 		{name: "real description", doc: `{"description": "My personal media stack"}`},
+		{name: "renovate text naming a real preset", doc: `{"data": {"repository": {"renovate_json": {"text": "{\"extends\": [\"github>someone/real-repo\"]}"}}}}`},
+		// base64 of {"extends": ["github>someone/real-repo"]}
+		{name: "preset content naming a real preset", doc: `{"content": "eyJleHRlbmRzIjogWyJnaXRodWI+c29tZW9uZS9yZWFsLXJlcG8iXX0=\n"}`},
+		{name: "preset content that is not base64", doc: `{"content": "not base64!"}`},
+		{name: "a present renovate probe with a real flag field", doc: `{"data": {"repository": {"renovate_json": {"is_huge": true}}}}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -508,6 +567,27 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 				t.Errorf("check(%s) found no problem, want one", tc.name)
 			}
 		})
+	}
+}
+
+// TestNamesOnlyFakeRepos: a preset reference, and error text quoting one,
+// may name only gh-owner and a fake repository; a config path is not a pair.
+func TestNamesOnlyFakeRepos(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{in: "github>gh-owner/preset-store", want: true},
+		{in: "preset github>gh-owner/preset-store:go: not found", want: true},
+		{in: ".github/renovate.json5", want: true},
+		{in: "github>someone/real-repo", want: false},
+	}
+	for _, tc := range tests {
+		if got := namesOnlyFakeRepos(tc.in); got != tc.want {
+			t.Errorf("namesOnlyFakeRepos(%q) = %t, want %t", tc.in, got, tc.want)
+		}
 	}
 }
 

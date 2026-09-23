@@ -161,7 +161,10 @@
       "coc_github": null,
       "coc_docs": null,
       "renovate_json": {
-        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000a"
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000a",
+        "text": "{\"extends\": [\"github>gh-owner/preset-store\"]}\n",
+        "is_truncated": false,
+        "is_binary": false
       },
       "renovate_json5": null,
       "renovaterc": null,

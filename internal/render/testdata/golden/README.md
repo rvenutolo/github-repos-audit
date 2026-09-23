@@ -14,6 +14,7 @@ Hand-written prose.
 - **No required checks** (1) — github-repos-audit
 - **CI not green on the default branch** (1) — go-linter
 - **No Renovate config** (1) — go-linter
+- **Renovate minimum release age unset, unresolved or too short** (2) — mixedCase-flake, web-app
 - **No .editorconfig** (1) — go-linter
 - **No flake.nix** (1) — go-linter
 - **No .justfile** (1) — go-linter
@@ -36,13 +37,13 @@ Hand-written prose.
 
 ## Tree
 
-| Repository                                                           | Renovate                 | .gitignore | .editorconfig | flake.nix | .justfile | CHANGELOG | Community files |
-| -------------------------------------------------------------------- | ------------------------ | ---------- | ------------- | --------- | --------- | --------- | --------------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a                      | ✓          | ✓             | n/a       | n/a       | n/a       | n/a             |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `renovate.json`          | ✓          | ✓             | ✓         | ✓         | n/a       | n/a             |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗                        | ✗          | ✗             | ✗         | ✗         | n/a       | n/a             |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `.github/renovate.json5` | ✓          | ✓             | ✓         | ✓         | ✓         | 1/3             |
-| [web-app](https://github.com/gh-owner/web-app)                       | `renovate.json`          | ✗          | ✓             | n/a       | ✓         | n/a       | n/a             |
+| Repository                                                           | Renovate                 | Min. release age | .gitignore | .editorconfig | flake.nix | .justfile | CHANGELOG | Community files |
+| -------------------------------------------------------------------- | ------------------------ | ---------------- | ---------- | ------------- | --------- | --------- | --------- | --------------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a                      | n/a              | ✓          | ✓             | n/a       | n/a       | n/a       | n/a             |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `renovate.json`          | ✓ 7 days         | ✓          | ✓             | ✓         | ✓         | n/a       | n/a             |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗                        | n/a              | ✗          | ✗             | ✗         | ✗         | n/a       | n/a             |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `.github/renovate.json5` | ✗ 3 days         | ✓          | ✓             | ✓         | ✓         | ✓         | 1/3             |
+| [web-app](https://github.com/gh-owner/web-app)                       | `renovate.json`          | ✗ unresolved     | ✗          | ✓             | n/a       | ✓         | n/a       | n/a             |
 
 ## Policy
 

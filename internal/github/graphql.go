@@ -24,6 +24,10 @@ const graphQLPath = "/graphql"
 // HEAD does not resolve. The probes are case-sensitive, so a differently-cased
 // README reads as missing, which is deliberate.
 //
+// The seven Renovate probes also select the blob's text, because the minimum
+// release age is resolved from the file's content: selecting it here costs no
+// extra request, where a contents API read per repository would.
+//
 // isArchived and isFork are not requested. Discovery already filters on the
 // REST list's fork and archived flags and audit.Repo records neither, so asking
 // for them here would collect a field the report can never show.
@@ -113,13 +117,34 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
     coc_root: object(expression: "HEAD:CODE_OF_CONDUCT.md") { oid }
     coc_github: object(expression: "HEAD:.github/CODE_OF_CONDUCT.md") { oid }
     coc_docs: object(expression: "HEAD:docs/CODE_OF_CONDUCT.md") { oid }
-    renovate_json: object(expression: "HEAD:renovate.json") { oid }
-    renovate_json5: object(expression: "HEAD:renovate.json5") { oid }
-    renovaterc: object(expression: "HEAD:.renovaterc") { oid }
-    renovaterc_json: object(expression: "HEAD:.renovaterc.json") { oid }
-    renovaterc_json5: object(expression: "HEAD:.renovaterc.json5") { oid }
-    renovate_github_json: object(expression: "HEAD:.github/renovate.json") { oid }
-    renovate_github_json5: object(expression: "HEAD:.github/renovate.json5") { oid }
+    renovate_json: object(expression: "HEAD:renovate.json") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_json5: object(expression: "HEAD:renovate.json5") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovaterc: object(expression: "HEAD:.renovaterc") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovaterc_json: object(expression: "HEAD:.renovaterc.json") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovaterc_json5: object(expression: "HEAD:.renovaterc.json5") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_github_json: object(expression: "HEAD:.github/renovate.json") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_github_json5: object(expression: "HEAD:.github/renovate.json5") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
     workflows: object(expression: "HEAD:.github/workflows") {
       ... on Tree {
         entries {
@@ -160,6 +185,17 @@ type graphQLError struct {
 // required.
 type gitObject struct {
 	OID string `json:"oid"`
+}
+
+// renovateBlob is a Renovate config probe's answer: its presence, as for every
+// other probe, plus the text the minimum-release-age resolution starts from.
+// GitHub answers text: null for a binary blob and truncates a large one, and
+// both are recorded as unresolved rather than read as an empty config.
+type renovateBlob struct {
+	OID         string  `json:"oid"`
+	Text        *string `json:"text"`
+	IsTruncated bool    `json:"is_truncated"`
+	IsBinary    bool    `json:"is_binary"`
 }
 
 // tree is the .github/workflows listing.
@@ -224,13 +260,13 @@ type repository struct {
 	CoCGitHub          *gitObject `json:"coc_github"`
 	CoCDocs            *gitObject `json:"coc_docs"`
 
-	RenovateJSON        *gitObject `json:"renovate_json"`
-	RenovateJSON5       *gitObject `json:"renovate_json5"`
-	RenovateRC          *gitObject `json:"renovaterc"`
-	RenovateRCJSON      *gitObject `json:"renovaterc_json"`
-	RenovateRCJSON5     *gitObject `json:"renovaterc_json5"`
-	RenovateGitHubJSON  *gitObject `json:"renovate_github_json"`
-	RenovateGitHubJSON5 *gitObject `json:"renovate_github_json5"`
+	RenovateJSON        *renovateBlob `json:"renovate_json"`
+	RenovateJSON5       *renovateBlob `json:"renovate_json5"`
+	RenovateRC          *renovateBlob `json:"renovaterc"`
+	RenovateRCJSON      *renovateBlob `json:"renovaterc_json"`
+	RenovateRCJSON5     *renovateBlob `json:"renovaterc_json5"`
+	RenovateGitHubJSON  *renovateBlob `json:"renovate_github_json"`
+	RenovateGitHubJSON5 *renovateBlob `json:"renovate_github_json5"`
 
 	Workflows *tree `json:"workflows"`
 }

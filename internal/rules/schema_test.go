@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"testing"
 
@@ -48,9 +49,16 @@ type schema struct {
 			Required   []string       `json:"required"`
 			Properties map[string]ref `json:"properties"`
 		} `json:"type"`
-		Expectation     enum `json:"expectation"`
-		DirectPush      enum `json:"direct_push"`
-		InfoExpectation enum `json:"info_expectation"`
+		Expectation         enum `json:"expectation"`
+		DirectPush          enum `json:"direct_push"`
+		InfoExpectation     enum `json:"info_expectation"`
+		ReleaseAgeThreshold struct {
+			AnyOf []struct {
+				Enum    []string `json:"enum"`
+				Type    string   `json:"type"`
+				Pattern string   `json:"pattern"`
+			} `json:"anyOf"` //nolint:tagliatelle // a JSON Schema keyword; the spec spells it, this project does not
+		} `json:"release_age_threshold"`
 	} `json:"$defs"`
 }
 
@@ -160,11 +168,16 @@ func TestSchema_eachCheckTakesTheWordsTheRulesAccept(t *testing.T) {
 			wantRef = "#/$defs/direct_push"
 		case c.ValueOnly():
 			wantRef = "#/$defs/info_expectation"
+		case c.Threshold():
+			wantRef = "#/$defs/release_age_threshold"
 		}
 		got := s.Defs.Type.Properties[c.String()].Ref
 		if got != wantRef {
 			t.Errorf("$defs.type.properties.%s.$ref = %q, want %q", c, got, wantRef)
 			continue
+		}
+		if c.Threshold() {
+			continue // TestSchema_releaseAgeThresholdMatchesTheRules holds this one
 		}
 		words := enums[got]
 		if len(words) == 0 {
@@ -184,6 +197,27 @@ func TestSchema_eachCheckTakesTheWordsTheRulesAccept(t *testing.T) {
 	}
 	if diff := cmp.Diff([]string{"info", "not_required"}, s.Defs.InfoExpectation.Enum); diff != "" {
 		t.Errorf("$defs.info_expectation.enum mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestSchema_releaseAgeThresholdMatchesTheRules: the schema's duration
+// pattern and its two words accept exactly what TypeProblems accepts.
+func TestSchema_releaseAgeThresholdMatchesTheRules(t *testing.T) {
+	t.Parallel()
+
+	def := loadSchema(t).Defs.ReleaseAgeThreshold
+	if len(def.AnyOf) != 2 {
+		t.Fatalf("release_age_threshold.anyOf has %d branches, want 2", len(def.AnyOf))
+	}
+	if diff := cmp.Diff([]string{"not_required", "info"}, def.AnyOf[0].Enum); diff != "" {
+		t.Errorf("release_age_threshold words (-want +got):\n%s", diff)
+	}
+	pattern := regexp.MustCompile(def.AnyOf[1].Pattern)
+	for _, s := range []string{"7 days", "1 day", "1 week", "48 hours", "30 minutes", "7", "0 days", "7d", "1 month", "7 Days", "1.5 days"} {
+		_, rulesOK := rules.ParseThreshold(s)
+		if schemaOK := pattern.MatchString(s); schemaOK != rulesOK {
+			t.Errorf("%q: schema pattern accepts = %t, ParseThreshold accepts = %t", s, schemaOK, rulesOK)
+		}
 	}
 }
 

@@ -7,10 +7,10 @@
 
 ## Tree
 
-| Repository                                 | Renovate        | .gitignore | .editorconfig | flake.nix | .justfile | CHANGELOG | Community files |
-| ------------------------------------------ | --------------- | ---------- | ------------- | --------- | --------- | --------- | --------------- |
-| [alpha](https://github.com/gh-owner/alpha) | `renovate.json` | ✓          | ✓             | ✓         | ✓         | n/a       | n/a             |
-| [bravo](https://github.com/gh-owner/bravo) | `renovate.json` | ✓          | ✓             | ✓         | ✓         | n/a       | n/a             |
+| Repository                                 | Renovate        | Min. release age | .gitignore | .editorconfig | flake.nix | .justfile | CHANGELOG | Community files |
+| ------------------------------------------ | --------------- | ---------------- | ---------- | ------------- | --------- | --------- | --------- | --------------- |
+| [alpha](https://github.com/gh-owner/alpha) | `renovate.json` | ✓ 7 days         | ✓          | ✓             | ✓         | ✓         | n/a       | n/a             |
+| [bravo](https://github.com/gh-owner/bravo) | `renovate.json` | ✓ 7 days         | ✓          | ✓             | ✓         | ✓         | n/a       | n/a             |
 
 ## Policy
 

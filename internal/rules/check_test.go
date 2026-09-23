@@ -37,10 +37,11 @@ func TestChecks_areAllDistinctAndRoundTrip(t *testing.T) {
 func TestChecks_count(t *testing.T) {
 	t.Parallel()
 
-	// 24 report rows plus direct push, the one declared setting a type
-	// decides. A change here is a change to the report, to the override
-	// vocabulary, and to every [types.*] table at once.
-	const want = 25
+	// 25 report rows, the Renovate minimum release age the latest, plus
+	// direct push, the one declared setting a type decides. A change here is
+	// a change to the report, to the override vocabulary, and to every
+	// [types.*] table at once.
+	const want = 26
 	if got := len(rules.Checks()); got != want {
 		t.Errorf("len(Checks()) = %d, want %d", got, want)
 	}
@@ -85,6 +86,22 @@ func TestCheck_ValueOnly(t *testing.T) {
 		if got := c.ValueOnly(); got != want[c] {
 			t.Errorf("%s.ValueOnly() = %t, want %t", c, got, want[c])
 		}
+	}
+}
+
+// TestCheck_Threshold pins the one check judged against a duration its type
+// declares. It is not value-only: it has a pass and a fail, so a type may
+// expect it.
+func TestCheck_Threshold(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range rules.Checks() {
+		if got, want := c.Threshold(), c == rules.CheckRenovateMinReleaseAge; got != want {
+			t.Errorf("%s.Threshold() = %t, want %t", c, got, want)
+		}
+	}
+	if rules.CheckRenovateMinReleaseAge.ValueOnly() {
+		t.Errorf("%s.ValueOnly() = true, want false", rules.CheckRenovateMinReleaseAge)
 	}
 }
 

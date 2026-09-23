@@ -17,9 +17,9 @@ import (
 )
 
 // typeTable writes one complete [types.<name>] table: every check at a word it
-// accepts — required, blocked for direct push, info for the value-only checks —
-// with set replacing words (a key that is not a check is written too) and drop
-// leaving checks out.
+// accepts — required, blocked for direct push, info for the value-only checks,
+// "7 days" for the release-age threshold — with set replacing words (a key
+// that is not a check is written too) and drop leaving checks out.
 func typeTable(name string, set map[string]string, drop ...string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[types.%s]\n", name)
@@ -34,6 +34,8 @@ func typeTable(name string, set map[string]string, drop ...string) string {
 			word = "blocked"
 		case c.ValueOnly():
 			word = "info"
+		case c.Threshold():
+			word = "7 days"
 		}
 		if w, ok := set[key]; ok {
 			word = w
@@ -95,6 +97,22 @@ func TestParse_acceptsAValidFile(t *testing.T) {
 	}
 }
 
+// TestParse_acceptsAThresholdOverride: a repository may hold the minimum
+// release age to a duration other than its type's.
+func TestParse_acceptsAThresholdOverride(t *testing.T) {
+	t.Parallel()
+
+	in := toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { renovate_min_release_age = \"3 days\" }\n"
+	cfg, err := config.Parse(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("Parse() error = %v, want nil", err)
+	}
+	want := map[string]string{"renovate_min_release_age": "3 days"}
+	if diff := cmp.Diff(want, cfg.Repos["alpha"].Overrides); diff != "" {
+		t.Errorf("Parse() overrides mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestParse_keepsTheTypesTable(t *testing.T) {
 	t.Parallel()
 
@@ -111,6 +129,8 @@ func TestParse_keepsTheTypesTable(t *testing.T) {
 				entries[c.String()] = "blocked"
 			case c.ValueOnly():
 				entries[c.String()] = "info"
+			case c.Threshold():
+				entries[c.String()] = "7 days"
 			default:
 				entries[c.String()] = rules.OverrideRequired
 			}
@@ -222,6 +242,16 @@ var rejectedFiles = []struct {
 		name:     "required override on a value-only check",
 		in:       toolsTypes + "[repos.alpha]\ntype = \"infra\"\noverrides = { last_release_age = \"required\" }\n",
 		contains: `alpha: override last_release_age = "required" names a value-only check (want not_required)`,
+	},
+	{
+		name:     "a threshold override that is not a duration",
+		in:       toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { renovate_min_release_age = \"7 dayz\" }\n",
+		contains: `alpha: override renovate_min_release_age = "7 dayz" (want a duration like "7 days", not_required or info)`,
+	},
+	{
+		name:     "required on the threshold check",
+		in:       toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { renovate_min_release_age = \"required\" }\n",
+		contains: `alpha: override renovate_min_release_age = "required" (want a duration like "7 days", not_required or info)`,
 	},
 	{
 		name:     "no entries at all",

@@ -32,9 +32,13 @@ const fixtureRoot = "testdata/api"
 const testOwner = "gh-owner"
 
 // call is one request the fake API saw. The read-only test reads these.
+// escapedPath and rawQuery are the request as sent on the wire, which is what
+// a test of the client's URL escaping has to look at: path is decoded.
 type call struct {
-	method string
-	path   string
+	method      string
+	path        string
+	escapedPath string
+	rawQuery    string
 }
 
 // scriptedFailure is one answer the fake gives instead of a fixture. It exists
@@ -83,9 +87,10 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 		f.fixtureHandler("selected-actions"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/permissions/workflow", f.fixtureHandler("actions-workflow"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/permissions/access", f.fixtureHandler("actions-access"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/contents/{path...}", f.handleContents)
 
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.record(r.Method, r.URL.Path)
+		f.record(r)
 		if f.serveFailure(w, r.URL.Path) {
 			return
 		}
@@ -103,10 +108,15 @@ func (f *fakeAPI) url() string { return f.server.URL }
 // early without racing the cleanup.
 func (f *fakeAPI) close() { f.closeOnce.Do(f.server.Close) }
 
-func (f *fakeAPI) record(method, path string) {
+func (f *fakeAPI) record(r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, call{method: method, path: path})
+	f.calls = append(f.calls, call{
+		method:      r.Method,
+		path:        r.URL.Path,
+		escapedPath: r.URL.EscapedPath(),
+		rawQuery:    r.URL.RawQuery,
+	})
 }
 
 // failNext queues answers for the next calls to path, in the order given,
@@ -214,6 +224,23 @@ func (f *fakeAPI) fixtureHandler(base string) http.HandlerFunc {
 		}
 		f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), base)
 	}
+}
+
+// handleContents answers the contents API from the repository's fixtures. The
+// fixture names are flat — checkFixtureDirNames allows no directory under a
+// repository's fixtures that is not itself a fake repository name — so a
+// path's slashes become dashes, and a ref is appended after an @. A path with
+// no fixture answers 404, as GitHub does for a missing file.
+func (f *fakeAPI) handleContents(w http.ResponseWriter, r *http.Request) {
+	f.t.Helper()
+	if owner := r.PathValue("owner"); owner != testOwner {
+		f.t.Errorf("request for owner %q, want %q", owner, testOwner)
+	}
+	base := "contents-" + strings.ReplaceAll(r.PathValue("path"), "/", "-")
+	if ref := r.URL.Query().Get("ref"); ref != "" {
+		base += "@" + ref
+	}
+	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), base)
 }
 
 // serve writes the fixture named base from dir. A plain <base>.json is a 200;

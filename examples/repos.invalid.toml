@@ -8,8 +8,10 @@
 # [types.<name>] a category of repository and what it is expected to have.
 #                Every type lists every check, each set to required,
 #                not_required, public, public_published or info; direct_push
-#                takes blocked or allowed, and last_release_age, last_push,
-#                open_prs and branches take only info or not_required.
+#                takes blocked or allowed, renovate_min_release_age takes a
+#                duration such as "7 days", not_required or info, and
+#                last_release_age, last_push, open_prs and branches take only
+#                info or not_required.
 #                A type no repository uses is allowed.
 #
 # [repos.<name>]
@@ -31,6 +33,7 @@ ci_workflows = "required"
 required_checks = "required"
 ci_green = "required"
 renovate = "required"
+renovate_min_release_age = "7 days"
 editorconfig = "required"
 flake_nix = "required"
 justfile = "required"
@@ -58,6 +61,7 @@ ci_workflows = "required"
 required_checks = "required"
 ci_green = "required"
 renovate = "required"
+renovate_min_release_age = "7 days"
 editorconfig = "required"
 flake_nix = "required"
 justfile = "required"
@@ -85,6 +89,7 @@ ci_workflows = "required"
 required_checks = "required"
 ci_green = "required"
 renovate = "required"
+renovate_min_release_age = "7 days"
 editorconfig = "required"
 flake_nix = "required"
 justfile = "required"
@@ -112,6 +117,7 @@ ci_workflows = "required"
 required_checks = "required"
 ci_green = "required"
 renovate = "required"
+renovate_min_release_age = "7 days"
 editorconfig = "required"
 flake_nix = "required"
 justfile = "required"
@@ -140,6 +146,7 @@ ci_workflows = "not_required"
 required_checks = "not_required"
 ci_green = "not_required"
 renovate = "not_required"
+renovate_min_release_age = "not_required"
 editorconfig = "required"
 flake_nix = "not_required"
 justfile = "not_required"
@@ -167,6 +174,7 @@ ci_workflows = "required"
 required_checks = "required"
 ci_green = "required"
 renovate = "required"
+renovate_min_release_age = "7 days"
 editorconfig = "required"
 flake_nix = "required"
 justfile = "required"

@@ -76,6 +76,8 @@ type Repo struct {
 
 	// Files records which of the probed paths exist at HEAD.
 	Files Files `json:"files"`
+	// Renovate is what the Renovate configuration says, when there is one.
+	Renovate Renovate `json:"renovate,omitzero"`
 	// CIState is the statusCheckRollup state of the head commit: SUCCESS,
 	// FAILURE, PENDING, ERROR or EXPECTED. Empty when the rollup was null,
 	// which means no check has run on that commit.
@@ -88,6 +90,20 @@ type Repo struct {
 	Branch BranchRules `json:"branch"`
 	// Settings is every repository setting the modal computation tracks.
 	Settings Settings `json:"settings"`
+}
+
+// Renovate is what the Renovate configuration says beyond where it lives
+// (Files.RenovateConfig). Zero when there is no configuration.
+type Renovate struct {
+	// MinReleaseAge is the effective top-level minimumReleaseAge as written,
+	// such as "7 days". Empty when unset, explicitly null, or unresolved.
+	MinReleaseAge string `json:"min_release_age,omitzero"`
+	// MinReleaseAgeSource is where that value was set: the config path, or
+	// the preset reference as written. Empty when unset.
+	MinReleaseAgeSource string `json:"min_release_age_source,omitzero"`
+	// MinReleaseAgeError is why the value could not be decided. Empty
+	// otherwise.
+	MinReleaseAgeError string `json:"min_release_age_error,omitzero"`
 }
 
 // Files records the outcome of every file-existence probe. A probe answers

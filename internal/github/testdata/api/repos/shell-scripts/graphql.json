@@ -141,7 +141,10 @@
       "renovaterc_json": null,
       "renovaterc_json5": null,
       "renovate_github_json": {
-        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0013"
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0013",
+        "text": "{\n  // JSONC: Renovate reads comments in .json\n  \"minimumReleaseAge\": \"3 days\",\n}\n",
+        "is_truncated": false,
+        "is_binary": false
       },
       "renovate_github_json5": null,
       "workflows": {

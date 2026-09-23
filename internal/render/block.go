@@ -95,13 +95,14 @@ func metadataSection(rep *rules.Report) string {
 }
 
 func treeSection(rep *rules.Report) string {
-	t := newTable("Repository", "Renovate", ".gitignore", ".editorconfig", "flake.nix",
-		".justfile", "CHANGELOG", "Community files")
+	t := newTable("Repository", "Renovate", "Min. release age", ".gitignore", ".editorconfig",
+		"flake.nix", ".justfile", "CHANGELOG", "Community files")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
 			repoLink(rep.Owner, r.Repo.Name),
 			cell(r.Cell(rules.CheckRenovate)),
+			cell(r.Cell(rules.CheckRenovateMinReleaseAge)),
 			cell(r.Cell(rules.CheckGitignore)),
 			cell(r.Cell(rules.CheckEditorconfig)),
 			cell(r.Cell(rules.CheckFlakeNix)),
