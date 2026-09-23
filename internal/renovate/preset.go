@@ -50,6 +50,11 @@ func ParsePreset(ref, owner string) (p Preset, fallback, follow bool, problem st
 	switch {
 	case name == "":
 		p.Path, fallback = "default.json", true
+	case name == "default", strings.HasSuffix(name, "/default"):
+		// Renovate's fallback keys on the file name being "default", so an
+		// explicit ":default" or "//dir/default" gets it too; "default.json"
+		// written out does not.
+		p.Path, fallback = name+".json", true
 	case strings.HasSuffix(name, ".json"), strings.HasSuffix(name, ".json5"), strings.HasSuffix(name, ".jsonc"):
 		// Renovate's /\.json[5c]?$/: a name already carrying one of these
 		// extensions is the file name as written.

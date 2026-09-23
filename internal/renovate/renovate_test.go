@@ -42,6 +42,7 @@ func TestResolve(t *testing.T) {
 		"preset-store/tagged.json@v1": `{"minimumReleaseAge": "14 days"}`,
 		"preset-store/json5.json@":    "{\n  // a comment\n  minimumReleaseAge: '5 days',\n}",
 		"other/renovate.json@":        `{"minimumReleaseAge": "2 days"}`, // default.json fallback
+		"other/dir/renovate.json@":    `{"minimumReleaseAge": "4 days"}`, // dir/default.json fallback
 	}
 	tests := []struct {
 		name string
@@ -89,6 +90,14 @@ func TestResolve(t *testing.T) {
 		{
 			"default.json falls back to renovate.json", `{"extends": ["github>gh-owner/other"]}`,
 			renovate.Result{MinReleaseAge: "2 days", Source: "github>gh-owner/other"},
+		},
+		{
+			"explicit :default falls back to renovate.json", `{"extends": ["github>gh-owner/other:default"]}`,
+			renovate.Result{MinReleaseAge: "2 days", Source: "github>gh-owner/other:default"},
+		},
+		{
+			"//dir/default falls back to dir/renovate.json", `{"extends": ["github>gh-owner/other//dir/default"]}`,
+			renovate.Result{MinReleaseAge: "4 days", Source: "github>gh-owner/other//dir/default"},
 		},
 		{
 			"other owners and built-ins contribute nothing", `{"extends": ["github>someone-else/x", "config:best-practices"]}`,

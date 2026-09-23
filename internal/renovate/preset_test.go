@@ -26,6 +26,11 @@ func TestParsePreset(t *testing.T) {
 		// Renovate keeps a name ending .json, .json5 or .jsonc as written.
 		{"github>gh-owner/preset-store:foo.jsonc", renovate.Preset{Repo: "preset-store", Path: "foo.jsonc"}, false, true, false},
 		{"github>gh-owner/preset-store//dir/foo.jsonc", renovate.Preset{Repo: "preset-store", Path: "dir/foo.jsonc"}, false, true, false},
+		// Renovate's renovate.json fallback keys on the file name "default",
+		// however it is written — but not on "default.json".
+		{"github>gh-owner/preset-store:default", renovate.Preset{Repo: "preset-store", Path: "default.json"}, true, true, false},
+		{"github>gh-owner/preset-store//dir/default", renovate.Preset{Repo: "preset-store", Path: "dir/default.json"}, true, true, false},
+		{"github>gh-owner/preset-store:default.json", renovate.Preset{Repo: "preset-store", Path: "default.json"}, false, true, false},
 		{"github>gh-owner/preset-store#v1.2.3", renovate.Preset{Repo: "preset-store", Path: "default.json", Ref: "v1.2.3"}, true, true, false},
 		{"github>gh-owner/preset-store:go#main", renovate.Preset{Repo: "preset-store", Path: "go.json", Ref: "main"}, false, true, false},
 		{"github>gh-owner/preset-store:labels(a,b)", renovate.Preset{Repo: "preset-store", Path: "labels.json"}, false, true, false},

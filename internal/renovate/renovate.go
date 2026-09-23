@@ -153,8 +153,10 @@ func (r resolver) preset(ctx context.Context, ref string, stack []string) (assig
 	text, problem, err := r.fetch(ctx, p)
 	if err == nil && problem == ProblemNotFound && fallback {
 		// Renovate still reads the deprecated renovate.json when a preset
-		// repository has no default.json.
-		p.Path = "renovate.json"
+		// repository has no default.json, in the same directory: only the
+		// file name changes, so "dir/default.json" falls back to
+		// "dir/renovate.json".
+		p.Path = strings.TrimSuffix(p.Path, "default.json") + "renovate.json"
 		text, problem, err = r.fetch(ctx, p)
 	}
 	if err != nil {
