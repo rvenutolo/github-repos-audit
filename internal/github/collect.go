@@ -21,14 +21,19 @@ import (
 // which is exactly the abort-the-whole-run behaviour the report needs. Any
 // failure returns no repositories at all, so a partial reading can never reach
 // the renderer and invent gaps out of fields GitHub declined to answer.
+//
+// The preset cache is made here, per run, and handed down rather than kept on
+// the Client: a Client stays safe for concurrent use, and a second run reads
+// every preset afresh instead of trusting an answer from an earlier one.
 func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, error) {
 	repos := make([]audit.Repo, len(names))
+	presets := newPresetCache(c)
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(fetchLimit)
 	for i, name := range names {
 		g.Go(func() error {
-			repo, err := c.collectOne(ctx, name)
+			repo, err := c.collectOne(ctx, name, presets)
 			if err != nil {
 				return fmt.Errorf("%s: %w", name, err)
 			}
@@ -47,12 +52,22 @@ func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, err
 
 // collectOne reads one repository: the single GraphQL query first, because the
 // REST path needs the live default branch name from it, then the REST calls.
-func (c *Client) collectOne(ctx context.Context, name string) (audit.Repo, error) {
+// A repository with a Renovate config also costs a contents read for each
+// in-account preset it extends that no other repository in this run has
+// already read.
+func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache) (audit.Repo, error) {
 	gql, err := c.fetchRepository(ctx, name)
 	if err != nil {
 		return audit.Repo{}, err
 	}
 	repo := gql.toAudit(name)
+	if path, blob := gql.renovateConfig(); blob != nil {
+		rn, err := c.renovateFacts(ctx, path, blob, presets)
+		if err != nil {
+			return audit.Repo{}, err
+		}
+		repo.Renovate = rn
+	}
 	if err := c.fetchREST(ctx, name, &repo); err != nil {
 		return audit.Repo{}, err
 	}
@@ -118,6 +133,7 @@ func (r *repository) toAudit(name string) audit.Repo {
 
 // files records which probed paths exist at HEAD.
 func (r *repository) files() audit.Files {
+	renovatePath, _ := r.renovateConfig()
 	files := audit.Files{
 		README: present(r.ReadmeMD) || present(r.ReadmeGitHubMD) || present(r.ReadmeDocsMD) ||
 			present(r.ReadmeRST) || present(r.ReadmeTXT) || present(r.ReadmePlain),
@@ -132,7 +148,7 @@ func (r *repository) files() audit.Files {
 		Security:       present(r.SecurityRoot) || present(r.SecurityGitHub) || present(r.SecurityDocs),
 		Contributing:   present(r.ContributingRoot) || present(r.ContributingGitHub) || present(r.ContributingDocs),
 		CodeOfConduct:  present(r.CoCRoot) || present(r.CoCGitHub) || present(r.CoCDocs),
-		RenovateConfig: r.renovateConfig(),
+		RenovateConfig: renovatePath,
 	}
 	if r.Workflows != nil {
 		names := make([]string, 0, len(r.Workflows.Entries))
@@ -146,11 +162,12 @@ func (r *repository) files() audit.Files {
 
 // renovateConfig returns the first of the seven accepted paths that exists, so
 // the report can say where the configuration lives rather than only that it
-// does. The order is the one Renovate itself resolves in.
-func (r *repository) renovateConfig() string {
+// does, together with that file's blob, which is the configuration Renovate
+// reads. The order is the one Renovate itself resolves in.
+func (r *repository) renovateConfig() (string, *renovateBlob) {
 	candidates := []struct {
-		path   string
-		object *gitObject
+		path string
+		blob *renovateBlob
 	}{
 		{"renovate.json", r.RenovateJSON},
 		{"renovate.json5", r.RenovateJSON5},
@@ -161,11 +178,11 @@ func (r *repository) renovateConfig() string {
 		{".github/renovate.json5", r.RenovateGitHubJSON5},
 	}
 	for _, c := range candidates {
-		if present(c.object) {
-			return c.path
+		if c.blob != nil {
+			return c.path, c.blob
 		}
 	}
-	return ""
+	return "", nil
 }
 
 // releases summarises the five most recent releases plus the total. Five are

@@ -115,6 +115,9 @@ func wantShellScripts(t *testing.T) audit.Repo {
 			// not exist on a public repository.
 			ActionsAccessLevel: "",
 		},
+		// The value is set in the repository's own JSONC file, so the source is
+		// that file's path rather than a preset.
+		Renovate: audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: ".github/renovate.json"},
 	}
 }
 
@@ -131,7 +134,10 @@ func wantWebApp(t *testing.T) audit.Repo {
 		PushedAt:      at(t, "2025-09-02T01:44:53Z"),
 		DefaultBranch: "main",
 		HeadOID:       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
-		Files:         audit.Files{Workflows: []string{"workflow-33.yml"}},
+		Files:         audit.Files{RenovateConfig: "renovate.json", Workflows: []string{"workflow-33.yml"}},
+		// Inherited from the in-account preset; config:best-practices is a
+		// built-in, which sets nothing this tool can read.
+		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store"},
 		Rulesets: []audit.Ruleset{
 			{
 				Name:        "ruleset-01",
@@ -236,7 +242,8 @@ func TestClient_Collect(t *testing.T) {
 
 // TestClient_Collect_releasesAndAlternates covers the fields no other fixture
 // exercises: a real release history, the undotted justfile spelling, a Renovate
-// config at the root, and two of the three community health files.
+// config at the root whose minimum release age comes from a preset, and two of
+// the three community health files.
 func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 	t.Parallel()
 
@@ -266,6 +273,10 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 	}
 	if diff := cmp.Diff(wantFiles, repo.Files); diff != "" {
 		t.Errorf("Files mismatch (-want +got):\n%s", diff)
+	}
+	wantRenovate := audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store"}
+	if diff := cmp.Diff(wantRenovate, repo.Renovate); diff != "" {
+		t.Errorf("Renovate mismatch (-want +got):\n%s", diff)
 	}
 	if repo.License != "MIT" {
 		t.Errorf("License = %q, want MIT", repo.License)
