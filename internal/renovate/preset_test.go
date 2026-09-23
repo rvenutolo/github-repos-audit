@@ -23,6 +23,9 @@ func TestParsePreset(t *testing.T) {
 		{"github>gh-owner/preset-store:go", renovate.Preset{Repo: "preset-store", Path: "go.json"}, false, true, false},
 		{"github>gh-owner/preset-store:go.json5", renovate.Preset{Repo: "preset-store", Path: "go.json5"}, false, true, false},
 		{"github>gh-owner/preset-store//dir/go", renovate.Preset{Repo: "preset-store", Path: "dir/go.json"}, false, true, false},
+		// Renovate keeps a name ending .json, .json5 or .jsonc as written.
+		{"github>gh-owner/preset-store:foo.jsonc", renovate.Preset{Repo: "preset-store", Path: "foo.jsonc"}, false, true, false},
+		{"github>gh-owner/preset-store//dir/foo.jsonc", renovate.Preset{Repo: "preset-store", Path: "dir/foo.jsonc"}, false, true, false},
 		{"github>gh-owner/preset-store#v1.2.3", renovate.Preset{Repo: "preset-store", Path: "default.json", Ref: "v1.2.3"}, true, true, false},
 		{"github>gh-owner/preset-store:go#main", renovate.Preset{Repo: "preset-store", Path: "go.json", Ref: "main"}, false, true, false},
 		{"github>gh-owner/preset-store:labels(a,b)", renovate.Preset{Repo: "preset-store", Path: "labels.json"}, false, true, false},

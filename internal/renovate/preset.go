@@ -50,7 +50,9 @@ func ParsePreset(ref, owner string) (p Preset, fallback, follow bool, problem st
 	switch {
 	case name == "":
 		p.Path, fallback = "default.json", true
-	case strings.HasSuffix(name, ".json"), strings.HasSuffix(name, ".json5"):
+	case strings.HasSuffix(name, ".json"), strings.HasSuffix(name, ".json5"), strings.HasSuffix(name, ".jsonc"):
+		// Renovate's /\.json[5c]?$/: a name already carrying one of these
+		// extensions is the file name as written.
 		p.Path = name
 	default:
 		p.Path = name + ".json"
