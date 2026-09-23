@@ -23,6 +23,10 @@ var (
 	idStranger   = audit.Identity{Name: "Robin Other", Email: "robin@example.org"}
 	idBot        = audit.Identity{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"}
 	idGitHub     = audit.Identity{Name: "GitHub", Email: "noreply@github.com"}
+
+	idNoreply          = audit.Identity{Name: "Pat Example", Email: "12345+pat@users.noreply.github.com"}
+	idUpperNoreply     = audit.Identity{Name: "Pat Example", Email: "12345+Pat@users.noreply.github.com"}
+	idLowerNoreplyName = audit.Identity{Name: "Pat example", Email: "12345+pat@users.noreply.github.com"}
 )
 
 // withIdentities sets a fixture's collected identities, sorted the way the
@@ -70,6 +74,12 @@ func TestEvaluate_gitIdentity(t *testing.T) {
 		{"a name differing only in case is a different identity", withIdentities(fixture("a", "tools"), idLowerName), "(?i) example <", rules.Fail, "1 wrong"},
 		{"only other people is n/a", withIdentities(fixture("a", "tools"), idStranger, idGitHub), "", rules.NA, ""},
 		{"an empty repository is n/a", func() audit.Repo { r := fixture("a", "tools"); r.Empty = true; return r }(), "", rules.NA, ""},
+		{"canonical and accepted pass", withIdentities(fixture("a", "tools"), idCanonical, idNoreply), "", rules.Pass, ""},
+		{"only accepted passes", withIdentities(fixture("a", "tools"), idNoreply), "", rules.Pass, ""},
+		{"an accepted address differing only in case is accepted", withIdentities(fixture("a", "tools"), idUpperNoreply), "", rules.Pass, ""},
+		{"an accepted name differing in case is wrong", withIdentities(fixture("a", "tools"), idLowerNoreplyName), "(?i) example <", rules.Fail, "1 wrong"},
+		{"accepted beside a wrong one fails by the wrong one", withIdentities(fixture("a", "tools"), idNoreply, idOtherEmail), "", rules.Fail, "1 wrong"},
+		{"canonical, accepted and wrong count only the wrong one", withIdentities(fixture("a", "tools"), idCanonical, idNoreply, idLongName), "", rules.Fail, "1 wrong"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -168,6 +178,15 @@ func TestEvaluate_gitIdentityRejectsAnUnusableStandard(t *testing.T) {
 	if _, err := rules.Evaluate(snap); err == nil || !strings.Contains(err.Error(), "identity.canonical") {
 		t.Errorf("Evaluate(malformed standard) error = %v, want one naming identity.canonical", err)
 	}
+
+	onlyAccepted := &audit.Snapshot{
+		Types:    standardTypes(),
+		Identity: audit.IdentityStandard{Accepted: []string{"Pat Example <12345+pat@users.noreply.github.com>"}},
+		Repos:    []audit.Repo{fixture("alpha", "tools")},
+	}
+	if _, err := rules.Evaluate(onlyAccepted); err == nil || !strings.Contains(err.Error(), "identity.canonical") {
+		t.Errorf("Evaluate(only accepted) error = %v, want one naming identity.canonical", err)
+	}
 }
 
 func TestEvaluate_gitIdentityReachesTheWorklist(t *testing.T) {
@@ -213,7 +232,7 @@ func TestEvaluate_identityLines(t *testing.T) {
 			// canonical's own spelling even though "Pat@" sorts before "pat@".
 			Repo:       "alpha",
 			Identities: []rules.IdentityEntry{{Name: "Pat Example", Email: "pat@example.com", Canonical: true}},
-			Canonical:  true,
+			Clean:      true,
 		},
 		{
 			Repo:       "charlie",
@@ -269,5 +288,65 @@ func TestIdentityEntry_String(t *testing.T) {
 	e := rules.IdentityEntry{Name: "Pat Example", Email: "pat@example.com", Canonical: true}
 	if got, want := e.String(), "Pat Example <pat@example.com>"; got != want {
 		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+// TestIdentityLines_accepted: accepted identities are listed, tagged, shown in
+// the spelling the standard declares, and never make a line mixed or unclean.
+func TestIdentityLines_accepted(t *testing.T) {
+	t.Parallel()
+
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{
+		withIdentities(fixture("alpha", "tools"), idCanonical, idUpperNoreply),
+		withIdentities(fixture("bravo", "tools"), idNoreply),
+		withIdentities(fixture("charlie", "tools"), idNoreply, idOtherEmail),
+		withIdentities(fixture("delta", "tools"), idLongName, idNoreply, idCanonical),
+	}})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v, want nil", err)
+	}
+	canonical := rules.IdentityEntry{Name: "Pat Example", Email: "pat@example.com", Canonical: true}
+	noreply := rules.IdentityEntry{Name: "Pat Example", Email: "12345+pat@users.noreply.github.com", Accepted: true}
+	want := []rules.IdentityLine{
+		// The commit spelled the address "12345+Pat@"; the line shows the
+		// standard's own spelling, as it does for the canonical identity.
+		{Repo: "alpha", Identities: []rules.IdentityEntry{canonical, noreply}, Clean: true},
+		{Repo: "bravo", Identities: []rules.IdentityEntry{noreply}, Clean: true},
+		// One wrong identity beside an accepted one has not switched between
+		// two identities of the owner's that matter: not canonical, not mixed.
+		{Repo: "charlie", Identities: []rules.IdentityEntry{noreply, {Name: "Pat Example", Email: "pat@example.org"}}},
+		{
+			Repo:       "delta",
+			Identities: []rules.IdentityEntry{canonical, noreply, {Name: "Patrick Example", Email: "patrick@example.org"}},
+			Mixed:      true,
+		},
+	}
+	if diff := cmp.Diff(want, rep.Identities); diff != "" {
+		t.Errorf("Identities mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestIdentityLines_acceptedBeforeWrong: accepted identities come before wrong
+// ones even when a wrong one sorts first in byte order.
+func TestIdentityLines_acceptedBeforeWrong(t *testing.T) {
+	t.Parallel()
+
+	std := fixtureIdentity()
+	std.Accepted = []string{"Patrick Example <patrick@example.org>"}
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: std, Repos: []audit.Repo{
+		withIdentities(fixture("alpha", "tools"), idOtherEmail, idLongName),
+	}})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v, want nil", err)
+	}
+	want := []rules.IdentityLine{{
+		Repo: "alpha",
+		Identities: []rules.IdentityEntry{
+			{Name: "Patrick Example", Email: "patrick@example.org", Accepted: true},
+			{Name: "Pat Example", Email: "pat@example.org"},
+		},
+	}}
+	if diff := cmp.Diff(want, rep.Identities); diff != "" {
+		t.Errorf("Identities mismatch (-want +got):\n%s", diff)
 	}
 }

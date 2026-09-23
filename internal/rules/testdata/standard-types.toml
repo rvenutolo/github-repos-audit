@@ -179,7 +179,9 @@ open_prs = "info"
 branches = "info"
 
 # The account holder's identity, for git_identity. Fake, like every fixture
-# value: the names and addresses internal/fixturevocab allows.
+# value: the names and addresses internal/fixturevocab allows. The accepted
+# identity stands for the account's GitHub noreply address.
 [identity]
 canonical = "Pat Example <pat@example.com>"
+accepted = ["Pat Example <12345+pat@users.noreply.github.com>"]
 match = " Example <"

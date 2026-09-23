@@ -179,7 +179,10 @@
   },
   "identity": {
     "canonical": "Pat Example <pat@example.com>",
-    "match": " Example <"
+    "match": " Example <",
+    "accepted": [
+      "Pat Example <12345+pat@users.noreply.github.com>"
+    ]
   },
   "repos": [
     {
@@ -197,6 +200,10 @@
       "default_branch": "main",
       "head_oid": "0123456789abcdef0123456789abcdef01234567",
       "identities": [
+        {
+          "name": "Pat Example",
+          "email": "12345+pat@users.noreply.github.com"
+        },
         {
           "name": "Pat Example",
           "email": "pat@example.com"
@@ -571,6 +578,10 @@
       "default_branch": "main",
       "head_oid": "0123456789abcdef0123456789abcdef01234567",
       "identities": [
+        {
+          "name": "Pat Example",
+          "email": "12345+pat@users.noreply.github.com"
+        },
         {
           "name": "Pat Example",
           "email": "pat@example.com"

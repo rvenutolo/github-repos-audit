@@ -47,9 +47,10 @@ type Config struct {
 	// Repos is keyed by repository name.
 	Repos map[string]Repo
 	// Identity is the [identity] table: the account holder's canonical git
-	// identity and the expression saying which identities are theirs. Zero
-	// when repos.toml has no [identity] table, which it may omit only when
-	// nothing judges git_identity.
+	// identity, any further identities of theirs that are accepted, and the
+	// expression saying which identities are theirs. Zero when repos.toml has
+	// no [identity] table, which it may omit only when nothing judges
+	// git_identity.
 	Identity audit.IdentityStandard
 }
 
@@ -72,8 +73,9 @@ type fileShape struct {
 // identityShape mirrors [identity]. A pointer in fileShape, so an empty table
 // is present-but-wrong rather than indistinguishable from no table at all.
 type identityShape struct {
-	Canonical string `toml:"canonical"`
-	Match     string `toml:"match"`
+	Canonical string   `toml:"canonical"`
+	Accepted  []string `toml:"accepted"`
+	Match     string   `toml:"match"`
 }
 
 type entryShape struct {
@@ -170,7 +172,14 @@ func identityProblems(raw fileShape) (audit.IdentityStandard, []error) {
 	case !needed:
 		return audit.IdentityStandard{}, []error{errors.New("[identity] is set but no type or override judges git_identity")}
 	}
-	std := audit.IdentityStandard{Canonical: raw.Identity.Canonical, Match: raw.Identity.Match}
+	std := audit.IdentityStandard{Canonical: raw.Identity.Canonical, Match: raw.Identity.Match, Accepted: raw.Identity.Accepted}
+	// `accepted = []` decodes to an empty, non-nil slice, which audit.json
+	// would record as "accepted": [] where an absent key records nothing.
+	// Both mean nothing is accepted beyond canonical, so both are nil, and
+	// writing one for the other is not a material change.
+	if len(std.Accepted) == 0 {
+		std.Accepted = nil
+	}
 	return std, rules.IdentityProblems(std)
 }
 

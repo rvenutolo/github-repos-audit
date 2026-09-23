@@ -121,7 +121,8 @@ func TestParse_acceptsAThresholdOverride(t *testing.T) {
 
 // identityTable is the fixture [identity] table, the vocabulary
 // internal/fixturevocab allows.
-const identityTable = "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\nmatch = \" Example <\"\n\n"
+const identityTable = "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\n" +
+	"accepted = [\"Pat Example <12345+pat@users.noreply.github.com>\"]\nmatch = \" Example <\"\n\n"
 
 // judgedTools is a tools type that judges git_identity.
 var judgedTools = typeTable("tools", map[string]string{"git_identity": rules.OverrideRequired})
@@ -134,9 +135,37 @@ func TestParse_keepsTheIdentityStandard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse() error = %v, want nil", err)
 	}
-	want := audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
-	if cfg.Identity != want {
-		t.Errorf("Parse() identity = %+v, want %+v", cfg.Identity, want)
+	want := audit.IdentityStandard{
+		Canonical: "Pat Example <pat@example.com>",
+		Match:     " Example <",
+		Accepted:  []string{"Pat Example <12345+pat@users.noreply.github.com>"},
+	}
+	if diff := cmp.Diff(want, cfg.Identity); diff != "" {
+		t.Errorf("Parse() identity mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestParse_acceptedEmptyIsNil: `accepted = []` and no accepted key both mean
+// nothing is accepted beyond canonical, so both must produce the same
+// standard — otherwise audit.json would gain "accepted": [] and the guard
+// would call an edit that changes nothing a material change.
+func TestParse_acceptedEmptyIsNil(t *testing.T) {
+	t.Parallel()
+
+	for name, table := range map[string]string{
+		"absent": "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\nmatch = \" Example <\"\n\n",
+		"empty":  "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\naccepted = []\nmatch = \" Example <\"\n\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := config.Parse(strings.NewReader(judgedTools + table + "[repos.alpha]\ntype = \"tools\"\n"))
+			if err != nil {
+				t.Fatalf("Parse() error = %v, want nil", err)
+			}
+			if cfg.Identity.Accepted != nil {
+				t.Errorf("Parse() identity.Accepted = %#v, want nil", cfg.Identity.Accepted)
+			}
+		})
 	}
 }
 
@@ -346,6 +375,33 @@ var rejectedFiles = []struct {
 		name:     "a canonical identity the match expression rejects",
 		in:       judgedTools + "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\nmatch = \"Robin\"\n\n[repos.alpha]\ntype = \"tools\"\n",
 		contains: "identity.canonical does not match identity.match",
+	},
+	{
+		name:     "a malformed accepted identity",
+		in:       judgedTools + "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\naccepted = [\"Pat Example\"]\nmatch = \" Example <\"\n\n[repos.alpha]\ntype = \"tools\"\n",
+		contains: `identity.accepted[0] = "Pat Example" (want "Name <email>")`,
+	},
+	{
+		name:     "an accepted identity the match expression rejects",
+		in:       judgedTools + "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\naccepted = [\"Robin Other <robin@example.org>\"]\nmatch = \" Example <\"\n\n[repos.alpha]\ntype = \"tools\"\n",
+		contains: "identity.accepted[0] does not match identity.match",
+	},
+	{
+		name:     "an accepted identity that is the canonical one",
+		in:       judgedTools + "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\naccepted = [\"Pat Example <pat@example.com>\"]\nmatch = \" Example <\"\n\n[repos.alpha]\ntype = \"tools\"\n",
+		contains: "identity.accepted[0] is identity.canonical",
+	},
+	{
+		name: "a repeated accepted identity",
+		in: judgedTools + "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\n" +
+			"accepted = [\"Pat Example <12345+pat@users.noreply.github.com>\", \"Pat Example <12345+pat@users.noreply.github.com>\"]\n" +
+			"match = \" Example <\"\n\n[repos.alpha]\ntype = \"tools\"\n",
+		contains: "identity.accepted[1] repeats identity.accepted[0]",
+	},
+	{
+		name:     "accepted that is not a list",
+		in:       judgedTools + "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\naccepted = \"Pat Example <12345+pat@users.noreply.github.com>\"\nmatch = \" Example <\"\n\n[repos.alpha]\ntype = \"tools\"\n",
+		contains: "identity.accepted",
 	},
 	{
 		name:     "no entries at all",

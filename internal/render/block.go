@@ -157,6 +157,8 @@ func activitySection(rep *rules.Report, at time.Time) string {
 // history rewrite. The Policy column says whether a repository is wrong; this
 // says what to rewrite from. It is omitted when no repository has any of the
 // owner's identities, which includes a report with no identity standard.
+// Accepted identities are listed, tagged, and never make a line mixed or not
+// canonical: the markers flag only what there is to rewrite.
 func identitiesSection(rep *rules.Report) string {
 	if len(rep.Identities) == 0 {
 		return ""
@@ -167,8 +169,11 @@ func identitiesSection(rep *rules.Report) string {
 		parts := make([]string, 0, len(line.Identities))
 		for _, id := range line.Identities {
 			p := code(id.String())
-			if id.Canonical {
+			switch {
+			case id.Canonical:
 				p += " (canonical)"
+			case id.Accepted:
+				p += " (accepted)"
 			}
 			parts = append(parts, p)
 		}
@@ -176,7 +181,7 @@ func identitiesSection(rep *rules.Report) string {
 		switch {
 		case line.Mixed:
 			b.WriteString(" — mixed")
-		case !line.Canonical:
+		case !line.Clean:
 			b.WriteString(" — not canonical")
 		}
 		b.WriteString("\n")
