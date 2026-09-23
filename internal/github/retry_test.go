@@ -63,18 +63,13 @@ func newRetryTestClient(t *testing.T, baseURL string) (*Client, *waitRecorder) {
 // countingServer answers with the scripted statuses in order, repeating the
 // last one once the script runs out, and counts what it was handed.
 type countingServer struct {
-	// answered is closed when the first request has been served, so a test can
-	// wait for the client to be inside its backoff rather than poll for it.
-	answered  chan struct{}
-	closeOnce sync.Once
-
 	mu     sync.Mutex
 	calls  int
 	bodies []string
 }
 
 func newCountingServer() *countingServer {
-	return &countingServer{answered: make(chan struct{})}
+	return &countingServer{}
 }
 
 func (s *countingServer) handle(script []scriptedResponse) http.HandlerFunc {
@@ -98,7 +93,6 @@ func (s *countingServer) handle(script []scriptedResponse) http.HandlerFunc {
 		if _, err := w.Write([]byte(step.body)); err != nil {
 			return
 		}
-		s.closeOnce.Do(func() { close(s.answered) })
 	}
 }
 
@@ -709,21 +703,29 @@ func TestClient_do_stopsWaitingWhenTheContextIsCancelled(t *testing.T) {
 	}}))
 	t.Cleanup(server.Close)
 
-	// The real wait, not the recorder: the timer is what is under test.
+	// The real wait, not the recorder: the timer is what is under test. The
+	// wrapper only announces that the client has reached its backoff. Waiting
+	// for the server to have answered instead was a race: a cancel landing
+	// while the client was still reading that answer failed the read, so the
+	// test passed without ever cancelling a backoff, and the coverage of the
+	// sleep's exit came and went between runs.
 	c, _ := newRetryTestClient(t, server.URL)
-	c.sleep = waitFor
+	sleeping := make(chan struct{})
+	c.sleep = func(ctx context.Context, d time.Duration) error {
+		close(sleeping)
+		return waitFor(ctx, d)
+	}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { _, err := c.do(ctx, http.MethodGet, server.URL+"/anything", nil); done <- err }()
 
-	// One answer means the client is inside its backoff.
 	deadline := time.NewTimer(10 * time.Second)
 	defer deadline.Stop()
 	select {
-	case <-srv.answered:
+	case <-sleeping:
 	case <-deadline.C:
-		t.Fatal("the client never sent its first request")
+		t.Fatal("the client never reached its backoff")
 	}
 	cancel()
 
