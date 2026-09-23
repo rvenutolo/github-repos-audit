@@ -49,12 +49,13 @@ var (
 	// is case-sensitive, and the text between matches is kept as parts too.
 	renovatePart = regexp.MustCompile(`.*?[a-z]+`)
 	// renovateMonths is Renovate's own month rule, applied before ms: a
-	// month is exactly 30 days.
+	// month is exactly 30 days. It is the only way a month reaches Renovate
+	// at all — Renovate pins ms 2.1.3, whose own grammar has no months/mo
+	// unit, so anything month-like this rule doesn't take (e.g. "1.5
+	// months", "2 mo") is invalid, same as in Renovate.
 	renovateMonths = regexp.MustCompile(`^(\d+)\s*(?:months?|M)$`)
-	// msPattern is the ms library's grammar, case-insensitive. Its "mo"
-	// month is a twelfth of a year (30.4375 days) and is reached only by a
-	// form the month rule above does not take, such as "1.5 months".
-	msPattern = regexp.MustCompile(`(?i)^(-?\d*\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|months?|mo|years?|yrs?|y)?$`)
+	// msPattern is ms 2.1.3's grammar, case-insensitive.
+	msPattern = regexp.MustCompile(`(?i)^(-?\d*\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)?$`)
 )
 
 // msMaxLength is the longest string ms will parse; a longer one is NaN.
@@ -141,8 +142,6 @@ func msUnit(u string) float64 {
 	switch u {
 	case "years", "year", "yrs", "yr", "y":
 		return msYear
-	case "months", "month", "mo":
-		return msYear / 12
 	case "weeks", "week", "w":
 		return 7 * day
 	case "days", "day", "d":
