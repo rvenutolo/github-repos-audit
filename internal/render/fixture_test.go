@@ -132,8 +132,8 @@ func fullSnapshot() *audit.Snapshot {
 	soft.Settings.PrivateVulnerabilityReporting = new(true)
 	soft.Settings.ActionsAccessLevel = ""
 	soft.Settings.HasProjects = true // the one deviation on projects
-	// Its history switched identity: mixed. The web-flow noreply identity
-	// beside them is accepted and does not count toward it.
+	// Its history switched identity: mixed. The noreply identity GitHub records
+	// on web-UI merges beside them is accepted and does not count toward it.
 	soft.Identities = []audit.Identity{
 		{Name: "Pat Example", Email: "12345+pat@users.noreply.github.com"},
 		{Name: "Pat Example", Email: "pat@example.com"},

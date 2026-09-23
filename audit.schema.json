@@ -386,7 +386,7 @@
         "canonical": { "type": "string", "minLength": 1 },
         "match": { "type": "string", "minLength": 1 },
         "accepted": {
-          "description": "Further identities, each written \"Name <email>\", that are the account holder's and acceptable though not canonical — GitHub's web-flow noreply identity, typically. Absent when none are declared.",
+          "description": "Further identities, each written \"Name <email>\", that are the account holder's and acceptable though not canonical — the account's GitHub noreply identity, which GitHub records on merges and edits made in its web UI, typically. Absent when none are declared.",
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         }

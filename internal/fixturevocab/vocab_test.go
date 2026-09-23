@@ -39,7 +39,7 @@ var fakeRepos = []string{
 // fixture or golden may carry. A captured history would carry the account
 // holder's real name and address, which is exactly what this test exists to
 // keep out; the bot and GitHub entries are GitHub's own public identities,
-// and 12345+pat@users.noreply.github.com stands for the fake owner's web-flow
+// and 12345+pat@users.noreply.github.com stands for the fake owner's GitHub
 // noreply address.
 var (
 	fakeIdentityNames  = []string{"Pat Example", "Patrick Example", "Robin Other", "renovate[bot]", "GitHub"}
@@ -584,8 +584,10 @@ func checkMarkdown(text string) []string {
 		case inIdentities:
 			// A Git identities line has already been held, span by span, to the
 			// fake identity vocabulary by checkIdentityLine, which also rejects
-			// anything that is not a well-formed bullet. An address there may
-			// legitimately end in users.noreply.github.com — GitHub's web-flow
+			// anything that is not a well-formed bullet; the only other lines
+			// that reach here are the fixed "## Git identities" heading and the
+			// blank line below it, both safe. An address there may legitimately
+			// end in users.noreply.github.com — the account's GitHub noreply
 			// identity — which is not a link and names no repository, so the
 			// host scan has nothing to decompose and would only misfire.
 		default:
