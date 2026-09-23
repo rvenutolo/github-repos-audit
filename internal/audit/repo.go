@@ -73,6 +73,13 @@ type Repo struct {
 	// defaultBranchRef: null. That is an ordinary answer, not a failure: the
 	// branch-derived cells are unknown and everything else still applies.
 	Empty bool `json:"empty,omitzero"`
+	// Identities is every distinct author and committer identity on the
+	// default branch's full history, exactly as the commits spell them,
+	// sorted by name then email. It includes other people and bots: which of
+	// these are the account holder's, and whether they are right, is
+	// internal/rules' decision. No counts or dates, deliberately — they would
+	// change on every push and make audit.json churn.
+	Identities []Identity `json:"identities,omitzero"`
 
 	// Files records which of the probed paths exist at HEAD.
 	Files Files `json:"files"`

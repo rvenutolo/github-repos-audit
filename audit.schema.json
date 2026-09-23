@@ -158,6 +158,12 @@
           "type": "boolean",
           "const": true
         },
+        "identities": {
+          "description": "Every distinct author and committer identity on the default branch's full history, exactly as the commits spell them, sorted by name then email. Includes other people and bots; which are the account holder's is internal/rules' decision. Absent for an empty repository.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/identity" }
+        },
         "files": { "$ref": "#/$defs/files" },
         "renovate": { "$ref": "#/$defs/renovate" },
         "ci_state": {
@@ -352,6 +358,16 @@
           "type": "string",
           "format": "date-time"
         }
+      }
+    },
+    "identity": {
+      "description": "One git identity as a commit spells it. Either half may be empty: GitHub answers null for a name or address the commit does not carry, and the other half is still a fact.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "email"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" }
       }
     },
     "ruleset": {

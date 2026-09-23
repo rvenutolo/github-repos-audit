@@ -4,6 +4,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -42,6 +45,14 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		PushedAt:         at(t, "2025-09-05T01:39:25Z"),
 		DefaultBranch:    "main",
 		HeadOID:          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
+		// Byte order, so the null name's "" sorts first and the bot last. The
+		// null author contributes nothing: there is nobody to record.
+		Identities: []audit.Identity{
+			{Name: "", Email: "robin@example.org"},
+			{Name: "GitHub", Email: "noreply@github.com"},
+			{Name: "Pat Example", Email: "pat@example.com"},
+			{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"},
+		},
 		Files: audit.Files{
 			README:         true,
 			Gitignore:      true,
@@ -134,7 +145,15 @@ func wantWebApp(t *testing.T) audit.Repo {
 		PushedAt:      at(t, "2025-09-02T01:44:53Z"),
 		DefaultBranch: "main",
 		HeadOID:       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
-		Files:         audit.Files{RenovateConfig: "renovate.json", Workflows: []string{"workflow-33.yml"}},
+		// The union of all three history pages. The two spellings of one
+		// address stay two identities: whether case matters is internal/rules'
+		// decision, and byte order puts "Pat@" before "pat@".
+		Identities: []audit.Identity{
+			{Name: "Pat Example", Email: "Pat@Example.com"},
+			{Name: "Pat Example", Email: "pat@example.com"},
+			{Name: "Patrick Example", Email: "patrick@example.org"},
+		},
+		Files: audit.Files{RenovateConfig: "renovate.json", Workflows: []string{"workflow-33.yml"}},
 		// Inherited from the in-account preset; config:best-practices is a
 		// built-in, which sets nothing this tool can read.
 		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store"},
@@ -235,6 +254,105 @@ func TestClient_Collect(t *testing.T) {
 			}
 			if diff := cmp.Diff(tc.want, got[0]); diff != "" {
 				t.Errorf("Collect(%q) mismatch (-want +got):\n%s", tc.name, diff)
+			}
+		})
+	}
+}
+
+// TestClient_Collect_walksTheWholeHistory follows web-app's history across all
+// three pages. Patrick Example appears only on the last one, so a walk that
+// stopped early would drop him silently; and every later page must be asked of
+// the head commit the repository query answered, not of the branch, so a push
+// mid-walk cannot splice two histories together.
+func TestClient_Collect_walksTheWholeHistory(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if !slices.Contains(got[0].Identities, audit.Identity{Name: "Patrick Example", Email: "patrick@example.org"}) {
+		t.Errorf("Identities = %v, want the identity only the third page carries", got[0].Identities)
+	}
+
+	vars := api.graphQLVariables()
+	if len(vars) != 3 {
+		t.Fatalf("/graphql saw %d documents for web-app, want 3: the repository query and two history pages", len(vars))
+	}
+	if _, ok := vars[0]["cursor"]; ok {
+		t.Errorf("the repository query carried a cursor: %v", vars[0])
+	}
+	for i, cursor := range []string{"cursor-02", "cursor-03"} {
+		page := vars[i+1]
+		want := map[string]string{
+			"owner":  testOwner,
+			"name":   "web-app",
+			"oid":    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
+			"cursor": cursor,
+		}
+		if diff := cmp.Diff(want, page); diff != "" {
+			t.Errorf("history page %d variables mismatch (-want +got):\n%s", i+2, diff)
+		}
+	}
+}
+
+// TestClient_Collect_abortsOnAFailedHistoryPage makes web-app's second history
+// page answer with a GraphQL error. The identities from page one are half a
+// history, and recording them as the whole would hide whoever committed only
+// on the pages that failed, so the run aborts instead.
+func TestClient_Collect_abortsOnAFailedHistoryPage(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	first, err := os.ReadFile(filepath.Join(fixtureRoot, "repos", "web-app", "graphql.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	api.failNext("/graphql",
+		scriptedFailure{status: http.StatusOK, body: string(first)},
+		scriptedFailure{
+			status: http.StatusOK,
+			body:   `{"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a GitObject"}]}`,
+		},
+	)
+
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	if err == nil {
+		t.Fatal("Collect() error = nil, want the history page's GraphQL error")
+	}
+	if !strings.Contains(err.Error(), "NOT_FOUND") {
+		t.Errorf("Collect() error = %q, want it to carry GitHub's error", err)
+	}
+	if got != nil {
+		t.Errorf("Collect() returned %d repositories alongside an error, want none", len(got))
+	}
+	if n := api.callsTo("/graphql"); n != 2 {
+		t.Errorf("/graphql saw %d calls, want 2: the walk must stop at the failed page", n)
+	}
+}
+
+// TestClient_Collect_oneHistoryPage covers the ordinary case: a history that
+// fits on the first page costs no request beyond the repository query, and an
+// identity that is both author and committer is recorded once.
+func TestClient_Collect_oneHistoryPage(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"mixedCase-flake", "pkg-index"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			api := newFakeAPI(t)
+			got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{name})
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			want := []audit.Identity{{Name: "Pat Example", Email: "pat@example.com"}}
+			if diff := cmp.Diff(want, got[0].Identities); diff != "" {
+				t.Errorf("Identities mismatch (-want +got):\n%s", diff)
+			}
+			if n := len(api.graphQLVariables()); n != 1 {
+				t.Errorf("/graphql saw %d documents, want 1", n)
 			}
 		})
 	}

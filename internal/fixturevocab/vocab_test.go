@@ -35,6 +35,18 @@ var fakeRepos = []string{
 	"github-repos-audit", "alpha", "bravo", "preset-store",
 }
 
+// fakeIdentityNames and fakeIdentityEmails are the only git identities a
+// fixture or golden may carry. A captured history would carry the account
+// holder's real name and address, which is exactly what this test exists to
+// keep out; the bot and GitHub entries are GitHub's own public identities.
+var (
+	fakeIdentityNames  = []string{"Pat Example", "Patrick Example", "Robin Other", "renovate[bot]", "GitHub"}
+	fakeIdentityEmails = []string{
+		"pat@example.com", "Pat@Example.com", "pat@example.org", "patrick@example.org", "robin@example.org",
+		"29139614+renovate[bot]@users.noreply.github.com", "noreply@github.com",
+	}
+)
+
 // rule says what the scalar at a key path may hold. want describes the
 // allowed form for the failure message; the offending value is never printed.
 type rule struct {
@@ -59,6 +71,16 @@ func matches(re string) func(any) bool {
 }
 
 func isFakeRepo(v any) bool { s, ok := str(v); return ok && slices.Contains(fakeRepos, s) }
+
+func isFakeIdentityName(v any) bool {
+	s, ok := str(v)
+	return ok && slices.Contains(fakeIdentityNames, s)
+}
+
+func isFakeIdentityEmail(v any) bool {
+	s, ok := str(v)
+	return ok && slices.Contains(fakeIdentityEmails, s)
+}
 
 func isOwnerSlashRepo(v any) bool {
 	s, ok := str(v)
@@ -217,6 +239,14 @@ var apiRules = []rule{
 	// A preset file read through the contents API is the same content,
 	// base64-encoded, so it is decoded before the same check.
 	{regexp.MustCompile(`^content$`), isFakeBase64Content, "base64 of text naming only gh-owner/<fake> repositories"},
+	// A commit's author and committer are the one place a fixture could carry
+	// a person rather than a repository, so both halves are held to the fake
+	// identity vocabulary. History lives under two roots — page one rides with
+	// the repository query, later pages come back under object — so these are
+	// anchored at the end only. GitHub answers null for a half it cannot read.
+	{regexp.MustCompile(`history\.nodes\[\]\.(author|committer)\.name$`), optional(isFakeIdentityName), "null or a fake identity name"},
+	{regexp.MustCompile(`history\.nodes\[\]\.(author|committer)\.email$`), optional(isFakeIdentityEmail), "null or a fake identity email"},
+	{regexp.MustCompile(`history\.page_info\.end_cursor$`), optional(matches(`^cursor-\d{2}$`)), "null or a synthetic cursor"},
 	keep(
 		`access_level`, `allowed_actions`, `\[\]\.archived`, `archived`, `\[\]\.disabled`, `disabled`,
 		`\[\]\.fork`, `fork`, `\[\]\.private`, `private`, `\[\]\.visibility`, `visibility`,
@@ -239,6 +269,7 @@ var apiRules = []rule{
 		`data\.repository\.releases\.nodes\[\]\.is_draft`,
 		`data\.repository\.rulesets\.nodes\[\]\.(enforcement|target|conditions\.ref_name\.include\[\]|rules\.nodes\[\]\.type)`,
 		`data\.repository\.`+renovateProbes+`\.(is_truncated|is_binary)`,
+		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
 		// The contents API's envelope: "file" and "base64" are GitHub's words.
 		`type`, `encoding`,
 	),
@@ -256,6 +287,8 @@ var apiRules = []rule{
 		`data\.repository\.(contributing_root|contributing_github|contributing_docs)`,
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
 		`data\.repository\.`+renovateProbes,
+		// A null actor: GitHub could not resolve who wrote or committed it.
+		`data\.repository\.(default_branch_ref\.target|object)\.history\.nodes\[\]\.(author|committer)`,
 	),
 }
 
@@ -270,6 +303,8 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.branch\.required_checks\[\]$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^repos\[\]\.settings\.allowed_actions\.patterns\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`^(generated_at|repos\[\]\.pushed_at|repos\[\]\.releases\.last_published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
+	{regexp.MustCompile(`^repos\[\]\.identities\[\]\.name$`), isFakeIdentityName, "a fake identity name"},
+	{regexp.MustCompile(`^repos\[\]\.identities\[\]\.email$`), isFakeIdentityEmail, "a fake identity email"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
@@ -559,6 +594,9 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 		{name: "preset content naming a real preset", doc: `{"content": "eyJleHRlbmRzIjogWyJnaXRodWI+c29tZW9uZS9yZWFsLXJlcG8iXX0=\n"}`},
 		{name: "preset content that is not base64", doc: `{"content": "not base64!"}`},
 		{name: "a present renovate probe with a real flag field", doc: `{"data": {"repository": {"renovate_json": {"is_huge": true}}}}`},
+		{name: "a history author outside the identity vocabulary", doc: `{"data": {"repository": {"default_branch_ref": {"target": {"history": {"nodes": [{"author": {"name": "Someone Real", "email": "pat@example.com"}}]}}}}}}`},
+		{name: "a later history page's committer email outside the vocabulary", doc: `{"data": {"repository": {"object": {"history": {"nodes": [{"committer": {"name": "Pat Example", "email": "someone@real.invalid"}}]}}}}}`},
+		{name: "a history cursor that is not synthetic", doc: `{"data": {"repository": {"object": {"history": {"page_info": {"end_cursor": "Y3Vyc29yOnYyOpK5"}}}}}}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

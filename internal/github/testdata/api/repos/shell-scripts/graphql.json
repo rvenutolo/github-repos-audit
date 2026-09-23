@@ -35,6 +35,41 @@
           "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
           "status_check_rollup": {
             "state": "SUCCESS"
+          },
+          "history": {
+            "page_info": {
+              "has_next_page": false,
+              "end_cursor": "cursor-02"
+            },
+            "nodes": [
+              {
+                "author": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                },
+                "committer": {
+                  "name": "GitHub",
+                  "email": "noreply@github.com"
+                }
+              },
+              {
+                "author": {
+                  "name": "renovate[bot]",
+                  "email": "29139614+renovate[bot]@users.noreply.github.com"
+                },
+                "committer": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                }
+              },
+              {
+                "author": null,
+                "committer": {
+                  "name": null,
+                  "email": "robin@example.org"
+                }
+              }
+            ]
           }
         }
       },

@@ -12,15 +12,18 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
 
 // The live suite. Real requests against real GitHub, read-only, with the same
 // token the daily refresh uses.
 //
 // It exists because recorded fixtures pass forever while the API drifts
-// underneath them. The entire collection is one GraphQL query plus eight REST
-// calls, so a single renamed field or changed enum breaks every run — and
-// nothing offline can see it coming.
+// underneath them. The entire collection is one GraphQL query (plus one per
+// further hundred commits of history) and eight REST calls, so a single
+// renamed field or changed enum breaks every run — and nothing offline can see
+// it coming.
 //
 // A failure here is informational, not a broken build: it means GitHub changed
 // something and the collector needs attention before the next cron run does it
@@ -158,6 +161,16 @@ func TestLive_collectParsesEveryField(t *testing.T) {
 	}
 	if pub.Settings.DefaultWorkflowPermissions == "" {
 		t.Errorf("%s has no default workflow permissions", pub.Name)
+	}
+	// Shape only, never values: the identities are real people's names and
+	// addresses, and this suite's output is a CI log. A repository with
+	// commits has at least one identity, and at least one of them carries
+	// both halves; none at all means the history selection was renamed.
+	if len(pub.Identities) == 0 {
+		t.Errorf("%s has no identities; the history selection may have changed", pub.Name)
+	}
+	if !slices.ContainsFunc(pub.Identities, func(id audit.Identity) bool { return id.Name != "" && id.Email != "" }) {
+		t.Errorf("%s has no identity with both a name and an email; the actor fields may have changed", pub.Name)
 	}
 
 	priv := repos[byName[lt.privateRepo]]

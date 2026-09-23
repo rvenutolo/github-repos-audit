@@ -62,6 +62,7 @@ type fakeAPI struct {
 	mu        sync.Mutex
 	calls     []call
 	documents []string
+	variables []map[string]string
 	failures  map[string][]scriptedFailure
 }
 
@@ -178,6 +179,14 @@ func (f *fakeAPI) graphQLDocuments() []string {
 	return append([]string(nil), f.documents...)
 }
 
+// graphQLVariables returns the variables of every document posted to
+// /graphql, in order, so a test can see which cursor and oid a page asked for.
+func (f *fakeAPI) graphQLVariables() []map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]map[string]string(nil), f.variables...)
+}
+
 // handleGraphQL answers with the recorded response for the repository named in
 // the request's variables, which is how one endpoint serves every repository.
 func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
@@ -194,9 +203,20 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 
 	f.mu.Lock()
 	f.documents = append(f.documents, body.Query)
+	f.variables = append(f.variables, body.Variables)
 	f.mu.Unlock()
 
-	f.serve(w, filepath.Join(fixtureRoot, "repos", body.Variables["name"]), "graphql")
+	// A history page is the same endpoint and the same repository name, so the
+	// cursor is what tells the pages apart: page one comes with the repository
+	// query, every later page is its own file named after the cursor that asks
+	// for it. Flat files, because fixture directories may only be repository
+	// names.
+	dir := filepath.Join(fixtureRoot, "repos", body.Variables["name"])
+	if cursor := body.Variables["cursor"]; cursor != "" {
+		f.serve(w, dir, "graphql-history-"+cursor)
+		return
+	}
+	f.serve(w, dir, "graphql")
 }
 
 // handleDiscover pages: the first answer carries a Link header naming

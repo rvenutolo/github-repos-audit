@@ -35,6 +35,24 @@
           "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001",
           "status_check_rollup": {
             "state": "SUCCESS"
+          },
+          "history": {
+            "page_info": {
+              "has_next_page": false,
+              "end_cursor": "cursor-01"
+            },
+            "nodes": [
+              {
+                "author": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                },
+                "committer": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                }
+              }
+            ]
           }
         }
       },
