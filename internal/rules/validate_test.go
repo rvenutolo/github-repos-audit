@@ -57,6 +57,22 @@ func TestValidateOffline_rejectsADeadOverride(t *testing.T) {
 			},
 			contains: "changes nothing",
 		},
+		{
+			name: "a threshold equal to the type's, spelled differently",
+			decl: rules.Declaration{
+				Name: "alpha", Type: "tools",
+				Overrides: map[string]string{"renovate_min_release_age": "1 week"},
+			},
+			contains: "already expects the same minimum release age",
+		},
+		{
+			name: "not_required against a type that already says so",
+			decl: rules.Declaration{
+				Name: "alpha", Type: "content",
+				Overrides: map[string]string{"renovate_min_release_age": rules.OverrideNotRequired},
+			},
+			contains: "already treats it as n/a",
+		},
 	}
 
 	for _, tc := range tests {
@@ -87,6 +103,12 @@ func TestValidateOffline_acceptsALiveOverride(t *testing.T) {
 		{Name: "bravo", Type: "tools", Overrides: map[string]string{"flake_nix": rules.OverrideNotRequired}},
 		// Tools expects direct push blocked, so allowing it says something.
 		{Name: "charlie", Type: "tools", Overrides: map[string]string{"direct_push": "allowed"}},
+		// A shorter threshold than the type's says something.
+		{Name: "delta", Type: "tools", Overrides: map[string]string{"renovate_min_release_age": "3 days"}},
+		// Tools holds the release age to a threshold, so excusing it says something.
+		{Name: "echo", Type: "tools", Overrides: map[string]string{"renovate_min_release_age": rules.OverrideNotRequired}},
+		// Content does not judge the release age, so a threshold says something.
+		{Name: "foxtrot", Type: "content", Overrides: map[string]string{"renovate_min_release_age": "7 days"}},
 	}
 	if err := rules.ValidateOffline(standardTypes(), decls); err != nil {
 		t.Errorf("ValidateOffline() error = %v, want nil", err)

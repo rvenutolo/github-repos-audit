@@ -65,6 +65,29 @@ func isOwnerSlashRepo(v any) bool {
 	return ok && found && owner == fakeOwner && slices.Contains(fakeRepos, name)
 }
 
+// presetRef finds owner/repo pairs where Renovate would read them: after a
+// github> or local> prefix, or bare at the start of a string or after a
+// quote, bracket or space. ".github/renovate.json" is a path, not a pair,
+// and is left alone because a dot cannot start a match.
+var presetRef = regexp.MustCompile(`(?:github>|local>|^|["'\[\s])([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)`)
+
+// namesOnlyFakeRepos accepts a string whose every owner/repo pair is
+// gh-owner and a fake repository. A Renovate preset reference or the error
+// text quoting one names a repository the same way a full_name does, so it
+// is held to the same vocabulary.
+func namesOnlyFakeRepos(v any) bool {
+	s, ok := str(v)
+	if !ok {
+		return false
+	}
+	for _, m := range presetRef.FindAllStringSubmatch(s, -1) {
+		if m[1] != fakeOwner || !slices.Contains(fakeRepos, m[2]) {
+			return false
+		}
+	}
+	return true
+}
+
 // pipeDescription is the one deliberate escaping fixture: a description
 // containing a pipe character, used to prove the Markdown renderer escapes
 // table cells correctly. It names no account.
@@ -219,6 +242,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.branch\.required_checks\[\]$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^repos\[\]\.settings\.allowed_actions\.patterns\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`^(generated_at|repos\[\]\.pushed_at|repos\[\]\.releases\.last_published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
+	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
 		`repos\[\]\.(branches|ci_state|default_branch|empty|license|open_pull_requests|published|topics|type|visibility)`,
@@ -226,6 +250,8 @@ var snapshotRules = []rule{
 		`repos\[\]\.files\.[a-z_]+`,
 		`repos\[\]\.overrides\.[a-z_]+`,
 		`repos\[\]\.releases\.(drafts|total)`,
+		// A duration such as "7 days" is never account data.
+		`repos\[\]\.renovate\.min_release_age`,
 		`repos\[\]\.rulesets\[\]\.(enforcement|include\[\]|rules\[\]|target)`,
 		`repos\[\]\.settings\.[a-z_]+`,
 		`repos\[\]\.settings\.allowed_actions\.(github_owned_allowed|verified_allowed)`,
@@ -508,6 +534,27 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 				t.Errorf("check(%s) found no problem, want one", tc.name)
 			}
 		})
+	}
+}
+
+// TestNamesOnlyFakeRepos: a preset reference, and error text quoting one,
+// may name only gh-owner and a fake repository; a config path is not a pair.
+func TestNamesOnlyFakeRepos(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{in: "github>gh-owner/preset-store", want: true},
+		{in: "preset github>gh-owner/preset-store:go: not found", want: true},
+		{in: ".github/renovate.json5", want: true},
+		{in: "github>someone/real-repo", want: false},
+	}
+	for _, tc := range tests {
+		if got := namesOnlyFakeRepos(tc.in); got != tc.want {
+			t.Errorf("namesOnlyFakeRepos(%q) = %t, want %t", tc.in, got, tc.want)
+		}
 	}
 }
 

@@ -150,6 +150,9 @@ func CheckCoverage(discovered, declared []string) error {
 // deadReason explains why an override says nothing, or returns "" when it
 // genuinely changes the derived value.
 func deadReason(check Check, typ Type, spec typeSpec, exp expectation, value string) string {
+	if check.Threshold() {
+		return thresholdDeadReason(typ, spec, exp, value)
+	}
 	if check == CheckDirectPush {
 		switch value {
 		case OverrideRequired:

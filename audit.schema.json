@@ -77,6 +77,7 @@
               "required_checks",
               "ci_green",
               "renovate",
+              "renovate_min_release_age",
               "editorconfig",
               "flake_nix",
               "justfile",
@@ -158,6 +159,7 @@
           "const": true
         },
         "files": { "$ref": "#/$defs/files" },
+        "renovate": { "$ref": "#/$defs/renovate" },
         "ci_state": {
           "description": "The statusCheckRollup state of the head commit. Absent when the rollup was null, which means no check has run on that commit.",
           "type": "string",
@@ -187,6 +189,7 @@
         "required_checks",
         "ci_green",
         "renovate",
+        "renovate_min_release_age",
         "editorconfig",
         "flake_nix",
         "justfile",
@@ -214,6 +217,7 @@
         "required_checks": { "$ref": "#/$defs/expectation" },
         "ci_green": { "$ref": "#/$defs/expectation" },
         "renovate": { "$ref": "#/$defs/expectation" },
+        "renovate_min_release_age": { "$ref": "#/$defs/release_age_threshold" },
         "editorconfig": { "$ref": "#/$defs/expectation" },
         "flake_nix": { "$ref": "#/$defs/expectation" },
         "justfile": { "$ref": "#/$defs/expectation" },
@@ -244,6 +248,38 @@
     "info_expectation": {
       "description": "A value-only check carries a value and never a pass or fail, so it is shown (info) or left out (not_required), never required.",
       "enum": ["info", "not_required"]
+    },
+    "release_age_threshold": {
+      "description": "What a type asks of the Renovate minimum release age: a duration such as \"7 days\" (expected, at least that long), not_required (never a gap) or info (shown, never judged). The pattern must match rules.ParseThreshold.",
+      "anyOf": [
+        { "enum": ["not_required", "info"] },
+        {
+          "type": "string",
+          "pattern": "^[1-9][0-9]* (minute|hour|day|week)s?$"
+        }
+      ]
+    },
+    "renovate": {
+      "description": "What the Renovate configuration says beyond where it lives. Absent when there is no configuration, or when nothing below was found.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_release_age": {
+          "description": "The effective top-level minimumReleaseAge as written, after merging the repository's own file with the presets in the account it extends. Absent when unset, null or unresolved.",
+          "type": "string",
+          "minLength": 1
+        },
+        "min_release_age_source": {
+          "description": "Where that value was set: the config path or the preset reference as written.",
+          "type": "string",
+          "minLength": 1
+        },
+        "min_release_age_error": {
+          "description": "Why the value could not be decided: a missing or unparsable preset, a cycle, a template.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "files": {
       "description": "The outcome of every file-existence probe. A probe answers null for a path that does not exist, so an absent file is an ordinary answer rather than an error.",

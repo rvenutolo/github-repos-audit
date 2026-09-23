@@ -22,6 +22,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "required",
+      "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
       "signed_commits": "required",
@@ -49,6 +50,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "not_required",
+      "renovate_min_release_age": "not_required",
       "required_checks": "not_required",
       "secret_scanning": "public",
       "signed_commits": "required",
@@ -76,6 +78,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "required",
+      "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
       "signed_commits": "required",
@@ -103,6 +106,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "required",
+      "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
       "signed_commits": "required",
@@ -130,6 +134,7 @@
       "readme": "required",
       "releases": "required",
       "renovate": "required",
+      "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
       "signed_commits": "required",
@@ -157,6 +162,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "required",
+      "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
       "signed_commits": "required",
@@ -194,6 +200,10 @@
         "workflows": [
           "ci.yml"
         ]
+      },
+      "renovate": {
+        "min_release_age": "3 days",
+        "min_release_age_source": "github>gh-owner/preset-store"
       },
       "ci_state": "SUCCESS",
       "releases": {
@@ -381,6 +391,10 @@
           "ci.yml"
         ]
       },
+      "renovate": {
+        "min_release_age": "7 days",
+        "min_release_age_source": "renovate.json"
+      },
       "ci_state": "PENDING",
       "releases": {
         "total": 0,
@@ -530,6 +544,9 @@
         "workflows": [
           "ci.yml"
         ]
+      },
+      "renovate": {
+        "min_release_age_error": "preset github>gh-owner/preset-store:go: not found"
       },
       "ci_state": "SUCCESS",
       "releases": {

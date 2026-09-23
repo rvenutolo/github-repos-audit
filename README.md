@@ -145,10 +145,13 @@ lists every check the tool knows, each set to one of:
 
 `direct_push` takes `blocked` or `allowed` instead, and the four value-only
 checks — `last_release_age`, `last_push`, `open_prs` and `branches` — take
-only `info` or `not_required`. A type that leaves a check out is an error, so
-a check added in a later version of the tool is decided for every type before
-`audit validate` passes. Type names use lowercase letters, digits, `_` and
-`-`, and a type no repository uses is allowed.
+only `info` or `not_required`. `renovate_min_release_age` takes a duration
+instead — `"7 days"`, `"48 hours"`, `"1 week"` (a whole number, then minute,
+hour, day or week, singular or plural) — or `not_required` or `info`; an
+override may give it a different duration. A type that leaves a check out is
+an error, so a check added in a later version of the tool is decided for every
+type before `audit validate` passes. Type names use lowercase letters, digits,
+`_` and `-`, and a type no repository uses is allowed.
 
 Each `[repos.<name>]` entry declares a `type`, and optionally `published` and
 per-repository `overrides`. Visibility is never declared; it is always read
@@ -171,6 +174,13 @@ restated, and `audit validate` is expected to reject it.
   success.
 - **renovate**, **flake_nix**, **justfile** — whether the corresponding
   tooling file exists.
+- **renovate_min_release_age** — Renovate's effective `minimumReleaseAge`,
+  held to the type's duration. The value is read from the repository's own
+  Renovate file merged with any presets it extends from the same account;
+  Renovate's built-in presets and other accounts' presets are not read, so a
+  value that only comes from one of those shows as `none`. Shows `unresolved`
+  when a preset is missing or does not parse; `audit.json` records why. n/a
+  without a Renovate configuration, which the renovate row already reports.
 - **homepage**, **topics**, **community_files** — repository metadata that
   only matters once a repository is meant to be found: a homepage URL, any
   topics, and how many of a security policy, contributing guide and code of

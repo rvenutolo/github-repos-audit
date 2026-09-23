@@ -12,4 +12,4 @@ github.com/rvenutolo/github-repos-audit/internal/fixturevocab n/a
 github.com/rvenutolo/github-repos-audit/internal/github 98.7%
 github.com/rvenutolo/github-repos-audit/internal/render 96.6%
 github.com/rvenutolo/github-repos-audit/internal/renovate 99.0%
-github.com/rvenutolo/github-repos-audit/internal/rules 98.3%
+github.com/rvenutolo/github-repos-audit/internal/rules 98.5%

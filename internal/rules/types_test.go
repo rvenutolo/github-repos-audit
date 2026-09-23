@@ -105,6 +105,25 @@ func TestTypeProblems_rejects(t *testing.T) {
 	}
 }
 
+// TestTypeProblems_minReleaseAgeWords: the threshold check takes a repos.toml
+// duration or one of the two words that switch the judgement off, and nothing
+// else — a bare required carries no threshold.
+func TestTypeProblems_minReleaseAgeWords(t *testing.T) {
+	t.Parallel()
+
+	for _, word := range []string{"7 days", "1 week", "48 hours", "not_required", "info"} {
+		if p := rules.TypeProblems(rules.Types{"t": table(map[string]string{"renovate_min_release_age": word})}); len(p) != 0 {
+			t.Errorf("renovate_min_release_age = %q: TypeProblems = %v, want none", word, p)
+		}
+	}
+	for _, word := range []string{"required", "public", "public_published", "7 dayz", "7d", "0 days"} {
+		p := rules.TypeProblems(rules.Types{"t": table(map[string]string{"renovate_min_release_age": word})})
+		if len(p) != 1 || !strings.Contains(p[0].Error(), `want a duration like "7 days", not_required or info`) {
+			t.Errorf("renovate_min_release_age = %q: TypeProblems = %v, want one problem naming the accepted forms", word, p)
+		}
+	}
+}
+
 // TestTypeProblems_reportsEveryProblemInAStableOrder: one run of `audit
 // validate` shows the whole table, ordered by type name and then by check
 // order, with unknown names after the checks.

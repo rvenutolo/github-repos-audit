@@ -56,7 +56,8 @@ func fixture(name string, typ rules.Type) audit.Repo {
 			RenovateConfig: "renovate.json",
 			Workflows:      []string{"ci.yml"},
 		},
-		CIState: "SUCCESS",
+		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
+		CIState:  "SUCCESS",
 		Releases: audit.Releases{
 			Total:           2,
 			LastPublishedAt: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
@@ -141,8 +142,9 @@ func publicToolsRepos(names ...string) []audit.Repo {
 }
 
 // table builds one complete type table: every check listed at a word it
-// accepts — required, blocked for direct push, info for the value-only checks —
-// with set overriding individual words. A key in set that is not a check is
+// accepts — required, blocked for direct push, info for the value-only checks,
+// "7 days" for the release-age threshold — with set overriding individual
+// words. A key in set that is not a check is
 // added as well, so a test can build an unknown-check table the same way.
 func table(set map[string]string) map[string]string {
 	out := make(map[string]string, len(rules.Checks())+len(set))
@@ -152,6 +154,8 @@ func table(set map[string]string) map[string]string {
 			out[c.String()] = "blocked"
 		case c.ValueOnly():
 			out[c.String()] = "info"
+		case c.Threshold():
+			out[c.String()] = "7 days"
 		default:
 			out[c.String()] = rules.OverrideRequired
 		}

@@ -164,6 +164,15 @@ func validate(name string, e entryShape, types rules.Types) (Repo, []error) {
 				name, key, value, rules.OverrideNotRequired))
 			continue
 		}
+		// The minimum-release-age check is held to a duration, so the only
+		// values that mean anything are a duration or the two words that
+		// switch the judgement off.
+		if check.Threshold() && !rules.ValidThresholdOverride(value) {
+			problems = append(problems, fmt.Errorf(
+				"%s: override %s = %q (want a duration like \"7 days\", %s or info)",
+				name, key, value, rules.OverrideNotRequired))
+			continue
+		}
 		repo.Overrides[key] = value
 	}
 

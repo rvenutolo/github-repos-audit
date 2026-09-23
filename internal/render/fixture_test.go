@@ -55,7 +55,8 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			RenovateConfig: "renovate.json",
 			Workflows:      []string{"ci.yml"},
 		},
-		CIState: "SUCCESS",
+		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
+		CIState:  "SUCCESS",
 		Rulesets: []audit.Ruleset{
 			{Name: "protect-tags", Target: "TAG", Enforcement: "ACTIVE", Include: []string{"refs/tags/**"}},
 			{
@@ -90,7 +91,8 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // to exercise the awkward rows rather than to look tidy: a published public
 // repository with community files, a content repository whose every tooling
 // cell is n/a, a public-but-unpublished repository carrying topics it is not
-// judged on, an empty repository, and one deviation on each of two settings.
+// judged on, an empty repository, one deviation on each of two settings, and
+// a minimum release age that falls short and another that is unresolved.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -103,6 +105,8 @@ func fullSnapshot() *audit.Snapshot {
 	soft.Files.Changelog = true
 	soft.Files.Security = true
 	soft.Files.RenovateConfig = ".github/renovate.json5"
+	// Its release age comes from a preset and falls short of the type's.
+	soft.Renovate = audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store"}
 	soft.Releases = audit.Releases{Total: 4, Drafts: 1, LastPublishedAt: at(2026, time.April, 2)}
 	soft.Settings.SecretScanning = "enabled"
 	soft.Settings.SecretScanningPushProtection = "enabled"
@@ -124,6 +128,7 @@ func fullSnapshot() *audit.Snapshot {
 	content.Topics = 6
 	content.License = ""
 	content.Files.RenovateConfig = ""
+	content.Renovate = audit.Renovate{} // no configuration, so nothing it says
 	content.Files.FlakeNix = false
 	content.Files.Justfile = false
 	content.Files.Workflows = nil
@@ -152,6 +157,8 @@ func fullSnapshot() *audit.Snapshot {
 	cfg.Overrides = map[string]string{"flake_nix": rules.OverrideNotRequired}
 	cfg.Files.FlakeNix = false
 	cfg.Settings.HasWiki = true // the one deviation on wiki
+	// A preset it extends is missing, so its release age is unresolved.
+	cfg.Renovate = audit.Renovate{MinReleaseAgeError: "preset github>gh-owner/preset-store:go: not found"}
 
 	return &audit.Snapshot{
 		GeneratedAt: renderedAt,

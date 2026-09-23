@@ -27,6 +27,7 @@ const (
 	CheckRequiredChecks
 	CheckCIGreen
 	CheckRenovate
+	CheckRenovateMinReleaseAge
 	CheckEditorconfig
 	CheckFlakeNix
 	CheckJustfile
@@ -51,31 +52,32 @@ const (
 //
 //nolint:gochecknoglobals // immutable lookup table
 var checkNames = [...]string{
-	CheckREADME:         "readme",
-	CheckDescription:    "description",
-	CheckLicense:        "license",
-	CheckGitignore:      "gitignore",
-	CheckCIWorkflows:    "ci_workflows",
-	CheckRequiredChecks: "required_checks",
-	CheckCIGreen:        "ci_green",
-	CheckRenovate:       "renovate",
-	CheckEditorconfig:   "editorconfig",
-	CheckFlakeNix:       "flake_nix",
-	CheckJustfile:       "justfile",
-	CheckHomepage:       "homepage",
-	CheckTopics:         "topics",
-	CheckCommunityFiles: "community_files",
-	CheckReleases:       "releases",
-	CheckChangelog:      "changelog",
-	CheckSignedCommits:  "signed_commits",
-	CheckTagRuleset:     "tag_ruleset",
-	CheckDirectPush:     "direct_push",
-	CheckSecretScanning: "secret_scanning",
-	CheckVulnReporting:  "vuln_reporting",
-	CheckLastReleaseAge: "last_release_age",
-	CheckLastPush:       "last_push",
-	CheckOpenPRs:        "open_prs",
-	CheckBranches:       "branches",
+	CheckREADME:                "readme",
+	CheckDescription:           "description",
+	CheckLicense:               "license",
+	CheckGitignore:             "gitignore",
+	CheckCIWorkflows:           "ci_workflows",
+	CheckRequiredChecks:        "required_checks",
+	CheckCIGreen:               "ci_green",
+	CheckRenovate:              "renovate",
+	CheckRenovateMinReleaseAge: "renovate_min_release_age",
+	CheckEditorconfig:          "editorconfig",
+	CheckFlakeNix:              "flake_nix",
+	CheckJustfile:              "justfile",
+	CheckHomepage:              "homepage",
+	CheckTopics:                "topics",
+	CheckCommunityFiles:        "community_files",
+	CheckReleases:              "releases",
+	CheckChangelog:             "changelog",
+	CheckSignedCommits:         "signed_commits",
+	CheckTagRuleset:            "tag_ruleset",
+	CheckDirectPush:            "direct_push",
+	CheckSecretScanning:        "secret_scanning",
+	CheckVulnReporting:         "vuln_reporting",
+	CheckLastReleaseAge:        "last_release_age",
+	CheckLastPush:              "last_push",
+	CheckOpenPRs:               "open_prs",
+	CheckBranches:              "branches",
 }
 
 // String returns the check's identifier as it is written in repos.toml.
@@ -120,6 +122,14 @@ func (c Check) ValueOnly() bool {
 	default:
 		return false
 	}
+}
+
+// Threshold reports whether a check is judged against a duration its type
+// declares rather than against a present-or-absent expectation: the Renovate
+// minimum release age. A type gives it a duration such as "7 days",
+// not_required or info; an override may replace the duration with another.
+func (c Check) Threshold() bool {
+	return c == CheckRenovateMinReleaseAge
 }
 
 // Type names the [types.*] table in repos.toml that a repository is judged

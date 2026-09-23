@@ -123,6 +123,10 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec) (map[Check]Cell, erro
 			cells[c] = pushCell
 			continue
 		}
+		if c.Threshold() {
+			cells[c] = minReleaseAgeCell(r, spec, overrides)
+			continue
+		}
 
 		exp := spec.cells[c].resolve(public, r.Published)
 		overridden := false
