@@ -8,7 +8,7 @@
 - **No required checks** (1) — github-repos-audit
 - **CI not green on the default branch** (1) — go-linter
 - **No Renovate config** (1) — go-linter
-- **Renovate minimum release age unset or too short** (2) — mixedCase-flake, web-app
+- **Renovate minimum release age unset, unresolved or too short** (2) — mixedCase-flake, web-app
 - **No .editorconfig** (1) — go-linter
 - **No flake.nix** (1) — go-linter
 - **No .justfile** (1) — go-linter

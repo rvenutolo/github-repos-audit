@@ -179,8 +179,11 @@ restated, and `audit validate` is expected to reject it.
   Renovate file merged with any presets it extends from the same account;
   Renovate's built-in presets and other accounts' presets are not read, so a
   value that only comes from one of those shows as `none`. Shows `unresolved`
-  when a preset is missing or does not parse; `audit.json` records why. n/a
-  without a Renovate configuration, which the renovate row already reports.
+  when a preset is missing or does not parse, and `audit.json`'s
+  `min_release_age_error` says why; it also shows `unresolved` for a value
+  Renovate itself cannot read (say `"7 dayz"`), which `audit.json` records
+  verbatim as `min_release_age`. n/a without a Renovate configuration, which
+  the renovate row already reports.
 - **homepage**, **topics**, **community_files** — repository metadata that
   only matters once a repository is meant to be found: a homepage URL, any
   topics, and how many of a security policy, contributing guide and code of

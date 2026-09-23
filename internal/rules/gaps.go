@@ -22,7 +22,7 @@ var gapLabels = map[Check]string{
 	CheckRequiredChecks:        "No required checks",
 	CheckCIGreen:               "CI not green on the default branch",
 	CheckRenovate:              "No Renovate config",
-	CheckRenovateMinReleaseAge: "Renovate minimum release age unset or too short",
+	CheckRenovateMinReleaseAge: "Renovate minimum release age unset, unresolved or too short",
 	CheckEditorconfig:          "No .editorconfig",
 	CheckFlakeNix:              "No flake.nix",
 	CheckJustfile:              "No .justfile",
