@@ -162,6 +162,7 @@ live from GitHub.
 ```toml
 [identity]
 canonical = "Pat Example <pat@example.com>"
+accepted = ["Pat Example <12345+pat@users.noreply.github.com>"]
 match = " Example <"
 ```
 
@@ -174,6 +175,14 @@ match = " Example <"
   Yourname (the leading space rules out a one-word name). It can
   match on the address instead, which survives a change of name:
   `'@yourdomain\.example>$'`. `canonical` must itself match.
+- `accepted` is optional: identities of yours, each written `Name <email>`,
+  that are fine to find in a history although they are not canonical —
+  typically GitHub's noreply address for your account, which GitHub records
+  on every merge and edit made in its web UI, so it comes back however often
+  history is rewritten. Each is compared like `canonical` (the address without
+  regard to case). An entry `match` does not match, one that is `canonical`
+  itself, a repeated one, and one not written `Name <email>` are errors; an
+  entry no repository carries is not, since the next web-UI merge may need it.
 
 The table is required once any type or override judges `git_identity` (with
 any word but `not_required`), and refused when nothing does, for the same
@@ -217,21 +226,22 @@ restated — and with `git_identity` judged by no type, so it needs no
   signing is required, whether tags are protected by a ruleset, and whether
   a push straight to the default branch is possible at all.
 - **git_identity** — every author and committer on the default branch's full
-  history whose `Name <email>` matches `[identity].match` must be exactly
-  `[identity].canonical`, the address compared without regard to case. Fails
-  with the number of wrong identities; a history that always used the wrong
-  one fails as surely as one that switched. n/a for an empty repository, or
-  one with none of your commits at all. Other people's and bots' identities
-  are recorded in `audit.json` but never judged. The Git identities section
-  of the report lists, for every repository with any of your identities,
-  which ones its history carries, marking the mixed and non-canonical ones —
-  overridden repositories included, since it is the list to rewrite from.
-  Reading the history costs one extra request per 100 commits beyond the
-  first hundred. A commit made through GitHub's web UI is recorded under the
-  account's web-flow identity (a `…@users.noreply.github.com` address), not
-  the identity the account normally commits as; if `match` is written broadly
-  enough to catch that address, those commits count as non-canonical, so
-  choose `match` (or write `canonical` to match it) deliberately.
+  history whose `Name <email>` matches `[identity].match` must be
+  `[identity].canonical` or one of `[identity].accepted`, the address compared
+  without regard to case. Fails with the number of wrong identities — those
+  that are neither; a history that always used a wrong one fails as surely as
+  one that switched. n/a for an empty repository, or one with none of your
+  commits at all. Other people's and bots' identities are recorded in
+  `audit.json` but never judged. The Git identities section of the report
+  lists, for every repository with any of your identities, which ones its
+  history carries, tagging the canonical and accepted ones and marking a
+  history mixed (two or more identities that are canonical or wrong) or not
+  canonical (any wrong one) — overridden repositories included, since it is
+  the list to rewrite from. Reading the history costs one extra request per
+  100 commits beyond the first hundred. A commit made through GitHub's web UI
+  is recorded under the account's noreply identity (a
+  `…@users.noreply.github.com` address); if `match` catches it, list it under
+  `accepted`.
 - **secret_scanning**, **vuln_reporting** — the two security features
   GitHub can enable on a repository.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain

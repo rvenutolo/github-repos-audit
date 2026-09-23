@@ -14,9 +14,10 @@
 #                A type no repository uses is allowed.
 #
 # [identity]     your git identity, for git_identity: canonical is the one
-#                identity your commits should carry, match says which
-#                identities are yours. Required once any type or override
-#                judges git_identity, and refused when nothing does.
+#                identity your commits should carry, accepted lists others
+#                of yours that are fine to find in a history, and match says
+#                which identities are yours. Required once any type or
+#                override judges git_identity, and refused when nothing does.
 #
 # [repos.<name>]
 # type      which [types.*] table the repository is judged against
@@ -208,8 +209,13 @@ branches = "info"
 # regular expression, unanchored, tested against each commit's "Name <email>"
 # for author and committer alike — whatever it matches is yours. A plain word
 # means "contains"; " Example <" means "a name whose last word is Example".
+# accepted is optional: identities of yours that are fine to find in a
+# history although they are not canonical. GitHub records merges and edits
+# made in its web UI under your noreply address, and every new one adds it
+# back, so list that address here rather than trying to rewrite it away.
 [identity]
 canonical = "Pat Example <pat@example.com>"
+accepted = ["Pat Example <12345+pat@users.noreply.github.com>"]
 match = " Example <"
 
 [repos.shell-scripts]
