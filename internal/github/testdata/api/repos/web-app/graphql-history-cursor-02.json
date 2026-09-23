@@ -1,0 +1,26 @@
+{
+  "data": {
+    "repository": {
+      "object": {
+        "history": {
+          "page_info": {
+            "has_next_page": true,
+            "end_cursor": "cursor-03"
+          },
+          "nodes": [
+            {
+              "author": {
+                "name": "Pat Example",
+                "email": "pat@example.com"
+              },
+              "committer": {
+                "name": "Pat Example",
+                "email": "pat@example.com"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

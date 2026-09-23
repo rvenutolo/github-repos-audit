@@ -12,6 +12,7 @@
       "direct_push": "blocked",
       "editorconfig": "required",
       "flake_nix": "required",
+      "git_identity": "required",
       "gitignore": "required",
       "homepage": "public_published",
       "justfile": "required",
@@ -40,6 +41,7 @@
       "direct_push": "allowed",
       "editorconfig": "required",
       "flake_nix": "not_required",
+      "git_identity": "not_required",
       "gitignore": "required",
       "homepage": "public_published",
       "justfile": "not_required",
@@ -68,6 +70,7 @@
       "direct_push": "blocked",
       "editorconfig": "required",
       "flake_nix": "required",
+      "git_identity": "required",
       "gitignore": "required",
       "homepage": "public_published",
       "justfile": "required",
@@ -96,6 +99,7 @@
       "direct_push": "blocked",
       "editorconfig": "required",
       "flake_nix": "required",
+      "git_identity": "required",
       "gitignore": "required",
       "homepage": "public_published",
       "justfile": "required",
@@ -124,6 +128,7 @@
       "direct_push": "blocked",
       "editorconfig": "required",
       "flake_nix": "required",
+      "git_identity": "required",
       "gitignore": "required",
       "homepage": "public_published",
       "justfile": "required",
@@ -152,6 +157,7 @@
       "direct_push": "blocked",
       "editorconfig": "required",
       "flake_nix": "required",
+      "git_identity": "required",
       "gitignore": "required",
       "homepage": "public_published",
       "justfile": "required",
@@ -171,6 +177,10 @@
       "vuln_reporting": "public"
     }
   },
+  "identity": {
+    "canonical": "Pat Example <pat@example.com>",
+    "match": " Example <"
+  },
   "repos": [
     {
       "name": "mixedCase-flake",
@@ -186,6 +196,20 @@
       "pushed_at": "2026-08-24T12:00:00Z",
       "default_branch": "main",
       "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "identities": [
+        {
+          "name": "Pat Example",
+          "email": "pat@example.com"
+        },
+        {
+          "name": "Patrick Example",
+          "email": "patrick@example.org"
+        },
+        {
+          "name": "renovate[bot]",
+          "email": "29139614+renovate[bot]@users.noreply.github.com"
+        }
+      ],
       "files": {
         "readme": true,
         "gitignore": true,
@@ -286,6 +310,12 @@
       "pushed_at": "2026-08-24T12:00:00Z",
       "default_branch": "main",
       "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "identities": [
+        {
+          "name": "Robin Other",
+          "email": "robin@example.org"
+        }
+      ],
       "files": {
         "readme": true,
         "gitignore": true,
@@ -376,6 +406,16 @@
       "pushed_at": "2026-08-24T12:00:00Z",
       "default_branch": "main",
       "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "identities": [
+        {
+          "name": "GitHub",
+          "email": "noreply@github.com"
+        },
+        {
+          "name": "Pat Example",
+          "email": "pat@example.org"
+        }
+      ],
       "files": {
         "readme": true,
         "gitignore": true,
@@ -530,6 +570,16 @@
       "pushed_at": "2026-08-24T12:00:00Z",
       "default_branch": "main",
       "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "identities": [
+        {
+          "name": "Pat Example",
+          "email": "pat@example.com"
+        },
+        {
+          "name": "renovate[bot]",
+          "email": "29139614+renovate[bot]@users.noreply.github.com"
+        }
+      ],
       "files": {
         "readme": true,
         "gitignore": false,

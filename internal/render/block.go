@@ -45,6 +45,7 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	writeSection(&b, treeSection(rep))
 	writeSection(&b, policySection(rep))
 	writeSection(&b, activitySection(rep, at))
+	writeSection(&b, identitiesSection(rep))
 	writeSection(&b, exceptionsSection(rep))
 	writeSection(&b, overridesSection(rep))
 	b.WriteString(footerPrefix + at.Format(time.DateOnly) + "._\n")
@@ -115,7 +116,7 @@ func treeSection(rep *rules.Report) string {
 }
 
 func policySection(rep *rules.Report) string {
-	t := newTable("Repository", "Direct push", "Signed", "CI workflows", "Required checks",
+	t := newTable("Repository", "Direct push", "Signed", "Identity", "CI workflows", "Required checks",
 		"Tag ruleset", "Secret scanning", "Vuln. reporting")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
@@ -123,6 +124,7 @@ func policySection(rep *rules.Report) string {
 			repoLink(rep.Owner, r.Repo.Name),
 			cell(r.Cell(rules.CheckDirectPush)),
 			cell(r.Cell(rules.CheckSignedCommits)),
+			cell(r.Cell(rules.CheckGitIdentity)),
 			cell(r.Cell(rules.CheckCIWorkflows)),
 			cell(r.Cell(rules.CheckRequiredChecks)),
 			cell(r.Cell(rules.CheckTagRuleset)),
@@ -148,6 +150,38 @@ func activitySection(rep *rules.Report, at time.Time) string {
 		)
 	}
 	return heading("Activity", t)
+}
+
+// identitiesSection lists, for every repository with any of the account
+// holder's identities, which ones its history carries: the working list for a
+// history rewrite. The Policy column says whether a repository is wrong; this
+// says what to rewrite from. It is omitted when no repository has any of the
+// owner's identities, which includes a report with no identity standard.
+func identitiesSection(rep *rules.Report) string {
+	if len(rep.Identities) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## Git identities\n\n")
+	for _, line := range rep.Identities {
+		parts := make([]string, 0, len(line.Identities))
+		for _, id := range line.Identities {
+			p := code(id.String())
+			if id.Canonical {
+				p += " (canonical)"
+			}
+			parts = append(parts, p)
+		}
+		fmt.Fprintf(&b, "- **%s** — %s", line.Repo, strings.Join(parts, ", "))
+		switch {
+		case line.Mixed:
+			b.WriteString(" — mixed")
+		case !line.Canonical:
+			b.WriteString(" — not canonical")
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // exceptionsSection groups the deviations by repository, so a repository that

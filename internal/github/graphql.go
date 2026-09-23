@@ -31,6 +31,10 @@ const graphQLPath = "/graphql"
 // isArchived and isFork are not requested. Discovery already filters on the
 // REST list's fork and archived flags and audit.Repo records neither, so asking
 // for them here would collect a field the report can never show.
+//
+// The head commit's first hundred history entries ride along too, so a
+// repository with a short history costs no request beyond this one; the rest
+// are paged by historyQuery.
 const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     description
@@ -68,6 +72,9 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
           oid
           status_check_rollup: statusCheckRollup {
             state
+          }
+          history(first: 100) {
+            ` + historyFields + `
           }
         }
       }
@@ -155,20 +162,37 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
   }
 }`
 
+// historyFields is one page of a commit's history: who wrote and who
+// committed each commit. It is shared by the first page, which rides along
+// with repoQuery, and every later page, which is its own query.
+const historyFields = `page_info: pageInfo { has_next_page: hasNextPage end_cursor: endCursor }
+            nodes {
+              author { name email }
+              committer { name email }
+            }`
+
+// historyQuery fetches one later page of the default branch's history. It is
+// anchored to the head commit the repository query already answered, not to
+// the branch name, so a push while the walk is in progress cannot change the
+// history out from under it.
+const historyQuery = `query RepoHistory($owner: String!, $name: String!, $oid: GitObjectID!, $cursor: String!) {
+  repository(owner: $owner, name: $name) {
+    object(oid: $oid) {
+      ... on Commit {
+        history(first: 100, after: $cursor) {
+            ` + historyFields + `
+        }
+      }
+    }
+  }
+}`
+
 // graphQLRequest is the POST body. Variables carry the owner and name rather
 // than being interpolated into the document, so a repository name can never be
 // read as query text.
 type graphQLRequest struct {
 	Query     string            `json:"query"`
 	Variables map[string]string `json:"variables"`
-}
-
-// graphQLResponse is GitHub's envelope. A GraphQL failure arrives as a 200 with
-// a non-empty errors array, so the status alone never says whether the answer
-// is usable.
-type graphQLResponse struct {
-	Data   graphQLData    `json:"data"`
-	Errors []graphQLError `json:"errors"`
 }
 
 type graphQLData struct {
@@ -287,6 +311,31 @@ type branchRef struct {
 type commit struct {
 	OID               string       `json:"oid"`
 	StatusCheckRollup *rollupState `json:"status_check_rollup"`
+	History           *history     `json:"history"`
+}
+
+// history is one page of a commit's history, as historyFields selects it.
+type history struct {
+	PageInfo pageInfo      `json:"page_info"`
+	Nodes    []historyNode `json:"nodes"`
+}
+
+type pageInfo struct {
+	HasNextPage bool    `json:"has_next_page"`
+	EndCursor   *string `json:"end_cursor"`
+}
+
+type historyNode struct {
+	// Author and Committer are null when GitHub cannot resolve the actor.
+	Author    *gitActor `json:"author"`
+	Committer *gitActor `json:"committer"`
+}
+
+// gitActor is a commit's author or committer as the commit spells it. Either
+// half is null when the commit does not carry it.
+type gitActor struct {
+	Name  *string `json:"name"`
+	Email *string `json:"email"`
 }
 
 type rollupState struct {
@@ -333,33 +382,50 @@ type releaseNode struct {
 
 // fetchRepository runs repoQuery for one repository.
 func (c *Client) fetchRepository(ctx context.Context, name string) (*repository, error) {
-	body, err := json.Marshal(graphQLRequest{
-		Query:     repoQuery,
-		Variables: map[string]string{"owner": c.owner, "name": name},
-	})
+	var data graphQLData
+	vars := map[string]string{"owner": c.owner, "name": name}
+	if err := c.postGraphQL(ctx, repoQuery, vars, &data); err != nil {
+		return nil, err
+	}
+	if data.Repository == nil {
+		return nil, fmt.Errorf("%s: %w: no repository in response", graphQLPath, errGraphQL)
+	}
+	return data.Repository, nil
+}
+
+// postGraphQL sends one query and decodes its data into into. Everything a
+// GraphQL answer can fail by — a non-200, an errors array, an undecodable
+// body — is an error here, so neither caller can mistake a failure for data.
+// A GraphQL failure arrives as a 200 with a non-empty errors array, which is
+// why the status alone never says whether the answer is usable.
+func (c *Client) postGraphQL(ctx context.Context, query string, vars map[string]string, into any) error {
+	body, err := json.Marshal(graphQLRequest{Query: query, Variables: vars})
 	if err != nil {
-		return nil, fmt.Errorf("encode graphql request: %w", err)
+		return fmt.Errorf("encode graphql request: %w", err)
 	}
 
 	resp, err := c.doRetrying(ctx, http.MethodPost, c.baseURL+graphQLPath, body, graphQLRateLimited)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", graphQLPath, err)
+		return fmt.Errorf("%s: %w", graphQLPath, err)
 	}
 	if resp.status != http.StatusOK {
-		return nil, fmt.Errorf("%s: %w %d: %s", graphQLPath, ErrUnexpectedStatus, resp.status, snippet(resp.body))
+		return fmt.Errorf("%s: %w %d: %s", graphQLPath, ErrUnexpectedStatus, resp.status, snippet(resp.body))
 	}
 
-	var decoded graphQLResponse
-	if err := json.Unmarshal(resp.body, &decoded); err != nil {
-		return nil, fmt.Errorf("%s: decode response: %w", graphQLPath, err)
+	var envelope struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []graphQLError  `json:"errors"`
 	}
-	if len(decoded.Errors) > 0 {
-		return nil, fmt.Errorf("%s: %w: %s", graphQLPath, errGraphQL, joinGraphQLErrors(decoded.Errors))
+	if err := json.Unmarshal(resp.body, &envelope); err != nil {
+		return fmt.Errorf("%s: decode response: %w", graphQLPath, err)
 	}
-	if decoded.Data.Repository == nil {
-		return nil, fmt.Errorf("%s: %w: no repository in response", graphQLPath, errGraphQL)
+	if len(envelope.Errors) > 0 {
+		return fmt.Errorf("%s: %w: %s", graphQLPath, errGraphQL, joinGraphQLErrors(envelope.Errors))
 	}
-	return decoded.Data.Repository, nil
+	if err := json.Unmarshal(envelope.Data, into); err != nil {
+		return fmt.Errorf("%s: decode data: %w", graphQLPath, err)
+	}
+	return nil
 }
 
 // rateLimitedType is how GitHub's GraphQL endpoint names a rate limit. It is

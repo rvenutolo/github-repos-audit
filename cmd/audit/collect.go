@@ -91,7 +91,13 @@ func collect(
 		repos[i].Overrides = declared.Overrides
 	}
 
-	snap := &audit.Snapshot{GeneratedAt: now().UTC(), Owner: client.Owner(), Types: cfg.Types, Repos: repos}
+	snap := &audit.Snapshot{
+		GeneratedAt: now().UTC(),
+		Owner:       client.Owner(),
+		Types:       cfg.Types,
+		Identity:    cfg.Identity,
+		Repos:       repos,
+	}
 	// The half of the validation that needs live data: published on a private
 	// repository, and an override dead against a visibility-dependent row.
 	if err := rules.Validate(snap); err != nil {

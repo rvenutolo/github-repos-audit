@@ -21,6 +21,10 @@ type Snapshot struct {
 	// recorded so audit.json describes the standard each repository was held
 	// to, not only the name of it.
 	Types map[string]map[string]string `json:"types"`
+	// Identity is repos.toml's [identity] table, recorded so audit.json says
+	// which identity the history was held to. Absent when nothing judges
+	// git_identity.
+	Identity IdentityStandard `json:"identity,omitzero"`
 	// Repos is sorted by name, case-insensitively.
 	Repos []Repo `json:"repos"`
 }
@@ -73,6 +77,13 @@ type Repo struct {
 	// defaultBranchRef: null. That is an ordinary answer, not a failure: the
 	// branch-derived cells are unknown and everything else still applies.
 	Empty bool `json:"empty,omitzero"`
+	// Identities is every distinct author and committer identity on the
+	// default branch's full history, exactly as the commits spell them,
+	// sorted by name then email. It includes other people and bots: which of
+	// these are the account holder's, and whether they are right, is
+	// internal/rules' decision. No counts or dates, deliberately — they would
+	// change on every push and make audit.json churn.
+	Identities []Identity `json:"identities,omitzero"`
 
 	// Files records which of the probed paths exist at HEAD.
 	Files Files `json:"files"`
@@ -243,4 +254,23 @@ type AllowedActions struct {
 	VerifiedAllowed    bool `json:"verified_allowed"`
 	// Patterns is the allowlist itself, sorted.
 	Patterns []string `json:"patterns,omitzero"`
+}
+
+// Identity is one git identity as a commit records it, for its author or its
+// committer. It is recorded exactly as the commit spells it: deciding that two
+// spellings are the same person is internal/rules' business.
+type Identity struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// IdentityStandard is repos.toml's [identity] table: the one identity the
+// account's own commits should carry, and the regular expression that says
+// which collected identities are the account holder's at all. It is recorded
+// on the snapshot so audit.json describes the standard it was judged by.
+type IdentityStandard struct {
+	// Canonical is written "Name <email>".
+	Canonical string `json:"canonical"`
+	// Match is an RE2 expression, unanchored, tested against "Name <email>".
+	Match string `json:"match"`
 }

@@ -139,4 +139,42 @@ type Report struct {
 	NoConsensus []string
 	// Overrides is every declared override, sorted by repository then check.
 	Overrides []Override
+	// Identities is one line per repository with any of the account holder's
+	// git identities, in report order, whatever its git_identity verdict — it
+	// is the working list for history rewrites, and an excused repository's
+	// history is no less what it is. Empty when the snapshot has no identity
+	// standard.
+	Identities []IdentityLine
+}
+
+// IdentityLine is which of the account holder's identities one repository's
+// default-branch history carries.
+type IdentityLine struct {
+	// Repo is the repository.
+	Repo string
+	// Identities is the distinct identities, canonical first, then by name,
+	// then email. Two spellings of an address differing only in case are one
+	// identity.
+	Identities []IdentityEntry
+	// Mixed reports two or more distinct identities: the history switched.
+	Mixed bool
+	// Canonical reports that every identity is the canonical one.
+	Canonical bool
+}
+
+// IdentityEntry is one of the account holder's identities in a repository's
+// history.
+type IdentityEntry struct {
+	// Name is the author or committer name.
+	Name string
+	// Email is the address. For the canonical identity it is the canonical's
+	// own spelling, whatever capitalisation the commits used.
+	Email string
+	// Canonical reports that this is the canonical identity.
+	Canonical bool
+}
+
+// String writes the entry the way git prints an identity, "Name <email>".
+func (e IdentityEntry) String() string {
+	return FormatIdentity(audit.Identity{Name: e.Name, Email: e.Email})
 }

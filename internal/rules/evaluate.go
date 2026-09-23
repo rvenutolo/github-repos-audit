@@ -54,6 +54,8 @@ type observation struct {
 	unknown bool
 	// pending marks a CI run in flight, which is shown and never a gap.
 	pending bool
+	// mark asks for the tick or cross beside the value; see Cell.Mark.
+	mark bool
 }
 
 // Evaluate turns a snapshot into a report: one cell per check per repository,
@@ -73,11 +75,15 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 	if err != nil {
 		return nil, fmt.Errorf("evaluate: %w", err)
 	}
+	std, err := compileIdentity(snap.Identity)
+	if err != nil {
+		return nil, fmt.Errorf("evaluate: identity: %w", err)
+	}
 
 	rep := &Report{GeneratedAt: snap.GeneratedAt, Owner: snap.Owner}
 	rep.Repos = make([]RepoReport, 0, len(snap.Repos))
 	for _, r := range snap.Repos {
-		cells, err := evaluateRepo(r, specs)
+		cells, err := evaluateRepo(r, specs, std)
 		if err != nil {
 			return nil, err
 		}
@@ -86,6 +92,7 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 	slices.SortFunc(rep.Repos, func(a, b RepoReport) int { return compareNames(a.Repo.Name, b.Repo.Name) })
 
 	rep.Gaps = collectGaps(rep.Repos)
+	rep.Identities = identityLines(rep.Repos, std)
 	rep.Overrides = collectOverrides(rep.Repos)
 	rep.Exceptions, rep.NoConsensus = modalExceptions(snap.Repos)
 	return rep, nil
@@ -101,8 +108,9 @@ func compareNames(a, b string) int {
 	return strings.Compare(a, b)
 }
 
-// evaluateRepo produces one cell for every check.
-func evaluateRepo(r audit.Repo, specs map[string]typeSpec) (map[Check]Cell, error) {
+// evaluateRepo produces one cell for every check. std is the compiled identity
+// standard, nil when the snapshot declares none.
+func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard) (map[Check]Cell, error) {
 	spec, known := specs[r.Type]
 	if !known {
 		return nil, fmt.Errorf("evaluate %s: unknown type %q", r.Name, r.Type)
@@ -152,7 +160,21 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec) (map[Check]Cell, erro
 		// A repository with no commits cannot be judged on what is in them,
 		// and a fact GitHub declined to answer is not a fact found wanting:
 		// both are n/a rather than gaps.
-		obs := observe(c, r)
+		var obs observation
+		if c == CheckGitIdentity {
+			if std == nil {
+				// Config validation refuses a judged git_identity with no
+				// [identity] table, so this is a snapshot assembled some other way.
+				if exp != expNA {
+					return nil, fmt.Errorf("evaluate %s: git_identity is judged but the snapshot has no identity standard", r.Name)
+				}
+				obs = observation{unknown: true}
+			} else {
+				obs = observeIdentity(r, std)
+			}
+		} else {
+			obs = observe(c, r)
+		}
 		if obs.unknown {
 			exp = expNA
 		}
@@ -164,10 +186,36 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec) (map[Check]Cell, erro
 			At:         obs.at,
 			Code:       obs.code,
 			Scalar:     obs.scalar,
+			Mark:       obs.mark,
 			Overridden: overridden,
 		}
 	}
 	return cells, nil
+}
+
+// observeIdentity judges the account holder's identities in the default
+// branch's history against the canonical one. A repository with none of them
+// is n/a, not a pass: there is nothing of the owner's to judge, and a tick
+// would claim a history was checked and found right when nothing in it was
+// the owner's at all.
+func observeIdentity(r audit.Repo, std *identityStandard) observation {
+	if r.Empty {
+		return observation{unknown: true}
+	}
+	mine := std.mine(r.Identities)
+	if len(mine) == 0 {
+		return observation{unknown: true}
+	}
+	wrong := 0
+	for _, id := range mine {
+		if !sameIdentity(id, std.canonical) {
+			wrong++
+		}
+	}
+	if wrong == 0 {
+		return observation{ok: true, mark: true}
+	}
+	return observation{value: fmt.Sprintf("%d wrong", wrong), mark: true}
 }
 
 // verdictFor reduces an expectation and an observation to a verdict.

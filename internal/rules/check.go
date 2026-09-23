@@ -37,6 +37,7 @@ const (
 	CheckReleases
 	CheckChangelog
 	CheckSignedCommits
+	CheckGitIdentity
 	CheckTagRuleset
 	CheckDirectPush
 	CheckSecretScanning
@@ -70,6 +71,7 @@ var checkNames = [...]string{
 	CheckReleases:              "releases",
 	CheckChangelog:             "changelog",
 	CheckSignedCommits:         "signed_commits",
+	CheckGitIdentity:           "git_identity",
 	CheckTagRuleset:            "tag_ruleset",
 	CheckDirectPush:            "direct_push",
 	CheckSecretScanning:        "secret_scanning",

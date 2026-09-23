@@ -352,6 +352,29 @@ func TestRunRender_recordsTheOwner(t *testing.T) {
 	}
 }
 
+// TestRunJSON_recordsTheIdentityStandard: the [identity] table reaches the
+// snapshot beside the types, so audit.json says which identity the history
+// was held to, and the rules have a standard to judge git_identity against.
+func TestRunJSON_recordsTheIdentityStandard(t *testing.T) {
+	t.Parallel()
+
+	_, configPath := scratchProject(t, scratchConfig)
+	var stdout, stderr bytes.Buffer
+	if err := runJSON(t.Context(), []string{"--config", configPath},
+		noEnv, &stdout, &stderr, fakeFactory(healthyFake()), fixedClock); err != nil {
+		t.Fatalf("runJSON() error = %v, want nil", err)
+	}
+	var snap audit.Snapshot
+	if err := json.Unmarshal(stdout.Bytes(), &snap); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v", err)
+	}
+	// standard-types.toml's [identity] table, which scratchProject copies.
+	want := audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
+	if snap.Identity != want {
+		t.Errorf("snapshot identity = %+v, want %+v", snap.Identity, want)
+	}
+}
+
 // TestRunRender_aTypesOnlyEditIsAMaterialChange: changing what a type expects
 // changes verdicts, so it must open a pull request even when no repository
 // changed.

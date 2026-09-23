@@ -25,6 +25,13 @@ var standardTypes = sync.OnceValue(func() rules.Types {
 	return file.Types
 })
 
+// fixtureIdentity is the [identity] table standard-types.toml declares, which
+// every snapshot judged against those types needs once any of them judges
+// git_identity: a judged check with no standard is an Evaluate error.
+func fixtureIdentity() audit.IdentityStandard {
+	return audit.IdentityStandard{Canonical: "Pat Example <pat@example.com>", Match: " Example <"}
+}
+
 // renderedAt is the instant every golden file is rendered against, so the
 // relative dates in them are fixed rather than yesterday's.
 var renderedAt = time.Date(2026, 9, 5, 7, 30, 0, 0, time.UTC)
@@ -54,6 +61,11 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			Justfile:       true,
 			RenovateConfig: "renovate.json",
 			Workflows:      []string{"ci.yml"},
+		},
+		// The canonical identity, and a bot's that is never the owner's.
+		Identities: []audit.Identity{
+			{Name: "Pat Example", Email: "pat@example.com"},
+			{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"},
 		},
 		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
 		CIState:  "SUCCESS",
@@ -91,8 +103,10 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // to exercise the awkward rows rather than to look tidy: a published public
 // repository with community files, a content repository whose every tooling
 // cell is n/a, a public-but-unpublished repository carrying topics it is not
-// judged on, an empty repository, one deviation on each of two settings, and
-// a minimum release age that falls short and another that is unresolved.
+// judged on, an empty repository, one deviation on each of two settings, a
+// minimum release age that falls short and another that is unresolved, and
+// git identities that are mixed, consistently non-canonical, only someone
+// else's, and absent altogether.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -113,6 +127,12 @@ func fullSnapshot() *audit.Snapshot {
 	soft.Settings.PrivateVulnerabilityReporting = new(true)
 	soft.Settings.ActionsAccessLevel = ""
 	soft.Settings.HasProjects = true // the one deviation on projects
+	// Its history switched identity: mixed.
+	soft.Identities = []audit.Identity{
+		{Name: "Pat Example", Email: "pat@example.com"},
+		{Name: "Patrick Example", Email: "patrick@example.org"},
+		{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"},
+	}
 	soft.Rulesets = []audit.Ruleset{
 		{Name: "ruleset-02", Target: "TAG", Enforcement: "ACTIVE", Include: []string{"refs/tags/v*"}},
 		{
@@ -137,12 +157,19 @@ func fullSnapshot() *audit.Snapshot {
 	content.Settings.SecretScanningPushProtection = "disabled"
 	content.Settings.PrivateVulnerabilityReporting = new(false)
 	content.Settings.ActionsAccessLevel = ""
+	// Only someone else has committed: nothing of the owner's to list.
+	content.Identities = []audit.Identity{{Name: "Robin Other", Email: "robin@example.org"}}
 
 	// A private tools repository with a CI run in flight and no real gate.
 	tools := baseRepo("github-repos-audit", "tools")
 	tools.CIState = "PENDING"
 	tools.Branches = 4 // three besides the default, so the cell is not a zero
 	tools.Branch.RequiredChecks = []string{"merge-gate"}
+	// Consistently the wrong identity, beside GitHub's own web-flow committer.
+	tools.Identities = []audit.Identity{
+		{Name: "GitHub", Email: "noreply@github.com"},
+		{Name: "Pat Example", Email: "pat@example.org"},
+	}
 
 	// An empty repository: no commits at all, and no rulesets either.
 	empty := audit.Repo{
@@ -164,6 +191,7 @@ func fullSnapshot() *audit.Snapshot {
 		GeneratedAt: renderedAt,
 		Owner:       "gh-owner",
 		Types:       standardTypes(),
+		Identity:    fixtureIdentity(),
 		Repos:       []audit.Repo{soft, content, tools, empty, cfg},
 	}
 }

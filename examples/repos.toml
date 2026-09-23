@@ -13,6 +13,11 @@
 #                info or not_required.
 #                A type no repository uses is allowed.
 #
+# [identity]     your git identity, for git_identity: canonical is the one
+#                identity your commits should carry, match says which
+#                identities are yours. Required once any type or override
+#                judges git_identity, and refused when nothing does.
+#
 # [repos.<name>]
 # type      which [types.*] table the repository is judged against
 # published meant for someone else to find and use; default false
@@ -42,6 +47,7 @@ community_files = "public_published"
 releases = "required"
 changelog = "required"
 signed_commits = "required"
+git_identity = "required"
 tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
@@ -70,6 +76,7 @@ community_files = "not_required"
 releases = "not_required"
 changelog = "not_required"
 signed_commits = "required"
+git_identity = "required"
 tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
@@ -98,6 +105,7 @@ community_files = "not_required"
 releases = "not_required"
 changelog = "not_required"
 signed_commits = "required"
+git_identity = "required"
 tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
@@ -126,6 +134,7 @@ community_files = "not_required"
 releases = "not_required"
 changelog = "not_required"
 signed_commits = "required"
+git_identity = "required"
 tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
@@ -155,6 +164,7 @@ community_files = "not_required"
 releases = "not_required"
 changelog = "not_required"
 signed_commits = "required"
+git_identity = "not_required"
 tag_ruleset = "required"
 direct_push = "allowed"
 secret_scanning = "public"
@@ -183,6 +193,7 @@ community_files = "not_required"
 releases = "not_required"
 changelog = "not_required"
 signed_commits = "required"
+git_identity = "required"
 tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
@@ -191,6 +202,15 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+
+# [identity] is required once any type or override judges git_identity.
+# canonical is the one identity your commits should carry; match is an RE2
+# regular expression, unanchored, tested against each commit's "Name <email>"
+# for author and committer alike — whatever it matches is yours. A plain word
+# means "contains"; " Example <" means "a name whose last word is Example".
+[identity]
+canonical = "Pat Example <pat@example.com>"
+match = " Example <"
 
 [repos.shell-scripts]
 type = "tools"

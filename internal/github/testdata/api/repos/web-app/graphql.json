@@ -31,7 +31,35 @@
         "name": "main",
         "target": {
           "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
-          "status_check_rollup": null
+          "status_check_rollup": null,
+          "history": {
+            "page_info": {
+              "has_next_page": true,
+              "end_cursor": "cursor-02"
+            },
+            "nodes": [
+              {
+                "author": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                },
+                "committer": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                }
+              },
+              {
+                "author": {
+                  "name": "Pat Example",
+                  "email": "Pat@Example.com"
+                },
+                "committer": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                }
+              }
+            ]
+          }
         }
       },
       "rulesets": {

@@ -14,7 +14,7 @@ import (
 // settings exceptions and the settings that reached no consensus.
 func exceptionsFor(t *testing.T, repos ...audit.Repo) ([]rules.Exception, []string) {
 	t.Helper()
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Repos: repos})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: repos})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}

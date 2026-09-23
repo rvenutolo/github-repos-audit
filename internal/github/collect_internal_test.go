@@ -4,9 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
+
+	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
 
 // TestRepository_releases is why the query asks for five releases rather than
@@ -210,5 +217,265 @@ func TestJoinGraphQLErrors(t *testing.T) {
 				t.Errorf("joinGraphQLErrors() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestWalkHistory_guards covers the walk's failure modes. They are internal
+// because the fake API serves one fixture per cursor and cannot script a
+// malformed page without a new fixture repository.
+func TestWalkHistory_guards(t *testing.T) {
+	t.Parallel()
+
+	pageOne := func(cursor *string) *history {
+		return &history{
+			PageInfo: pageInfo{HasNextPage: true, EndCursor: cursor},
+			Nodes: []historyNode{{
+				Author: &gitActor{Name: new("Pat Example"), Email: new("pat@example.com")},
+			}},
+		}
+	}
+	errStub := errors.New("stub failure")
+
+	tests := []struct {
+		name      string
+		first     *history
+		stubErr   error
+		wantCalls int
+		wantErr   func(error) bool
+		wantText  string
+	}{
+		{
+			// Asking again without a cursor would return page one, which
+			// promises a next page again: a walk that never ends.
+			name:      "a next page promised with a null cursor",
+			first:     pageOne(nil),
+			wantCalls: 0,
+			wantErr:   func(err error) bool { return errors.Is(err, errGraphQL) },
+			wantText:  "no end cursor",
+		},
+		{
+			name:      "a next page promised with an empty cursor",
+			first:     pageOne(new("")),
+			wantCalls: 0,
+			wantErr:   func(err error) bool { return errors.Is(err, errGraphQL) },
+			wantText:  "no end cursor",
+		},
+		{
+			// A failed page must fail the walk: identities from the pages
+			// before it are half a history, not a smaller whole one.
+			name:      "a page that fails",
+			first:     pageOne(new("cursor-02")),
+			stubErr:   errStub,
+			wantCalls: 1,
+			wantErr:   func(err error) bool { return errors.Is(err, errStub) },
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			calls := 0
+			got, err := walkHistory(t.Context(), tc.first, func(context.Context, string) (*history, error) {
+				calls++
+				if tc.stubErr != nil {
+					return nil, tc.stubErr
+				}
+				return &history{}, nil
+			})
+			if err == nil || !tc.wantErr(err) {
+				t.Fatalf("walkHistory() error = %v, want the guard's error", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantText) {
+				t.Errorf("walkHistory() error = %q, want it to contain %q", err, tc.wantText)
+			}
+			if got != nil {
+				t.Errorf("walkHistory() = %v alongside an error, want nil", got)
+			}
+			if calls != tc.wantCalls {
+				t.Errorf("next page fetched %d times, want %d", calls, tc.wantCalls)
+			}
+		})
+	}
+}
+
+// TestWalkHistory_abortsOnAStuckCursor covers a server that repeats the
+// cursor it was just asked for instead of advancing it. Asking again would
+// fetch the same page forever, so the walk aborts on the second sighting
+// rather than looping until the context is cancelled; the stub is asked only
+// once, for the cursor the page it returns then repeats.
+func TestWalkHistory_abortsOnAStuckCursor(t *testing.T) {
+	t.Parallel()
+
+	first := &history{
+		PageInfo: pageInfo{HasNextPage: true, EndCursor: new("cursor-02")},
+		Nodes: []historyNode{{
+			Author: &gitActor{Name: new("Pat Example"), Email: new("pat@example.com")},
+		}},
+	}
+	calls := 0
+	got, err := walkHistory(t.Context(), first, func(context.Context, string) (*history, error) {
+		calls++
+		return &history{PageInfo: pageInfo{HasNextPage: true, EndCursor: new("cursor-02")}}, nil
+	})
+	if !errors.Is(err, errGraphQL) || !strings.Contains(err.Error(), "cursor did not advance") {
+		t.Fatalf("walkHistory() error = %v, want a cursor-did-not-advance graphql error", err)
+	}
+	if got != nil {
+		t.Errorf("walkHistory() = %v alongside an error, want nil", got)
+	}
+	if calls != 1 {
+		t.Errorf("next page fetched %d times, want 1", calls)
+	}
+}
+
+// TestWalkHistory_recordsExactStrings pins what the walk records: every
+// actor on every page, null halves as "", null actors not at all, no case
+// folding, and one entry per distinct pair in byte order.
+func TestWalkHistory_recordsExactStrings(t *testing.T) {
+	t.Parallel()
+
+	first := &history{
+		PageInfo: pageInfo{HasNextPage: true, EndCursor: new("cursor-02")},
+		Nodes: []historyNode{
+			{
+				Author:    &gitActor{Name: new("Pat Example"), Email: new("pat@example.com")},
+				Committer: &gitActor{Name: new("Pat Example"), Email: new("Pat@Example.com")},
+			},
+			{Author: nil, Committer: &gitActor{Name: new("Robin Other"), Email: nil}},
+		},
+	}
+	second := &history{
+		PageInfo: pageInfo{HasNextPage: false},
+		Nodes: []historyNode{
+			{
+				Author:    &gitActor{Name: new("Pat Example"), Email: new("pat@example.com")},
+				Committer: &gitActor{Name: nil, Email: new("robin@example.org")},
+			},
+		},
+	}
+	var asked []string
+	got, err := walkHistory(t.Context(), first, func(_ context.Context, cursor string) (*history, error) {
+		asked = append(asked, cursor)
+		return second, nil
+	})
+	if err != nil {
+		t.Fatalf("walkHistory() error = %v, want nil", err)
+	}
+	want := []audit.Identity{
+		{Name: "", Email: "robin@example.org"},
+		{Name: "Pat Example", Email: "Pat@Example.com"},
+		{Name: "Pat Example", Email: "pat@example.com"},
+		{Name: "Robin Other", Email: ""},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("walkHistory() mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"cursor-02"}, asked); diff != "" {
+		t.Errorf("cursors asked mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// graphQLServer answers every POST with body and hands back a Client pointed
+// at it. Its sleep returns at once: these tests are about what an answer
+// means, not about waiting on one.
+func graphQLServer(t *testing.T, body string) *Client {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Errorf("write body: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(Options{Owner: "gh-owner", Token: "token", BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	c.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+	return c
+}
+
+// TestClient_identities_abortsWhenTheCommitIsGone covers a later page that
+// finds no commit at the oid the first page described. The commit vanished
+// mid-walk, and what was walked so far is not the history, so the run aborts
+// rather than recording it.
+func TestClient_identities_abortsWhenTheCommitIsGone(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`{"data":{"repository":{"object":null}}}`,
+		`{"data":{"repository":null}}`,
+		`{"data":{"repository":{"object":{}}}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			t.Parallel()
+
+			c := graphQLServer(t, body)
+			r := &repository{DefaultBranchRef: &branchRef{
+				Name: "main",
+				Target: &commit{
+					OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
+					History: &history{
+						PageInfo: pageInfo{HasNextPage: true, EndCursor: new("cursor-02")},
+					},
+				},
+			}}
+			got, err := c.identities(t.Context(), "web-app", r)
+			if !errors.Is(err, errGraphQL) || !strings.Contains(err.Error(), "commit not found") {
+				t.Fatalf("identities() error = %v, want a commit-not-found graphql error", err)
+			}
+			if got != nil {
+				t.Errorf("identities() = %v alongside an error, want nil", got)
+			}
+		})
+	}
+}
+
+// TestClient_identities_noHistoryIsNoIdentities covers the two answers that
+// carry no history to walk and are not an error: an empty repository, and a
+// ref with no target. Neither reaches the network.
+func TestClient_identities_noHistoryIsNoIdentities(t *testing.T) {
+	t.Parallel()
+
+	c := graphQLServer(t, `{"errors":[{"message":"no request was expected"}]}`)
+	for name, r := range map[string]*repository{
+		"empty repository": {},
+		"no target":        {DefaultBranchRef: &branchRef{Name: "main"}},
+	} {
+		got, err := c.identities(t.Context(), "web-app", r)
+		if err != nil || got != nil {
+			t.Errorf("%s: identities() = %v, %v, want nil, nil", name, got, err)
+		}
+	}
+}
+
+// TestClient_identities_abortsWhenTheFirstAnswerHasNoHistory covers a target
+// present without the history selection. The query always asks for history,
+// so its absence means the first answer came back malformed; reading that as
+// "no identities" would render a gap as a clean answer, so it aborts instead.
+// The fake server is never called: the malformed shape is in the repository
+// value handed in, not in a page fetched over the wire.
+func TestClient_identities_abortsWhenTheFirstAnswerHasNoHistory(t *testing.T) {
+	t.Parallel()
+
+	c := graphQLServer(t, `{"errors":[{"message":"no request was expected"}]}`)
+	r := &repository{DefaultBranchRef: &branchRef{Name: "main", Target: &commit{OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014"}}}
+	got, err := c.identities(t.Context(), "web-app", r)
+	if !errors.Is(err, errGraphQL) || !strings.Contains(err.Error(), "no history in response") {
+		t.Fatalf("identities() error = %v, want a no-history graphql error", err)
+	}
+	if got != nil {
+		t.Errorf("identities() = %v alongside an error, want nil", got)
+	}
+}
+
+// TestClient_postGraphQL_undecodableData covers data that parses as JSON but
+// not as the shape asked for: an error, never a zero value read as an answer.
+func TestClient_postGraphQL_undecodableData(t *testing.T) {
+	t.Parallel()
+
+	c := graphQLServer(t, `{"data":{"repository":"not an object"}}`)
+	if _, err := c.fetchRepository(t.Context(), "web-app"); err == nil || !strings.Contains(err.Error(), "decode data") {
+		t.Errorf("fetchRepository() error = %v, want a decode-data error", err)
 	}
 }

@@ -31,7 +31,25 @@
         "name": "main",
         "target": {
           "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000b",
-          "status_check_rollup": null
+          "status_check_rollup": null,
+          "history": {
+            "page_info": {
+              "has_next_page": false,
+              "end_cursor": "cursor-01"
+            },
+            "nodes": [
+              {
+                "author": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                },
+                "committer": {
+                  "name": "Pat Example",
+                  "email": "pat@example.com"
+                }
+              }
+            ]
+          }
         }
       },
       "rulesets": {

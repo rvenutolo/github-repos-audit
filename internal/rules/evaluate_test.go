@@ -614,7 +614,7 @@ func TestEvaluate_reportsGapsInTheFixedOrder(t *testing.T) {
 	other := fixture("alpha", "tools")
 	other.Files.README = false
 
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{r, other}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r, other}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
@@ -643,7 +643,7 @@ func TestEvaluate_communityGapsNameTheMissingFiles(t *testing.T) {
 	r.Files.Security = false
 	r.Files.CodeOfConduct = false
 
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{r}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
@@ -663,7 +663,7 @@ func TestEvaluate_communityGapsNameTheMissingFiles(t *testing.T) {
 func TestEvaluate_sortsRepositoriesCaseInsensitively(t *testing.T) {
 	t.Parallel()
 
-	snap := &audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{
+	snap := &audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{
 		fixture("media-server", "infra"),
 		fixture("mixedCase-flake", "software"),
 		fixture("github-repos-audit", "tools"),
@@ -710,7 +710,7 @@ func TestEvaluate_listsEveryOverride(t *testing.T) {
 	r := public(fixture("recipe-site", "content"))
 	r.Overrides = map[string]string{"secret_scanning": rules.OverrideNotRequired}
 
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{r}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
@@ -837,7 +837,7 @@ func TestEvaluate_directPushGapsNameTheDirectionThatFailed(t *testing.T) {
 
 	blocks := fixture("bravo", "content") // fixture already blocks
 
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{allows, blocks}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{allows, blocks}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
@@ -864,7 +864,7 @@ func TestEvaluate_directPushGapsSkipRepositoriesThatPass(t *testing.T) {
 	// PASSES must not reach the worklist at all. Without this, dropping the
 	// verdict test still produces plausible-looking gaps, because every
 	// repository has a direct-push value whether or not it is the wrong one.
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{
 		fixture("alpha", "tools"),
 		fixture("bravo", "tools"),
 	}})
@@ -928,7 +928,7 @@ func TestEvaluate_overridesSectionSkipsAnUnknownKey(t *testing.T) {
 		"not_a_check": rules.OverrideRequired,
 		"renovate":    rules.OverrideNotRequired,
 	}
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{r}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
@@ -943,7 +943,7 @@ func TestEvaluate_overridesSectionSkipsAnUnknownKey(t *testing.T) {
 func TestEvaluate_carriesTheOwner(t *testing.T) {
 	t.Parallel()
 
-	snap := &audit.Snapshot{Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{fixture("alpha", "tools")}}
+	snap := &audit.Snapshot{Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{fixture("alpha", "tools")}}
 	rep, err := rules.Evaluate(snap)
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)

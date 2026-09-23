@@ -2,8 +2,10 @@ package render_test
 
 import (
 	"flag"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -90,7 +92,7 @@ func TestBlock_nothingWrong(t *testing.T) {
 
 	a := baseRepo("alpha", "tools")
 	b := baseRepo("bravo", "tools")
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{a, b}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{a, b}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -172,7 +174,7 @@ func TestBlock_relativeDates(t *testing.T) {
 
 			r := baseRepo("alpha", "tools")
 			r.PushedAt = tc.pushed
-			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{r}}
+			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 			got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 			if err != nil {
 				t.Fatalf("Block() error = %v, want nil", err)
@@ -189,7 +191,7 @@ func TestBlock_escapesAPipeInADescription(t *testing.T) {
 
 	r := baseRepo("alpha", "tools")
 	r.Description = "before | after"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -210,7 +212,7 @@ func TestBlock_naCellCarryingAScalar(t *testing.T) {
 	r := baseRepo("cipher-lib", "content")
 	r.Visibility = "public"
 	r.Topics = 6
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -234,7 +236,7 @@ func TestBlock_backticksABareURLInADescription(t *testing.T) {
 
 	r := baseRepo("config-files", "environment")
 	r.Description = "Config files managed by chezmoi - https://www.chezmoi.io/"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -275,7 +277,7 @@ func TestBlock_widensTheFenceAroundABacktick(t *testing.T) {
 
 	r := baseRepo("alpha", "tools")
 	r.Files.RenovateConfig = "re``no`vate.json"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -299,7 +301,7 @@ func TestBlock_noConsensusWithoutExceptions(t *testing.T) {
 	a := baseRepo("alpha", "tools")
 	b := baseRepo("bravo", "tools")
 	b.Settings.HasWiki = true
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Repos: []audit.Repo{a, b}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{a, b}}
 
 	rep := evaluate(t, snap)
 	if len(rep.Exceptions) != 0 {
@@ -318,5 +320,203 @@ func TestBlock_noConsensusWithoutExceptions(t *testing.T) {
 	}
 	if !strings.Contains(got, "### No consensus") {
 		t.Errorf("Block() should still list the settings with no norm; got:\n%s", got)
+	}
+}
+
+// Identities the Git identities tests use: the fixture vocabulary only. The
+// bot and GitHub identities never appear in Markdown, because their addresses
+// name a real host.
+var (
+	patCanonical = audit.Identity{Name: "Pat Example", Email: "pat@example.com"}
+	patOther     = audit.Identity{Name: "Pat Example", Email: "pat@example.org"}
+	patrick      = audit.Identity{Name: "Patrick Example", Email: "patrick@example.org"}
+	robin        = audit.Identity{Name: "Robin Other", Email: "robin@example.org"}
+)
+
+// withTypesWord is standardTypes with git_identity at word in every type.
+func withTypesWord(word string) rules.Types {
+	types := make(rules.Types, len(standardTypes()))
+	for name, entries := range standardTypes() {
+		// standardTypes is shared read-only, so each table is copied.
+		copied := maps.Clone(entries)
+		copied[rules.CheckGitIdentity.String()] = word
+		types[name] = copied
+	}
+	return types
+}
+
+// policyCells finds a repository's row in the Policy table and returns its
+// cells keyed by column header. The columns are padded, so cells are split
+// and trimmed rather than matched as raw strings.
+func policyCells(t *testing.T, block, repo string) map[string]string {
+	t.Helper()
+	_, after, ok := strings.Cut(block, "## Policy\n\n")
+	if !ok {
+		t.Fatalf("no Policy section in:\n%s", block)
+	}
+	var header []string
+	for line := range strings.SplitSeq(after, "\n") {
+		if !strings.HasPrefix(line, "|") {
+			break
+		}
+		cells := splitRow(line)
+		if header == nil {
+			header = cells
+			continue
+		}
+		if strings.HasPrefix(cells[0], "["+repo+"]") {
+			out := make(map[string]string, len(header))
+			for i, h := range header {
+				out[h] = cells[i]
+			}
+			return out
+		}
+	}
+	t.Fatalf("no Policy row for %s in:\n%s", repo, block)
+	return nil
+}
+
+func splitRow(line string) []string {
+	parts := strings.Split(strings.Trim(line, "|"), "|")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+func TestBlock_gitIdentities(t *testing.T) {
+	t.Parallel()
+
+	alpha := baseRepo("alpha", "tools")
+	alpha.Identities = []audit.Identity{patCanonical, patrick}
+	bravo := baseRepo("bravo", "tools")
+	bravo.Identities = []audit.Identity{robin}
+	// An override and a settings deviation, so the Overrides and Settings
+	// exceptions sections exist to be ordered against.
+	bravo.Overrides = map[string]string{"flake_nix": rules.OverrideNotRequired}
+	bravo.Settings.HasWiki = true
+	charlie := baseRepo("charlie", "tools")
+	charlie.Identities = []audit.Identity{patOther}
+	delta := baseRepo("delta", "tools")
+	delta.Identities = []audit.Identity{patCanonical}
+	snap := &audit.Snapshot{
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),
+		Repos: []audit.Repo{alpha, bravo, charlie, delta},
+	}
+
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	want := "## Git identities\n\n" +
+		"- **alpha** — `Pat Example <pat@example.com>` (canonical), `Patrick Example <patrick@example.org>` — mixed\n" +
+		"- **charlie** — `Pat Example <pat@example.org>` — not canonical\n" +
+		"- **delta** — `Pat Example <pat@example.com>` (canonical)\n"
+	if !strings.Contains(got, want) {
+		t.Fatalf("Block() should contain\n%s\ngot:\n%s", want, got)
+	}
+	// A repository with none of the owner's identities has nothing to rewrite.
+	// Only the section is searched: bravo has an Overrides line of the same shape.
+	_, section, _ := strings.Cut(got, "## Git identities\n\n")
+	section, _, _ = strings.Cut(section, "\n\n")
+	if strings.Contains(section, "**bravo**") {
+		t.Errorf("bravo carries only another person's identity and should have no line:\n%s", section)
+	}
+	activity := strings.Index(got, "## Activity")
+	identities := strings.Index(got, "## Git identities")
+	exceptions := strings.Index(got, "## Settings exceptions")
+	overrides := strings.Index(got, "## Overrides")
+	if activity < 0 || exceptions < 0 || overrides < 0 {
+		t.Fatalf("want Activity, Settings exceptions and Overrides sections for this test to mean anything:\n%s", got)
+	}
+	if activity >= identities || identities >= exceptions || identities >= overrides {
+		t.Errorf("want Git identities after Activity and before Settings exceptions and Overrides:\n%s", got)
+	}
+
+	cells := policyCells(t, got, "charlie")
+	if cells["Identity"] != "✗ 1 wrong" {
+		t.Errorf("charlie's Identity cell = %q, want %q", cells["Identity"], "✗ 1 wrong")
+	}
+	if cells := policyCells(t, got, "delta"); cells["Identity"] != "✓" {
+		t.Errorf("delta's Identity cell = %q, want %q", cells["Identity"], "✓")
+	}
+}
+
+func TestBlock_identityColumnFollowsSigned(t *testing.T) {
+	t.Parallel()
+
+	got, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	_, after, _ := strings.Cut(got, "## Policy\n\n")
+	header, _, _ := strings.Cut(after, "\n")
+	cols := splitRow(header)
+	i := slices.Index(cols, "Signed")
+	if i < 0 || i+1 >= len(cols) || cols[i+1] != "Identity" {
+		t.Errorf("Policy header = %q, want Identity immediately after Signed", cols)
+	}
+}
+
+func TestBlock_noIdentitiesSectionWithoutAStandard(t *testing.T) {
+	t.Parallel()
+
+	r := baseRepo("alpha", "tools")
+	r.Identities = []audit.Identity{patOther}
+	snap := &audit.Snapshot{
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord(rules.OverrideNotRequired),
+		Repos: []audit.Repo{r},
+	}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if strings.Contains(got, "## Git identities") {
+		t.Errorf("with no identity standard there should be no Git identities section:\n%s", got)
+	}
+}
+
+// TestBlock_identityInfoCells: an informational type shows the count and
+// never a mark, and n/a where nothing is wrong.
+func TestBlock_identityInfoCells(t *testing.T) {
+	t.Parallel()
+
+	fine := baseRepo("alpha", "tools")
+	fine.Identities = []audit.Identity{patCanonical}
+	wrong := baseRepo("bravo", "tools")
+	wrong.Identities = []audit.Identity{patOther}
+	snap := &audit.Snapshot{
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord("info"), Identity: fixtureIdentity(),
+		Repos: []audit.Repo{fine, wrong},
+	}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if cell := policyCells(t, got, "alpha")["Identity"]; cell != "n/a" {
+		t.Errorf("alpha's Identity cell = %q, want n/a", cell)
+	}
+	if cell := policyCells(t, got, "bravo")["Identity"]; cell != "1 wrong" {
+		t.Errorf("bravo's Identity cell = %q, want %q", cell, "1 wrong")
+	}
+}
+
+// TestBlock_widensTheFenceAroundABacktickInAnIdentity: a commit's name is
+// whatever its author typed, so a backtick in one must not break the bullet.
+func TestBlock_widensTheFenceAroundABacktickInAnIdentity(t *testing.T) {
+	t.Parallel()
+
+	r := baseRepo("alpha", "tools")
+	r.Identities = []audit.Identity{{Name: "Pat `Example", Email: "pat@example.com"}}
+	std := fixtureIdentity()
+	std.Match = "Example <" // " Example <" would not see past the backtick
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: std, Repos: []audit.Repo{r}}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	want := "- **alpha** — `` Pat `Example <pat@example.com> `` — not canonical\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("Block() should contain %q; got:\n%s", want, got)
 	}
 }

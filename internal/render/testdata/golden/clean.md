@@ -14,10 +14,10 @@
 
 ## Policy
 
-| Repository                                 | Direct push | Signed | CI workflows | Required checks | Tag ruleset | Secret scanning | Vuln. reporting |
-| ------------------------------------------ | ----------- | ------ | ------------ | --------------- | ----------- | --------------- | --------------- |
-| [alpha](https://github.com/gh-owner/alpha) | ✓ blocked   | ✓      | ✓            | 2               | default     | n/a             | n/a             |
-| [bravo](https://github.com/gh-owner/bravo) | ✓ blocked   | ✓      | ✓            | 2               | default     | n/a             | n/a             |
+| Repository                                 | Direct push | Signed | Identity | CI workflows | Required checks | Tag ruleset | Secret scanning | Vuln. reporting |
+| ------------------------------------------ | ----------- | ------ | -------- | ------------ | --------------- | ----------- | --------------- | --------------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | default     | n/a             | n/a             |
+| [bravo](https://github.com/gh-owner/bravo) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | default     | n/a             | n/a             |
 
 ## Activity
 
@@ -25,5 +25,10 @@
 | ------------------------------------------ | --------- | ------- | -------- | -------- | -------- | ------------ |
 | [alpha](https://github.com/gh-owner/alpha) | 11d       | SUCCESS | 0        | 0        | 0        | n/a          |
 | [bravo](https://github.com/gh-owner/bravo) | 11d       | SUCCESS | 0        | 0        | 0        | n/a          |
+
+## Git identities
+
+- **alpha** — `Pat Example <pat@example.com>` (canonical)
+- **bravo** — `Pat Example <pat@example.com>` (canonical)
 
 _Read from GitHub on 2026-09-05._

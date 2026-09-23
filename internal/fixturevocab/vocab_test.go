@@ -35,6 +35,18 @@ var fakeRepos = []string{
 	"github-repos-audit", "alpha", "bravo", "preset-store",
 }
 
+// fakeIdentityNames and fakeIdentityEmails are the only git identities a
+// fixture or golden may carry. A captured history would carry the account
+// holder's real name and address, which is exactly what this test exists to
+// keep out; the bot and GitHub entries are GitHub's own public identities.
+var (
+	fakeIdentityNames  = []string{"Pat Example", "Patrick Example", "Robin Other", "renovate[bot]", "GitHub"}
+	fakeIdentityEmails = []string{
+		"pat@example.com", "Pat@Example.com", "pat@example.org", "patrick@example.org", "robin@example.org",
+		"29139614+renovate[bot]@users.noreply.github.com", "noreply@github.com",
+	}
+)
+
 // rule says what the scalar at a key path may hold. want describes the
 // allowed form for the failure message; the offending value is never printed.
 type rule struct {
@@ -59,6 +71,16 @@ func matches(re string) func(any) bool {
 }
 
 func isFakeRepo(v any) bool { s, ok := str(v); return ok && slices.Contains(fakeRepos, s) }
+
+func isFakeIdentityName(v any) bool {
+	s, ok := str(v)
+	return ok && slices.Contains(fakeIdentityNames, s)
+}
+
+func isFakeIdentityEmail(v any) bool {
+	s, ok := str(v)
+	return ok && slices.Contains(fakeIdentityEmails, s)
+}
 
 func isOwnerSlashRepo(v any) bool {
 	s, ok := str(v)
@@ -217,6 +239,14 @@ var apiRules = []rule{
 	// A preset file read through the contents API is the same content,
 	// base64-encoded, so it is decoded before the same check.
 	{regexp.MustCompile(`^content$`), isFakeBase64Content, "base64 of text naming only gh-owner/<fake> repositories"},
+	// A commit's author and committer are the one place a fixture could carry
+	// a person rather than a repository, so both halves are held to the fake
+	// identity vocabulary. History lives under two roots — page one rides with
+	// the repository query, later pages come back under object — so these are
+	// anchored at the end only. GitHub answers null for a half it cannot read.
+	{regexp.MustCompile(`history\.nodes\[\]\.(author|committer)\.name$`), optional(isFakeIdentityName), "null or a fake identity name"},
+	{regexp.MustCompile(`history\.nodes\[\]\.(author|committer)\.email$`), optional(isFakeIdentityEmail), "null or a fake identity email"},
+	{regexp.MustCompile(`history\.page_info\.end_cursor$`), optional(matches(`^cursor-\d{2}$`)), "null or a synthetic cursor"},
 	keep(
 		`access_level`, `allowed_actions`, `\[\]\.archived`, `archived`, `\[\]\.disabled`, `disabled`,
 		`\[\]\.fork`, `fork`, `\[\]\.private`, `private`, `\[\]\.visibility`, `visibility`,
@@ -239,6 +269,7 @@ var apiRules = []rule{
 		`data\.repository\.releases\.nodes\[\]\.is_draft`,
 		`data\.repository\.rulesets\.nodes\[\]\.(enforcement|target|conditions\.ref_name\.include\[\]|rules\.nodes\[\]\.type)`,
 		`data\.repository\.`+renovateProbes+`\.(is_truncated|is_binary)`,
+		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
 		// The contents API's envelope: "file" and "base64" are GitHub's words.
 		`type`, `encoding`,
 	),
@@ -256,6 +287,8 @@ var apiRules = []rule{
 		`data\.repository\.(contributing_root|contributing_github|contributing_docs)`,
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
 		`data\.repository\.`+renovateProbes,
+		// A null actor: GitHub could not resolve who wrote or committed it.
+		`data\.repository\.(default_branch_ref\.target|object)\.history\.nodes\[\]\.(author|committer)`,
 	),
 }
 
@@ -270,6 +303,12 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.branch\.required_checks\[\]$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^repos\[\]\.settings\.allowed_actions\.patterns\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`^(generated_at|repos\[\]\.pushed_at|repos\[\]\.releases\.last_published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
+	{regexp.MustCompile(`^repos\[\]\.identities\[\]\.name$`), isFakeIdentityName, "a fake identity name"},
+	{regexp.MustCompile(`^repos\[\]\.identities\[\]\.email$`), isFakeIdentityEmail, "a fake identity email"},
+	// The [identity] table is the account holder's real identity in a real
+	// report, so a golden may carry only the fixture standard.
+	{regexp.MustCompile(`^identity\.canonical$`), func(v any) bool { return v == "Pat Example <pat@example.com>" }, "the fixture canonical identity"},
+	{regexp.MustCompile(`^identity\.match$`), func(v any) bool { return v == " Example <" }, "the fixture identity match"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
@@ -399,13 +438,59 @@ var githubIOLink = regexp.MustCompile(`(?i)github\.io`)
 // hosts, rejects a github.io or an account-avatar host outright, and fails
 // closed on any other GitHub-adjacent host it cannot decompose. It also
 // requires the gap lists' bare repository names and every table's leading
-// "Repository" column to be in fakeRepos, and runs a "Description" column
-// through isDescription, because those are prose and free text that no
-// link-shaped pattern ever reaches.
+// "Repository" column to be in fakeRepos, runs a "Description" column
+// through isDescription, and holds every line of the Git identities section
+// to fake repositories and fake identities, because those are prose and free
+// text that no link-shaped pattern ever reaches.
 //
 // gapListName matches a gap-list bullet's trailing "— name[, name...]",
 // e.g. "- **No README** (1) — go-linter, web-app".
 var gapListName = regexp.MustCompile(`^- \*\*.+\*\* \(\d+\) — (.+)$`)
+
+// identityBullet matches a Git identities bullet, e.g.
+// "- **web-app** — `Pat Example <pat@example.com>` (canonical) — mixed".
+// Group 1 is the repository, group 2 the identity list.
+var identityBullet = regexp.MustCompile(`^- \*\*(.+?)\*\* — (.+?)(?: — (?:mixed|not canonical))?$`)
+
+// identityList is the whole of a bullet's identity list: backticked
+// identities, each optionally marked canonical, separated by ", ". Anything
+// else between the spans — free text that could carry a real name — fails it.
+var identityList = regexp.MustCompile("^`[^`]+`(?: \\(canonical\\))?(?:, `[^`]+`(?: \\(canonical\\))?)*$")
+
+// identitySpan extracts each backticked identity from an identityList.
+var identitySpan = regexp.MustCompile("`([^`]+)`")
+
+// isFakeIdentity reports whether s, written "Name <email>", is a fake name and
+// a fake address. Split by hand on the last " <" rather than through
+// internal/rules, so this test depends on nothing it is policing.
+func isFakeIdentity(s string) bool {
+	i := strings.LastIndex(s, " <")
+	if i < 0 || !strings.HasSuffix(s, ">") {
+		return false
+	}
+	return isFakeIdentityName(s[:i]) && isFakeIdentityEmail(s[i+2:len(s)-1])
+}
+
+// checkIdentityLine holds one line of the Git identities section to the fake
+// vocabulary. The section is prose, so it fails closed: any line in it that is
+// not a well-formed bullet over fake repositories and fake identities is a
+// problem.
+func checkIdentityLine(n int, line string) []string {
+	m := identityBullet.FindStringSubmatch(line)
+	if m == nil || !identityList.MatchString(m[2]) {
+		return []string{fmt.Sprintf("line %d: a Git identities line that is not a well-formed bullet", n)}
+	}
+	var problems []string
+	if !slices.Contains(fakeRepos, m[1]) {
+		problems = append(problems, fmt.Sprintf("line %d: a Git identities repository outside the fake vocabulary", n))
+	}
+	for _, span := range identitySpan.FindAllStringSubmatch(m[2], -1) {
+		if !isFakeIdentity(span[1]) {
+			problems = append(problems, fmt.Sprintf("line %d: a git identity outside the fake vocabulary", n))
+		}
+	}
+	return problems
+}
 
 // tableRow splits a GFM table row on "|", trimming each cell and the row's
 // own bounding pipes. A backslash-escaped pipe (how escape() in
@@ -473,8 +558,20 @@ func checkMarkdown(text string) []string {
 	lines := strings.Split(text, "\n")
 	descCol := -1 // index of the current table's Description column, if any; -1 outside a table or when it has none.
 	inTable := false
+	// inIdentities is true from the "## Git identities" heading until the blank
+	// line that closes its bullet list; identityLines counts the lines seen.
+	inIdentities, identityLines := false, 0
 	for i, line := range lines {
 		n := i + 1
+		switch {
+		case strings.HasPrefix(line, "## "):
+			inIdentities, identityLines = line == "## Git identities", 0
+		case inIdentities && strings.TrimSpace(line) == "":
+			inIdentities = identityLines == 0 // the blank below the heading
+		case inIdentities:
+			identityLines++
+			problems = append(problems, checkIdentityLine(n, line)...)
+		}
 		switch {
 		case githubIOLink.MatchString(line):
 			problems = append(problems, fmt.Sprintf("line %d: a github.io link", n))
@@ -559,6 +656,9 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 		{name: "preset content naming a real preset", doc: `{"content": "eyJleHRlbmRzIjogWyJnaXRodWI+c29tZW9uZS9yZWFsLXJlcG8iXX0=\n"}`},
 		{name: "preset content that is not base64", doc: `{"content": "not base64!"}`},
 		{name: "a present renovate probe with a real flag field", doc: `{"data": {"repository": {"renovate_json": {"is_huge": true}}}}`},
+		{name: "a history author outside the identity vocabulary", doc: `{"data": {"repository": {"default_branch_ref": {"target": {"history": {"nodes": [{"author": {"name": "Someone Real", "email": "pat@example.com"}}]}}}}}}`},
+		{name: "a later history page's committer email outside the vocabulary", doc: `{"data": {"repository": {"object": {"history": {"nodes": [{"committer": {"name": "Pat Example", "email": "someone@real.invalid"}}]}}}}}`},
+		{name: "a history cursor that is not synthetic", doc: `{"data": {"repository": {"object": {"history": {"page_info": {"end_cursor": "Y3Vyc29yOnYyOpK5"}}}}}}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -567,6 +667,25 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 				t.Errorf("check(%s) found no problem, want one", tc.name)
 			}
 		})
+	}
+}
+
+// TestCheck_rejectsAForeignIdentityStandard: a golden audit.json may record
+// only the fixture [identity] table, never an account holder's own.
+func TestCheck_rejectsAForeignIdentityStandard(t *testing.T) {
+	t.Parallel()
+
+	for _, doc := range []string{
+		`{"identity": {"canonical": "Jane Doe <jane@corp.test>", "match": " Example <"}}`,
+		`{"identity": {"canonical": "Pat Example <pat@example.com>", "match": "(?i)jane"}}`,
+	} {
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
+			t.Errorf("check(%s) found no problem, want one", doc)
+		}
+	}
+	fixture := `{"identity": {"canonical": "Pat Example <pat@example.com>", "match": " Example <"}}`
+	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
+		t.Errorf("check(the fixture standard) = %q, want no problem", got)
 	}
 }
 
@@ -697,6 +816,24 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Description |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | a real description |",
+		"a Git identities bullet naming a foreign repository": "" +
+			"## Git identities\n\n" +
+			"- **marker-repo** — `Pat Example <pat@example.com>` (canonical)",
+		"a Git identities bullet carrying a real-shaped identity": "" +
+			"## Git identities\n\n" +
+			"- **web-app** — `Jane Doe <jane@corp.test>` — not canonical",
+		"a real-shaped identity beside a fake one": "" +
+			"## Git identities\n\n" +
+			"- **web-app** — `Pat Example <pat@example.com>` (canonical), `Jane Doe <jane@corp.test>` — mixed",
+		"a fake name with a foreign address": "" +
+			"## Git identities\n\n" +
+			"- **web-app** — `Pat Example <jane@corp.test>` — not canonical",
+		"free text between the identities": "" +
+			"## Git identities\n\n" +
+			"- **web-app** — `Pat Example <pat@example.com>` and Jane Doe — mixed",
+		"a line in the section that is not a bullet": "" +
+			"## Git identities\n\n" +
+			"Jane Doe committed here too.",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -716,6 +853,14 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Description |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) |  |",
+		"the Git identities bullets": "" +
+			"## Git identities\n\n" +
+			"- **alpha** — `Pat Example <pat@example.com>` (canonical), `Patrick Example <patrick@example.org>` — mixed\n" +
+			"- **web-app** — `Pat Example <pat@example.org>` — not canonical\n" +
+			"- **bravo** — `Pat Example <pat@example.com>` (canonical)\n" +
+			"\n" +
+			"## Overrides\n\n" +
+			"- **web-app** — `flake_nix` is `not_required`",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

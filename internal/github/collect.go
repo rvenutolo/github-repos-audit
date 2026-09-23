@@ -54,13 +54,20 @@ func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, err
 // REST path needs the live default branch name from it, then the REST calls.
 // A repository with a Renovate config also costs a contents read for each
 // in-account preset it extends that no other repository in this run has
-// already read.
+// already read. The first hundred commits of the default branch's history
+// arrive with the GraphQL query; a longer history costs one more request per
+// further hundred commits, so a large repository is the slow one to collect.
 func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache) (audit.Repo, error) {
 	gql, err := c.fetchRepository(ctx, name)
 	if err != nil {
 		return audit.Repo{}, err
 	}
 	repo := gql.toAudit(name)
+	ids, err := c.identities(ctx, name, gql)
+	if err != nil {
+		return audit.Repo{}, err
+	}
+	repo.Identities = ids
 	if path, blob := gql.renovateConfig(); blob != nil {
 		rn, err := c.renovateFacts(ctx, path, blob, presets)
 		if err != nil {
