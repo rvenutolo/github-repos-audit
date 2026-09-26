@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+
+# @description Fail when a commit lowers a package's figure in
+#              .ci/coverage-baseline.txt without saying why. The baseline
+#              ratchets through `just cover-update`, and a PR can run that and
+#              commit a lower number; this makes the drop carry its reason,
+#              on the commit that made it, as a git trailer:
+#
+#                Coverage-Drop: internal/github - the retry path it covered was removed
+#
+#              It must be in the message's LAST paragraph, the trailer block:
+#              in this repository that is the paragraph that already carries
+#              Co-Authored-By, so it goes on a line beside those. A
+#              Coverage-Drop line in a paragraph of its own above them, or
+#              glued to a body paragraph, is not a trailer to git and counts
+#              as missing. The package is the
+#              import path with the module path stripped (`.` for the module
+#              root); the reason is required. One trailer per package; the key
+#              is case-insensitive and a folded value is unfolded.
+#
+#              Only a numeric figure going down is a drop. A package line
+#              added or removed, or a move to or from n/a, is a package
+#              appearing or disappearing, which .ci/check-coverage already
+#              judges. A commit that adds or deletes the baseline itself is
+#              skipped.
+#
+#              Merge commits are skipped. In CI, HEAD is GitHub's synthetic
+#              merge of the PR into main, whose diff against its first parent
+#              carries the PR's own drops; judging it would fail every drop
+#              whose trailer sits, correctly, on the branch commit. The branch
+#              commits are in the range and judged one by one. The accepted
+#              gap is a drop made only in a merge's conflict resolution, which
+#              still has to satisfy check-coverage and shows in the merge diff.
+# @option --range <revs> the commits to judge, as `git rev-list` takes them
+# @exitcode 0 every drop in range is justified
+# @exitcode 1 a finding
+# @exitcode 2 usage error, or the range does not resolve
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+readonly BASELINE='.ci/coverage-baseline.txt'
+
+# work is global, not local to main: the EXIT trap fires after main returns,
+# when a local would already be out of scope and unbound under set -u.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+function usage() {
+  printf 'usage: %s --range REVS\n' "${0##*/}" >&2
+  exit 2
+}
+
+# @description Print a setup failure and exit 2. The ERR trap is dropped
+#              first so the message is the last thing a reader sees.
+# @arg $1 message
+function fail_setup() {
+  trap - ERR
+  printf 'FAIL: %s\n' "$1" >&2
+  exit 2
+}
+
+# @description Print the module path from go.mod at a commit, or nothing if
+#              the commit has no go.mod: package names then stay full import
+#              paths, which is still unambiguous.
+# @arg $1 commit
+function module_at() {
+  git cat-file -e "$1:go.mod" 2> /dev/null || return 0
+  git show --no-color "$1:go.mod" | awk '$1 == "module" { print $2; exit }'
+}
+
+# @description Print one finding per unjustified drop in a single commit.
+#              Reads `O pkg figure` and `N pkg figure` lines (the parent's and
+#              the commit's baseline) and `T value` lines (the Coverage-Drop
+#              trailer values) on stdin.
+# @arg $1 short sha
+# @arg $2 module path, or ''
+function judge_commit() {
+  awk -v sha="$1" -v module="$2" '
+    function tenths(figure) {
+      sub(/%$/, "", figure)
+      return int(figure * 10 + 0.5)
+    }
+    function short(pkg) {
+      if (module == "") return pkg
+      if (pkg == module) return "."
+      if (substr(pkg, 1, length(module) + 1) == module "/") return substr(pkg, length(module) + 2)
+      return pkg
+    }
+    ($1 == "O" || $1 == "N") && ($2 == "" || substr($2, 1, 1) == "#") { next }
+    $1 == "O" { old[$2] = $3; next }
+    $1 == "N" { new[$2] = $3; next }
+    $1 == "T" {
+      value = substr($0, 3)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value == "") next
+      # The package is the first word; an optional "-" and the reason follow.
+      split(value, words, /[[:space:]]+/)
+      pkg = words[1]
+      reason = substr(value, length(pkg) + 1)
+      sub(/^[[:space:]]*-?/, "", reason)
+      if (reason ~ /[^[:space:]]/) justified[pkg] = 1
+      else named[pkg] = 1
+      next
+    }
+    END {
+      for (pkg in new) {
+        if (!(pkg in old)) continue
+        if (old[pkg] == "n/a" || new[pkg] == "n/a") continue
+        if (tenths(new[pkg]) >= tenths(old[pkg])) continue
+        dir = short(pkg)
+        if (dir in justified) continue
+        printf "FAIL: %s lowers %s %s -> %s without a \"Coverage-Drop: %s - <reason>\" trailer in its last paragraph%s\n", \
+          sha, dir, old[pkg], new[pkg], dir, (dir in named) ? " (the trailer gives no reason)" : ""
+      }
+    }
+  '
+}
+
+function main() {
+  local range=''
+  while (($# > 0)); do
+    case "$1" in
+      --range)
+        (($# >= 2)) || usage
+        range="$2"
+        shift 2
+        ;;
+      *) usage ;;
+    esac
+  done
+  [[ -n "${range}" ]] || usage
+
+  local repo_dir
+  if ! repo_dir="$(git rev-parse --show-toplevel 2> /dev/null)"; then
+    fail_setup 'not inside a git repository'
+  fi
+  cd "${repo_dir}"
+
+  work="$(mktemp --directory)"
+  # A plain command into a file, never `< <(git rev-list ...)`: a process
+  # substitution swallows the exit status, so a range that does not resolve
+  # would read as "no commits" and pass.
+  if ! git rev-list --no-merges "${range}" > "${work}/revs" 2> /dev/null; then
+    fail_setup "--range ${range} does not resolve"
+  fi
+
+  local commit short
+  : > "${work}/findings"
+  while IFS= read -r commit; do
+    git rev-parse --verify --quiet "${commit}^" > /dev/null || continue
+    git cat-file -e "${commit}:${BASELINE}" 2> /dev/null || continue
+    git cat-file -e "${commit}^:${BASELINE}" 2> /dev/null || continue
+    short="$(git rev-parse --short "${commit}")"
+    {
+      git show --no-color "${commit}^:${BASELINE}" | awk '{ sub(/\r$/, ""); print "O", $1, $2 }'
+      git show --no-color "${commit}:${BASELINE}" | awk '{ sub(/\r$/, ""); print "N", $1, $2 }'
+      git log -1 --no-show-signature --no-color \
+        --format='%(trailers:key=Coverage-Drop,valueonly,unfold)' "${commit}" \
+        | awk '{ print "T", $0 }'
+    } | judge_commit "${short}" "$(module_at "${commit}")" | sort >> "${work}/findings"
+  done < "${work}/revs"
+
+  trap - ERR
+  if [[ -s "${work}/findings" ]]; then
+    cat "${work}/findings" >&2
+    printf '(if this is already on main, origin/main may be stale: git fetch origin main)\n' >&2
+    return 1
+  fi
+  return 0
+}
+
+main "$@"
