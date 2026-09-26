@@ -71,3 +71,10 @@ mktemp
 base64
 # .ci/run-lint-checks feeds the tracked file list to cp through xargs
 xargs
+# .ci/check-coverage, .ci/check-patch-coverage and .ci/check-coverage-drop
+# parse profiles, diffs and baselines with it; POSIX awk only, no gawk-isms
+awk
+# .ci/check-patch-coverage orders its findings by file, then line
+sort
+# .ci/check-patch-coverage drops its sort keys before printing
+cut

@@ -2,10 +2,11 @@
 
 # The full verification gate, verify-only: formatting (nix flake check), the
 # governance lints, the lint suite, module tidiness and sums, the Go build,
-# vet, tests, the coverage baseline, govulncheck and the offline config
-# validation. Exit codes aggregate so one run surfaces every failing
-# category. Every caller (just check, .githooks/pre-push, CI) runs this
-# through .ci/in-devshell, so local and CI runs cannot drift.
+# vet, tests, the coverage baseline, patch coverage and baseline drops,
+# govulncheck and the offline config validation. Exit codes aggregate so one
+# run surfaces every failing category. Every caller (just check,
+# .githooks/pre-push, CI) runs this through .ci/in-devshell, so local and CI
+# runs cannot drift.
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
@@ -51,6 +52,8 @@ function main() {
   "${REPO_DIR}/.ci/check-uses-sha-pinned" || rc=1
   "${REPO_DIR}/.ci/test-refresh-pull-request" || rc=1
   "${REPO_DIR}/.ci/test-check-account-data" || rc=1
+  "${REPO_DIR}/.ci/test-check-patch-coverage" || rc=1
+  "${REPO_DIR}/.ci/test-check-coverage-drop" || rc=1
 
   ci::log 'running lint checks'
   "${REPO_DIR}/.ci/run-lint-checks" || rc=1
@@ -75,6 +78,29 @@ function main() {
   # still says which packages lost coverage, and reporting that alongside the
   # failure beats making it wait for the next run.
   "${REPO_DIR}/.ci/check-coverage" || rc=1
+
+  ci::log 'checking patch coverage and baseline drops against origin/main'
+  # Both judge "this change", which is everything since the branch left
+  # main: the fork point locally and in pre-push, the PR's changes in CI
+  # (HEAD there is GitHub's merge of the PR into main), and nothing at all
+  # on main itself. Guarded rather than a bare `base="$(...)"`: under
+  # inherit_errexit a failed substitution fires the ERR trap and aborts the
+  # whole gate, skipping govulncheck and validate. merge-base also fails,
+  # with no output, for unrelated histories, which is not "missing", so the
+  # two get different messages. A stale local origin/main only widens the
+  # range; the checks' own output says to fetch when a finding is already on
+  # main.
+  local base
+  if ! git rev-parse --verify --quiet 'origin/main^{commit}' > /dev/null; then
+    ci::log 'FAIL: cannot find origin/main to diff against; run: git fetch origin main'
+    rc=1
+  elif ! base="$(git merge-base HEAD origin/main)"; then
+    ci::log 'FAIL: HEAD shares no history with origin/main; nothing to diff against'
+    rc=1
+  else
+    "${REPO_DIR}/.ci/check-patch-coverage" --base "${base}" --profile "${REPO_DIR}/coverage.out" || rc=1
+    "${REPO_DIR}/.ci/check-coverage-drop" --range "${base}..HEAD" || rc=1
+  fi
 
   ci::log 'running govulncheck'
   # Reports only vulnerabilities in code paths this binary actually reaches, so

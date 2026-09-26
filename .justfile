@@ -35,10 +35,13 @@ cover:
 
 # Record current coverage as the new baseline. Commit the diff deliberately.
 cover-update:
-    # A line that goes DOWN in the resulting diff is a loss of coverage and
-    # needs justifying in the commit message. The gate fails on any drop
-    # without a baseline change; see .ci/check-coverage's header for why
-    # there is no tolerance.
+    # A line that goes DOWN in the resulting diff is a loss of coverage. The
+    # commit that lowers it must say why, with a trailer in the message's
+    # last paragraph (the one carrying Co-Authored-By):
+    # `Coverage-Drop: <package dir> - <reason>`, which
+    # .ci/check-coverage-drop enforces. The gate fails on any drop without a
+    # baseline change; see .ci/check-coverage's header for why there is no
+    # tolerance.
     ./.ci/in-devshell go test ./... -race -shuffle=on -coverprofile=coverage.out
     ./.ci/in-devshell ./.ci/check-coverage --update
 

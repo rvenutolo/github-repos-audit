@@ -24,6 +24,17 @@
 #              it passes. A toolchain bump that changes statement counts is a
 #              deterministic change, recorded with `just cover-update` in the
 #              same commit.
+#
+#              This is the per-package half. .ci/check-patch-coverage is the
+#              per-change half: every Go block a change touches must be run,
+#              or carry a `// coverage-exempt: <reason>` line comment inside
+#              it.
+#
+#              .ci/check-coverage-drop makes a lowered line in the baseline
+#              carry its reason, as a trailer on the commit that lowers it:
+#              `Coverage-Drop: <package dir> - <reason>`, in the message's
+#              last paragraph beside Co-Authored-By (a paragraph of its own
+#              is not a trailer to git).
 # @arg $1 mode  check (default), --print or --update
 # @exitcode 0 every package is at or above its baseline
 # @exitcode 1 a package regressed, or the baseline and the package list disagree

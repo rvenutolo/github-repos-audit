@@ -132,12 +132,14 @@
             # no bin/, so a bare `nix` puts nothing on PATH and the gate runs
             # whatever nix the host ships.
             nix.out
-            # baseline userland the gates shell out to: cp and mktemp from
-            # coreutils, xargs from findutils. Nothing here needs GNU grep or
-            # sed — the scripts use `git grep` and bash parameter expansion —
-            # so neither is declared.
+            # baseline userland the gates shell out to: cp, mktemp, sort and
+            # cut from coreutils, xargs from findutils, awk from gawk (the
+            # coverage checks, which keep to POSIX awk). Nothing here needs
+            # GNU grep or sed — the scripts use `git grep` and bash parameter
+            # expansion — so neither is declared.
             coreutils
             findutils
+            gawk
           ];
 
           # GOTOOLCHAIN=local, not the default `auto`: `auto` would let a
