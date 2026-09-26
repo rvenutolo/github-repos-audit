@@ -270,4 +270,23 @@ installed on the host.
 | `just fuzz`         | fuzz every target briefly; never part of the gate         |
 | `just mutate`       | mutation-test a package; slow, never part of the gate     |
 
+Coverage is held three ways, all inside `just check`. Each package must stay
+at or above its figure in `.ci/coverage-baseline.txt`. Every Go block a
+change touches (everything since the branch left `origin/main`) must be run
+by the tests. When one can't be (a defensive branch no test can reach),
+mark it with a line comment inside the block:
+
+```go
+if err != nil { // coverage-exempt: the reader never fails on a bytes.Buffer
+```
+
+A marker needs a reason and must still mark unrun code; a stale one fails.
+And a commit that lowers a figure in the baseline must say why, with a
+trailer in its message's last paragraph, next to the `Co-Authored-By` lines
+(a paragraph of its own is not a trailer to git):
+
+```text
+Coverage-Drop: internal/github - the retry path it covered was removed
+```
+
 Run `just` on its own to list every recipe with its one-line description.
