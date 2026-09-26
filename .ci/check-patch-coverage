@@ -73,16 +73,29 @@ function fail_setup() {
 #              profile compiles a file into several test binaries) is run if
 #              any copy ran. Every mode (set, count, atomic) reads the same
 #              way: a count above zero means run.
+#
+#              go itself writes profile lines space-delimited with no
+#              escaping, so a file name containing a space (legal in a file
+#              name, and go writes it unescaped either way) cannot be told
+#              apart from the field separator by naive $1/$2/$3 splitting,
+#              the way this used to work. The trailing
+#              "<line>.<col>,<line>.<col> <statements> <count>" shape is
+#              fixed and is anchored to the end of the line, so matching it
+#              there finds the file:span boundary correctly regardless of
+#              spaces earlier in the line.
 # @arg $1 profile
 # @arg $2 module path
 function read_blocks() {
   awk -v module="$2" '
     FNR == 1 { next }
     {
-      colon = index($1, ":")
-      if (colon == 0) next
-      file = substr($1, 1, colon - 1)
-      span = substr($1, colon + 1)
+      if (!match($0, /:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+ [0-9]+ [0-9]+$/)) next
+      file = substr($0, 1, RSTART - 1)
+      rest = substr($0, RSTART + 1, RLENGTH - 1)
+      split(rest, fields, " ")
+      span = fields[1]
+      numstmt = fields[2] + 0
+      count = fields[3] + 0
       prefix = module "/"
       if (substr(file, 1, length(prefix)) != prefix) next
       file = substr(file, length(prefix) + 1)
@@ -95,10 +108,10 @@ function read_blocks() {
         name[key] = file
         first[key] = from[1] + 0
         last[key] = to[1] + 0
-        stmts[key] = $2 + 0
+        stmts[key] = numstmt
         ran[key] = 0
       }
-      if ($3 + 0 > 0) ran[key] = 1
+      if (count > 0) ran[key] = 1
     }
     END {
       for (i = 1; i <= n; i++) {
@@ -140,6 +153,14 @@ function read_changed() {
       file = ""
       if (substr($0, 1, 6) == "+++ b/") {
         file = substr($0, 7)
+        # A name containing whitespace (e.g. a space) gets one trailing tab
+        # appended, for GNU patch to find where the name ends; strip exactly
+        # that one. A name with an embedded tab, which git cannot spell in
+        # this header at all, would still carry a tab after the strip: that
+        # is unparsable, same as a still-quoted name below, rather than
+        # silently mismatching every profile line for the file.
+        sub(/\t$/, "", file)
+        if (file == "" || index(file, "\t") > 0) exit 3
       } else if ($0 != "+++ /dev/null") {
         # Still quoted despite core.quotePath=false: a name with a literal
         # quote, tab, backslash or other control character. Parsing it here
