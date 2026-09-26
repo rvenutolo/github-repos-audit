@@ -38,7 +38,8 @@
 # @option --profile <file> the coverage profile go test wrote
 # @exitcode 0 every changed block is run or exempt, and every marker is valid
 # @exitcode 1 a finding
-# @exitcode 2 usage error: bad arguments, --base not a commit, no profile
+# @exitcode 2 usage error: bad arguments, --base not a commit, no profile, or
+#             a diff header this script cannot parse
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
@@ -114,19 +115,39 @@ function read_blocks() {
 #              pinned: diff.mnemonicPrefix and diff.noprefix rewrite the
 #              `+++ b/` this parses, diff.interHunkContext merges hunks and
 #              marks unchanged lines as changed, and diff.external and
-#              diff.relative replace or narrow the output. Hunk bodies are
-#              skipped by count, not by pattern, so an added line that itself
-#              begins with `++` is never mistaken for a file header.
+#              diff.relative replace or narrow the output. core.quotePath is
+#              pinned off too, so an otherwise-plain UTF-8 file name (git's
+#              default quotes anything outside ASCII) comes through
+#              unquoted; a name git still quotes even so — a literal `"`, a
+#              tab, or another control character, which quoting cannot spell
+#              unambiguously in the `+++ b/<name>` line — is caught below and
+#              fails the run rather than silently dropping the file's hunks.
+#              Hunk bodies are skipped by count, not by pattern, so an added
+#              line that itself begins with `++` is never mistaken for a file
+#              header.
 # @arg $1 base
 function read_changed() {
-  git diff --unified=0 --inter-hunk-context=0 --no-renames --no-color \
-    --no-ext-diff --no-relative --src-prefix=a/ --dst-prefix=b/ \
+  git -c core.quotePath=false diff --unified=0 --inter-hunk-context=0 \
+    --no-renames --no-color --no-ext-diff --no-relative --src-prefix=a/ --dst-prefix=b/ \
     "$1" -- '*.go' ':(exclude)*_test.go' > "${work}/diff"
+  # awk's own exit status (not a sentinel in its output) carries the
+  # unparsable-header case, so a bad header can never reach the facts file:
+  # its "C" lines only get cat'd out below once awk has exited 0.
+  local rc=0
   awk '
     skip > 0 { skip--; next }
     /^\+\+\+ / {
       file = ""
-      if (substr($0, 1, 6) == "+++ b/") file = substr($0, 7)
+      if (substr($0, 1, 6) == "+++ b/") {
+        file = substr($0, 7)
+      } else if ($0 != "+++ /dev/null") {
+        # Still quoted despite core.quotePath=false: a name with a literal
+        # quote, tab, backslash or other control character. Parsing it here
+        # would risk mistaking quoting syntax for the name itself, so fail
+        # closed instead of silently dropping that file, which would let an
+        # unrun change pass.
+        exit 3
+      }
       next
     }
     /^@@ / {
@@ -140,7 +161,13 @@ function read_changed() {
       if (file == "") next
       for (i = 0; i < newcount; i++) printf "C\t%s\t%d\n", file, start + i
     }
-  ' "${work}/diff"
+  ' "${work}/diff" > "${work}/changed" || rc=$?
+  if ((rc == 3)); then
+    fail_setup 'cannot parse the diff header for a changed file; rename it or report this'
+  elif ((rc != 0)); then
+    fail_setup "awk failed reading the diff (exit ${rc})"
+  fi
+  cat "${work}/changed"
 }
 
 # @description Print `M<TAB>file<TAB>line<TAB>ok|noreason` for every
@@ -150,7 +177,7 @@ function read_changed() {
 #              before it, is not a marker.
 function read_markers() {
   local rc=0
-  git grep --full-name --line-number --no-color -I -E 'coverage-exempt:' -- '*.go' \
+  git -c core.quotePath=false grep --full-name --line-number --no-color -I -E 'coverage-exempt:' -- '*.go' \
     > "${work}/grep" || rc=$?
   # 1 is "no match", which is the usual answer. Anything above it is the
   # scan failing, and must not read as "no markers".
