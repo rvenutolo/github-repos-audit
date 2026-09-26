@@ -281,7 +281,9 @@ if err != nil { // coverage-exempt: the reader never fails on a bytes.Buffer
 ```
 
 A marker needs a reason and must still mark unrun code; a stale one fails.
-And a commit that lowers a figure in the baseline must say why, with a
+Markers are judged in every tracked `.go` file, not only changed ones, so a
+stale marker fails even a change that never touched it. And a commit that
+lowers a figure in the baseline must say why, with a
 trailer in its message's last paragraph, next to the `Co-Authored-By` lines
 (a paragraph of its own is not a trailer to git):
 
