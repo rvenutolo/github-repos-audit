@@ -292,6 +292,12 @@ EOF
   a_profile > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 1 \
     'FAIL: a.go:5-7 (1 statement) is changed but never run' 'a committed change to an unrun block' || rc=1
+  local hint_out
+  hint_out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/cov.out" 2>&1)" || true
+  if [[ "${hint_out}" != *'origin/main may be stale'* ]]; then
+    ci::log 'FAIL: a committed change to an unrun block: the stale-origin/main hint is missing'
+    rc=1
+  fi
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
@@ -312,6 +318,11 @@ EOF
   a_profile > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 1 \
     'FAIL: a.go:8 coverage-exempt marker is stale' 'a marker on a run block' || rc=1
+  hint_out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/cov.out" 2>&1)" || true
+  if [[ "${hint_out}" == *'origin/main may be stale'* ]]; then
+    ci::log 'FAIL: a marker on a run block: the stale-origin/main hint should not appear for a stale-marker finding'
+    rc=1
+  fi
 
   # The empty reason is spelled with printf so this script carries no
   # trailing whitespace of its own.

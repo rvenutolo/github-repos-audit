@@ -316,7 +316,12 @@ function main() {
   trap - ERR
   if [[ -s "${work}/findings" ]]; then
     cat "${work}/findings" >&2
-    printf '(if this is already on main, origin/main may be stale: git fetch origin main)\n' >&2
+    # The hint explains a changed block that is already covered on main; a
+    # stale marker or a stale profile has nothing to do with origin/main
+    # being behind, so printing it there would point at the wrong cause.
+    if grep --quiet --fixed-strings 'is changed but never run' "${work}/findings"; then
+      printf '(if this is already on main, origin/main may be stale: git fetch origin main)\n' >&2
+    fi
     return 1
   fi
   return 0
