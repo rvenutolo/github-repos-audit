@@ -1,0 +1,18 @@
+# Codecov reports; it does not gate. .ci/check-coverage (run inside
+# run-all-checks) already fails CI on a per-package regression against
+# .ci/coverage-baseline.txt, so Codecov's own statuses are informational: a
+# second gate with its own thresholds would only ever disagree with the first.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "condensed_header, diff, files"
+  # One comment per PR, edited in place, and none when coverage is unchanged.
+  behavior: default
+  require_changes: true
