@@ -134,7 +134,7 @@ function expect() {
 }
 
 function main() {
-  local rc=0 repo base
+  local rc=0 repo base utf8_name weird_name
   work="$(mktemp --directory)"
 
   # --- passing cases ---
@@ -182,16 +182,33 @@ ${MODULE}/a.go:9.3,9.11 1 1
 EOF
   expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a whole-line marker inside the unrun block' || rc=1
 
+  # The deleted line (a filler comment) sits inside the unrun if-body block,
+  # so the deletion's own hunk (@@ -6 +5,0 @@) has an explicit new-side count
+  # of 0 at a start line (5) that is itself inside that block. A newcount
+  # that wrongly defaulted to 1 whenever it saw a bare digit (missing the
+  # ",0" case) would emit a spurious changed line at 5 and produce a finding;
+  # the deletion leaves the file identical to a_go's layout, so a_profile
+  # applies unchanged and the correct script reports nothing.
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
-  delete_line "${repo}/a.go" 3
-  cat > "${repo}/cov.out" << EOF
-mode: set
-${MODULE}/a.go:3.22,4.11 1 1
-${MODULE}/a.go:4.11,6.4 1 0
-${MODULE}/a.go:7.3,7.11 1 1
+  cat > "${repo}/a.go" << EOF
+package marker
+
+// Pick is a fixture. ${SENTINEL}
+func Pick(x int) int {
+  if x < 0 {
+    // filler, deleted below so its successor line sits inside the block
+    return 1
+  }
+  return 2
+}
 EOF
-  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a deletion-only change' || rc=1
+  git -C "${repo}" commit --quiet --no-verify --all --message 'chore: add filler line'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  delete_line "${repo}/a.go" 6
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' \
+    'a deletion-only change whose successor line sits inside the unrun block' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
@@ -251,6 +268,22 @@ EOF
     'a real go test profile, unrun change' || rc=1
 
   # --- findings ---
+
+  # core.quotePath quotes any non-ASCII name by default; the check pins it
+  # off so the +++ header parses and this ordinary UTF-8 name is judged like
+  # any other, instead of the hunk silently vanishing into a blank file="".
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  # Spelled by octal escape, not as a literal word, so typos does not flag
+  # the ASCII prefix as a misspelling of another word.
+  utf8_name="$(printf '\143\141\146\303\251.go')"
+  git -C "${repo}" mv -- a.go "${utf8_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: rename to a non-ASCII name'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/${utf8_name}" 6 '    return 4'
+  printf 'mode: set\n%s/%s:4.22,5.11 1 1\n%s/%s:5.11,7.4 1 0\n%s/%s:8.3,8.11 1 1\n' \
+    "${MODULE}" "${utf8_name}" "${MODULE}" "${utf8_name}" "${MODULE}" "${utf8_name}" > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 "${utf8_name}:5-7" 'a non-ASCII file name is judged' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
@@ -381,6 +414,28 @@ EOF
   out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/cov.out" 2>&1)" || true
   if [[ "${out}" == *'b.go:8-10'* || "${out}" == *'b.go:11-13'* ]]; then
     ci::log 'FAIL: git config: untouched blocks between two hunks were reported'
+    rc=1
+  fi
+
+  # A name git still quotes even with core.quotePath=false (a literal tab
+  # here) cannot be told apart from ordinary text once unquoted, so the
+  # +++ header is unparsable: the check must fail closed rather than drop
+  # the file's hunks and pass silently.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  weird_name="$(printf 'we\tird.go')"
+  printf 'package marker\n\nfunc Weird() int { return 1 }\n' > "${repo}/${weird_name}"
+  git -C "${repo}" add -- "${weird_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: add a tab-named file'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/${weird_name}" 3 'func Weird() int { return 2 }'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 2 'cannot parse the diff header' \
+    'an unparsable diff header fails closed' || rc=1
+  local weird_out
+  weird_out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/cov.out" 2>&1)" || true
+  if [[ "${weird_out}" == *"${weird_name}"* ]]; then
+    ci::log 'FAIL: an unparsable diff header fails closed: the output printed the raw file name'
     rc=1
   fi
 
