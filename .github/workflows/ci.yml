@@ -68,6 +68,10 @@ jobs:
             vuln.go.dev:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Full history, so refs/remotes/origin/main exists: run-all-checks
+          # diffs against `git merge-base HEAD origin/main` for patch
+          # coverage and baseline drops, and a shallow clone has no main.
+          fetch-depth: 0
           persist-credentials: false
       - uses: $/.github/actions/setup
       - name: Run the full gate
