@@ -240,6 +240,16 @@ EOF
   (cd "${repo}" && go test -covermode=atomic -coverprofile=real.out ./... > /dev/null)
   expect "${repo}" "${base}" "${repo}/real.out" 0 '' 'a real go test profile, covered change' || rc=1
 
+  # The exit-0 case above only ever touches covered code, so it would pass
+  # even if read_blocks parsed nothing out of go test's own output. Change
+  # the unrun x < 0 branch too and regenerate the same real profile, so a
+  # blank parse of the real format is caught here instead of slipping
+  # through as a false pass.
+  set_line "${repo}/a.go" 6 '    return 4'
+  (cd "${repo}" && go test -covermode=atomic -coverprofile=real.out ./... > /dev/null)
+  expect "${repo}" "${base}" "${repo}/real.out" 1 'a.go:5-7' \
+    'a real go test profile, unrun change' || rc=1
+
   # --- findings ---
 
   repo="$(new_repo)"
