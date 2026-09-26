@@ -134,7 +134,7 @@ function expect() {
 }
 
 function main() {
-  local rc=0 repo base utf8_name weird_name
+  local rc=0 repo base utf8_name weird_name space_name
   work="$(mktemp --directory)"
 
   # --- passing cases ---
@@ -284,6 +284,22 @@ EOF
   printf 'mode: set\n%s/%s:4.22,5.11 1 1\n%s/%s:5.11,7.4 1 0\n%s/%s:8.3,8.11 1 1\n' \
     "${MODULE}" "${utf8_name}" "${MODULE}" "${utf8_name}" "${MODULE}" "${utf8_name}" > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 1 "${utf8_name}:5-7" 'a non-ASCII file name is judged' || rc=1
+
+  # A name with a space gets a trailing tab appended to its +++ header (for
+  # GNU patch to find where the name ends), and go's own coverage profile
+  # writer space-delimits its fields with no escaping either, so both the
+  # diff side and the profile side must tolerate the space for this name to
+  # be judged like any other.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  space_name='sp ace.go'
+  git -C "${repo}" mv -- a.go "${space_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: rename to a name with a space'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/${space_name}" 6 '    return 4'
+  printf 'mode: set\n%s/%s:4.22,5.11 1 1\n%s/%s:5.11,7.4 1 0\n%s/%s:8.3,8.11 1 1\n' \
+    "${MODULE}" "${space_name}" "${MODULE}" "${space_name}" "${MODULE}" "${space_name}" > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 "${space_name}:5-7" 'a file name with a space is judged' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
