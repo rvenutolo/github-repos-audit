@@ -1,0 +1,397 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/check-patch-coverage against throwaway
+#              repositories. The fixture module, its Go source and its
+#              coverage profiles are inert: the functions only return
+#              constants, and every profile is written by hand except one,
+#              which a real `go test -coverprofile` produces so the real
+#              format is exercised end to end.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly CHECK="${REPO_DIR}/.ci/check-patch-coverage"
+readonly MODULE='example.com/marker'
+# Sits in a comment in every fixture's source. The check must never quote
+# source text, so this appearing in its output is a failure in every case.
+readonly SENTINEL='markerSentinelValue'
+
+# work is global, not local to main: the EXIT trap fires after main returns.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Print the base a.go: three blocks, lines 4-5 (run), 5-7
+#              (never run: the x < 0 branch) and 8-8 (run). An `if` body's
+#              block starts on the `if` line itself, at the `{`, so line 5
+#              belongs to two blocks.
+function a_go() {
+  cat << EOF
+package marker
+
+// Pick is a fixture. ${SENTINEL}
+func Pick(x int) int {
+  if x < 0 {
+    return 1
+  }
+  return 2
+}
+EOF
+}
+
+# @description Print the hand-written profile for a_go's line layout.
+function a_profile() {
+  cat << EOF
+mode: set
+${MODULE}/a.go:4.22,5.11 1 1
+${MODULE}/a.go:5.11,7.4 1 0
+${MODULE}/a.go:8.3,8.11 1 1
+EOF
+}
+
+# @description Create a throwaway repository with go.mod and a_go committed
+#              and print its path. Every case gets its own, so no case sees
+#              another's files.
+function new_repo() {
+  local repo
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  git -C "${repo}" config user.name 'Marker'
+  git -C "${repo}" config user.email 'marker@example.invalid'
+  git -C "${repo}" config commit.gpgsign false
+  printf 'module %s\n\ngo 1.22\n' "${MODULE}" > "${repo}/go.mod"
+  a_go > "${repo}/a.go"
+  git -C "${repo}" add -- go.mod a.go
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: start'
+  printf '%s\n' "${repo}"
+}
+
+# @description Replace line N of a file with the given text.
+# @arg $1 file
+# @arg $2 line number
+# @arg $3 replacement text
+function set_line() {
+  local -r file="$1" at="$2" text="$3"
+  local -a lines=()
+  mapfile -t lines < "${file}"
+  lines[at - 1]="${text}"
+  printf '%s\n' "${lines[@]}" > "${file}"
+}
+
+# @description Delete line N of a file.
+# @arg $1 file
+# @arg $2 line number
+function delete_line() {
+  local -r file="$1" at="$2"
+  local -a lines=()
+  mapfile -t lines < "${file}"
+  unset 'lines[at - 1]'
+  printf '%s\n' "${lines[@]}" > "${file}"
+}
+
+# @description Run the check and compare the exit status and output.
+# @arg $1 directory to run from
+# @arg $2 base revision
+# @arg $3 profile path
+# @arg $4 expected exit status
+# @arg $5 substring the output must contain, or '' for none
+# @arg $6 case name
+function expect() {
+  local -r dir="$1" base="$2" profile="$3" want="$4" needle="$5" name="$6"
+  local out got=0
+  out="$(cd "${dir}" && "${CHECK}" --base "${base}" --profile "${profile}" 2>&1)" || got=$?
+  if [[ "${got}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: exit ${got}, want ${want}"
+    printf '%s\n' "${out}" >&2
+    return 1
+  fi
+  if [[ -n "${needle}" && "${out}" != *"${needle}"* ]]; then
+    ci::log "FAIL: ${name}: output lacks: ${needle}"
+    printf '%s\n' "${out}" >&2
+    return 1
+  fi
+  if [[ "${out}" == *"${SENTINEL}"* ]]; then
+    ci::log "FAIL: ${name}: the output quoted source text"
+    return 1
+  fi
+  # A finding is a designed return, not a crash, so the ERR trap's own
+  # "ERROR: line ..." must never appear, on the passing cases included.
+  if [[ "${out}" == *'ERROR:'* ]]; then
+    ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
+    return 1
+  fi
+}
+
+function main() {
+  local rc=0 repo base
+  work="$(mktemp --directory)"
+
+  # --- passing cases ---
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'an empty diff' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 8 '  return 3'
+  git -C "${repo}" commit --quiet --no-verify --all --message 'feat: change a run block'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' \
+    'a committed change to a run block, beside an unrun block it does not touch' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 5 '  if x < 0 { // coverage-exempt: defensive, callers never pass negatives'
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' \
+    'a trailing marker on the shared if line exempts the unrun body and is not stale' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  cat > "${repo}/a.go" << EOF
+package marker
+
+// Pick is a fixture. ${SENTINEL}
+func Pick(x int) int {
+  if x < 0 {
+    // coverage-exempt: defensive, callers never pass negatives
+    return 1
+  }
+  return 2
+}
+EOF
+  cat > "${repo}/cov.out" << EOF
+mode: set
+${MODULE}/a.go:4.22,5.11 1 1
+${MODULE}/a.go:5.11,8.4 1 0
+${MODULE}/a.go:9.3,9.11 1 1
+EOF
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a whole-line marker inside the unrun block' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  delete_line "${repo}/a.go" 3
+  cat > "${repo}/cov.out" << EOF
+mode: set
+${MODULE}/a.go:3.22,4.11 1 1
+${MODULE}/a.go:4.11,6.4 1 0
+${MODULE}/a.go:7.3,7.11 1 1
+EOF
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a deletion-only change' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  printf 'package marker\n\nconst limit = 3\n' > "${repo}/c.go"
+  git -C "${repo}" add -- c.go
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a changed .go file with no blocks' || rc=1
+
+  repo="$(new_repo)"
+  printf 'package marker\n\nfunc helper() int { return 1 }\n' > "${repo}/a_test.go"
+  git -C "${repo}" add -- a_test.go
+  git -C "${repo}" commit --quiet --no-verify --message 'test: add helper'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a_test.go" 3 'func helper() int { return 2 }'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a change only in a _test.go file' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 5'
+  {
+    a_profile
+    printf '%s/a.go:5.11,7.4 1 1\n' "${MODULE}"
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' \
+    'a block listed twice, run in one copy, counts as run' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  mkdir "${repo}/sub"
+  set_line "${repo}/a.go" 8 '  return 3'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}/sub" "${base}" "${repo}/cov.out" 0 '' \
+    'run from a subdirectory, a covered change elsewhere passes' || rc=1
+
+  # The real format: go test writes this profile, in atomic mode as -race
+  # does, and the change touches only covered code.
+  repo="$(new_repo)"
+  printf 'package marker\n\nimport "testing"\n\nfunc TestPick(t *testing.T) {\n  if Pick(1) != 2 {\n    t.Fatal("unexpected")\n  }\n}\n' \
+    > "${repo}/a_test.go"
+  git -C "${repo}" add -- a_test.go
+  git -C "${repo}" commit --quiet --no-verify --message 'test: cover Pick'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 8 '  return 2 + 0'
+  set_line "${repo}/a_test.go" 6 '  if Pick(1) != 2+0 {'
+  (cd "${repo}" && go test -covermode=atomic -coverprofile=real.out ./... > /dev/null)
+  expect "${repo}" "${base}" "${repo}/real.out" 0 '' 'a real go test profile, covered change' || rc=1
+
+  # --- findings ---
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  git -C "${repo}" commit --quiet --no-verify --all --message 'feat: change the unrun branch'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    'FAIL: a.go:5-7 (1 statement) is changed but never run' 'a committed change to an unrun block' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'an uncommitted change to an unrun block' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 5 '  if x < -1 {'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' \
+    'a change to the shared if line touches the unrun body' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 8 '  return 2 // coverage-exempt: defensive'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    'FAIL: a.go:8 coverage-exempt marker is stale' 'a marker on a run block' || rc=1
+
+  # The empty reason is spelled with printf so this script carries no
+  # trailing whitespace of its own.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 5 "$(printf '  if x < 0 { // coverage-exempt:%s' '   ')"
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    'FAIL: a.go:5 coverage-exempt marker gives no reason' 'a marker with no reason' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 2 '// coverage-exempt: nothing to exempt here'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    'FAIL: a.go:2 coverage-exempt marker is not inside any code block' 'a marker outside every block' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  printf 'package marker\n\n// coverage-exempt: tests are never profiled\n' > "${repo}/b_test.go"
+  git -C "${repo}" add -- b_test.go
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    'FAIL: b_test.go:3 coverage-exempt marker is not inside any code block' 'a marker in a _test.go file' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 5 '  if x < 0 { /* coverage-exempt: a block comment */'
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'a block comment is not a marker' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 5 '  if x < 0 { /* see // coverage-exempt: inside a block comment */'
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'a // inside a block comment is not a marker' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    printf '%s/gone.go:3.1,4.2 1 1\n' "${MODULE}"
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    'FAIL: coverage.out names gone.go, which does not exist' 'a profile naming a missing file' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  mkdir "${repo}/sub"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}/sub" "${base}" "${repo}/cov.out" 1 'a.go:5-7' \
+    'run from a subdirectory, an unrun change elsewhere is still found' || rc=1
+
+  # Git config the diff parser must not depend on: mnemonicPrefix and
+  # noprefix rewrite the +++ header, interHunkContext merges the two hunks
+  # below into one that spans the untouched, unrun blocks between them.
+  repo="$(new_repo)"
+  cat > "${repo}/b.go" << 'EOF'
+package marker
+
+func Many(x int) int {
+  y := x
+  if y > 100 {
+    return 5
+  }
+  if y > 50 {
+    return 6
+  }
+  if y > 10 {
+    return 7
+  }
+  return 8
+}
+EOF
+  git -C "${repo}" add -- b.go
+  git -C "${repo}" commit --quiet --no-verify --message 'feat: add Many'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  git -C "${repo}" config diff.mnemonicPrefix true
+  git -C "${repo}" config diff.noprefix true
+  git -C "${repo}" config diff.interHunkContext 20
+  set_line "${repo}/b.go" 6 '    return 50'
+  set_line "${repo}/b.go" 14 '  return 80'
+  {
+    a_profile
+    cat << EOF
+${MODULE}/b.go:3.22,5.14 2 1
+${MODULE}/b.go:5.14,7.4 1 0
+${MODULE}/b.go:8.3,8.13 1 1
+${MODULE}/b.go:8.13,10.4 1 0
+${MODULE}/b.go:11.3,11.13 1 1
+${MODULE}/b.go:11.13,13.4 1 0
+${MODULE}/b.go:14.3,14.11 1 1
+EOF
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'b.go:5-7' 'git config: the changed unrun block' || rc=1
+  local out
+  out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/cov.out" 2>&1)" || true
+  if [[ "${out}" == *'b.go:8-10'* || "${out}" == *'b.go:11-13'* ]]; then
+    ci::log 'FAIL: git config: untouched blocks between two hunks were reported'
+    rc=1
+  fi
+
+  # --- usage ---
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  a_profile > "${repo}/cov.out"
+  local got=0
+  (cd "${repo}" && "${CHECK}" --profile "${repo}/cov.out" > /dev/null 2>&1) || got=$?
+  if [[ "${got}" != 2 ]]; then
+    ci::log "FAIL: missing --base: exit ${got}, want 2"
+    rc=1
+  fi
+  expect "${repo}" 'not-a-commit' "${repo}/cov.out" 2 'is not a commit' 'a --base that is not a commit' || rc=1
+  expect "${repo}" "${base}" "${repo}/missing.out" 2 'does not exist' 'a missing profile' || rc=1
+  printf 'not a profile\n' > "${repo}/bad.out"
+  expect "${repo}" "${base}" "${repo}/bad.out" 2 'not a Go coverage profile' 'a profile with no mode: line' || rc=1
+
+  ((rc == 0)) && ci::log 'check-patch-coverage: every case passed'
+  return "${rc}"
+}
+
+main "$@"
