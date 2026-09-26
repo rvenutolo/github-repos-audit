@@ -169,7 +169,7 @@ function main() {
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered\n  was removed')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x -\n  the retry path it covered was removed')"
   expect "${repo}" "${base}..HEAD" 0 '' 'a folded trailer' || rc=1
 
   repo="$(new_repo)"
