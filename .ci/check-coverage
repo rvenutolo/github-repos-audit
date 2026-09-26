@@ -3,22 +3,27 @@
 # @description Hold per-package statement coverage to the recorded baseline.
 #              Reads the profile `go test -coverprofile` already wrote, sums
 #              covered and total statements per package straight from it, and
-#              fails when a package has fallen more than the tolerance below
-#              the figure in .ci/coverage-baseline.txt.
+#              fails when a package has fallen below the figure in
+#              .ci/coverage-baseline.txt by any amount at all.
 #
 #              The baseline is committed, so a deliberate drop is a reviewable
 #              line in the diff rather than a silent one, and coverage
 #              ratchets: `just cover-update` records whatever the code now
 #              achieves, and it can never quietly slide back.
 #
-#              The tolerance is not slack to spend. It is there because
-#              coverage is not reproducible run to run — internal/github's
-#              doRetrying has a block the cancellation test reaches only
-#              sometimes, worth 0.3 points — and a gate that fails on its own
-#              nondeterminism teaches people to rerun until it passes. A drop
-#              inside the tolerance cannot compound: the baseline moves only
-#              when someone runs cover-update, so the next drop is measured
-#              from the same recorded figure and fails.
+#              There is no tolerance because coverage is reproducible run to
+#              run, and it has to stay that way. The gate used to allow a
+#              1.0-point drop for a cancellation test in internal/github that
+#              reached doRetrying's backoff exit only sometimes. Once #6 made
+#              that test wait for the client to be in its backoff before
+#              cancelling, 46 runs made after #8 (including GOMAXPROCS=1 and 2)
+#              covered exactly the same blocks. A block that comes and goes between runs is a racy test,
+#              and the fix is that test, never a tolerance: slack sized for one
+#              flake hides every real drop smaller than it, and a gate that
+#              fails on its own nondeterminism teaches people to rerun until
+#              it passes. A toolchain bump that changes statement counts is a
+#              deterministic change, recorded with `just cover-update` in the
+#              same commit.
 # @arg $1 mode  check (default), --print or --update
 # @exitcode 0 every package is at or above its baseline
 # @exitcode 1 a package regressed, or the baseline and the package list disagree
@@ -35,10 +40,6 @@ readonly REPO_DIR
 # PROFILE is what run-all-checks' `go test` step writes.
 readonly PROFILE="${REPO_DIR}/coverage.out"
 readonly BASELINE="${REPO_DIR}/.ci/coverage-baseline.txt"
-
-# TOLERANCE_TENTHS is how far below its baseline a package may sit, in tenths
-# of a percentage point. See the header for why it is not zero.
-readonly TOLERANCE_TENTHS=10
 
 # NO_STATEMENTS marks a package the compiler produces no statements for, which
 # is not the same as one that is untested: there is nothing there to cover.
@@ -192,10 +193,9 @@ function check() {
       continue
     fi
     [[ "${value}" == "${NO_STATEMENTS}" ]] && continue
-    if ((value < recorded - TOLERANCE_TENTHS)); then
-      printf 'FAIL: %s coverage %s is below the recorded %s by more than %s\n' \
-        "${pkg}" "$(render "${value}")" "$(render "${recorded}")" \
-        "$(render "${TOLERANCE_TENTHS}")" >&2
+    if ((value < recorded)); then
+      printf 'FAIL: %s coverage %s is below the recorded %s\n' \
+        "${pkg}" "$(render "${value}")" "$(render "${recorded}")" >&2
       rc=1
     fi
   done < <(measure)

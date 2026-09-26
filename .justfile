@@ -36,9 +36,9 @@ cover:
 # Record current coverage as the new baseline. Commit the diff deliberately.
 cover-update:
     # A line that goes DOWN in the resulting diff is a loss of coverage and
-    # needs justifying in the commit message. The gate tolerates a drop of up
-    # to 1.0 point without a baseline change, so that coverage's run-to-run
-    # nondeterminism does not fail the build; see .ci/check-coverage's header.
+    # needs justifying in the commit message. The gate fails on any drop
+    # without a baseline change; see .ci/check-coverage's header for why
+    # there is no tolerance.
     ./.ci/in-devshell go test ./... -race -shuffle=on -coverprofile=coverage.out
     ./.ci/in-devshell ./.ci/check-coverage --update
 
