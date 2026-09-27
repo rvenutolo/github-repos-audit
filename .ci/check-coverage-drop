@@ -13,10 +13,10 @@
 #              Co-Authored-By, so it goes on a line beside those. A
 #              Coverage-Drop line in a paragraph of its own above them, or
 #              glued to a body paragraph, is not a trailer to git and counts
-#              as missing. The package is the
-#              import path with the module path stripped (`.` for the module
-#              root); the reason is required. One trailer per package; the key
-#              is case-insensitive and a folded value is unfolded.
+#              as missing. The package is the import path with the module
+#              path stripped (`.` for the module root); the reason is
+#              required. One trailer per package; the key is
+#              case-insensitive and a folded value is unfolded.
 #
 #              Only a numeric figure going down is a drop. A package line
 #              added or removed, or a move to or from n/a, is a package

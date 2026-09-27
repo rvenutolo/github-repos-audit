@@ -19,6 +19,12 @@
 #              blocks are all run (stale: the tests caught up, so remove it)
 #              each fail.
 #
+#              Markers are recognised one line at a time. A `//` after a `/*`
+#              on the same line is seen as comment text, but a `/* ... */`
+#              block comment spanning several lines is not tracked, so a
+#              marker on one of its inner lines still counts. Do not leave
+#              markers in commented-out code.
+#
 #              "Changed" is `git diff <base>` against the WORKING TREE, so
 #              uncommitted edits count, matching the profile, which measured
 #              the working tree. Untracked files are invisible to both git
