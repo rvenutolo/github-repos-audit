@@ -481,6 +481,17 @@ EOF
     rc=1
   fi
 
+  # A textconv driver rewrites what git diff shows; this one (`true`, which
+  # prints nothing) blanks both sides, so the unrun change would vanish from
+  # the diff. The check must read the file's real lines regardless.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  printf '*.go diff=blank\n' > "${repo}/.git/info/attributes"
+  git -C "${repo}" config diff.blank.textconv true
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'git config: a textconv driver' || rc=1
+
   # A name git still quotes even with core.quotePath=false (a literal tab
   # here) cannot be told apart from ordinary text once unquoted, so the
   # +++ header is unparsable: the check must fail closed rather than drop

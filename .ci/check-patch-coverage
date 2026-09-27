@@ -157,8 +157,10 @@ function read_blocks() {
 #              diff option that user or system git config can change is
 #              pinned: diff.mnemonicPrefix and diff.noprefix rewrite the
 #              `+++ b/` this parses, diff.interHunkContext merges hunks and
-#              marks unchanged lines as changed, and diff.external and
-#              diff.relative replace or narrow the output. core.quotePath is
+#              marks unchanged lines as changed, diff.external and
+#              diff.relative replace or narrow the output, and a textconv
+#              driver (diff.<driver>.textconv, picked by a diff= attribute)
+#              rewrites the text itself, even to nothing. core.quotePath is
 #              pinned off too, so an otherwise-plain UTF-8 file name (git's
 #              default quotes anything outside ASCII) comes through
 #              unquoted; a name git still quotes even so — a literal `"`, a
@@ -171,7 +173,7 @@ function read_blocks() {
 # @arg $1 base
 function read_changed() {
   git -c core.quotePath=false diff --unified=0 --inter-hunk-context=0 \
-    --no-renames --no-color --no-ext-diff --no-relative --src-prefix=a/ --dst-prefix=b/ \
+    --no-renames --no-color --no-ext-diff --no-textconv --no-relative --src-prefix=a/ --dst-prefix=b/ \
     "$1" -- '*.go' ':(exclude)*_test.go' > "${work}/diff"
   # awk's own exit status (not a sentinel in its output) carries the
   # unparsable-header case, so a bad header can never reach the facts file:
