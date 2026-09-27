@@ -296,8 +296,9 @@ function read_markers() {
 
 # @description Judge the blocks, changed lines and markers on stdin, and
 #              print `file<TAB>line<TAB>message` per finding.
+# @arg $1 the profile's file name, for messages
 function judge() {
-  awk -F '\t' '
+  awk -F '\t' -v profile="$1" '
     $1 == "B" {
       n++; bf[n] = $2; bs[n] = $3 + 0; be[n] = $4 + 0; bn[n] = $5 + 0; br[n] = $6 + 0
       profiled[$2] = 1
@@ -308,7 +309,7 @@ function judge() {
     END {
       for (f in profiled) {
         if ((getline probe < f) < 0) {
-          printf "%s\t0\tFAIL: coverage.out names %s, which does not exist; rerun the tests\n", f, f
+          printf "%s\t0\tFAIL: %s names %s, which does not exist; rerun the tests\n", f, profile, f
         } else {
           close(f)
         }
@@ -402,7 +403,7 @@ function main() {
     read_changed "${base}"
     read_markers
   } > "${work}/facts"
-  judge < "${work}/facts" | sort -t $'\t' -k1,1 -k2,2n | cut -f 3- > "${work}/findings"
+  judge "${profile##*/}" < "${work}/facts" | sort -t $'\t' -k1,1 -k2,2n | cut -f 3- > "${work}/findings"
 
   trap - ERR
   if [[ -s "${work}/findings" ]]; then

@@ -478,7 +478,7 @@ EOF
     printf '%s/gone.go:3.1,4.2 1 1\n' "${MODULE}"
   } > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 1 \
-    'FAIL: coverage.out names gone.go, which does not exist' 'a profile naming a missing file' || rc=1
+    'FAIL: cov.out names gone.go, which does not exist' 'a profile naming a missing file' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
