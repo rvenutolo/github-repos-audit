@@ -347,10 +347,19 @@ function main() {
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
   commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
-  local fail_on
+  local fail_on needle short
+  short="$(git -C "${repo}" rev-parse --short HEAD)"
   for fail_on in rev-list ls-tree --short show log; do
+    case "${fail_on}" in
+      rev-list) needle="--range ${base}..HEAD does not resolve, or git rev-list failed" ;;
+      ls-tree) needle="git ls-tree failed for ${short}:.ci/coverage-baseline.txt" ;;
+      --short) needle='git rev-parse --short failed for' ;;
+      # go.mod is read first, so this breaks module_at's git show.
+      show) needle="git show failed for ${short}:go.mod" ;;
+      log) needle="git log failed for ${short}" ;;
+    esac
     PATH="${work}/failgit:${PATH}" FAIL_GIT_ON="${fail_on}" FAIL_GIT_REAL="${real_git}" \
-      expect "${repo}" "${base}..HEAD" 2 'FAIL: ' "git ${fail_on} fails" || rc=1
+      expect "${repo}" "${base}..HEAD" 2 "${needle}" "git ${fail_on} fails" || rc=1
   done
 
   # --- usage ---

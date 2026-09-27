@@ -188,7 +188,8 @@ function main() {
   # substitution swallows the exit status, so a range that does not resolve
   # would read as "no commits" and pass.
   if ! git rev-list --no-merges --parents "${range}" > "${work}/revs" 2> /dev/null; then
-    fail_setup "--range ${range} does not resolve"
+    # stderr is dropped above, so the two causes cannot be told apart here.
+    fail_setup "--range ${range} does not resolve, or git rev-list failed"
   fi
 
   # Every git call below is guarded by hand, never left to errexit: that
