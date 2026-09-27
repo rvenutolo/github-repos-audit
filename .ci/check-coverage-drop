@@ -38,7 +38,9 @@
 # @exitcode 2 a setup failure, never a finding: bad arguments; not in a git
 #             repository; the range not resolving; a malformed figure in a
 #             judged commit's baseline or its parent's; any other git call
-#             failing; or awk itself failing
+#             failing; or awk or sort failing. Only a failure outside those
+#             (mktemp, or writing the scratch files) still aborts through the
+#             ERR trap, with the failing command's own status.
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
@@ -217,7 +219,7 @@ function main() {
       awk '{ sub(/\r$/, ""); print "O", $1, $2 }' "${work}/old"
       awk '{ sub(/\r$/, ""); print "N", $1, $2 }' "${work}/new"
       awk '{ print "T", $0 }' "${work}/trailers"
-    } > "${work}/facts"
+    } > "${work}/facts" || fail_setup "awk failed reading ${short}'s baselines or trailers"
     rc=0
     judge_commit "${short}" "${module}" < "${work}/facts" > "${work}/verdict" || rc=$?
     if ((rc == 3)); then
@@ -225,7 +227,7 @@ function main() {
     elif ((rc != 0)); then
       fail_setup "awk failed judging ${short} (exit ${rc})"
     fi
-    sort "${work}/verdict" >> "${work}/findings"
+    sort "${work}/verdict" >> "${work}/findings" || fail_setup "sorting the findings for ${short} failed"
   done < "${work}/revs"
 
   trap - ERR

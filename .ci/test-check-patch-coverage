@@ -165,6 +165,20 @@ EOF
   chmod +x "${work}/failgit/git"
 }
 
+# @description Write a stand-in for a tool to ${work}/fail-<tool>/<tool> that
+#              only exits 1, and print that directory, to put first on PATH
+#              so a case can make every call of that one tool fail.
+# @arg $1 tool name
+function fail_tool_dir() {
+  local -r dir="${work}/fail-$1"
+  if [[ ! -d "${dir}" ]]; then
+    mkdir "${dir}"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "${dir}/$1"
+    chmod +x "${dir}/$1"
+  fi
+  printf '%s\n' "${dir}"
+}
+
 function main() {
   local rc=0 repo base utf8_name weird_name space_name colon_name quote_name
   work="$(mktemp --directory)"
@@ -640,6 +654,16 @@ EOF
     expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: git grep failed' 'git grep fails' || rc=1
   PATH="${work}/failgit:${PATH}" FAIL_GIT_ON=diff FAIL_GIT_REAL="${real_git}" \
     expect "${repo}" "${base}" "${repo}/cov.out" 2 "FAIL: git diff against ${base} failed" 'git diff fails' || rc=1
+
+  # A helper tool failing is a setup failure too, never the ERR trap.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  PATH="$(fail_tool_dir tr):${PATH}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: tr failed reading the git grep output' 'tr fails' || rc=1
+  PATH="$(fail_tool_dir sort):${PATH}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: judging the findings failed' 'sort fails' || rc=1
 
   # --- usage ---
 

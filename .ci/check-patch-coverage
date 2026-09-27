@@ -51,7 +51,10 @@
 #             mode: line, holding a line go would not write, or with no block
 #             in the module; go.mod missing or without a module line; git
 #             diff or git grep failing; a file name the diff header or git
-#             grep output cannot carry; or awk itself failing
+#             grep output cannot carry; or awk, tr, sort or cut failing. Only
+#             a failure outside those (mktemp, or writing the scratch files)
+#             still aborts through the ERR trap, with the failing command's
+#             own status.
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
@@ -270,7 +273,8 @@ function read_markers() {
   if ((rc > 1)); then
     fail_setup "git grep failed (exit ${rc})"
   fi
-  tr '\0' '\001' < "${work}/grep" > "${work}/grep-split"
+  tr '\0' '\001' < "${work}/grep" > "${work}/grep-split" \
+    || fail_setup 'tr failed reading the git grep output'
   rc=0
   awk '
     {
@@ -416,7 +420,8 @@ function main() {
     read_changed "${base}"
     read_markers
   } > "${work}/facts"
-  judge "${profile##*/}" < "${work}/facts" | sort -t $'\t' -k1,1 -k2,2n | cut -f 3- > "${work}/findings"
+  judge "${profile##*/}" < "${work}/facts" | sort -t $'\t' -k1,1 -k2,2n | cut -f 3- > "${work}/findings" \
+    || fail_setup 'judging the findings failed (awk, sort or cut)'
 
   trap - ERR
   if [[ -s "${work}/findings" ]]; then

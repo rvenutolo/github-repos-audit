@@ -136,6 +136,20 @@ EOF
   chmod +x "${work}/failgit/git"
 }
 
+# @description Write a stand-in for a tool to ${work}/fail-<tool>/<tool> that
+#              only exits 1, and print that directory, to put first on PATH
+#              so a case can make every call of that one tool fail.
+# @arg $1 tool name
+function fail_tool_dir() {
+  local -r dir="${work}/fail-$1"
+  if [[ ! -d "${dir}" ]]; then
+    mkdir "${dir}"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "${dir}/$1"
+    chmod +x "${dir}/$1"
+  fi
+  printf '%s\n' "${dir}"
+}
+
 function main() {
   local rc=0 repo base
   work="$(mktemp --directory)"
@@ -361,6 +375,14 @@ function main() {
     PATH="${work}/failgit:${PATH}" FAIL_GIT_ON="${fail_on}" FAIL_GIT_REAL="${real_git}" \
       expect "${repo}" "${base}..HEAD" 2 "${needle}" "git ${fail_on} fails" || rc=1
   done
+
+  # sort failing is a setup failure too, never the ERR trap.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
+  commit_all "${repo}" 'refactor: drop the retry path'
+  PATH="$(fail_tool_dir sort):${PATH}" \
+    expect "${repo}" "${base}..HEAD" 2 'FAIL: sorting the findings for' 'sort fails' || rc=1
 
   # --- usage ---
 
