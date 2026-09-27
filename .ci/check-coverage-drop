@@ -215,11 +215,16 @@ function main() {
     git log -1 --no-show-signature --no-color \
       --format='%(trailers:key=Coverage-Drop,valueonly,unfold)' "${commit}" > "${work}/trailers" \
       || fail_setup "git log failed for ${short}"
-    {
-      awk '{ sub(/\r$/, ""); print "O", $1, $2 }' "${work}/old"
-      awk '{ sub(/\r$/, ""); print "N", $1, $2 }' "${work}/new"
-      awk '{ print "T", $0 }' "${work}/trailers"
-    } > "${work}/facts" || fail_setup "awk failed reading ${short}'s baselines or trailers"
+    # Each producer guarded on its own, never one `{ ...; } || ...` over the
+    # group: the `||` turns errexit off inside it, so only the last one's
+    # status would count, and a failure on either baseline's side would
+    # leave the facts without it, reading as "no drop".
+    awk '{ sub(/\r$/, ""); print "O", $1, $2 }' "${work}/old" > "${work}/facts" \
+      || fail_setup "awk failed reading ${short}^:${BASELINE}"
+    awk '{ sub(/\r$/, ""); print "N", $1, $2 }' "${work}/new" >> "${work}/facts" \
+      || fail_setup "awk failed reading ${short}:${BASELINE}"
+    awk '{ print "T", $0 }' "${work}/trailers" >> "${work}/facts" \
+      || fail_setup "awk failed reading ${short}'s trailers"
     rc=0
     judge_commit "${short}" "${module}" < "${work}/facts" > "${work}/verdict" || rc=$?
     if ((rc == 3)); then

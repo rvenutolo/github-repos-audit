@@ -150,12 +150,34 @@ function fail_tool_dir() {
   printf '%s\n' "${dir}"
 }
 
+# @description Write an awk wrapper to ${work}/failawk/awk. Put first on PATH,
+#              it exits 1 when any argument contains $FAIL_AWK_ON (a
+#              distinctive piece of one awk program's text, naming the one
+#              call to break) and runs the real awk at $FAIL_AWK_REAL
+#              otherwise.
+# @noargs
+function make_fail_awk() {
+  mkdir "${work}/failawk"
+  cat > "${work}/failawk/awk" << 'EOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "${arg}" == *"${FAIL_AWK_ON}"* ]]; then
+    exit 1
+  fi
+done
+exec "${FAIL_AWK_REAL}" "$@"
+EOF
+  chmod +x "${work}/failawk/awk"
+}
+
 function main() {
   local rc=0 repo base
   work="$(mktemp --directory)"
   make_fail_git
-  local real_git
+  make_fail_awk
+  local real_git real_awk
   real_git="$(command -v git)"
+  real_awk="$(command -v awk)"
 
   # --- passing cases ---
 
@@ -388,6 +410,19 @@ function main() {
   PATH="${work}/failgit:${PATH}" FAIL_GIT_ON=show FAIL_GIT_REAL="${real_git}" \
     expect "${repo}" "${base}..HEAD" 2 "git show failed for ${short}^:.ci/coverage-baseline.txt" \
     'git show fails on the baseline' || rc=1
+
+  # Each producer of the per-commit facts is guarded on its own: a failure
+  # in the parent's or the commit's side must not leave the facts without
+  # that side, which reads as "no drop" and passes an unjustified one.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
+  commit_all "${repo}" 'refactor: drop the retry path'
+  local fail_awk_on
+  for fail_awk_on in 'print "O"' 'print "N"' 'print "T"'; do
+    PATH="${work}/failawk:${PATH}" FAIL_AWK_ON="${fail_awk_on}" FAIL_AWK_REAL="${real_awk}" \
+      expect "${repo}" "${base}..HEAD" 2 'FAIL: awk failed reading' "the ${fail_awk_on#print } facts awk fails" || rc=1
+  done
 
   # sort failing is a setup failure too, never the ERR trap.
   repo="$(new_repo)"
