@@ -65,11 +65,14 @@ function fail_setup() {
 
 # @description Print the module path from go.mod at a commit, or nothing if
 #              the commit has no go.mod: package names then stay full import
-#              paths, which is still unambiguous.
+#              paths, which is still unambiguous. go.mod may quote the
+#              module path (`module "example.com/x"`); the quotes are not
+#              part of it. .ci/check-patch-coverage parses go.mod with this
+#              same awk expression; keep the two identical.
 # @arg $1 commit
 function module_at() {
   git cat-file -e "$1:go.mod" 2> /dev/null || return 0
-  git show --no-color "$1:go.mod" | awk '$1 == "module" { print $2; exit }'
+  git show --no-color "$1:go.mod" | awk '$1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }'
 }
 
 # @description Print one finding per unjustified drop in a single commit.

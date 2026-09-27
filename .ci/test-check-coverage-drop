@@ -222,6 +222,16 @@ function main() {
   commit_all "${repo}" 'refactor: move x to y, crlf'
   expect "${repo}" "${base}..HEAD" 0 '' 'a CRLF baseline moving to and from n/a' || rc=1
 
+  # go.mod may quote the module path; the trailer names the package without
+  # it either way.
+  repo="$(new_repo)"
+  printf 'module "%s"\n\ngo 1.22\n' "${MODULE}" > "${repo}/go.mod"
+  commit_all "${repo}" 'chore: quote the module path'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
+  expect "${repo}" "${base}..HEAD" 0 '' 'a quoted go.mod module line' || rc=1
+
   # --- findings ---
 
   repo="$(new_repo)"

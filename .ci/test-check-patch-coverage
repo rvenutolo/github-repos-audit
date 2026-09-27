@@ -349,6 +349,15 @@ EOF
   a_profile > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'an uncommitted change to an unrun block' || rc=1
 
+  # go.mod may quote the module path; the quotes are not part of it.
+  repo="$(new_repo)"
+  printf 'module "%s"\n\ngo 1.22\n' "${MODULE}" > "${repo}/go.mod"
+  git -C "${repo}" commit --quiet --no-verify --all --message 'chore: quote the module path'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'a quoted go.mod module line' || rc=1
+
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   set_line "${repo}/a.go" 5 '  if x < -1 {'
