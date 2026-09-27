@@ -117,9 +117,31 @@ function expect() {
   expect_run "$1" "$3" "$4" "$5" --range "$2"
 }
 
+# @description Write a git wrapper to ${work}/failgit/git. Put first on PATH,
+#              it exits 128 when any argument equals $FAIL_GIT_ON (a
+#              subcommand or option, naming the one call to break) and runs
+#              the real git at $FAIL_GIT_REAL otherwise.
+# @noargs
+function make_fail_git() {
+  mkdir "${work}/failgit"
+  cat > "${work}/failgit/git" << 'EOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "${arg}" == "${FAIL_GIT_ON}" ]]; then
+    exit 128
+  fi
+done
+exec "${FAIL_GIT_REAL}" "$@"
+EOF
+  chmod +x "${work}/failgit/git"
+}
+
 function main() {
   local rc=0 repo base
   work="$(mktemp --directory)"
+  make_fail_git
+  local real_git
+  real_git="$(command -v git)"
 
   # --- passing cases ---
 
@@ -308,6 +330,19 @@ function main() {
   commit_all "${repo}" 'chore: drop the decimal'
   expect "${repo}" "${base}..HEAD" 2 'has a malformed figure for internal/x in .ci/coverage-baseline.txt' \
     "a malformed figure in the commit's own baseline" || rc=1
+
+  # A git call that fails is a setup failure, exit 2 with a message: never
+  # a finding (exit 1), never a pass, never the ERR trap with git's own
+  # status. Each run breaks one call the judged commit needs.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
+  local fail_on
+  for fail_on in rev-list ls-tree --short show log; do
+    PATH="${work}/failgit:${PATH}" FAIL_GIT_ON="${fail_on}" FAIL_GIT_REAL="${real_git}" \
+      expect "${repo}" "${base}..HEAD" 2 'FAIL: ' "git ${fail_on} fails" || rc=1
+  done
 
   # --- usage ---
 
