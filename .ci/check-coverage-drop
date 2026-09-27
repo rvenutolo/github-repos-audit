@@ -85,8 +85,8 @@ function has_path() {
 # @description Print the module path from go.mod at a commit, or nothing if
 #              the commit has no go.mod: package names then stay full import
 #              paths, which is still unambiguous. go.mod may quote the
-#              module path (`module "example.com/x"`); the quotes are not
-#              part of it. .ci/check-patch-coverage parses go.mod with this
+#              module path (`module "example.com/x"`) or end its lines in
+#              CRLF; neither the quotes nor the \r are part of it. .ci/check-patch-coverage parses go.mod with this
 #              same awk expression; keep the two identical.
 #
 #              Run in a command substitution, so a fail_setup here ends only
@@ -98,7 +98,7 @@ function module_at() {
   has_path "$1" go.mod "$2" || return 0
   local gomod
   gomod="$(git show --no-color "$1:go.mod")" || fail_setup "git show failed for $2:go.mod"
-  awk '$1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }' <<< "${gomod}" || fail_setup "awk failed reading $2:go.mod"
+  awk '{ sub(/\r$/, "") } $1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }' <<< "${gomod}" || fail_setup "awk failed reading $2:go.mod"
 }
 
 # @description Print one finding per unjustified drop in a single commit.

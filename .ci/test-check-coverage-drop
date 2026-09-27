@@ -254,6 +254,15 @@ function main() {
   commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 0 '' 'a quoted go.mod module line' || rc=1
 
+  # A CRLF go.mod reads like an LF one: the \r is not part of the path.
+  repo="$(new_repo)"
+  printf 'module %s\r\n\r\ngo 1.22\r\n' "${MODULE}" > "${repo}/go.mod"
+  commit_all "${repo}" 'chore: CRLF go.mod'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
+  expect "${repo}" "${base}..HEAD" 0 '' 'a CRLF go.mod' || rc=1
+
   # --- findings ---
 
   repo="$(new_repo)"

@@ -394,11 +394,11 @@ function main() {
   if [[ ! -f go.mod ]]; then
     fail_setup 'no go.mod at the repository root'
   fi
-  # go.mod may quote the module path (`module "example.com/x"`); the quotes
-  # are not part of it. .ci/check-coverage-drop's module_at parses go.mod
+  # go.mod may quote the module path (`module "example.com/x"`) or end its
+  # lines in CRLF; neither the quotes nor the \r are part of it. .ci/check-coverage-drop's module_at parses go.mod
   # with this same awk expression; keep the two identical.
   local module
-  module="$(awk '$1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }' go.mod)"
+  module="$(awk '{ sub(/\r$/, "") } $1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }' go.mod)"
   if [[ -z "${module}" ]]; then
     fail_setup 'go.mod has no module line'
   fi
