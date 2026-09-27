@@ -147,7 +147,7 @@ function expect() {
 }
 
 function main() {
-  local rc=0 repo base utf8_name weird_name space_name
+  local rc=0 repo base utf8_name weird_name space_name colon_name quote_name
   work="$(mktemp --directory)"
 
   # --- passing cases ---
@@ -272,6 +272,23 @@ EOF
   expect "${repo}/sub" "${base}" "${repo}/cov.out" 0 '' \
     'run from a subdirectory, a covered change elsewhere passes' || rc=1
 
+  # git grep's default "name:line:text" output cannot say where a name
+  # containing a colon ends; the check reads NUL-delimited output instead,
+  # so this valid marker is judged in the right file. The file is committed
+  # at the base, so only the marker scan (not the diff) sees it.
+  repo="$(new_repo)"
+  colon_name='a:b.go'
+  a_go > "${repo}/${colon_name}"
+  set_line "${repo}/${colon_name}" 5 '  if x < 0 { // coverage-exempt: defensive, callers never pass negatives'
+  git -C "${repo}" add -- "${colon_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: add a colon-named file'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    a_profile | awk -v name="${colon_name}" 'NR > 1 { sub(/\/a\.go:/, "/" name ":"); print }'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a valid marker in a file whose name has a colon' || rc=1
+
   # The real format: go test writes this profile, in atomic mode as -race
   # does, and the change touches only covered code.
   repo="$(new_repo)"
@@ -376,6 +393,23 @@ EOF
     ci::log 'FAIL: a marker on a run block: the stale-origin/main hint should not appear for a stale-marker finding'
     rc=1
   fi
+
+  # git grep quotes a name containing a double quote, even with
+  # core.quotePath=false; the NUL-delimited output carries it verbatim, so
+  # the stale marker is reported against the right file.
+  repo="$(new_repo)"
+  quote_name='q"uote.go'
+  a_go > "${repo}/${quote_name}"
+  set_line "${repo}/${quote_name}" 8 '  return 2 // coverage-exempt: defensive'
+  git -C "${repo}" add -- "${quote_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: add a quote-named file'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    a_profile | awk -v name="${quote_name}" 'NR > 1 { sub(/\/a\.go:/, "/" name ":"); print }'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    "FAIL: ${quote_name}:8 coverage-exempt marker is stale" 'a stale marker in a file whose name has a double quote' || rc=1
 
   # The empty reason is spelled with printf so this script carries no
   # trailing whitespace of its own.

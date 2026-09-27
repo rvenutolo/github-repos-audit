@@ -232,9 +232,20 @@ function read_changed() {
 #              matched text is never passed on. A `/* */` comment, even one
 #              with `//` inside it, or the word in a string without `//`
 #              before it, is not a marker.
+#
+#              git grep's default `name:line:text` cannot say where a name
+#              containing a colon ends, and it quotes a name containing `"`
+#              even with core.quotePath off. With -z it prints
+#              `name<NUL>line<NUL>text`, the name verbatim; awk cannot
+#              portably split on NUL, so tr turns each into \001 first. The
+#              text may hold anything, tabs and colons included, so only the
+#              first two separators are split on. A record without both (a
+#              name with a newline in it) or a name with a tab, which would
+#              shift the facts' tab-separated fields, fails the run rather
+#              than misattribute the marker.
 function read_markers() {
   local rc=0
-  git -c core.quotePath=false grep --full-name --line-number --no-color -I -E 'coverage-exempt:' -- '*.go' \
+  git -c core.quotePath=false grep -z --full-name --line-number --no-color -I -E 'coverage-exempt:' -- '*.go' \
     > "${work}/grep" || rc=$?
   # 1 is "no match", which is the usual answer. Anything above it is the
   # scan failing, and must not read as "no markers".
@@ -242,12 +253,16 @@ function read_markers() {
     printf 'FAIL: git grep failed (exit %s)\n' "${rc}" >&2
     exit 1
   fi
+  tr '\0' '\001' < "${work}/grep" > "${work}/grep-split"
+  rc=0
   awk '
     {
-      c1 = index($0, ":")
-      file = substr($0, 1, c1 - 1)
+      c1 = index($0, "\001")
       rest = substr($0, c1 + 1)
-      c2 = index(rest, ":")
+      c2 = index(rest, "\001")
+      if (c1 < 2 || c2 < 2) exit 3
+      file = substr($0, 1, c1 - 1)
+      if (index(file, "\t") > 0) exit 3
       line = substr(rest, 1, c2 - 1)
       text = substr(rest, c2 + 1)
       if (!match(text, /\/\/[[:space:]]*coverage-exempt:/)) next
@@ -260,7 +275,13 @@ function read_markers() {
       reason = substr(text, RSTART + RLENGTH)
       printf "M\t%s\t%d\t%s\n", file, line, (reason ~ /[^[:space:]]/) ? "ok" : "noreason"
     }
-  ' "${work}/grep"
+  ' "${work}/grep-split" > "${work}/markers" || rc=$?
+  if ((rc == 3)); then
+    fail_setup 'cannot parse the git grep output for a file name; rename it or report this'
+  elif ((rc != 0)); then
+    fail_setup "awk failed reading the git grep output (exit ${rc})"
+  fi
+  cat "${work}/markers"
 }
 
 # @description Judge the blocks, changed lines and markers on stdin, and
