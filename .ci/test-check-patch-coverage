@@ -231,6 +231,14 @@ EOF
   expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a changed .go file with no blocks' || rc=1
 
   repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    printf '\n'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'an empty line in the profile is ignored' || rc=1
+
+  repo="$(new_repo)"
   printf 'package marker\n\nfunc helper() int { return 1 }\n' > "${repo}/a_test.go"
   git -C "${repo}" add -- a_test.go
   git -C "${repo}" commit --quiet --no-verify --message 'test: add helper'
@@ -492,6 +500,27 @@ EOF
   expect "${repo}" "${base}" "${repo}/missing.out" 2 'does not exist' 'a missing profile' || rc=1
   printf 'not a profile\n' > "${repo}/bad.out"
   expect "${repo}" "${base}" "${repo}/bad.out" 2 'not a Go coverage profile' 'a profile with no mode: line' || rc=1
+
+  # A line that is not Go's exact "<file>:<l>.<c>,<l>.<c> <n> <n>" used to be
+  # skipped, which failed open: a CRLF profile read as having no blocks at
+  # all, so every change passed. Each must fail the run instead, naming the
+  # line by number and never quoting it.
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile | awk '{ printf "%s\r\n", $0 }' > "${repo}/crlf.out"
+  expect "${repo}" "${base}" "${repo}/crlf.out" 2 'crlf.out line 2 is not a Go coverage profile line' \
+    'a CRLF profile fails closed' || rc=1
+  {
+    a_profile
+    printf '%s/a.go:9.1,9.2 1 many\n' "${MODULE}"
+  } > "${repo}/count.out"
+  expect "${repo}" "${base}" "${repo}/count.out" 2 'count.out line 5 is not a Go coverage profile line' \
+    'a non-numeric count fails closed' || rc=1
+  local bad_line_out
+  bad_line_out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/count.out" 2>&1)" || true
+  if [[ "${bad_line_out}" == *'many'* ]]; then
+    ci::log 'FAIL: a non-numeric count fails closed: the output quoted the line'
+    rc=1
+  fi
 
   ((rc == 0)) && ci::log 'check-patch-coverage: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap

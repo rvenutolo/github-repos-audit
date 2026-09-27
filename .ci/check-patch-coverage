@@ -83,13 +83,23 @@ function fail_setup() {
 #              fixed and is anchored to the end of the line, so matching it
 #              there finds the file:span boundary correctly regardless of
 #              spaces earlier in the line.
+#
+#              Any other non-empty line fails the run. Skipping it would fail
+#              open: a CRLF profile, or one with a mangled count, would read
+#              as having no blocks, and every change would pass. Only the
+#              line number is printed, never the line.
 # @arg $1 profile
 # @arg $2 module path
 function read_blocks() {
+  local rc=0
   awk -v module="$2" '
-    FNR == 1 { next }
+    FNR == 1 || $0 == "" { next }
     {
-      if (!match($0, /:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+ [0-9]+ [0-9]+$/)) next
+      if (!match($0, /:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+ [0-9]+ [0-9]+$/)) {
+        # END still runs after exit; it reports the line and keeps the exit.
+        bad = FNR
+        exit 3
+      }
       file = substr($0, 1, RSTART - 1)
       rest = substr($0, RSTART + 1, RLENGTH - 1)
       split(rest, fields, " ")
@@ -114,12 +124,22 @@ function read_blocks() {
       if (count > 0) ran[key] = 1
     }
     END {
+      if (bad) {
+        print bad
+        exit 3
+      }
       for (i = 1; i <= n; i++) {
         k = order[i]
         printf "B\t%s\t%d\t%d\t%d\t%d\n", name[k], first[k], last[k], stmts[k], ran[k]
       }
     }
-  ' "$1"
+  ' "$1" > "${work}/blocks" || rc=$?
+  if ((rc == 3)); then
+    fail_setup "$1 line $(< "${work}/blocks") is not a Go coverage profile line"
+  elif ((rc != 0)); then
+    fail_setup "awk failed reading $1 (exit ${rc})"
+  fi
+  cat "${work}/blocks"
 }
 
 # @description Print `C<TAB>file<TAB>line` for every line the working tree
