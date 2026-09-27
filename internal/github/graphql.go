@@ -400,7 +400,7 @@ func (c *Client) fetchRepository(ctx context.Context, name string) (*repository,
 // why the status alone never says whether the answer is usable.
 func (c *Client) postGraphQL(ctx context.Context, query string, vars map[string]string, into any) error {
 	body, err := json.Marshal(graphQLRequest{Query: query, Variables: vars})
-	if err != nil {
+	if err != nil { // coverage-exempt: json.Marshal cannot fail for a string and a string map
 		return fmt.Errorf("encode graphql request: %w", err)
 	}
 
