@@ -169,7 +169,10 @@ function read_blocks() {
 #              fails the run rather than silently dropping the file's hunks.
 #              Hunk bodies are skipped by count, not by pattern, so an added
 #              line that itself begins with `++` is never mistaken for a file
-#              header.
+#              header. The one exception is `\ No newline at end of file`,
+#              which sits inside a hunk but is not in its counts: it is
+#              skipped by pattern first, or it would use up the count and
+#              leave the hunk's last line to be read as a header.
 # @arg $1 base
 function read_changed() {
   git -c core.quotePath=false diff --unified=0 --inter-hunk-context=0 \
@@ -180,6 +183,7 @@ function read_changed() {
   # its "C" lines only get cat'd out below once awk has exited 0.
   local rc=0
   awk '
+    /^\\/ { next }
     skip > 0 { skip--; next }
     /^\+\+\+ / {
       file = ""

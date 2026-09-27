@@ -481,6 +481,30 @@ EOF
     rc=1
   fi
 
+  # "\ No newline at end of file" sits inside a hunk but is not in its
+  # line counts. Skipped by count, it would eat a.go's last added line,
+  # which here reads "++ inert" and so, left over, looks like a "+++ "
+  # file header: the run failed closed and b.go's unrun change was never
+  # reported. Both files' changes must be judged.
+  repo="$(new_repo)"
+  printf '%s' "$(a_go)" > "${repo}/a.go"
+  a_go > "${repo}/b.go"
+  git -C "${repo}" add -- a.go b.go
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: drop the final newline, add b.go'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_go
+    printf '++ inert\n'
+  } > "${repo}/a.go"
+  set_line "${repo}/a.go" 6 '    return 4'
+  set_line "${repo}/b.go" 6 '    return 4'
+  {
+    a_profile
+    a_profile | awk 'NR > 1 { sub(/\/a\.go:/, "/b.go:"); print }'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'a no-newline marker: the first file' || rc=1
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'b.go:5-7' 'a no-newline marker: the next file' || rc=1
+
   # A textconv driver rewrites what git diff shows; this one (`true`, which
   # prints nothing) blanks both sides, so the unrun change would vanish from
   # the diff. The check must read the file's real lines regardless.
