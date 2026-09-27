@@ -376,6 +376,19 @@ function main() {
       expect "${repo}" "${base}..HEAD" 2 "${needle}" "git ${fail_on} fails" || rc=1
   done
 
+  # With no go.mod, module_at reads nothing, so the first git show is the
+  # parent's baseline: its own guard.
+  repo="$(new_repo)"
+  git -C "${repo}" rm --quiet -- go.mod
+  commit_all "${repo}" 'chore: drop go.mod'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
+  commit_all "${repo}" 'refactor: drop the retry path'
+  short="$(git -C "${repo}" rev-parse --short HEAD)"
+  PATH="${work}/failgit:${PATH}" FAIL_GIT_ON=show FAIL_GIT_REAL="${real_git}" \
+    expect "${repo}" "${base}..HEAD" 2 "git show failed for ${short}^:.ci/coverage-baseline.txt" \
+    'git show fails on the baseline' || rc=1
+
   # sort failing is a setup failure too, never the ERR trap.
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"

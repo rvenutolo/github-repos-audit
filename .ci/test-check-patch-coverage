@@ -310,8 +310,10 @@ EOF
 
   # git grep's default "name:line:text" output cannot say where a name
   # containing a colon ends; the check reads NUL-delimited output instead,
-  # so this valid marker is judged in the right file. The file is committed
-  # at the base, so only the marker scan (not the diff) sees it.
+  # so this valid marker is judged in the right file. The change touches
+  # the unrun block the marker sits on, so this passes only if the marker
+  # is read: a scan that dropped it would report the block. The stale
+  # variant is under the findings.
   repo="$(new_repo)"
   colon_name='a:b.go'
   a_go > "${repo}/${colon_name}"
@@ -323,6 +325,7 @@ EOF
     a_profile
     a_profile | awk -v name="${colon_name}" 'NR > 1 { sub(/\/a\.go:/, "/" name ":"); print }'
   } > "${repo}/cov.out"
+  set_line "${repo}/${colon_name}" 6 '    return 4'
   expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a valid marker in a file whose name has a colon' || rc=1
 
   # The real format: go test writes this profile, in atomic mode as -race
@@ -438,6 +441,19 @@ EOF
     ci::log 'FAIL: a marker on a run block: the stale-origin/main hint should not appear for a stale-marker finding'
     rc=1
   fi
+
+  repo="$(new_repo)"
+  a_go > "${repo}/${colon_name}"
+  set_line "${repo}/${colon_name}" 8 '  return 2 // coverage-exempt: defensive'
+  git -C "${repo}" add -- "${colon_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: add a colon-named file'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    a_profile | awk -v name="${colon_name}" 'NR > 1 { sub(/\/a\.go:/, "/" name ":"); print }'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    "FAIL: ${colon_name}:8 coverage-exempt marker is stale" 'a stale marker in a file whose name has a colon' || rc=1
 
   # git grep quotes a name containing a double quote, even with
   # core.quotePath=false; the NUL-delimited output carries it verbatim, so
