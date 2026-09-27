@@ -424,6 +424,15 @@ function main() {
       expect "${repo}" "${base}..HEAD" 2 'FAIL: awk failed reading' "the ${fail_awk_on#print } facts awk fails" || rc=1
   done
 
+  # So is the awk that reads go.mod's module line.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
+  commit_all "${repo}" 'refactor: drop the retry path'
+  short="$(git -C "${repo}" rev-parse --short HEAD)"
+  PATH="${work}/failawk:${PATH}" FAIL_AWK_ON='== "module"' FAIL_AWK_REAL="${real_awk}" \
+    expect "${repo}" "${base}..HEAD" 2 "FAIL: awk failed reading ${short}:go.mod" 'the go.mod awk fails' || rc=1
+
   # sort failing is a setup failure too, never the ERR trap.
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"

@@ -411,7 +411,8 @@ function main() {
   # lines in CRLF; neither the quotes nor the \r are part of it. .ci/check-coverage-drop's module_at parses go.mod
   # with this same awk expression; keep the two identical.
   local module
-  module="$(awk '{ sub(/\r$/, "") } $1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }' go.mod)"
+  module="$(awk '{ sub(/\r$/, "") } $1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }' go.mod)" \
+    || fail_setup 'awk failed reading go.mod'
   if [[ -z "${module}" ]]; then
     fail_setup 'go.mod has no module line'
   fi

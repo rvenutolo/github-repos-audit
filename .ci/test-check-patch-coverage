@@ -179,12 +179,34 @@ function fail_tool_dir() {
   printf '%s\n' "${dir}"
 }
 
+# @description Write an awk wrapper to ${work}/failawk/awk. Put first on PATH,
+#              it exits 1 when any argument contains $FAIL_AWK_ON (a
+#              distinctive piece of one awk program's text, naming the one
+#              call to break) and runs the real awk at $FAIL_AWK_REAL
+#              otherwise.
+# @noargs
+function make_fail_awk() {
+  mkdir "${work}/failawk"
+  cat > "${work}/failawk/awk" << 'EOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "${arg}" == *"${FAIL_AWK_ON}"* ]]; then
+    exit 1
+  fi
+done
+exec "${FAIL_AWK_REAL}" "$@"
+EOF
+  chmod +x "${work}/failawk/awk"
+}
+
 function main() {
   local rc=0 repo base utf8_name weird_name space_name colon_name quote_name
   work="$(mktemp --directory)"
   make_fail_git
-  local real_git
+  make_fail_awk
+  local real_git real_awk
   real_git="$(command -v git)"
+  real_awk="$(command -v awk)"
 
   # --- passing cases ---
 
@@ -673,6 +695,13 @@ EOF
     expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: git grep failed' 'git grep fails' || rc=1
   PATH="${work}/failgit:${PATH}" FAIL_GIT_ON=diff FAIL_GIT_REAL="${real_git}" \
     expect "${repo}" "${base}" "${repo}/cov.out" 2 "FAIL: git diff against ${base} failed" 'git diff fails' || rc=1
+
+  # So is the awk that reads go.mod's module line.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  a_profile > "${repo}/cov.out"
+  PATH="${work}/failawk:${PATH}" FAIL_AWK_ON='== "module"' FAIL_AWK_REAL="${real_awk}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: awk failed reading go.mod' 'the go.mod awk fails' || rc=1
 
   # A helper tool failing is a setup failure too, never the ERR trap.
   repo="$(new_repo)"
