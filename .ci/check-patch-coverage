@@ -88,6 +88,12 @@ function fail_setup() {
 #              open: a CRLF profile, or one with a mangled count, would read
 #              as having no blocks, and every change would pass. Only the
 #              line number is printed, never the line.
+#
+#              So does a profile with blocks none of which belong to the
+#              module: it was written for another repository, and reading it
+#              as "nothing here is profiled" would pass every change. A
+#              profile of only the mode line is valid; go writes that for a
+#              module with no statements.
 # @arg $1 profile
 # @arg $2 module path
 function read_blocks() {
@@ -106,6 +112,7 @@ function read_blocks() {
       span = fields[1]
       numstmt = fields[2] + 0
       count = fields[3] + 0
+      blocks++
       prefix = module "/"
       if (substr(file, 1, length(prefix)) != prefix) next
       file = substr(file, length(prefix) + 1)
@@ -128,6 +135,7 @@ function read_blocks() {
         print bad
         exit 3
       }
+      if (blocks > 0 && n == 0) exit 4
       for (i = 1; i <= n; i++) {
         k = order[i]
         printf "B\t%s\t%d\t%d\t%d\t%d\n", name[k], first[k], last[k], stmts[k], ran[k]
@@ -136,6 +144,8 @@ function read_blocks() {
   ' "$1" > "${work}/blocks" || rc=$?
   if ((rc == 3)); then
     fail_setup "$1 line $(< "${work}/blocks") is not a Go coverage profile line"
+  elif ((rc == 4)); then
+    fail_setup "no block in $1 belongs to module $2; was it written for this repository?"
   elif ((rc != 0)); then
     fail_setup "awk failed reading $1 (exit ${rc})"
   fi

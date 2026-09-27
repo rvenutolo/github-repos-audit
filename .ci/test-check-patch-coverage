@@ -238,6 +238,13 @@ EOF
   } > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'an empty line in the profile is ignored' || rc=1
 
+  # A module with no statements anywhere: go test writes only the mode line.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  printf 'mode: set\n' > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a profile of only the mode line' || rc=1
+
   repo="$(new_repo)"
   printf 'package marker\n\nfunc helper() int { return 1 }\n' > "${repo}/a_test.go"
   git -C "${repo}" add -- a_test.go
@@ -515,6 +522,12 @@ EOF
   } > "${repo}/count.out"
   expect "${repo}" "${base}" "${repo}/count.out" 2 'count.out line 5 is not a Go coverage profile line' \
     'a non-numeric count fails closed' || rc=1
+  # Every block belongs to another module: a profile from some other
+  # repository. Read as "nothing here is profiled", every change would pass.
+  a_profile | awk '{ sub(/^example\.com\/marker\//, "example.com/other/"); print }' > "${repo}/other.out"
+  expect "${repo}" "${base}" "${repo}/other.out" 2 \
+    "no block in ${repo}/other.out belongs to module ${MODULE}; was it written for this repository?" \
+    'a profile for another module fails closed' || rc=1
   local bad_line_out
   bad_line_out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/count.out" 2>&1)" || true
   if [[ "${bad_line_out}" == *'many'* ]]; then
