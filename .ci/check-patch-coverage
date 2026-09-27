@@ -257,13 +257,14 @@ function read_changed() {
 #              containing a colon ends, and it quotes a name containing `"`
 #              even with core.quotePath off. With -z it prints
 #              `name<NUL>line<NUL>text`, the name verbatim; awk cannot
-#              portably split on NUL, so tr turns each into \001 first. The
-#              text may hold anything, tabs and colons included, so only the
-#              first two separators are split on. A record without both (a
-#              name with a newline in it), a name with a tab, which would
+#              portably split on NUL, so tr turns each into \001 first, and
+#              a record must then be exactly three \001-separated fields:
+#              name, line, text (tabs and colons included). One with fewer
+#              (a name with a newline in it) or more (a name, or rarely the
+#              text, with a \001 of its own), a name with a tab, which would
 #              shift the facts' tab-separated fields, or a line number that
-#              is not all digits (a name with a \001 in it) fails the run
-#              rather than misattribute the marker.
+#              is not all digits fails the run rather than misattribute the
+#              marker.
 function read_markers() {
   local rc=0
   git -c core.quotePath=false grep -z --full-name --line-number --no-color -I -E 'coverage-exempt:' -- '*.go' \
@@ -285,10 +286,11 @@ function read_markers() {
       file = substr($0, 1, c1 - 1)
       if (index(file, "\t") > 0) exit 3
       line = substr(rest, 1, c2 - 1)
-      # A name holding a \001 of its own splits early, leaving part of the
-      # name where the line number belongs.
       if (line !~ /^[0-9]+$/) exit 3
       text = substr(rest, c2 + 1)
+      # A third \001 means a name held one of its own, which may even put
+      # digits where the line number belongs: the split cannot be trusted.
+      if (index(text, "\001") > 0) exit 3
       if (!match(text, /\/\/[[:space:]]*coverage-exempt:/)) next
       # A // inside an open /* ... */ is comment text, not a line comment.
       open = index(text, "/*")

@@ -644,7 +644,10 @@ EOF
   # Each fails closed, never printing the raw name. The file is committed at
   # the base, so only the marker scan (not the diff) sees it.
   local marker_name marker_out
-  for marker_name in "$(printf 'tab\tmark.go')" "$(printf 'new\nmark.go')" "$(printf 'soh\001mark.go')"; do
+  # The last name holds digits between two \001s of its own, so it passes a
+  # check that only the line field is numeric.
+  for marker_name in "$(printf 'tab\tmark.go')" "$(printf 'new\nmark.go')" "$(printf 'soh\001mark.go')" \
+    "$(printf 'dig\0015\001mark.go')"; do
     repo="$(new_repo)"
     printf 'package marker\n\n// coverage-exempt: nothing to exempt here\n' > "${repo}/${marker_name}"
     git -C "${repo}" add -- "${marker_name}"
