@@ -146,9 +146,31 @@ function expect() {
   expect_run "$1" "$4" "$5" "$6" --base "$2" --profile "$3"
 }
 
+# @description Write a git wrapper to ${work}/failgit/git. Put first on PATH,
+#              it exits 128 when any argument equals $FAIL_GIT_ON (a
+#              subcommand or option, naming the one call to break) and runs
+#              the real git at $FAIL_GIT_REAL otherwise.
+# @noargs
+function make_fail_git() {
+  mkdir "${work}/failgit"
+  cat > "${work}/failgit/git" << 'EOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "${arg}" == "${FAIL_GIT_ON}" ]]; then
+    exit 128
+  fi
+done
+exec "${FAIL_GIT_REAL}" "$@"
+EOF
+  chmod +x "${work}/failgit/git"
+}
+
 function main() {
   local rc=0 repo base utf8_name weird_name space_name colon_name quote_name
   work="$(mktemp --directory)"
+  make_fail_git
+  local real_git
+  real_git="$(command -v git)"
 
   # --- passing cases ---
 
@@ -571,6 +593,17 @@ EOF
     ci::log 'FAIL: an unparsable diff header fails closed: the output printed the raw file name'
     rc=1
   fi
+
+  # A git call that fails is a setup failure, exit 2 with a message: never
+  # a finding (exit 1), never the ERR trap with git's own status.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  PATH="${work}/failgit:${PATH}" FAIL_GIT_ON=grep FAIL_GIT_REAL="${real_git}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: git grep failed' 'git grep fails' || rc=1
+  PATH="${work}/failgit:${PATH}" FAIL_GIT_ON=diff FAIL_GIT_REAL="${real_git}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 "FAIL: git diff against ${base} failed" 'git diff fails' || rc=1
 
   # --- usage ---
 

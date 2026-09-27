@@ -37,9 +37,15 @@
 # @option --base <rev> the commit to diff the working tree against
 # @option --profile <file> the coverage profile go test wrote
 # @exitcode 0 every changed block is run or exempt, and every marker is valid
-# @exitcode 1 a finding
-# @exitcode 2 usage error: bad arguments, --base not a commit, no profile, or
-#             a diff header this script cannot parse
+# @exitcode 1 a finding: a changed block never run, a marker with no reason,
+#             outside every block or stale, or a profile naming a file that
+#             does not exist
+# @exitcode 2 a setup failure, never a finding: bad arguments; not in a git
+#             repository; --base not a commit; the profile missing, without a
+#             mode: line, holding a line go would not write, or with no block
+#             in the module; go.mod missing or without a module line; git
+#             diff or git grep failing; a file name the diff header or git
+#             grep output cannot carry; or awk itself failing
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
@@ -175,13 +181,18 @@ function read_blocks() {
 #              leave the hunk's last line to be read as a header.
 # @arg $1 base
 function read_changed() {
+  local rc=0
   git -c core.quotePath=false diff --unified=0 --inter-hunk-context=0 \
     --no-renames --no-color --no-ext-diff --no-textconv --no-relative --src-prefix=a/ --dst-prefix=b/ \
-    "$1" -- '*.go' ':(exclude)*_test.go' > "${work}/diff"
+    "$1" -- '*.go' ':(exclude)*_test.go' > "${work}/diff" || rc=$?
+  # Captured, not left to errexit: that would exit with git's own status,
+  # which a caller cannot tell from a finding, behind the ERR trap's noise.
+  if ((rc != 0)); then
+    fail_setup "git diff against $1 failed"
+  fi
   # awk's own exit status (not a sentinel in its output) carries the
   # unparsable-header case, so a bad header can never reach the facts file:
   # its "C" lines only get cat'd out below once awk has exited 0.
-  local rc=0
   awk '
     /^\\/ { next }
     skip > 0 { skip--; next }
@@ -248,10 +259,9 @@ function read_markers() {
   git -c core.quotePath=false grep -z --full-name --line-number --no-color -I -E 'coverage-exempt:' -- '*.go' \
     > "${work}/grep" || rc=$?
   # 1 is "no match", which is the usual answer. Anything above it is the
-  # scan failing, and must not read as "no markers".
+  # scan failing, and must not read as "no markers", nor as a finding.
   if ((rc > 1)); then
-    printf 'FAIL: git grep failed (exit %s)\n' "${rc}" >&2
-    exit 1
+    fail_setup "git grep failed (exit ${rc})"
   fi
   tr '\0' '\001' < "${work}/grep" > "${work}/grep-split"
   rc=0
