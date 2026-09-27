@@ -603,6 +603,28 @@ EOF
     rc=1
   fi
 
+  # A name git grep -z prints verbatim but the marker scan cannot split
+  # safely: a tab would shift the facts' tab-separated fields, a newline
+  # splits the record, and a \001 is the separator tr turns each NUL into.
+  # Each fails closed, never printing the raw name. The file is committed at
+  # the base, so only the marker scan (not the diff) sees it.
+  local marker_name marker_out
+  for marker_name in "$(printf 'tab\tmark.go')" "$(printf 'new\nmark.go')" "$(printf 'soh\001mark.go')"; do
+    repo="$(new_repo)"
+    printf 'package marker\n\n// coverage-exempt: nothing to exempt here\n' > "${repo}/${marker_name}"
+    git -C "${repo}" add -- "${marker_name}"
+    git -C "${repo}" commit --quiet --no-verify --message 'chore: add an awkwardly named file'
+    base="$(git -C "${repo}" rev-parse HEAD)"
+    a_profile > "${repo}/cov.out"
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'cannot parse the git grep output' \
+      "an unsplittable git grep name fails closed (${marker_name%%[[:cntrl:]]*})" || rc=1
+    marker_out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/cov.out" 2>&1)" || true
+    if [[ "${marker_out}" == *'mark.go'* ]]; then
+      ci::log "FAIL: an unsplittable git grep name fails closed (${marker_name%%[[:cntrl:]]*}): the output printed the raw name"
+      rc=1
+    fi
+  done
+
   # A git call that fails is a setup failure, exit 2 with a message: never
   # a finding (exit 1), never the ERR trap with git's own status.
   repo="$(new_repo)"
