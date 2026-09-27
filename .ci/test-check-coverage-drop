@@ -21,6 +21,8 @@ source "${REPO_DIR}/.ci/lib.sh"
 
 readonly CHECK="${REPO_DIR}/.ci/check-coverage-drop"
 readonly MODULE='example.com/marker'
+# Sits in every trailer's reason; see expect_run.
+readonly REASON_SENTINEL='markerReasonSentinel'
 
 # work is global, not local to main: the EXIT trap fires after main returns.
 work=''
@@ -70,16 +72,18 @@ function commit_all() {
   git -C "$1" commit --quiet --no-verify --allow-empty --message "$2"
 }
 
-# @description Run the check and compare the exit status and output.
+# @description Run the check with the given arguments and compare the exit
+#              status and output.
 # @arg $1 repo
-# @arg $2 range
-# @arg $3 expected exit status
-# @arg $4 substring the output must contain, or '' for none
-# @arg $5 case name
-function expect() {
-  local -r repo="$1" range="$2" want="$3" needle="$4" name="$5"
+# @arg $2 expected exit status
+# @arg $3 substring the output must contain, or '' for none
+# @arg $4 case name
+# @arg $@ the check's own arguments, from $5 on
+function expect_run() {
+  local -r repo="$1" want="$2" needle="$3" name="$4"
+  shift 4
   local out got=0
-  out="$(cd "${repo}" && "${CHECK}" --range "${range}" 2>&1)" || got=$?
+  out="$(cd "${repo}" && "${CHECK}" "$@" 2>&1)" || got=$?
   if [[ "${got}" != "${want}" ]]; then
     ci::log "FAIL: ${name}: exit ${got}, want ${want}"
     printf '%s\n' "${out}" >&2
@@ -90,10 +94,27 @@ function expect() {
     printf '%s\n' "${out}" >&2
     return 1
   fi
+  # Every trailer reason in these cases carries this word. The check names
+  # packages and figures, never the message's own text.
+  if [[ "${out}" == *"${REASON_SENTINEL}"* ]]; then
+    ci::log "FAIL: ${name}: the output quoted a trailer's reason"
+    return 1
+  fi
   if [[ "${out}" == *'ERROR:'* ]]; then
     ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
     return 1
   fi
+}
+
+# @description Run the check with --range and compare the exit status and
+#              output.
+# @arg $1 repo
+# @arg $2 range
+# @arg $3 expected exit status
+# @arg $4 substring the output must contain, or '' for none
+# @arg $5 case name
+function expect() {
+  expect_run "$1" "$3" "$4" "$5" --range "$2"
 }
 
 function main() {
@@ -121,13 +142,13 @@ function main() {
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 0 '' 'a drop with its trailer' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '89.0%' '79.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: two drops\n\nCoverage-Drop: . - main lost its flag parsing test\nCoverage-Drop: internal/x - the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'refactor: two drops\n\nCoverage-Drop: . - main lost its flag parsing test, markerReasonSentinel\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 0 '' 'two drops, the module root among them, two trailers' || rc=1
 
   repo="$(new_repo)"
@@ -161,7 +182,7 @@ function main() {
   base="$(git -C "${repo}" rev-parse HEAD)"
   git -C "${repo}" switch --quiet --create topic
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   git -C "${repo}" switch --quiet main
   git -C "${repo}" merge --quiet --no-ff --no-edit topic
   expect "${repo}" "${base}..HEAD" 0 '' 'a merge carrying a justified branch drop is skipped' || rc=1
@@ -169,26 +190,37 @@ function main() {
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x -\n  the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x -\n  the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 0 '' 'a folded trailer' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\ncoverage-drop: internal/x - the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\ncoverage-drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 0 '' 'a lower-case trailer key' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/q - not a package that dropped\nCoverage-Drop: internal/x - the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/q - not a package that dropped, markerReasonSentinel\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 0 '' 'an extra trailer beside the right one' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed\nCo-Authored-By: Marker <marker@example.invalid>')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel\nCo-Authored-By: Marker <marker@example.invalid>')"
   expect "${repo}" "${base}..HEAD" 0 '' 'a trailer beside Co-Authored-By in the last paragraph' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  printf '%s 90.0%%\r\n%s/internal/x 80.0%%\r\n%s/internal/y n/a\r\n' "${MODULE}" "${MODULE}" "${MODULE}" \
+    > "${repo}/.ci/coverage-baseline.txt"
+  commit_all "${repo}" 'chore: crlf baseline'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  printf '%s 90.0%%\r\n%s/internal/x n/a\r\n%s/internal/y 50.0%%\r\n' "${MODULE}" "${MODULE}" "${MODULE}" \
+    > "${repo}/.ci/coverage-baseline.txt"
+  commit_all "${repo}" 'refactor: move x to y, crlf'
+  expect "${repo}" "${base}..HEAD" 0 '' 'a CRLF baseline moving to and from n/a' || rc=1
 
   # --- findings ---
 
@@ -202,7 +234,7 @@ function main() {
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/y - the wrong package')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/y - the wrong package, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 1 'lowers internal/x' 'a trailer naming another package' || rc=1
 
   repo="$(new_repo)"
@@ -221,50 +253,40 @@ function main() {
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
   commit_all "${repo}" 'refactor: drop the retry path'
-  commit_all "${repo}" "$(printf 'docs: explain\n\nCoverage-Drop: internal/x - the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'docs: explain\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 1 'lowers internal/x' 'a trailer on a different commit than the drop' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '89.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: two drops\n\nCoverage-Drop: internal/x - the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'refactor: two drops\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 1 'lowers . 90.0% -> 89.0%' 'one of two drops justified' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nThe retry path is gone.\nCoverage-Drop: internal/x - the retry path it covered was removed')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nThe retry path is gone.\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel')"
   expect "${repo}" "${base}..HEAD" 1 'lowers internal/x' 'a trailer glued to the body paragraph' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
-  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed\n\nCo-Authored-By: Marker <marker@example.invalid>')"
+  commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel\n\nCo-Authored-By: Marker <marker@example.invalid>')"
   expect "${repo}" "${base}..HEAD" 1 'lowers internal/x' 'a trailer in its own paragraph above Co-Authored-By' || rc=1
-
-  repo="$(new_repo)"
-  base="$(git -C "${repo}" rev-parse HEAD)"
-  printf '%s 90.0%%\r\n%s/internal/x 80.0%%\r\n%s/internal/y n/a\r\n' "${MODULE}" "${MODULE}" "${MODULE}" \
-    > "${repo}/.ci/coverage-baseline.txt"
-  commit_all "${repo}" 'chore: crlf baseline'
-  base="$(git -C "${repo}" rev-parse HEAD)"
-  printf '%s 90.0%%\r\n%s/internal/x n/a\r\n%s/internal/y 50.0%%\r\n' "${MODULE}" "${MODULE}" "${MODULE}" \
-    > "${repo}/.ci/coverage-baseline.txt"
-  commit_all "${repo}" 'refactor: move x to y, crlf'
-  expect "${repo}" "${base}..HEAD" 0 '' 'a CRLF baseline moving to and from n/a' || rc=1
 
   # --- usage ---
 
   repo="$(new_repo)"
-  local got=0
-  (cd "${repo}" && "${CHECK}" > /dev/null 2>&1) || got=$?
-  if [[ "${got}" != 2 ]]; then
-    ci::log "FAIL: missing --range: exit ${got}, want 2"
-    rc=1
-  fi
+  expect_run "${repo}" 2 'usage:' 'missing --range' || rc=1
+  expect_run "${repo}" 2 'usage:' '--range given no value' --range || rc=1
+  expect_run "${repo}" 2 'usage:' 'an unknown option' --range HEAD --verbose || rc=1
   expect "${repo}" 'no-such-ref..HEAD' 2 'does not resolve' 'a range that does not resolve' || rc=1
 
   ((rc == 0)) && ci::log 'check-coverage-drop: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line, as check-coverage does for its designed returns.
+  trap - ERR
   return "${rc}"
 }
 

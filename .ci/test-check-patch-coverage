@@ -100,17 +100,18 @@ function delete_line() {
   printf '%s\n' "${lines[@]}" > "${file}"
 }
 
-# @description Run the check and compare the exit status and output.
+# @description Run the check with the given arguments and compare the exit
+#              status and output.
 # @arg $1 directory to run from
-# @arg $2 base revision
-# @arg $3 profile path
-# @arg $4 expected exit status
-# @arg $5 substring the output must contain, or '' for none
-# @arg $6 case name
-function expect() {
-  local -r dir="$1" base="$2" profile="$3" want="$4" needle="$5" name="$6"
+# @arg $2 expected exit status
+# @arg $3 substring the output must contain, or '' for none
+# @arg $4 case name
+# @arg $@ the check's own arguments, from $5 on
+function expect_run() {
+  local -r dir="$1" want="$2" needle="$3" name="$4"
+  shift 4
   local out got=0
-  out="$(cd "${dir}" && "${CHECK}" --base "${base}" --profile "${profile}" 2>&1)" || got=$?
+  out="$(cd "${dir}" && "${CHECK}" "$@" 2>&1)" || got=$?
   if [[ "${got}" != "${want}" ]]; then
     ci::log "FAIL: ${name}: exit ${got}, want ${want}"
     printf '%s\n' "${out}" >&2
@@ -131,6 +132,18 @@ function expect() {
     ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
     return 1
   fi
+}
+
+# @description Run the check with --base and --profile and compare the exit
+#              status and output.
+# @arg $1 directory to run from
+# @arg $2 base revision
+# @arg $3 profile path
+# @arg $4 expected exit status
+# @arg $5 substring the output must contain, or '' for none
+# @arg $6 case name
+function expect() {
+  expect_run "$1" "$4" "$5" "$6" --base "$2" --profile "$3"
 }
 
 function main() {
@@ -471,18 +484,20 @@ EOF
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   a_profile > "${repo}/cov.out"
-  local got=0
-  (cd "${repo}" && "${CHECK}" --profile "${repo}/cov.out" > /dev/null 2>&1) || got=$?
-  if [[ "${got}" != 2 ]]; then
-    ci::log "FAIL: missing --base: exit ${got}, want 2"
-    rc=1
-  fi
+  expect_run "${repo}" 2 'usage:' 'missing --base' --profile "${repo}/cov.out" || rc=1
+  expect_run "${repo}" 2 'usage:' 'an unknown option' --base "${base}" --profile "${repo}/cov.out" --verbose || rc=1
+  expect_run "${repo}" 2 'usage:' '--base given no value' --profile "${repo}/cov.out" --base || rc=1
+  expect_run "${repo}" 2 'usage:' '--profile given no value' --base "${base}" --profile || rc=1
   expect "${repo}" 'not-a-commit' "${repo}/cov.out" 2 'is not a commit' 'a --base that is not a commit' || rc=1
   expect "${repo}" "${base}" "${repo}/missing.out" 2 'does not exist' 'a missing profile' || rc=1
   printf 'not a profile\n' > "${repo}/bad.out"
   expect "${repo}" "${base}" "${repo}/bad.out" 2 'not a Go coverage profile' 'a profile with no mode: line' || rc=1
 
   ((rc == 0)) && ci::log 'check-patch-coverage: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line, as check-coverage does for its designed returns.
+  trap - ERR
   return "${rc}"
 }
 

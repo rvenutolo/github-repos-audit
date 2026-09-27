@@ -261,6 +261,10 @@ function main() {
   fi
 
   ((rc == 0)) && ci::log 'check-account-data: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line, as check-coverage does for its designed returns.
+  trap - ERR
   return "${rc}"
 }
 
