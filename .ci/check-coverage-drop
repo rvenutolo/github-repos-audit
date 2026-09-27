@@ -88,8 +88,9 @@ function has_path() {
 #              the commit has no go.mod: package names then stay full import
 #              paths, which is still unambiguous. go.mod may quote the
 #              module path (`module "example.com/x"`) or end its lines in
-#              CRLF; neither the quotes nor the \r are part of it. .ci/check-patch-coverage parses go.mod with this
-#              same awk expression; keep the two identical.
+#              CRLF; neither the quotes nor the \r are part of it.
+#              .ci/check-patch-coverage parses go.mod with this same awk
+#              expression; keep the two identical.
 #
 #              Run in a command substitution, so a fail_setup here ends only
 #              that subshell: the caller exits 2 when it does, the message
