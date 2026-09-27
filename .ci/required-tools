@@ -78,3 +78,6 @@ awk
 sort
 # .ci/check-patch-coverage drops its sort keys before printing
 cut
+# .ci/check-patch-coverage turns git grep -z's NUL separators into bytes awk
+# can split on
+tr

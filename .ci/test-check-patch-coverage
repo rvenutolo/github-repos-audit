@@ -100,17 +100,18 @@ function delete_line() {
   printf '%s\n' "${lines[@]}" > "${file}"
 }
 
-# @description Run the check and compare the exit status and output.
+# @description Run the check with the given arguments and compare the exit
+#              status and output.
 # @arg $1 directory to run from
-# @arg $2 base revision
-# @arg $3 profile path
-# @arg $4 expected exit status
-# @arg $5 substring the output must contain, or '' for none
-# @arg $6 case name
-function expect() {
-  local -r dir="$1" base="$2" profile="$3" want="$4" needle="$5" name="$6"
+# @arg $2 expected exit status
+# @arg $3 substring the output must contain, or '' for none
+# @arg $4 case name
+# @arg $@ the check's own arguments, from $5 on
+function expect_run() {
+  local -r dir="$1" want="$2" needle="$3" name="$4"
+  shift 4
   local out got=0
-  out="$(cd "${dir}" && "${CHECK}" --base "${base}" --profile "${profile}" 2>&1)" || got=$?
+  out="$(cd "${dir}" && "${CHECK}" "$@" 2>&1)" || got=$?
   if [[ "${got}" != "${want}" ]]; then
     ci::log "FAIL: ${name}: exit ${got}, want ${want}"
     printf '%s\n' "${out}" >&2
@@ -133,9 +134,79 @@ function expect() {
   fi
 }
 
+# @description Run the check with --base and --profile and compare the exit
+#              status and output.
+# @arg $1 directory to run from
+# @arg $2 base revision
+# @arg $3 profile path
+# @arg $4 expected exit status
+# @arg $5 substring the output must contain, or '' for none
+# @arg $6 case name
+function expect() {
+  expect_run "$1" "$4" "$5" "$6" --base "$2" --profile "$3"
+}
+
+# @description Write a git wrapper to ${work}/failgit/git. Put first on PATH,
+#              it exits 128 when any argument equals $FAIL_GIT_ON (a
+#              subcommand or option, naming the one call to break) and runs
+#              the real git at $FAIL_GIT_REAL otherwise.
+# @noargs
+function make_fail_git() {
+  mkdir "${work}/failgit"
+  cat > "${work}/failgit/git" << 'EOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "${arg}" == "${FAIL_GIT_ON}" ]]; then
+    exit 128
+  fi
+done
+exec "${FAIL_GIT_REAL}" "$@"
+EOF
+  chmod +x "${work}/failgit/git"
+}
+
+# @description Write a stand-in for a tool to ${work}/fail-<tool>/<tool> that
+#              only exits 1, and print that directory, to put first on PATH
+#              so a case can make every call of that one tool fail.
+# @arg $1 tool name
+function fail_tool_dir() {
+  local -r dir="${work}/fail-$1"
+  if [[ ! -d "${dir}" ]]; then
+    mkdir "${dir}"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "${dir}/$1"
+    chmod +x "${dir}/$1"
+  fi
+  printf '%s\n' "${dir}"
+}
+
+# @description Write an awk wrapper to ${work}/failawk/awk. Put first on PATH,
+#              it exits 1 when any argument contains $FAIL_AWK_ON (a
+#              distinctive piece of one awk program's text, naming the one
+#              call to break) and runs the real awk at $FAIL_AWK_REAL
+#              otherwise.
+# @noargs
+function make_fail_awk() {
+  mkdir "${work}/failawk"
+  cat > "${work}/failawk/awk" << 'EOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "${arg}" == *"${FAIL_AWK_ON}"* ]]; then
+    exit 1
+  fi
+done
+exec "${FAIL_AWK_REAL}" "$@"
+EOF
+  chmod +x "${work}/failawk/awk"
+}
+
 function main() {
-  local rc=0 repo base utf8_name weird_name space_name
+  local rc=0 repo base utf8_name weird_name space_name colon_name quote_name
   work="$(mktemp --directory)"
+  make_fail_git
+  make_fail_awk
+  local real_git real_awk
+  real_git="$(command -v git)"
+  real_awk="$(command -v awk)"
 
   # --- passing cases ---
 
@@ -218,6 +289,21 @@ EOF
   expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a changed .go file with no blocks' || rc=1
 
   repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    printf '\n'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'an empty line in the profile is ignored' || rc=1
+
+  # A module with no statements anywhere: go test writes only the mode line.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  printf 'mode: set\n' > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a profile of only the mode line' || rc=1
+
+  repo="$(new_repo)"
   printf 'package marker\n\nfunc helper() int { return 1 }\n' > "${repo}/a_test.go"
   git -C "${repo}" add -- a_test.go
   git -C "${repo}" commit --quiet --no-verify --message 'test: add helper'
@@ -243,6 +329,26 @@ EOF
   a_profile > "${repo}/cov.out"
   expect "${repo}/sub" "${base}" "${repo}/cov.out" 0 '' \
     'run from a subdirectory, a covered change elsewhere passes' || rc=1
+
+  # git grep's default "name:line:text" output cannot say where a name
+  # containing a colon ends; the check reads NUL-delimited output instead,
+  # so this valid marker is judged in the right file. The change touches
+  # the unrun block the marker sits on, so this passes only if the marker
+  # is read: a scan that dropped it would report the block. The stale
+  # variant is under the findings.
+  repo="$(new_repo)"
+  colon_name='a:b.go'
+  a_go > "${repo}/${colon_name}"
+  set_line "${repo}/${colon_name}" 5 '  if x < 0 { // coverage-exempt: defensive, callers never pass negatives'
+  git -C "${repo}" add -- "${colon_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: add a colon-named file'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    a_profile | awk -v name="${colon_name}" 'NR > 1 { sub(/\/a\.go:/, "/" name ":"); print }'
+  } > "${repo}/cov.out"
+  set_line "${repo}/${colon_name}" 6 '    return 4'
+  expect "${repo}" "${base}" "${repo}/cov.out" 0 '' 'a valid marker in a file whose name has a colon' || rc=1
 
   # The real format: go test writes this profile, in atomic mode as -race
   # does, and the change touches only covered code.
@@ -321,6 +427,24 @@ EOF
   a_profile > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'an uncommitted change to an unrun block' || rc=1
 
+  # go.mod may quote the module path; the quotes are not part of it.
+  repo="$(new_repo)"
+  printf 'module "%s"\n\ngo 1.22\n' "${MODULE}" > "${repo}/go.mod"
+  git -C "${repo}" commit --quiet --no-verify --all --message 'chore: quote the module path'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'a quoted go.mod module line' || rc=1
+
+  # A CRLF go.mod reads like an LF one: the \r is not part of the path.
+  repo="$(new_repo)"
+  printf 'module %s\r\n\r\ngo 1.22\r\n' "${MODULE}" > "${repo}/go.mod"
+  git -C "${repo}" commit --quiet --no-verify --all --message 'chore: CRLF go.mod'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'a CRLF go.mod' || rc=1
+
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   set_line "${repo}/a.go" 5 '  if x < -1 {'
@@ -339,6 +463,36 @@ EOF
     ci::log 'FAIL: a marker on a run block: the stale-origin/main hint should not appear for a stale-marker finding'
     rc=1
   fi
+
+  repo="$(new_repo)"
+  a_go > "${repo}/${colon_name}"
+  set_line "${repo}/${colon_name}" 8 '  return 2 // coverage-exempt: defensive'
+  git -C "${repo}" add -- "${colon_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: add a colon-named file'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    a_profile | awk -v name="${colon_name}" 'NR > 1 { sub(/\/a\.go:/, "/" name ":"); print }'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    "FAIL: ${colon_name}:8 coverage-exempt marker is stale" 'a stale marker in a file whose name has a colon' || rc=1
+
+  # git grep quotes a name containing a double quote, even with
+  # core.quotePath=false; the NUL-delimited output carries it verbatim, so
+  # the stale marker is reported against the right file.
+  repo="$(new_repo)"
+  quote_name='q"uote.go'
+  a_go > "${repo}/${quote_name}"
+  set_line "${repo}/${quote_name}" 8 '  return 2 // coverage-exempt: defensive'
+  git -C "${repo}" add -- "${quote_name}"
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: add a quote-named file'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_profile
+    a_profile | awk -v name="${quote_name}" 'NR > 1 { sub(/\/a\.go:/, "/" name ":"); print }'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 \
+    "FAIL: ${quote_name}:8 coverage-exempt marker is stale" 'a stale marker in a file whose name has a double quote' || rc=1
 
   # The empty reason is spelled with printf so this script carries no
   # trailing whitespace of its own.
@@ -385,7 +539,12 @@ EOF
     printf '%s/gone.go:3.1,4.2 1 1\n' "${MODULE}"
   } > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 1 \
-    'FAIL: coverage.out names gone.go, which does not exist' 'a profile naming a missing file' || rc=1
+    'FAIL: cov.out names gone.go, which does not exist' 'a profile naming a missing file' || rc=1
+  # The finding names the profile as spelled: a backslash in its name is
+  # not an escape sequence (awk -v would turn this \n into a newline).
+  cp -- "${repo}/cov.out" "${repo}/c\\nov.out"
+  expect "${repo}" "${base}" "${repo}/c\\nov.out" 1 \
+    "FAIL: c\\nov.out names gone.go" 'a profile name with a backslash' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
@@ -444,6 +603,41 @@ EOF
     rc=1
   fi
 
+  # "\ No newline at end of file" sits inside a hunk but is not in its
+  # line counts. Skipped by count, it would eat a.go's last added line,
+  # which here reads "++ inert" and so, left over, looks like a "+++ "
+  # file header: the run failed closed and b.go's unrun change was never
+  # reported. Both files' changes must be judged.
+  repo="$(new_repo)"
+  printf '%s' "$(a_go)" > "${repo}/a.go"
+  a_go > "${repo}/b.go"
+  git -C "${repo}" add -- a.go b.go
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: drop the final newline, add b.go'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  {
+    a_go
+    printf '++ inert\n'
+  } > "${repo}/a.go"
+  set_line "${repo}/a.go" 6 '    return 4'
+  set_line "${repo}/b.go" 6 '    return 4'
+  {
+    a_profile
+    a_profile | awk 'NR > 1 { sub(/\/a\.go:/, "/b.go:"); print }'
+  } > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'a no-newline marker: the first file' || rc=1
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'b.go:5-7' 'a no-newline marker: the next file' || rc=1
+
+  # A textconv driver rewrites what git diff shows; this one (`true`, which
+  # prints nothing) blanks both sides, so the unrun change would vanish from
+  # the diff. The check must read the file's real lines regardless.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  printf '*.go diff=blank\n' > "${repo}/.git/info/attributes"
+  git -C "${repo}" config diff.blank.textconv true
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  expect "${repo}" "${base}" "${repo}/cov.out" 1 'a.go:5-7' 'git config: a textconv driver' || rc=1
+
   # A name git still quotes even with core.quotePath=false (a literal tab
   # here) cannot be told apart from ordinary text once unquoted, so the
   # +++ header is unparsable: the check must fail closed rather than drop
@@ -466,23 +660,105 @@ EOF
     rc=1
   fi
 
+  # A name git grep -z prints verbatim but the marker scan cannot split
+  # safely: a tab would shift the facts' tab-separated fields, a newline
+  # splits the record, and a \001 is the separator tr turns each NUL into.
+  # Each fails closed, never printing the raw name. The file is committed at
+  # the base, so only the marker scan (not the diff) sees it.
+  local marker_name marker_out
+  # The last name holds digits between two \001s of its own, so it passes a
+  # check that only the line field is numeric.
+  for marker_name in "$(printf 'tab\tmark.go')" "$(printf 'new\nmark.go')" "$(printf 'soh\001mark.go')" \
+    "$(printf 'dig\0015\001mark.go')"; do
+    repo="$(new_repo)"
+    printf 'package marker\n\n// coverage-exempt: nothing to exempt here\n' > "${repo}/${marker_name}"
+    git -C "${repo}" add -- "${marker_name}"
+    git -C "${repo}" commit --quiet --no-verify --message 'chore: add an awkwardly named file'
+    base="$(git -C "${repo}" rev-parse HEAD)"
+    a_profile > "${repo}/cov.out"
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'cannot parse the git grep output' \
+      "an unsplittable git grep name fails closed (${marker_name%%[[:cntrl:]]*})" || rc=1
+    marker_out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/cov.out" 2>&1)" || true
+    if [[ "${marker_out}" == *'mark.go'* ]]; then
+      ci::log "FAIL: an unsplittable git grep name fails closed (${marker_name%%[[:cntrl:]]*}): the output printed the raw name"
+      rc=1
+    fi
+  done
+
+  # A git call that fails is a setup failure, exit 2 with a message: never
+  # a finding (exit 1), never the ERR trap with git's own status.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  PATH="${work}/failgit:${PATH}" FAIL_GIT_ON=grep FAIL_GIT_REAL="${real_git}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: git grep failed' 'git grep fails' || rc=1
+  PATH="${work}/failgit:${PATH}" FAIL_GIT_ON=diff FAIL_GIT_REAL="${real_git}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 "FAIL: git diff against ${base} failed" 'git diff fails' || rc=1
+
+  # So is the awk that reads go.mod's module line.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  a_profile > "${repo}/cov.out"
+  PATH="${work}/failawk:${PATH}" FAIL_AWK_ON='== "module"' FAIL_AWK_REAL="${real_awk}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: awk failed reading go.mod' 'the go.mod awk fails' || rc=1
+
+  # A helper tool failing is a setup failure too, never the ERR trap.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile > "${repo}/cov.out"
+  PATH="$(fail_tool_dir tr):${PATH}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: tr failed reading the git grep output' 'tr fails' || rc=1
+  PATH="$(fail_tool_dir sort):${PATH}" \
+    expect "${repo}" "${base}" "${repo}/cov.out" 2 'FAIL: judging the findings failed' 'sort fails' || rc=1
+
   # --- usage ---
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   a_profile > "${repo}/cov.out"
-  local got=0
-  (cd "${repo}" && "${CHECK}" --profile "${repo}/cov.out" > /dev/null 2>&1) || got=$?
-  if [[ "${got}" != 2 ]]; then
-    ci::log "FAIL: missing --base: exit ${got}, want 2"
-    rc=1
-  fi
+  expect_run "${repo}" 2 'usage:' 'missing --base' --profile "${repo}/cov.out" || rc=1
+  expect_run "${repo}" 2 'usage:' 'an unknown option' --base "${base}" --profile "${repo}/cov.out" --verbose || rc=1
+  expect_run "${repo}" 2 'usage:' '--base given no value' --profile "${repo}/cov.out" --base || rc=1
+  expect_run "${repo}" 2 'usage:' '--profile given no value' --base "${base}" --profile || rc=1
   expect "${repo}" 'not-a-commit' "${repo}/cov.out" 2 'is not a commit' 'a --base that is not a commit' || rc=1
   expect "${repo}" "${base}" "${repo}/missing.out" 2 'does not exist' 'a missing profile' || rc=1
   printf 'not a profile\n' > "${repo}/bad.out"
   expect "${repo}" "${base}" "${repo}/bad.out" 2 'not a Go coverage profile' 'a profile with no mode: line' || rc=1
 
+  # A line that is not Go's exact "<file>:<l>.<c>,<l>.<c> <n> <n>" used to be
+  # skipped, which failed open: a CRLF profile read as having no blocks at
+  # all, so every change passed. Each must fail the run instead, naming the
+  # line by number and never quoting it.
+  set_line "${repo}/a.go" 6 '    return 4'
+  a_profile | awk '{ printf "%s\r\n", $0 }' > "${repo}/crlf.out"
+  expect "${repo}" "${base}" "${repo}/crlf.out" 2 'crlf.out line 2 is not a Go coverage profile line' \
+    'a CRLF profile fails closed' || rc=1
+  {
+    a_profile
+    printf '%s/a.go:9.1,9.2 1 many\n' "${MODULE}"
+  } > "${repo}/count.out"
+  expect "${repo}" "${base}" "${repo}/count.out" 2 'count.out line 5 is not a Go coverage profile line' \
+    'a non-numeric count fails closed' || rc=1
+  # Every block belongs to another module: a profile from some other
+  # repository. Read as "nothing here is profiled", every change would pass.
+  a_profile | awk '{ sub(/^example\.com\/marker\//, "example.com/other/"); print }' > "${repo}/other.out"
+  expect "${repo}" "${base}" "${repo}/other.out" 2 \
+    "no block in ${repo}/other.out belongs to module ${MODULE}; was it written for this repository?" \
+    'a profile for another module fails closed' || rc=1
+  local bad_line_out
+  bad_line_out="$(cd "${repo}" && "${CHECK}" --base "${base}" --profile "${repo}/count.out" 2>&1)" || true
+  if [[ "${bad_line_out}" == *'many'* ]]; then
+    ci::log 'FAIL: a non-numeric count fails closed: the output quoted the line'
+    rc=1
+  fi
+
   ((rc == 0)) && ci::log 'check-patch-coverage: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line, as check-coverage does for its designed returns.
+  trap - ERR
   return "${rc}"
 }
 

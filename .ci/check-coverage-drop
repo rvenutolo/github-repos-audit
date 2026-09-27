@@ -13,10 +13,10 @@
 #              Co-Authored-By, so it goes on a line beside those. A
 #              Coverage-Drop line in a paragraph of its own above them, or
 #              glued to a body paragraph, is not a trailer to git and counts
-#              as missing. The package is the
-#              import path with the module path stripped (`.` for the module
-#              root); the reason is required. One trailer per package; the key
-#              is case-insensitive and a folded value is unfolded.
+#              as missing. The package is the import path with the module
+#              path stripped (`.` for the module root); the reason is
+#              required. One trailer per package; the key is
+#              case-insensitive and a folded value is unfolded.
 #
 #              Only a numeric figure going down is a drop. A package line
 #              added or removed, or a move to or from n/a, is a package
@@ -33,8 +33,14 @@
 #              still has to satisfy check-coverage and shows in the merge diff.
 # @option --range <revs> the commits to judge, as `git rev-list` takes them
 # @exitcode 0 every drop in range is justified
-# @exitcode 1 a finding
-# @exitcode 2 usage error, or the range does not resolve
+# @exitcode 1 a finding: a drop with no Coverage-Drop trailer for its package,
+#             or one that gives no reason
+# @exitcode 2 a setup failure, never a finding: bad arguments; not in a git
+#             repository; the range not resolving; a malformed figure in a
+#             judged commit's baseline or its parent's; any other git call
+#             failing; or awk or sort failing. Only a failure outside those
+#             (mktemp, or writing the scratch files) still aborts through the
+#             ERR trap, with the failing command's own status.
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
@@ -63,19 +69,51 @@ function fail_setup() {
   exit 2
 }
 
+# @description Succeed when a commit's tree holds a path and fail when it
+#              does not; exit 2 when git cannot say. `git cat-file -e` used to
+#              answer this, but it exits non-zero alike for a missing path and
+#              for git failing, so a failure read as "no baseline" and the
+#              commit passed unjudged. ls-tree prints nothing for a missing
+#              path and fails only when git does.
+# @arg $1 commit
+# @arg $2 path from the repository root
+# @arg $3 how to name the commit in a message
+function has_path() {
+  local listed
+  listed="$(git ls-tree --name-only "$1" -- "$2")" || fail_setup "git ls-tree failed for $3:$2"
+  [[ -n "${listed}" ]]
+}
+
 # @description Print the module path from go.mod at a commit, or nothing if
 #              the commit has no go.mod: package names then stay full import
-#              paths, which is still unambiguous.
+#              paths, which is still unambiguous. go.mod may quote the
+#              module path (`module "example.com/x"`) or end its lines in
+#              CRLF; neither the quotes nor the \r are part of it.
+#              .ci/check-patch-coverage parses go.mod with this same awk
+#              expression; keep the two identical.
+#
+#              Run in a command substitution, so a fail_setup here ends only
+#              that subshell: the caller exits 2 when it does, the message
+#              already printed.
 # @arg $1 commit
+# @arg $2 short sha, for messages
 function module_at() {
-  git cat-file -e "$1:go.mod" 2> /dev/null || return 0
-  git show --no-color "$1:go.mod" | awk '$1 == "module" { print $2; exit }'
+  has_path "$1" go.mod "$2" || return 0
+  local gomod
+  gomod="$(git show --no-color "$1:go.mod")" || fail_setup "git show failed for $2:go.mod"
+  awk '{ sub(/\r$/, "") } $1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }' <<< "${gomod}" || fail_setup "awk failed reading $2:go.mod"
 }
 
 # @description Print one finding per unjustified drop in a single commit.
 #              Reads `O pkg figure` and `N pkg figure` lines (the parent's and
 #              the commit's baseline) and `T value` lines (the Coverage-Drop
 #              trailer values) on stdin.
+#
+#              Every figure on both sides must be `n/a` or a one-decimal
+#              percentage, as check-coverage writes them. Anything else
+#              would read as 0, and a malformed parent figure would hide
+#              the drop below it, so it instead prints the first such
+#              package, and nothing else, and exits 3.
 # @arg $1 short sha
 # @arg $2 module path, or ''
 function judge_commit() {
@@ -91,6 +129,10 @@ function judge_commit() {
       return pkg
     }
     ($1 == "O" || $1 == "N") && ($2 == "" || substr($2, 1, 1) == "#") { next }
+    ($1 == "O" || $1 == "N") && $3 != "n/a" && $3 !~ /^[0-9]+\.[0-9]%$/ {
+      if (bad == "") bad = short($2)
+      next
+    }
     $1 == "O" { old[$2] = $3; next }
     $1 == "N" { new[$2] = $3; next }
     $1 == "T" {
@@ -107,6 +149,10 @@ function judge_commit() {
       next
     }
     END {
+      if (bad != "") {
+        print bad
+        exit 3
+      }
       for (pkg in new) {
         if (!(pkg in old)) continue
         if (old[pkg] == "n/a" || new[pkg] == "n/a") continue
@@ -144,24 +190,50 @@ function main() {
   # A plain command into a file, never `< <(git rev-list ...)`: a process
   # substitution swallows the exit status, so a range that does not resolve
   # would read as "no commits" and pass.
-  if ! git rev-list --no-merges "${range}" > "${work}/revs" 2> /dev/null; then
-    fail_setup "--range ${range} does not resolve"
+  if ! git rev-list --no-merges --parents "${range}" > "${work}/revs" 2> /dev/null; then
+    # stderr is dropped above, so the two causes cannot be told apart here.
+    fail_setup "--range ${range} does not resolve, or git rev-list failed"
   fi
 
-  local commit short
+  # Every git call below is guarded by hand, never left to errexit: that
+  # would exit with git's own status, which a caller cannot tell from a
+  # finding, behind the ERR trap's noise; and a failure must never read as
+  # "nothing to judge" and pass.
+  local commit parent short module rc
   : > "${work}/findings"
-  while IFS= read -r commit; do
-    git rev-parse --verify --quiet "${commit}^" > /dev/null || continue
-    git cat-file -e "${commit}:${BASELINE}" 2> /dev/null || continue
-    git cat-file -e "${commit}^:${BASELINE}" 2> /dev/null || continue
-    short="$(git rev-parse --short "${commit}")"
-    {
-      git show --no-color "${commit}^:${BASELINE}" | awk '{ sub(/\r$/, ""); print "O", $1, $2 }'
-      git show --no-color "${commit}:${BASELINE}" | awk '{ sub(/\r$/, ""); print "N", $1, $2 }'
-      git log -1 --no-show-signature --no-color \
-        --format='%(trailers:key=Coverage-Drop,valueonly,unfold)' "${commit}" \
-        | awk '{ print "T", $0 }'
-    } | judge_commit "${short}" "$(module_at "${commit}")" | sort >> "${work}/findings"
+  # --parents puts each commit's parent beside it. --no-merges leaves at most
+  # one, and none for a root commit, which has no earlier baseline to lower.
+  while IFS=' ' read -r commit parent; do
+    [[ -n "${parent}" ]] || continue
+    short="$(git rev-parse --short "${commit}")" || fail_setup "git rev-parse --short failed for ${commit}"
+    has_path "${commit}" "${BASELINE}" "${short}" || continue
+    has_path "${parent}" "${BASELINE}" "${short}^" || continue
+    module="$(module_at "${commit}" "${short}")" || exit 2
+    git show --no-color "${parent}:${BASELINE}" > "${work}/old" \
+      || fail_setup "git show failed for ${short}^:${BASELINE}"
+    git show --no-color "${commit}:${BASELINE}" > "${work}/new" \
+      || fail_setup "git show failed for ${short}:${BASELINE}"
+    git log -1 --no-show-signature --no-color \
+      --format='%(trailers:key=Coverage-Drop,valueonly,unfold)' "${commit}" > "${work}/trailers" \
+      || fail_setup "git log failed for ${short}"
+    # Each producer guarded on its own, never one `{ ...; } || ...` over the
+    # group: the `||` turns errexit off inside it, so only the last one's
+    # status would count, and a failure on either baseline's side would
+    # leave the facts without it, reading as "no drop".
+    awk '{ sub(/\r$/, ""); print "O", $1, $2 }' "${work}/old" > "${work}/facts" \
+      || fail_setup "awk failed reading ${short}^:${BASELINE}"
+    awk '{ sub(/\r$/, ""); print "N", $1, $2 }' "${work}/new" >> "${work}/facts" \
+      || fail_setup "awk failed reading ${short}:${BASELINE}"
+    awk '{ print "T", $0 }' "${work}/trailers" >> "${work}/facts" \
+      || fail_setup "awk failed reading ${short}'s trailers"
+    rc=0
+    judge_commit "${short}" "${module}" < "${work}/facts" > "${work}/verdict" || rc=$?
+    if ((rc == 3)); then
+      fail_setup "${short} has a malformed figure for $(< "${work}/verdict") in ${BASELINE}"
+    elif ((rc != 0)); then
+      fail_setup "awk failed judging ${short} (exit ${rc})"
+    fi
+    sort "${work}/verdict" >> "${work}/findings" || fail_setup "sorting the findings for ${short} failed"
   done < "${work}/revs"
 
   trap - ERR

@@ -19,6 +19,12 @@
 #              blocks are all run (stale: the tests caught up, so remove it)
 #              each fail.
 #
+#              Markers are recognised one line at a time. A `//` after a `/*`
+#              on the same line is seen as comment text, but a `/* ... */`
+#              block comment spanning several lines is not tracked, so a
+#              marker on one of its inner lines still counts. Do not leave
+#              markers in commented-out code.
+#
 #              "Changed" is `git diff <base>` against the WORKING TREE, so
 #              uncommitted edits count, matching the profile, which measured
 #              the working tree. Untracked files are invisible to both git
@@ -37,9 +43,18 @@
 # @option --base <rev> the commit to diff the working tree against
 # @option --profile <file> the coverage profile go test wrote
 # @exitcode 0 every changed block is run or exempt, and every marker is valid
-# @exitcode 1 a finding
-# @exitcode 2 usage error: bad arguments, --base not a commit, no profile, or
-#             a diff header this script cannot parse
+# @exitcode 1 a finding: a changed block never run, a marker with no reason,
+#             outside every block or stale, or a profile naming a file that
+#             does not exist
+# @exitcode 2 a setup failure, never a finding: bad arguments; not in a git
+#             repository; --base not a commit; the profile missing, without a
+#             mode: line, holding a line go would not write, or with no block
+#             in the module; go.mod missing or without a module line; git
+#             diff or git grep failing; a file name the diff header or git
+#             grep output cannot carry; or awk, tr, sort or cut failing. Only
+#             a failure outside those (mktemp, or writing the scratch files)
+#             still aborts through the ERR trap, with the failing command's
+#             own status.
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
@@ -83,19 +98,36 @@ function fail_setup() {
 #              fixed and is anchored to the end of the line, so matching it
 #              there finds the file:span boundary correctly regardless of
 #              spaces earlier in the line.
+#
+#              Any other non-empty line fails the run. Skipping it would fail
+#              open: a CRLF profile, or one with a mangled count, would read
+#              as having no blocks, and every change would pass. Only the
+#              line number is printed, never the line.
+#
+#              So does a profile with blocks none of which belong to the
+#              module: it was written for another repository, and reading it
+#              as "nothing here is profiled" would pass every change. A
+#              profile of only the mode line is valid; go writes that for a
+#              module with no statements.
 # @arg $1 profile
 # @arg $2 module path
 function read_blocks() {
+  local rc=0
   awk -v module="$2" '
-    FNR == 1 { next }
+    FNR == 1 || $0 == "" { next }
     {
-      if (!match($0, /:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+ [0-9]+ [0-9]+$/)) next
+      if (!match($0, /:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+ [0-9]+ [0-9]+$/)) {
+        # END still runs after exit; it reports the line and keeps the exit.
+        bad = FNR
+        exit 3
+      }
       file = substr($0, 1, RSTART - 1)
       rest = substr($0, RSTART + 1, RLENGTH - 1)
       split(rest, fields, " ")
       span = fields[1]
       numstmt = fields[2] + 0
       count = fields[3] + 0
+      blocks++
       prefix = module "/"
       if (substr(file, 1, length(prefix)) != prefix) next
       file = substr(file, length(prefix) + 1)
@@ -114,12 +146,25 @@ function read_blocks() {
       if (count > 0) ran[key] = 1
     }
     END {
+      if (bad) {
+        print bad
+        exit 3
+      }
+      if (blocks > 0 && n == 0) exit 4
       for (i = 1; i <= n; i++) {
         k = order[i]
         printf "B\t%s\t%d\t%d\t%d\t%d\n", name[k], first[k], last[k], stmts[k], ran[k]
       }
     }
-  ' "$1"
+  ' "$1" > "${work}/blocks" || rc=$?
+  if ((rc == 3)); then
+    fail_setup "$1 line $(< "${work}/blocks") is not a Go coverage profile line"
+  elif ((rc == 4)); then
+    fail_setup "no block in $1 belongs to module $2; was it written for this repository?"
+  elif ((rc != 0)); then
+    fail_setup "awk failed reading $1 (exit ${rc})"
+  fi
+  cat "${work}/blocks"
 }
 
 # @description Print `C<TAB>file<TAB>line` for every line the working tree
@@ -127,8 +172,10 @@ function read_blocks() {
 #              diff option that user or system git config can change is
 #              pinned: diff.mnemonicPrefix and diff.noprefix rewrite the
 #              `+++ b/` this parses, diff.interHunkContext merges hunks and
-#              marks unchanged lines as changed, and diff.external and
-#              diff.relative replace or narrow the output. core.quotePath is
+#              marks unchanged lines as changed, diff.external and
+#              diff.relative replace or narrow the output, and a textconv
+#              driver (diff.<driver>.textconv, picked by a diff= attribute)
+#              rewrites the text itself, even to nothing. core.quotePath is
 #              pinned off too, so an otherwise-plain UTF-8 file name (git's
 #              default quotes anything outside ASCII) comes through
 #              unquoted; a name git still quotes even so — a literal `"`, a
@@ -137,17 +184,26 @@ function read_blocks() {
 #              fails the run rather than silently dropping the file's hunks.
 #              Hunk bodies are skipped by count, not by pattern, so an added
 #              line that itself begins with `++` is never mistaken for a file
-#              header.
+#              header. The one exception is `\ No newline at end of file`,
+#              which sits inside a hunk but is not in its counts: it is
+#              skipped by pattern first, or it would use up the count and
+#              leave the hunk's last line to be read as a header.
 # @arg $1 base
 function read_changed() {
+  local rc=0
   git -c core.quotePath=false diff --unified=0 --inter-hunk-context=0 \
-    --no-renames --no-color --no-ext-diff --no-relative --src-prefix=a/ --dst-prefix=b/ \
-    "$1" -- '*.go' ':(exclude)*_test.go' > "${work}/diff"
+    --no-renames --no-color --no-ext-diff --no-textconv --no-relative --src-prefix=a/ --dst-prefix=b/ \
+    "$1" -- '*.go' ':(exclude)*_test.go' > "${work}/diff" || rc=$?
+  # Captured, not left to errexit: that would exit with git's own status,
+  # which a caller cannot tell from a finding, behind the ERR trap's noise.
+  if ((rc != 0)); then
+    fail_setup "git diff against $1 failed"
+  fi
   # awk's own exit status (not a sentinel in its output) carries the
   # unparsable-header case, so a bad header can never reach the facts file:
   # its "C" lines only get cat'd out below once awk has exited 0.
-  local rc=0
   awk '
+    /^\\/ { next }
     skip > 0 { skip--; next }
     /^\+\+\+ / {
       file = ""
@@ -196,24 +252,45 @@ function read_changed() {
 #              matched text is never passed on. A `/* */` comment, even one
 #              with `//` inside it, or the word in a string without `//`
 #              before it, is not a marker.
+#
+#              git grep's default `name:line:text` cannot say where a name
+#              containing a colon ends, and it quotes a name containing `"`
+#              even with core.quotePath off. With -z it prints
+#              `name<NUL>line<NUL>text`, the name verbatim; awk cannot
+#              portably split on NUL, so tr turns each into \001 first, and
+#              a record must then be exactly three \001-separated fields:
+#              name, line, text (tabs and colons included). One with fewer
+#              (a name with a newline in it) or more (a name, or rarely the
+#              text, with a \001 of its own), a name with a tab, which would
+#              shift the facts' tab-separated fields, or a line number that
+#              is not all digits fails the run rather than misattribute the
+#              marker.
 function read_markers() {
   local rc=0
-  git -c core.quotePath=false grep --full-name --line-number --no-color -I -E 'coverage-exempt:' -- '*.go' \
+  git -c core.quotePath=false grep -z --full-name --line-number --no-color -I -E 'coverage-exempt:' -- '*.go' \
     > "${work}/grep" || rc=$?
   # 1 is "no match", which is the usual answer. Anything above it is the
-  # scan failing, and must not read as "no markers".
+  # scan failing, and must not read as "no markers", nor as a finding.
   if ((rc > 1)); then
-    printf 'FAIL: git grep failed (exit %s)\n' "${rc}" >&2
-    exit 1
+    fail_setup "git grep failed (exit ${rc})"
   fi
+  tr '\0' '\001' < "${work}/grep" > "${work}/grep-split" \
+    || fail_setup 'tr failed reading the git grep output'
+  rc=0
   awk '
     {
-      c1 = index($0, ":")
-      file = substr($0, 1, c1 - 1)
+      c1 = index($0, "\001")
       rest = substr($0, c1 + 1)
-      c2 = index(rest, ":")
+      c2 = index(rest, "\001")
+      if (c1 < 2 || c2 < 2) exit 3
+      file = substr($0, 1, c1 - 1)
+      if (index(file, "\t") > 0) exit 3
       line = substr(rest, 1, c2 - 1)
+      if (line !~ /^[0-9]+$/) exit 3
       text = substr(rest, c2 + 1)
+      # A third \001 means a name held one of its own, which may even put
+      # digits where the line number belongs: the split cannot be trusted.
+      if (index(text, "\001") > 0) exit 3
       if (!match(text, /\/\/[[:space:]]*coverage-exempt:/)) next
       # A // inside an open /* ... */ is comment text, not a line comment.
       open = index(text, "/*")
@@ -224,13 +301,22 @@ function read_markers() {
       reason = substr(text, RSTART + RLENGTH)
       printf "M\t%s\t%d\t%s\n", file, line, (reason ~ /[^[:space:]]/) ? "ok" : "noreason"
     }
-  ' "${work}/grep"
+  ' "${work}/grep-split" > "${work}/markers" || rc=$?
+  if ((rc == 3)); then
+    fail_setup 'cannot parse the git grep output for a file name; rename it or report this'
+  elif ((rc != 0)); then
+    fail_setup "awk failed reading the git grep output (exit ${rc})"
+  fi
+  cat "${work}/markers"
 }
 
 # @description Judge the blocks, changed lines and markers on stdin, and
 #              print `file<TAB>line<TAB>message` per finding.
+# @arg $1 the profile's file name, for messages
 function judge() {
-  awk -F '\t' '
+  # Through the environment, not -v: awk -v reads escape sequences, so a
+  # backslash in the name would be mangled.
+  PROFILE_NAME="$1" awk -F '\t' '
     $1 == "B" {
       n++; bf[n] = $2; bs[n] = $3 + 0; be[n] = $4 + 0; bn[n] = $5 + 0; br[n] = $6 + 0
       profiled[$2] = 1
@@ -239,9 +325,10 @@ function judge() {
     $1 == "C" { changed[$2, $3 + 0] = 1; touched[$2] = 1; next }
     $1 == "M" { m++; mf[m] = $2; ml[m] = $3 + 0; mok[m] = $4; next }
     END {
+      profile = ENVIRON["PROFILE_NAME"]
       for (f in profiled) {
         if ((getline probe < f) < 0) {
-          printf "%s\t0\tFAIL: coverage.out names %s, which does not exist; rerun the tests\n", f, f
+          printf "%s\t0\tFAIL: %s names %s, which does not exist; rerun the tests\n", f, profile, f
         } else {
           close(f)
         }
@@ -320,8 +407,13 @@ function main() {
   if [[ ! -f go.mod ]]; then
     fail_setup 'no go.mod at the repository root'
   fi
+  # go.mod may quote the module path (`module "example.com/x"`) or end its
+  # lines in CRLF; neither the quotes nor the \r are part of it.
+  # .ci/check-coverage-drop's module_at parses go.mod with this same awk
+  # expression; keep the two identical.
   local module
-  module="$(awk '$1 == "module" { print $2; exit }' go.mod)"
+  module="$(awk '{ sub(/\r$/, "") } $1 == "module" { m = $2; if (m ~ /^".*"$/) m = substr(m, 2, length(m) - 2); print m; exit }' go.mod)" \
+    || fail_setup 'awk failed reading go.mod'
   if [[ -z "${module}" ]]; then
     fail_setup 'go.mod has no module line'
   fi
@@ -332,7 +424,8 @@ function main() {
     read_changed "${base}"
     read_markers
   } > "${work}/facts"
-  judge < "${work}/facts" | sort -t $'\t' -k1,1 -k2,2n | cut -f 3- > "${work}/findings"
+  judge "${profile##*/}" < "${work}/facts" | sort -t $'\t' -k1,1 -k2,2n | cut -f 3- > "${work}/findings" \
+    || fail_setup 'judging the findings failed (awk, sort or cut)'
 
   trap - ERR
   if [[ -s "${work}/findings" ]]; then
