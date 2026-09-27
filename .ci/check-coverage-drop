@@ -79,6 +79,12 @@ function module_at() {
 #              Reads `O pkg figure` and `N pkg figure` lines (the parent's and
 #              the commit's baseline) and `T value` lines (the Coverage-Drop
 #              trailer values) on stdin.
+#
+#              Every figure on both sides must be `n/a` or a one-decimal
+#              percentage, as check-coverage writes them. Anything else
+#              would read as 0, and a malformed parent figure would hide
+#              the drop below it, so it instead prints the first such
+#              package, and nothing else, and exits 3.
 # @arg $1 short sha
 # @arg $2 module path, or ''
 function judge_commit() {
@@ -94,6 +100,10 @@ function judge_commit() {
       return pkg
     }
     ($1 == "O" || $1 == "N") && ($2 == "" || substr($2, 1, 1) == "#") { next }
+    ($1 == "O" || $1 == "N") && $3 != "n/a" && $3 !~ /^[0-9]+\.[0-9]%$/ {
+      if (bad == "") bad = short($2)
+      next
+    }
     $1 == "O" { old[$2] = $3; next }
     $1 == "N" { new[$2] = $3; next }
     $1 == "T" {
@@ -110,6 +120,10 @@ function judge_commit() {
       next
     }
     END {
+      if (bad != "") {
+        print bad
+        exit 3
+      }
       for (pkg in new) {
         if (!(pkg in old)) continue
         if (old[pkg] == "n/a" || new[pkg] == "n/a") continue
@@ -151,7 +165,7 @@ function main() {
     fail_setup "--range ${range} does not resolve"
   fi
 
-  local commit short
+  local commit short rc
   : > "${work}/findings"
   while IFS= read -r commit; do
     git rev-parse --verify --quiet "${commit}^" > /dev/null || continue
@@ -164,7 +178,15 @@ function main() {
       git log -1 --no-show-signature --no-color \
         --format='%(trailers:key=Coverage-Drop,valueonly,unfold)' "${commit}" \
         | awk '{ print "T", $0 }'
-    } | judge_commit "${short}" "$(module_at "${commit}")" | sort >> "${work}/findings"
+    } > "${work}/facts"
+    rc=0
+    judge_commit "${short}" "$(module_at "${commit}")" < "${work}/facts" > "${work}/verdict" || rc=$?
+    if ((rc == 3)); then
+      fail_setup "${short} has a malformed figure for $(< "${work}/verdict") in ${BASELINE}"
+    elif ((rc != 0)); then
+      fail_setup "awk failed judging ${short} (exit ${rc})"
+    fi
+    sort "${work}/verdict" >> "${work}/findings"
   done < "${work}/revs"
 
   trap - ERR

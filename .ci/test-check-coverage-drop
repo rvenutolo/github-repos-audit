@@ -284,6 +284,31 @@ function main() {
   commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel\n\nCo-Authored-By: Marker <marker@example.invalid>')"
   expect "${repo}" "${base}..HEAD" 1 'lowers internal/x' 'a trailer in its own paragraph above Co-Authored-By' || rc=1
 
+  # A malformed figure used to read as 0, so a malformed parent figure hid
+  # the drop below it. Either side malformed fails the run, naming the
+  # package and never quoting the figure.
+  repo="$(new_repo)"
+  write_baseline "${repo}" '90.0%' '8O.0%' 'n/a'
+  commit_all "${repo}" 'chore: mangle a figure'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '75.0%' 'n/a'
+  commit_all "${repo}" 'refactor: drop the retry path'
+  expect "${repo}" "${base}..HEAD" 2 'has a malformed figure for internal/x in .ci/coverage-baseline.txt' \
+    "a malformed parent figure" || rc=1
+  local figure_out
+  figure_out="$(cd "${repo}" && "${CHECK}" --range "${base}..HEAD" 2>&1)" || true
+  if [[ "${figure_out}" == *'8O.0'* ]]; then
+    ci::log 'FAIL: a malformed parent figure: the output quoted the figure'
+    rc=1
+  fi
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_baseline "${repo}" '90.0%' '80%' 'n/a'
+  commit_all "${repo}" 'chore: drop the decimal'
+  expect "${repo}" "${base}..HEAD" 2 'has a malformed figure for internal/x in .ci/coverage-baseline.txt' \
+    "a malformed figure in the commit's own baseline" || rc=1
+
   # --- usage ---
 
   repo="$(new_repo)"
