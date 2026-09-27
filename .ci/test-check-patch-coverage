@@ -488,6 +488,11 @@ EOF
   } > "${repo}/cov.out"
   expect "${repo}" "${base}" "${repo}/cov.out" 1 \
     'FAIL: cov.out names gone.go, which does not exist' 'a profile naming a missing file' || rc=1
+  # The finding names the profile as spelled: a backslash in its name is
+  # not an escape sequence (awk -v would turn this \n into a newline).
+  cp -- "${repo}/cov.out" "${repo}/c\\nov.out"
+  expect "${repo}" "${base}" "${repo}/c\\nov.out" 1 \
+    "FAIL: c\\nov.out names gone.go" 'a profile name with a backslash' || rc=1
 
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"

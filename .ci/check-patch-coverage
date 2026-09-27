@@ -308,7 +308,9 @@ function read_markers() {
 #              print `file<TAB>line<TAB>message` per finding.
 # @arg $1 the profile's file name, for messages
 function judge() {
-  awk -F '\t' -v profile="$1" '
+  # Through the environment, not -v: awk -v reads escape sequences, so a
+  # backslash in the name would be mangled.
+  PROFILE_NAME="$1" awk -F '\t' '
     $1 == "B" {
       n++; bf[n] = $2; bs[n] = $3 + 0; be[n] = $4 + 0; bn[n] = $5 + 0; br[n] = $6 + 0
       profiled[$2] = 1
@@ -317,6 +319,7 @@ function judge() {
     $1 == "C" { changed[$2, $3 + 0] = 1; touched[$2] = 1; next }
     $1 == "M" { m++; mf[m] = $2; ml[m] = $3 + 0; mok[m] = $4; next }
     END {
+      profile = ENVIRON["PROFILE_NAME"]
       for (f in profiled) {
         if ((getline probe < f) < 0) {
           printf "%s\t0\tFAIL: %s names %s, which does not exist; rerun the tests\n", f, profile, f
