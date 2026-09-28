@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+# @description Assert the README's recipe table and the .justfile name the
+#              same recipes. The table is where a reader learns what `just`
+#              can do; a recipe added, renamed or dropped without touching it
+#              leaves the README advertising a command that fails, or hiding
+#              one that works. `default` only lists the others and is exempt.
+#
+#              The recipe names come from `just --summary`, just's own parse
+#              of the file, rather than from reading .justfile here: a second
+#              parser would drift from just's syntax. A README row is a table
+#              cell holding exactly `just <name>`.
+# @noargs
+# @exitcode 0 every recipe but default is in the table, and every table row
+#             names a recipe
+# @exitcode 1 at least one is not
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# @description Compare the README's `just <name>` cells with just's recipes.
+# @noargs
+function main() {
+  local rc=0 line name summary
+  local -a recipes=()
+  local -A in_justfile=() in_readme=()
+
+  summary="$(just --justfile "${REPO_DIR}/.justfile" --working-directory "${REPO_DIR}" --summary)"
+  IFS=' ' read -r -a recipes <<< "${summary}"
+  for name in "${recipes[@]}"; do
+    [[ "${name}" == 'default' ]] || in_justfile["${name}"]=1
+  done
+
+  while IFS= read -r line; do
+    [[ "${line}" =~ ^\|[[:space:]]*\`just[[:space:]]([a-z0-9_-]+)\`[[:space:]]*\| ]] || continue
+    name="${BASH_REMATCH[1]}"
+    if [[ -v in_readme["${name}"] ]]; then
+      printf 'FAIL: README.md lists "just %s" twice\n' "${name}" >&2
+      rc=1
+    fi
+    in_readme["${name}"]=1
+  done < "${REPO_DIR}/README.md"
+
+  # An empty side would let the comparisons below pass or fail for the wrong
+  # reason, so a parse that finds nothing is reported as the scan breaking.
+  if ((${#in_justfile[@]} == 0 || ${#in_readme[@]} == 0)); then
+    printf 'FAIL: found %s recipes and %s README rows - the scan looks broken\n' \
+      "${#in_justfile[@]}" "${#in_readme[@]}" >&2
+    trap - ERR
+    return 1
+  fi
+
+  for name in "${!in_justfile[@]}"; do
+    if [[ ! -v in_readme["${name}"] ]]; then
+      printf 'FAIL: recipe %s is missing from the recipe table in README.md\n' "${name}" >&2
+      rc=1
+    fi
+  done
+  for name in "${!in_readme[@]}"; do
+    if [[ ! -v in_justfile["${name}"] ]]; then
+      printf 'FAIL: README.md lists "just %s", which .justfile does not define\n' "${name}" >&2
+      rc=1
+    fi
+  done
+
+  # A gate reporting its own verdict is not a crash: drop the ERR trap so the
+  # diagnostics above are the last thing the reader sees.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

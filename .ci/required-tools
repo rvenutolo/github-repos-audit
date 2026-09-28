@@ -59,6 +59,7 @@ git
 # internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset
 gh
 # the task runner .justfile documents; .ci/run-lint-checks runs `just --fmt`
+# and .ci/check-readme-recipes runs `just --summary`
 just
 # invoked by .githooks/commit-msg
 commitlint
