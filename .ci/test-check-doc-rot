@@ -152,6 +152,34 @@ function main() {
   add_file "${repo}" notes.md 'The collector previously read forks; see check.go:42.'
   expect "${repo}" 1 'two classes on one line report the first' 'notes.md:1 [history-phrasing]' || rc=1
 
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// TODO: handle the empty case.\nvar x = 1'
+  expect "${repo}" 1 'a todo marker' 'a.go:3 [deferral]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'For now the report is spliced by hand.'
+  expect "${repo}" 1 'for now' 'notes.md:1 [deferral]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# Copies the tree into a temporary directory.\necho ok'
+  expect "${repo}" 0 'a temporary directory is present tense' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'Config lives at /home/someone/Projects/x/repos.toml.'
+  expect "${repo}" 1 'an absolute home path' 'notes.md:1 [absolute-path]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// Added in #12 after the review.\nvar x = 1'
+  expect "${repo}" 1 'a pull request number' 'a.go:3 [provenance-ref]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# 1. first step\n# 2. second step\necho ok'
+  expect "${repo}" 0 'numbered list in a shell comment' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'We decided last week to drop forks; recently that changed.'
+  expect "${repo}" 1 'a person and a relative date' 'notes.md:1 [person-time]' || rc=1
+
   ((rc == 0)) && ci::log 'check-doc-rot: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
   # so a non-zero return does not add its own "ERROR: line ..." after the

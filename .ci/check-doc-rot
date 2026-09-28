@@ -74,6 +74,12 @@ function scan_file() {
       if (lc ~ /[a-z0-9_.\/-]+\.(go|sh|md|yml|yaml|nix|toml):[0-9]+([^0-9]|$)/) return "drift-value"
       if (lc ~ /(^|[^a-z-])lines? [0-9]+([^0-9]|$)/) return "drift-value"
       if (lc ~ /(^|[^a-z0-9])[0-9]+ (lines|files|tests|functions|checks|statements|packages|scripts)([^a-z]|$)/) return "drift-value"
+      if (text ~ /(^|[^A-Za-z])(TODO|FIXME|XXX|HACK)([^A-Za-z]|$)/) return "deferral"
+      if (lc ~ /(^|[^a-z])(for now|temporarily|temporary (fix|workaround|hack|measure))([^a-z]|$)/) return "deferral"
+      if (text ~ /\/home\/|\$HOME\/Projects|~\/Projects/) return "absolute-path"
+      if (text ~ /(^|[ (])#[0-9]+([^0-9A-Za-z]|$)/) return "provenance-ref"
+      if (lc ~ /(^|[^a-z])(pr|pull request|issue) #?[0-9]+([^0-9]|$)/) return "provenance-ref"
+      if (lc ~ /(^|[^a-z])((i|we) (decided|chose|changed|moved|added|removed|fixed|switched)|(last|next) (week|month|year)|recently|yesterday|today)([^a-z]|$)/) return "person-time"
       return ""
     }
     {
