@@ -143,7 +143,8 @@ type Files struct {
 	Contributing  bool `json:"contributing"`
 	CodeOfConduct bool `json:"code_of_conduct"`
 	// RenovateConfig is where the Renovate configuration lives, the first of
-	// the seven accepted paths to match. Empty when there is none.
+	// the accepted paths to match in Renovate's own lookup order. Empty when
+	// there is none.
 	RenovateConfig string `json:"renovate_config,omitzero"`
 	// Workflows lists the entries of `.github/workflows`, sorted.
 	Workflows []string `json:"workflows,omitzero"`

@@ -23,7 +23,7 @@ const graphQLPath = "/graphql"
 // HEAD does not resolve. The probes are case-sensitive, so a differently-cased
 // README reads as missing, which is deliberate.
 //
-// The seven Renovate probes also select the blob's text, because the minimum
+// The Renovate probes also select the blob's text, because the minimum
 // release age is resolved from the file's content: selecting it here costs no
 // extra request, where a contents API read per repository would.
 //
@@ -127,7 +127,35 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
       oid
       ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
     }
+    renovate_jsonc: object(expression: "HEAD:renovate.jsonc") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
     renovate_json5: object(expression: "HEAD:renovate.json5") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_github_json: object(expression: "HEAD:.github/renovate.json") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_github_jsonc: object(expression: "HEAD:.github/renovate.jsonc") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_github_json5: object(expression: "HEAD:.github/renovate.json5") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_gitlab_json: object(expression: "HEAD:.gitlab/renovate.json") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_gitlab_jsonc: object(expression: "HEAD:.gitlab/renovate.jsonc") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
+    renovate_gitlab_json5: object(expression: "HEAD:.gitlab/renovate.json5") {
       oid
       ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
     }
@@ -139,15 +167,11 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
       oid
       ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
     }
+    renovaterc_jsonc: object(expression: "HEAD:.renovaterc.jsonc") {
+      oid
+      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
+    }
     renovaterc_json5: object(expression: "HEAD:.renovaterc.json5") {
-      oid
-      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
-    }
-    renovate_github_json: object(expression: "HEAD:.github/renovate.json") {
-      oid
-      ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
-    }
-    renovate_github_json5: object(expression: "HEAD:.github/renovate.json5") {
       oid
       ... on Blob { text is_truncated: isTruncated is_binary: isBinary }
     }
@@ -282,12 +306,18 @@ type repository struct {
 	CoCDocs            *gitObject `json:"coc_docs"`
 
 	RenovateJSON        *renovateBlob `json:"renovate_json"`
+	RenovateJSONC       *renovateBlob `json:"renovate_jsonc"`
 	RenovateJSON5       *renovateBlob `json:"renovate_json5"`
+	RenovateGitHubJSON  *renovateBlob `json:"renovate_github_json"`
+	RenovateGitHubJSONC *renovateBlob `json:"renovate_github_jsonc"`
+	RenovateGitHubJSON5 *renovateBlob `json:"renovate_github_json5"`
+	RenovateGitLabJSON  *renovateBlob `json:"renovate_gitlab_json"`
+	RenovateGitLabJSONC *renovateBlob `json:"renovate_gitlab_jsonc"`
+	RenovateGitLabJSON5 *renovateBlob `json:"renovate_gitlab_json5"`
 	RenovateRC          *renovateBlob `json:"renovaterc"`
 	RenovateRCJSON      *renovateBlob `json:"renovaterc_json"`
+	RenovateRCJSONC     *renovateBlob `json:"renovaterc_jsonc"`
 	RenovateRCJSON5     *renovateBlob `json:"renovaterc_json5"`
-	RenovateGitHubJSON  *renovateBlob `json:"renovate_github_json"`
-	RenovateGitHubJSON5 *renovateBlob `json:"renovate_github_json5"`
 
 	Workflows *tree `json:"workflows"`
 }

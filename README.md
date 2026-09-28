@@ -262,7 +262,10 @@ Grouped by theme here; the report lists them in the fixed worklist order
   is allowed, since there is no gate to require anything), and whether the
   head commit's checks last reported success.
 - **renovate**, **flake_nix**, **justfile** — whether the corresponding
-  tooling file exists.
+  tooling file exists. The Renovate file is looked for at every path
+  Renovate itself reads, in Renovate's order, and the first one found is the
+  one reported and judged, as it is the one Renovate uses. The deprecated
+  `renovate` key in `package.json` is not read.
 - **renovate_min_release_age** — Renovate's effective `minimumReleaseAge`,
   held to the type's duration. The value is read from the repository's own
   Renovate file merged with any presets it extends from the same account;
