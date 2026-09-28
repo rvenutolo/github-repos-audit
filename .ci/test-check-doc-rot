@@ -132,6 +132,26 @@ function main() {
   add_file "${repo}" notes.md 'clean'
   expect "${repo}" 0 'testdata and json are skipped' || rc=1
 
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'See internal/rules/check.go:42 for the list.'
+  expect "${repo}" 1 'a file:line reference' 'notes.md:1 [drift-value]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// The helper is 30 lines long and has 4 tests.\nvar x = 1'
+  expect "${repo}" 1 'a line count' 'a.go:3 [drift-value]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# Fails on line 12 of the baseline.\necho ok'
+  expect "${repo}" 1 'a bare line number' 's.sh:2 [drift-value]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# git grep --line-number reports LINENO-style positions; each line is a record.\necho ok'
+  expect "${repo}" 0 'line-number flags and prose about lines' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The collector previously read forks; see check.go:42.'
+  expect "${repo}" 1 'two classes on one line report the first' 'notes.md:1 [history-phrasing]' || rc=1
+
   ((rc == 0)) && ci::log 'check-doc-rot: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
   # so a non-zero return does not add its own "ERROR: line ..." after the
