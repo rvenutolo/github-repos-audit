@@ -451,7 +451,7 @@
       }
     },
     "settings": {
-      "description": "Every repository setting the modal computation tracks. Nothing here has a declared expected value: the tool computes the most common value across the repositories where the setting applies and reports the ones that differ.",
+      "description": "Every live repository setting. Most feed the modal computation: nothing has a declared expected value, so the tool computes the most common value across the repositories where the setting applies and reports the ones that differ. secret_scanning and private_vulnerability_reporting are judged as the secret_scanning and vuln_reporting checks instead.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -520,7 +520,7 @@
           "type": "boolean"
         },
         "allowed_actions": {
-          "description": "Present only under the \"selected\" policy, where the selected-actions endpoint answers 404 for any other one.",
+          "description": "Present only under the \"selected\" policy: the selected-actions endpoint answers 404 under any other policy, and 409 under \"all\".",
           "$ref": "#/$defs/allowed_actions"
         },
         "default_workflow_permissions": {
