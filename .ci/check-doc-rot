@@ -62,6 +62,30 @@ function prose_files() {
 function scan_file() {
   local -r file="$1" mode="$2"
   awk -v file="${file}" -v mode="${mode}" '
+    function report(lineno, class, text) {
+      printf "FAIL: %s:%d [%s] %s\n", file, lineno, class, text
+      found = 1
+    }
+    # The class the text belongs to, or "" when it is clean. English words
+    # match case-insensitively on a lowered copy; markers match as written.
+    function classify(text,   lc) {
+      lc = tolower(text)
+      if (lc ~ /(^|[^a-z])(previously|formerly|historically|renamed from|as of this writing|(it|this|that|which|we|they|code|script|check|gate|tool|collector|workflow) used to|no longer|now (uses|does|is|has|only)|as of (v[0-9]|[0-9][0-9][0-9][0-9]-))([^a-z]|$)/) return "history-phrasing"
+      return ""
+    }
+    {
+      line = $0
+      if (mode == "slash") {
+        if (line !~ /^[ \t]*\/\//) next
+        sub(/^[ \t]*\/\/+/, "", line)
+      } else if (mode == "hash") {
+        if (NR == 1 && line ~ /^#!/) next
+        if (line !~ /^[ \t]*#/) next
+        sub(/^[ \t]*#+/, "", line)
+      }
+      class = classify(line)
+      if (class != "") report(NR, class, line)
+    }
     END { exit found ? 1 : 0 }
   ' "${REPO_DIR}/${file}" >&2
 }

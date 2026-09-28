@@ -90,6 +90,48 @@ function main() {
     rc=1
   fi
 
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The collector reads every repository the account owns.'
+  expect "${repo}" 0 'present-tense markdown' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'intro\nThe collector previously read forks as well.'
+  expect "${repo}" 1 'history phrasing in markdown' 'notes.md:2 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// It used to read forks; now it does not.\nvar x = 1'
+  expect "${repo}" 1 'history phrasing in a go comment' 'a.go:3 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// The collector reads every repository.\nvar previously = "no longer" // formerly\nvar u = "https://example.invalid/previously"'
+  expect "${repo}" 0 'trigger words on go code lines' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// Compare now with the clock: time.Now() is injected.\nvar x = 1'
+  expect "${repo}" 0 'bare now in a go comment' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# The token is used to authenticate.\necho ok'
+  expect "${repo}" 0 'is used to, and a shebang' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# This script used to fork.\necho ok'
+  expect "${repo}" 1 'subject used to in a shell comment' 's.sh:2 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" c.yml $'# no longer needed\nkey: value'
+  expect "${repo}" 1 'history phrasing in yaml' 'c.yml:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'text\n```\n# as of this writing\n```'
+  expect "${repo}" 1 'a fenced code block in markdown is prose too' 'notes.md:3 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" internal/x/testdata/f.md 'previously'
+  add_file "${repo}" data.json '{"note": "previously"}'
+  add_file "${repo}" notes.md 'clean'
+  expect "${repo}" 0 'testdata and json are skipped' || rc=1
+
   ((rc == 0)) && ci::log 'check-doc-rot: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
   # so a non-zero return does not add its own "ERROR: line ..." after the
