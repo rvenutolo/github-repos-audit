@@ -4,8 +4,7 @@ name: gremlins-bump
 #
 # gremlins is not in nixpkgs, so nix/gremlins.nix packages it by hand, and that
 # means a vendorHash. Renovate cannot maintain one: postUpgradeTasks is
-# self-hosted only and this repo is on the hosted app, which is what #48
-# recorded and what led to reverting the flake package in #33. `nix-update`
+# self-hosted only and this repo is on the hosted app. `nix-update`
 # recomputes both the source hash and the vendorHash directly, so this workflow
 # does the job Renovate structurally cannot.
 #

@@ -255,7 +255,7 @@ function main() {
   esac
 
   # A gate reporting its own verdict is not a crash: drop the ERR trap so the
-  # diagnostics above are the last thing the reader sees (#43, invariant 6).
+  # diagnostics above are the last thing the reader sees.
   trap - ERR
   return "${rc}"
 }

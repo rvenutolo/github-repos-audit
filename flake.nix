@@ -30,13 +30,13 @@
       # can only target `packages.<system>.<name>`, and it gives the bump
       # workflow a `nix build .#gremlins` to verify against.
       #
-      # This is NOT what #33 did. `nix flake check` BUILDS everything under
+      # This is NOT a `checks.build`. `nix flake check` BUILDS everything under
       # `checks` but only EVALUATES what is under the packages attribute set
       # and `devShells` -- verified with a deliberately failing canary
       # derivation, which flake check reported as `derivation evaluated to
       # ...` and passed. So the gate pays an evaluation here and never a
-      # compile, and a Go dependency bump cannot turn it red the way #33's
-      # `checks.build` did.
+      # compile, and a Go dependency bump cannot turn it red the way a
+      # `checks.build` derivation would.
       #
       # The cost of that is real and is handled elsewhere: a gremlins that does
       # not COMPILE would sail through `just check`. Only an evaluation error

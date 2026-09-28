@@ -5,9 +5,9 @@
 # devShell comes from nixpkgs; this is the one exception, and it is confined to
 # a shell the gate never enters.
 #
-# On the vendorHash, which is the thing that killed the flake package in #33:
-# that hash was derived from THIS repo's go.mod, so every Renovate dependency
-# bump invalidated it and turned `checks.build` red. This one is derived from
+# On the vendorHash: a hash derived from THIS repo's go.mod is invalidated by
+# every Renovate dependency bump and turns a `checks.build` red, which is why
+# the flake packages nothing that way. This one is derived from
 # gremlins' own go.mod, frozen at the tag below, so nothing this repo does can
 # invalidate it. It moves only when the version moves, and
 # .github/workflows/gremlins-bump.yml moves both together with `nix-update`.
