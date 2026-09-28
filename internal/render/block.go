@@ -24,6 +24,7 @@ const footerPrefix = "_Read from GitHub on "
 
 // Block renders everything that lives between the README's generated markers.
 //
+// doc-rot-exempt: now is the parameter's name, not a narrated change
 // now is injected rather than read from the clock, because the renderer turns
 // instants into "12d" and "4mo" — a renderer that called time.Now would make
 // its own golden files rot daily.

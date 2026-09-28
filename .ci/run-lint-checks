@@ -74,10 +74,9 @@ function main() {
     # self-repository reusable-workflow syntax: `job.workflow_repository` and
     # `job.workflow_sha` were only added to the job context on 2026-09-03, and
     # `$/` for a same-repository `uses:` is newer still, so all three are
-    # flagged as unknown. TODO: drop these three -ignore patterns once
-    # nixpkgs packages an actionlint release that understands them
-    # (https://github.com/rhysd/actionlint/issues, no tracking issue number
-    # yet as of this writing).
+    # flagged as unknown. Drop these three -ignore patterns once nixpkgs
+    # packages an actionlint release that understands them; upstream has no
+    # tracking issue to cite (https://github.com/rhysd/actionlint/issues).
     actionlint \
       -ignore 'property "workflow_repository" is not defined' \
       -ignore 'property "workflow_sha" is not defined' \
@@ -132,9 +131,9 @@ function main() {
   fi
 
   ci::log 'running lychee'
-  # The generated table that linked to private repositories lived in the
-  # report, which this repository no longer carries, so every link left is
-  # public and an anonymous run is enough. A token is still used when one is in
+  # Every link in this repository is public (the generated table that links
+  # to private repositories lives in the report repository), so an anonymous
+  # run is enough. A token is still used when one is in
   # scope, because api.github.com rate-limits anonymous callers and CI has the
   # built-in token for free.
   local -a lychee_auth=()

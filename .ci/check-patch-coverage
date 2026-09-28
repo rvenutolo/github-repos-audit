@@ -92,8 +92,8 @@ function fail_setup() {
 #              go itself writes profile lines space-delimited with no
 #              escaping, so a file name containing a space (legal in a file
 #              name, and go writes it unescaped either way) cannot be told
-#              apart from the field separator by naive $1/$2/$3 splitting,
-#              the way this used to work. The trailing
+#              apart from the field separator by naive $1/$2/$3 splitting.
+#              The trailing
 #              "<line>.<col>,<line>.<col> <statements> <count>" shape is
 #              fixed and is anchored to the end of the line, so matching it
 #              there finds the file:span boundary correctly regardless of
