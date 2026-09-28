@@ -2,8 +2,10 @@
 #
 # Every recipe that runs a tool goes through .ci/in-devshell — except `fmt`,
 # `format-check` and the `nix fmt` half of `fix`, which drive the host's
-# `nix`, the one tool the devshell cannot provide to itself — so it runs
-# under the flake's pinned tools with the host environment stripped, the
+# `nix`, the one tool the devshell cannot provide to itself; `mutate`, which
+# enters its own devShell (see its body); `gremlins-bump`, which is `nix run`
+# on the host; and `hooks`, which runs before the devShell exists — so it
+# runs under the flake's pinned tools with the host environment stripped, the
 # same way CI runs. `just check` IS what CI runs.
 #
 # gh runs OUTSIDE the devshell so it sees the host's auth; the token is passed

@@ -11,9 +11,12 @@
 // Several responses that look like failures are ordinary answers and are
 // treated as such: a private repository omits security_and_analysis, answers
 // 404 from private-vulnerability-reporting, and a public one answers 422 from
-// the Actions access endpoint. Any status outside that documented set aborts
-// the whole run, because a field GitHub declined to answer is not a field that
-// is missing and rendering it as a gap would invent one.
+// the Actions access endpoint; the Actions allowlist endpoint answers 404 or
+// 409 under any policy but "selected", and a Renovate preset's contents read
+// answers 404 when the file is absent. Each getJSON call lists the statuses it
+// accepts, and any status outside that set aborts the whole run, because a
+// field GitHub declined to answer is not a field that is missing and rendering
+// it as a gap would invent one.
 //
 // Two conditions are neither answers nor failures and are waited out instead:
 // a rate limit, which a six-wide fan-out issuing nine calls per repository is
@@ -179,7 +182,7 @@ type Client struct {
 }
 
 // response is one answer from GitHub, already fully read. Holding the body as
-// bytes rather than a stream is what lets do drain and close it before
+// bytes rather than a stream is what lets send drain and close it before
 // returning, so the connection goes back to the pool on every path.
 type response struct {
 	status int

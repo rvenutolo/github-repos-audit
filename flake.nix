@@ -54,10 +54,10 @@
         #
         #   1. CI never builds gremlins. It is not in the gate, so no gate run
         #      should pay to compile it.
-        #   2. No egress allowlist change. Building gremlins fetches its Go
-        #      modules; under harden-runner's `egress-policy: block` that would
-        #      need proxy.golang.org opened for every gate job. Only
-        #      gremlins-bump.yml needs it, and only that workflow opens it.
+        #   2. Gate jobs fetch only this repository's own Go modules. Every
+        #      gate job opens proxy.golang.org and sum.golang.org for those;
+        #      gremlins' own modules are fetched only by gremlins-bump.yml,
+        #      the one workflow that builds it.
         #   3. .ci/required-tools stays untouched. .ci/check-devshell-provides
         #      reads `devShells.${system}.default.nativeBuildInputs` and nothing
         #      else, so a tool that lives here is invisible to the two-way drift
@@ -132,11 +132,11 @@
             # no bin/, so a bare `nix` puts nothing on PATH and the gate runs
             # whatever nix the host ships.
             nix.out
-            # baseline userland the gates shell out to: cp, mktemp, sort and
-            # cut from coreutils, xargs from findutils, awk from gawk (the
-            # coverage checks, which keep to POSIX awk). Nothing here needs
-            # GNU grep or sed — the scripts use `git grep` and bash parameter
-            # expansion — so neither is declared.
+            # baseline userland the gates shell out to: cp, mktemp, sort, cut,
+            # base64 and tr from coreutils, xargs from findutils, awk from
+            # gawk (the coverage checks, which keep to POSIX awk). Nothing
+            # here needs GNU grep or sed — the scripts use `git grep` and bash
+            # parameter expansion — so neither is declared.
             coreutils
             findutils
             gawk

@@ -170,7 +170,8 @@ func (r *repository) files() audit.Files {
 // renovateConfig returns the first of the seven accepted paths that exists, so
 // the report can say where the configuration lives rather than only that it
 // does, together with that file's blob, which is the configuration Renovate
-// reads. The order is the one Renovate itself resolves in.
+// reads. The order is fixed so the reported path is deterministic when more
+// than one candidate exists.
 func (r *repository) renovateConfig() (string, *renovateBlob) {
 	candidates := []struct {
 		path string

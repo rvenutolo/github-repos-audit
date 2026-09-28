@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 
-# Helpers shared by run-all-checks, .ci/run-lint-checks, .ci/run-fixers,
-# .ci/run-fuzz, .ci/refresh-pull-request and .ci/fuzz-pull-request. Sourced,
-# not run; the caller sets REPO_DIR (the git toplevel) before sourcing. Every
-# function lists files with `git ls-files` so untracked scratch files are never
-# touched.
+# Helpers shared by run-all-checks and the .ci/ scripts (every script that runs
+# `source .ci/lib.sh`). Sourced, not run; the caller sets REPO_DIR (the git
+# toplevel) before sourcing. Any function here that enumerates files does so
+# with `git ls-files` so untracked scratch files are never touched.
 
 # @description Print one INFO line to stderr, prefixed with the calling
 #              script's name. No timestamp: CI and terminals already stamp

@@ -99,7 +99,9 @@ type Repo struct {
 	Rulesets []Ruleset `json:"rulesets,omitzero"`
 	// Branch is the rule set as evaluated for the default branch.
 	Branch BranchRules `json:"branch"`
-	// Settings is every repository setting the modal computation tracks.
+	// Settings is every live repository setting: what the modal computation
+	// tracks, plus secret scanning and private vulnerability reporting, which
+	// are judged as checks.
 	Settings Settings `json:"settings"`
 }
 
@@ -193,10 +195,10 @@ type BranchRules struct {
 	RequiredChecks []string `json:"required_checks,omitzero"`
 }
 
-// Settings is every repository setting the modal computation tracks. Nothing
-// here has a declared expected value: the tool computes the most common value
-// across the repositories where the setting applies and reports the ones that
-// differ.
+// Settings is every live repository setting. Most feed the modal computation
+// (see internal/rules/modal.go); SecretScanning and
+// PrivateVulnerabilityReporting are judged as the secret_scanning and
+// vuln_reporting checks instead.
 type Settings struct {
 	HasIssues      bool `json:"has_issues"`
 	HasWiki        bool `json:"has_wiki"`
@@ -233,8 +235,9 @@ type Settings struct {
 	ActionsPolicy string `json:"actions_policy,omitzero"`
 	// SHAPinningRequired is the actions/permissions sha_pinning_required flag.
 	SHAPinningRequired bool `json:"sha_pinning_required"`
-	// AllowedActions is nil unless ActionsPolicy is "selected", where the
-	// selected-actions endpoint answers 404 for any other policy.
+	// AllowedActions is nil unless ActionsPolicy is "selected": the
+	// selected-actions endpoint answers 404 under any other policy, and 409
+	// under "all".
 	AllowedActions *AllowedActions `json:"allowed_actions,omitzero"`
 	// DefaultWorkflowPermissions is "read" or "write".
 	DefaultWorkflowPermissions string `json:"default_workflow_permissions,omitzero"`

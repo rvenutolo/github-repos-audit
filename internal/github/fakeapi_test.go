@@ -41,9 +41,10 @@ type call struct {
 	rawQuery    string
 }
 
-// scriptedFailure is one answer the fake gives instead of a fixture. It exists
-// so a test can put GitHub's transient failures — a secondary rate limit, a
-// bad gateway — in front of an endpoint that otherwise answers normally.
+// scriptedFailure is one answer the fake gives instead of a fixture: a
+// transient failure such as a secondary rate limit or a bad gateway, or a
+// GraphQL error page, put in front of an endpoint that otherwise answers
+// normally.
 type scriptedFailure struct {
 	status int
 	header map[string]string

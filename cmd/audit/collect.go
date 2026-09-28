@@ -54,13 +54,13 @@ func collectorAt(
 	return github.New(github.Options{Owner: owner, Token: token, BaseURL: baseURL, Logger: logger})
 }
 
-// collect reads the configuration, then GitHub, and returns a snapshot with
-// the declared fields filled in.
+// collect discovers the account, checks coverage, reads every repository and
+// runs the live validation, returning a snapshot with the declared fields
+// filled in. The offline validation is prepare's, and has already passed.
 //
-// The order matters. The offline validation runs first, so a typo in
-// repos.toml costs no API call. Coverage is checked next, before anything else
-// is fetched, so a repository created since the last run aborts the run rather
-// than being quietly skipped. Only then is the fan-out worth starting.
+// The order matters. Coverage is checked before anything else is fetched, so
+// a repository created since the last run aborts the run rather than being
+// quietly skipped. Only then is the fan-out worth starting.
 func collect(
 	ctx context.Context,
 	cfg *config.Config,

@@ -7,10 +7,11 @@ for anything that wants to diff it.
 
 The tool is read-only. Every call it makes is a `GET` request or a single
 GraphQL `query`; it never issues a GraphQL `mutation` or a write-verb REST
-call. All of that reading happens in one command, `audit render`. Writing the
-report back to a repository — creating a branch, committing to it, opening a
-pull request — happens entirely inside the reusable workflow described below,
-never in the tool's own code path.
+call. All of that reading happens in `audit render` (or `audit json`, which
+prints the same snapshot to stdout instead). Writing the report back to a
+repository — creating a branch, committing to it, opening a pull request —
+happens entirely inside the reusable workflow described below, never in the
+tool's own code path.
 
 ## Using this with your own account
 
@@ -120,13 +121,18 @@ never in the tool's own code path.
 5. If you added `smoke.yml`, set three repository variables: `SMOKE_OWNER`,
    `SMOKE_PUBLIC_REPO` and `SMOKE_PRIVATE_REPO`, naming an account and one
    public and one private repository on it that the tool is allowed to probe.
-   The suite only reads them, but it is not indifferent to which two you
-   pick — `internal/github/live_integration_test.go` asserts real facts about
-   each one, and a fixture missing one of these fails the weekly run with no
+   `SMOKE_OWNER` must be the account `AUDIT_TOKEN` authenticates as; the suite
+   fails outright on a mismatch. The suite only reads the repositories, but it
+   is not indifferent to which two you pick —
+   `internal/github/live_integration_test.go` asserts real facts about each
+   one, and a fixture missing one of these fails the weekly run with no
    further explanation:
-   - The public repository needs a description, at least one workflow file,
-     at least one ruleset, readable branch protection rules, and a non-empty
-     Actions permissions policy.
+   - The public repository needs a description, a README, at least one
+     workflow file, at least one ruleset, readable branch protection rules, a
+     non-empty Actions permissions policy, a default workflow permissions
+     setting, at least one allowed merge strategy, a commit history whose
+     authors carry both a name and an email, and at least one CI check run on
+     its default-branch head.
    - The private repository needs to genuinely be private, so the suite can
      observe the settings that only differ on a private repository (secret
      scanning and private vulnerability reporting both report as absent
@@ -255,10 +261,10 @@ restated — and with `git_identity` judged by no type, so it needs no
 
 ## Development
 
-Every recipe below runs inside a Nix devshell (`nix develop`, or `direnv
-allow`, which does the same), so a green local run is a green CI run.
-`just check` is exactly what CI runs; nothing but Nix is expected to be
-installed on the host.
+Every recipe below runs its tools through `.ci/in-devshell`, a hermetic
+`nix develop` (`fmt` calls the host's `nix fmt` directly), so a green local
+run is a green CI run. `just check` is exactly what CI runs; nothing but Nix
+is expected to be installed on the host.
 
 | Command             | Does                                                      |
 | ------------------- | --------------------------------------------------------- |

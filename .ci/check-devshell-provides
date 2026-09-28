@@ -270,8 +270,8 @@ function main() {
   local rc=0
   if ((${#tools[@]} == 0)); then
     printf 'FAIL: no tools declared in %s\n' "${TOOLS_FILE}" >&2
-    # Every later pass needs this list; with it empty they would each report a
-    # second, derived failure. Stop here so the real cause is the only output.
+    # With it empty, reverse_check would report every package as unjustified --
+    # a derived failure. Stop here so the real cause is the only output.
     trap - ERR
     return 1
   fi

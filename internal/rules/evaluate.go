@@ -30,10 +30,11 @@ const mergeGateCheck = "merge-gate"
 // CODE_OF_CONDUCT.md.
 const communityFileCount = 3
 
-// defaultTagRuleset is the name and scope the OpenTofu baseline gives a tag
-// ruleset. A ruleset matching both renders as "default"; anything else renders
-// its own name, so a repository whose tag ruleset is named differently from
-// the baseline still passes and remains visible as different.
+// defaultTagRuleset is the name the OpenTofu baseline gives a tag ruleset;
+// observeTagRuleset also requires its scope to be refs/tags/**. A ruleset
+// matching both renders as "default"; anything else renders its own name, so a
+// repository whose tag ruleset is named differently from the baseline still
+// passes and remains visible as different.
 const defaultTagRuleset = "protect-tags"
 
 // observation is what the collected facts say about one check, before any
@@ -146,8 +147,9 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard
 				exp, overridden = expNA, true
 			default:
 				// A value override on a present-or-absent check has no
-				// meaning; config's validation rejects the unknown ones, and a
-				// value here is simply carried into the Overrides section.
+				// meaning and nothing rejects it (validation checks the key,
+				// not the word); it is marked overridden and carried into the
+				// Overrides section, where it is visible.
 				overridden = true
 			}
 		}
@@ -243,7 +245,7 @@ func verdictFor(exp expectation, obs observation) Verdict {
 	}
 }
 
-//nolint:exhaustive // the informational and direct-push rows are handled above
+//nolint:exhaustive // direct push, the release-age threshold and git_identity are handled in evaluateRepo
 func observe(c Check, r audit.Repo) observation {
 	switch c {
 	case CheckDescription:

@@ -104,8 +104,8 @@ function main() {
   # onto the base makes its head momentarily identical to the base, and GitHub
   # closes a pull request the instant that is true. Without this, every run
   # would abandon the previous run's pull request and open a new number, leaving a
-  # trail of auto-closed ones — the opposite of "at most one refresh pull
-  # request exists at a time".
+  # trail of auto-closed ones — the opposite of the invariant this script
+  # keeps: at most one refresh pull request open at a time.
   existing="$(gh pr list --repo "${repo}" --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
 
   # Recreate the branch from the current base rather than reusing the last run's,
@@ -155,9 +155,9 @@ function main() {
   ci::log 'opening the pull request'
   # GITHUB_WORKFLOW is always set in Actions and, in a called workflow, holds
   # the CALLER's workflow name rather than this repository's own — the README
-  # tells callers to name their caller workflow refresh.yml, but nothing
-  # requires that, so the body cannot hardcode a filename that may not exist
-  # in the reader's repository.
+  # example names the caller workflow audit.yml, but nothing requires that,
+  # so the body cannot hardcode a filename that may not exist in the reader's
+  # repository.
   local workflow_name="${GITHUB_WORKFLOW:-the scheduled refresh workflow}"
   gh pr create --repo "${repo}" --base "${base_branch}" --head "${BRANCH}" \
     --title "${TITLE}" \

@@ -346,9 +346,9 @@ func TestEvaluate_requiredChecksAndCIWorkflows(t *testing.T) {
 		}
 	})
 
-	// The case the two-row split exists for: a repository that allows direct
-	// push can still have real CI on its pull requests while having no
-	// required checks at all.
+	// Required checks go n/a from the LIVE direct-push answer, not the type: a
+	// content repo that allows direct push has its required-checks row
+	// withheld even with a real workflow on disk.
 	t.Run("required checks is n/a under direct push, CI workflows still reads pass", func(t *testing.T) {
 		t.Parallel()
 
@@ -435,7 +435,8 @@ func TestEvaluate_emptyRepository(t *testing.T) {
 			t.Errorf("%s verdict = %v, want NA on an empty repository", c, got)
 		}
 	}
-	// File probes and CI are crosses where the type expects them.
+	// File probes, CI, the tag ruleset and the description are crosses where
+	// the type expects them.
 	for _, c := range []rules.Check{
 		rules.CheckREADME, rules.CheckGitignore, rules.CheckEditorconfig,
 		rules.CheckFlakeNix, rules.CheckJustfile, rules.CheckRenovate,
@@ -580,9 +581,10 @@ func TestEvaluate_overrides(t *testing.T) {
 	t.Run("a value override on a presence check only marks the cell", func(t *testing.T) {
 		t.Parallel()
 
-		// Only direct_push reads a value; on a present-or-absent row a value
-		// is meaningless, so the verdict stands and the cell is merely marked
-		// so the Overrides section can show what was declared.
+		// Only direct_push and renovate_min_release_age read a value; on a
+		// present-or-absent row a value is meaningless, so the verdict stands
+		// and the cell is merely marked so the Overrides section can show
+		// what was declared.
 		r := fixture("a", "tools")
 		r.Files.RenovateConfig = ""
 		r.Overrides = map[string]string{"renovate": "quarterly"}

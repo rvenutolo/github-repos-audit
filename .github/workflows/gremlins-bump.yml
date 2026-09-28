@@ -39,7 +39,8 @@ jobs:
     name: bump
     runs-on: ubuntu-latest
     # A cold Nix store plus a gremlins build plus a mutation pass. Most runs
-    # exit at the "unchanged" step in under five minutes.
+    # find nothing to bump, so everything after "Report what changed" is
+    # skipped and the run finishes in under five minutes.
     timeout-minutes: 30
     # contents: read is for actions/checkout and nothing else. The pull request
     # is opened with REFRESH_TOKEN, for the same reason the refresh and the
@@ -51,10 +52,9 @@ jobs:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: block
-          # proxy.golang.org and sum.golang.org are here because building
-          # gremlins fetches ITS Go modules — this is the workflow that needs
-          # them, and the reason gremlins lives in a devShell the gate never
-          # enters is so no gate job has to open them.
+          # proxy.golang.org and sum.golang.org: building gremlins fetches
+          # ITS Go modules. The gate workflows open the same two endpoints
+          # for this repository's own modules.
           allowed-endpoints: >-
             api.github.com:443
             cache.nixos.org:443

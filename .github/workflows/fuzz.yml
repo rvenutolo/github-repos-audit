@@ -37,8 +37,8 @@ jobs:
   fuzz:
     name: fuzz
     runs-on: ubuntu-latest
-    # Three targets at the 5m default plus the Nix and Go restores is roughly
-    # twenty minutes; the rest is headroom for a longer dispatched duration.
+    # Four targets at the 5m default plus the Nix and Go restores is roughly
+    # twenty-five minutes; the rest is headroom for a longer dispatched duration.
     timeout-minutes: 45
     # contents: read is for actions/checkout and nothing else. The pull request
     # a crasher produces is opened with REFRESH_TOKEN, for the same reason the

@@ -24,8 +24,9 @@ source "${REPO_DIR}/.ci/lib.sh"
 
 readonly CHECK="${REPO_DIR}/.ci/check-patch-coverage"
 readonly MODULE='example.com/marker'
-# Sits in a comment in every fixture's source. The check must never quote
-# source text, so this appearing in its output is a failure in every case.
+# Sits in a comment in a_go, the source every case starts from. The check must
+# never quote source text, so this appearing in its output is a failure in
+# every case.
 readonly SENTINEL='markerSentinelValue'
 
 # work is global, not local to main: the EXIT trap fires after main returns.
@@ -378,7 +379,8 @@ EOF
 
   # core.quotePath quotes any non-ASCII name by default; the check pins it
   # off so the +++ header parses and this ordinary UTF-8 name is judged like
-  # any other, instead of the hunk silently vanishing into a blank file="".
+  # any other, instead of the quoted header failing the run closed as
+  # unparsable.
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   # Spelled by octal escape, not as a literal word, so typos does not flag

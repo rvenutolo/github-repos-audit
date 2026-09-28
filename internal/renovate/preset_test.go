@@ -48,6 +48,8 @@ func TestParsePreset(t *testing.T) {
 		// In the account but unresolvable.
 		{"github>gh-owner/preset-store//dir/go:sub", renovate.Preset{}, false, true, true},
 		{"github>gh-owner/preset-store:go/sub", renovate.Preset{}, false, true, true},
+
+		// Owner with no repo: not a repository preset, skipped.
 		{"github>gh-owner", renovate.Preset{}, false, false, false},
 	}
 	for _, tt := range tests {

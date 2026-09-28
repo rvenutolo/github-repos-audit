@@ -1,9 +1,8 @@
-// Package config reads repos.toml, the only hand-maintained file in this
-// repository, and checks every property of it that can be decided without
-// talking to GitHub. The checks that need live data — both directions of the
-// coverage mismatch, published-but-private, and an override that is dead
-// against a visibility-dependent row — belong to the render path and are not
-// here.
+// Package config reads repos.toml and checks its shape and vocabulary:
+// unknown keys, unknown types and checks, malformed overrides, and the
+// [identity] table. Dead overrides are rules.ValidateOffline's; the checks
+// that need live data (see cmd/audit's collect) run there through
+// rules.Validate.
 package config
 
 import (

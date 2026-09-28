@@ -36,9 +36,9 @@ func newTestClient(t *testing.T, baseURL string) *github.Client {
 		t.Fatalf("New: %v", err)
 	}
 	// Every test here drives a fake that answers at once. Keeping the backoff
-	// would make the tests of the abort paths — which now retry a 5xx four
-	// times before giving up — spend seconds waiting for an answer that a
-	// fixture already gave.
+	// would make the tests of the abort paths — which send a 5xx four times
+	// before giving up — spend seconds waiting for an answer that a fixture
+	// already gave.
 	github.DisableRetryWaits(client)
 	return client
 }
@@ -132,8 +132,8 @@ func TestNew_rejectsIncompleteOptions(t *testing.T) {
 }
 
 // TestNew_defaultsAreUsable checks that a client built with only the required
-// options works, and in particular that the default HTTP client has a timeout
-// rather than being http.DefaultClient, which has none.
+// options is constructed. The default HTTP client's timeout is New's own
+// promise, unobservable from outside the package; see Options.HTTPClient.
 func TestNew_defaultsAreUsable(t *testing.T) {
 	t.Parallel()
 

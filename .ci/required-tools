@@ -49,7 +49,8 @@ statix
 deadnix
 # invoked by .ci/run-lint-checks; the binary name, not its `renovate` package
 renovate-config-validator
-# every script derives the repo root via `git rev-parse`
+# every script uses git: most derive the repo root via `git rev-parse`;
+# check-account-data runs git grep and git rev-list
 git
 # internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset
 gh

@@ -86,7 +86,8 @@ func TestBlock_rejectsAReportWithNoOwner(t *testing.T) {
 }
 
 // TestBlock_nothingWrong is the empty-sections case: an account with no gaps,
-// no settings exceptions and no overrides renders the tables and nothing else.
+// no settings exceptions and no overrides renders the tables, the identities
+// list and the footer, and nothing else.
 func TestBlock_nothingWrong(t *testing.T) {
 	t.Parallel()
 

@@ -74,8 +74,8 @@ func TestRepository_releases(t *testing.T) {
 			wantLastPublish: time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			// The one shape the five-node window exists for: nothing but
-			// drafts in view, so there is a total but no date to show.
+			// The window can still be all drafts: a total but no date to
+			// show.
 			name: "a run of drafts hides nothing because there is nothing behind it",
 			nodes: `[
 				{"is_draft": true, "published_at": null},

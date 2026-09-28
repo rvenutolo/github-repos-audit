@@ -83,8 +83,9 @@ type RepoReport struct {
 }
 
 // Cell returns the cell for a check. A check that is somehow absent yields the
-// zero Cell, which renders as a pass with no value — so the completeness of
-// Cells is asserted by a test rather than trusted here.
+// zero Cell, which renders as a pass with no value — so completeness rests on
+// evaluateRepo filling one cell per Checks() entry rather than on this
+// accessor.
 func (r *RepoReport) Cell(c Check) Cell { return r.Cells[c] }
 
 // Gap is one line of the worklist: a failing check and the repositories that

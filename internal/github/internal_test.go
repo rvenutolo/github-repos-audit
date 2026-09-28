@@ -263,9 +263,9 @@ func TestGhHelperProcess(t *testing.T) {
 
 // TestRunCapture covers the two answers gh gives that the tool has to read:
 // a token on stdout, and a refusal explained on stderr. The child is this test
-// binary rather than gh itself, which keeps the test hermetic — the devshell
-// has no gh, and reaching the real one would need a process-global PATH that
-// no parallel test may set.
+// binary rather than gh itself, which keeps the test hermetic: the devshell's
+// gh cannot be told to print a fixture token or fail on demand without a login
+// and process-global state that no parallel test may set.
 func TestRunCapture(t *testing.T) {
 	t.Parallel()
 
@@ -460,8 +460,8 @@ func TestClient_getJSON_returnsNoResponseWithAnError(t *testing.T) {
 			if err != nil {
 				t.Fatalf("New() error = %v, want nil", err)
 			}
-			// The 500 is retried four times before it aborts, and this test is
-			// about what the helper hands back, not about the wait.
+			// The 500 is sent four times (three retries) before it aborts, and
+			// this test is about what the helper hands back, not about the wait.
 			c.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 
 			var out struct{ Message string }

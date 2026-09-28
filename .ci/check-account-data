@@ -13,8 +13,9 @@
 #              account data.
 #
 #              Repository names match only where they are shaped like a
-#              repository — `<login>/<name>`, `"name": "<name>"` and
-#              `` `<name>` `` — because short names such as "scripts" are also
+#              repository — `<login>/<name>`, `"name": "<name>"`,
+#              `` `<name>` `` and as a whole path segment, `<name>/` or
+#              `/<name>` — because short names such as "scripts" are also
 #              ordinary words. The login matches anywhere else.
 #
 #              Output names commits and paths only, never the matched text --

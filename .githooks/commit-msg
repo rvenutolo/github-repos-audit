@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Git commit-msg hook: validates the message against Conventional Commits via
-# commitlint, inside the devShell so the same commitlint runs locally and in CI.
+# commitlint, run inside the devShell so the pinned commitlint is used locally;
+# CI checks the same rules (.commitlintrc.yml) via wagoid/commitlint-github-action.
 
 set -Eeuo pipefail
 # Git runs hooks under the HOST bash, before .ci/in-devshell enters the

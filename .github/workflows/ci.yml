@@ -113,8 +113,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      # Private repo: listing the PR's commits needs this; contents alone is
-      # enough on a public repo.
+      # Not needed on this public repository (contents: read is enough to list
+      # the PR's commits); kept so the job keeps working if the repository is
+      # ever made private.
       pull-requests: read
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1

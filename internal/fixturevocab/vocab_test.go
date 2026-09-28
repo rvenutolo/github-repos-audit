@@ -23,11 +23,13 @@ const fakeOwner = "gh-owner"
 // after confirming it is not a repository on a real account.
 //
 // "github-repos-audit" is this tool's own name, which the render snapshot
-// golden legitimately carries alongside the 15 fake names (it audits itself
-// in that fixture). "alpha" and "bravo" are synthetic literals from
+// golden legitimately carries alongside the fake names (it audits itself in
+// that fixture). "alpha" and "bravo" are synthetic literals from
 // internal/render/block_test.go: they were never fetched from a real
 // account, so internal/render/testdata/golden/clean.md — which predates the
 // account scrub and was untouched by it — carries them safely.
+// "preset-store" is the repository the API fixtures' Renovate configs extend
+// presets from; no fixture directory of its own exists.
 var fakeRepos = []string{
 	"blank-repo", "cipher-lib", "compiler-config", "config-files", "go-linter",
 	"hook-guard", "java-demo", "media-server", "mixedCase-flake", "pkg-index",
@@ -404,8 +406,11 @@ func decode(t *testing.T, raw []byte) any {
 }
 
 // githubHostPatterns decomposes a link on a GitHub-adjacent host into the two
-// path segments that name an owner and a repository, one pattern per host
-// shape this project's golden Markdown links to. A pattern that matches
+// path segments that name an owner and a repository, one pattern per
+// GitHub-adjacent host shape a golden could plausibly link to (only
+// github.com appears in the goldens; the others exist so a re-recording on
+// those hosts is decomposed rather than failed closed by githubHostLike). A
+// pattern that matches
 // pins down exactly where owner and repository sit in that host's URL. The
 // leading (?i) matches the host case-insensitively (DNS names are), while
 // the capture groups stay literal so "mixedCase-flake" is still compared

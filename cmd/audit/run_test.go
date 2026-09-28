@@ -533,7 +533,7 @@ func TestRunRender_leavesTheReadmeAloneWhenCollectionFails(t *testing.T) {
 		t.Fatal("runRender() error = nil, want the collection error")
 	}
 
-	// No non-zero exit ever leaves a partial report behind.
+	// A failure before the write leaves both artefacts untouched.
 	after, err := os.ReadFile(filepath.Join(dir, "README.md"))
 	if err != nil {
 		t.Fatalf("read README.md: %v", err)
