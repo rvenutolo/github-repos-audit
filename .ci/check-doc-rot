@@ -82,7 +82,17 @@ function scan_file() {
       if (lc ~ /(^|[^a-z])((i|we) (decided|chose|changed|moved|added|removed|fixed|switched)|(last|next) (week|month|year)|recently|yesterday|today)([^a-z]|$)/) return "person-time"
       return ""
     }
+    # A marker covers its own line and the next one. marker_nr is the line it
+    # sits on (0 when none is open) and marker_used says whether a hit in that
+    # window consumed it; a window that closes unused is a stale marker.
+    function close_marker(now) {
+      if (marker_nr && now > marker_nr + 1) {
+        if (!marker_used) report(marker_nr, "exempt-marker", "doc-rot-exempt marker exempts nothing; remove it")
+        marker_nr = 0
+      }
+    }
     {
+      close_marker(NR)
       line = $0
       if (mode == "slash") {
         if (line !~ /^[ \t]*\/\//) next
@@ -92,10 +102,32 @@ function scan_file() {
         if (line !~ /^[ \t]*#/) next
         sub(/^[ \t]*#+/, "", line)
       }
+      at = index(line, "doc-rot-exempt:")
+      if (at) {
+        reason = substr(line, at + 15)
+        sub(/^[ \t]+/, "", reason)
+        if (reason == "") {
+          report(NR, "exempt-marker", "doc-rot-exempt marker gives no reason")
+          next
+        }
+        # The reason may quote the very word it exempts, so only the text
+        # before the marker is classified.
+        line = substr(line, 1, at - 1)
+        marker_nr = NR
+        marker_used = 0
+      }
       class = classify(line)
-      if (class != "") report(NR, class, line)
+      if (class == "") next
+      if (marker_nr && (NR == marker_nr || NR == marker_nr + 1)) {
+        marker_used = 1
+        next
+      }
+      report(NR, class, line)
     }
-    END { exit found ? 1 : 0 }
+    END {
+      close_marker(NR + 2)
+      exit found ? 1 : 0
+    }
   ' "${REPO_DIR}/${file}" >&2
 }
 

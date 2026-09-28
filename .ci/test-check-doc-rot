@@ -180,6 +180,30 @@ function main() {
   add_file "${repo}" notes.md 'We decided last week to drop forks; recently that changed.'
   expect "${repo}" 1 'a person and a relative date' 'notes.md:1 [person-time]' || rc=1
 
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The word previously is quoted here. doc-rot-exempt: quoted as an example'
+  expect "${repo}" 0 'exemption on the hit line' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// doc-rot-exempt: the sentence quotes the old name\n// It was formerly called scan.\nvar x = 1'
+  expect "${repo}" 0 'exemption on the line above' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'previously doc-rot-exempt:'
+  expect "${repo}" 1 'exemption with no reason' 'notes.md:1 [exempt-marker]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'clean text doc-rot-exempt: nothing here needs it\nstill clean\nand clean'
+  expect "${repo}" 1 'a stale exemption' 'notes.md:1 [exempt-marker]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'clean\nclean doc-rot-exempt: stale on the last line'
+  expect "${repo}" 1 'a stale exemption on the last line' 'notes.md:2 [exempt-marker]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'doc-rot-exempt: covers the next line only\nclean\npreviously'
+  expect "${repo}" 1 'an exemption two lines above does not reach' 'notes.md:3 [history-phrasing]' || rc=1
+
   ((rc == 0)) && ci::log 'check-doc-rot: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
   # so a non-zero return does not add its own "ERROR: line ..." after the
