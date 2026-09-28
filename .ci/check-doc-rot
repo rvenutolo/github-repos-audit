@@ -3,9 +3,11 @@
 # @description Fail when tracked prose describes a past state of this
 #              repository or states a value that drifts with ordinary edits.
 #              Prose is every Markdown file and the full-line comments of Go,
-#              shell, TOML, YAML, Nix and the justfile; trailing comments
-#              after code are not scanned, so a string literal can never be
-#              a finding. Each finding names its class:
+#              shell, TOML, YAML, Nix and the justfile. A trailing comment
+#              after code is not scanned, so a trigger word in an ordinary
+#              string literal is not a finding; a comment-shaped line inside
+#              a Go raw string or a shell heredoc is scanned like any other.
+#              Each finding names its class:
 #
 #              - history-phrasing: narrates what the code did before
 #              - drift-value:      a line number, a count of lines or files
@@ -71,7 +73,8 @@ function scan_file() {
     function classify(text,   lc) {
       lc = tolower(text)
       if (lc ~ /(^|[^a-z])(previously|formerly|historically|renamed from|as of this writing|(it|this|that|which|we|they|code|script|check|gate|tool|collector|workflow) used to|no longer|now (uses|does|is|has|only)|as of (v[0-9]|[0-9][0-9][0-9][0-9]-))([^a-z]|$)/) return "history-phrasing"
-      if (lc ~ /[a-z0-9_.\/-]+\.(go|sh|md|yml|yaml|nix|toml):[0-9]+([^0-9]|$)/) return "drift-value"
+      if (lc ~ /[a-z0-9_.\/-]+\.(go|sh|md|yml|yaml|nix|toml)(:|#l)[0-9]+([^0-9]|$)/) return "drift-value"
+      if (lc ~ /(^|[^a-z0-9_.\/-])((\.ci|\.githooks)\/[a-z0-9_.-]+|run-all-checks):[0-9]+([^0-9]|$)/) return "drift-value"
       if (lc ~ /(^|[^a-z-])lines? [0-9]+([^0-9]|$)/) return "drift-value"
       if (lc ~ /(^|[^a-z0-9])[0-9]+ (lines|files|tests|functions|checks|statements|packages|scripts)([^a-z]|$)/) return "drift-value"
       if (text ~ /(^|[^A-Za-z])(TODO|FIXME|XXX|HACK)([^A-Za-z]|$)/) return "deferral"
@@ -105,6 +108,9 @@ function scan_file() {
       at = index(line, "doc-rot-exempt:")
       if (at) {
         reason = substr(line, at + 15)
+        # In Markdown the marker sits in an HTML comment, so its closer is
+        # not a reason.
+        sub(/-->[ \t]*$/, "", reason)
         sub(/^[ \t]+/, "", reason)
         if (reason == "") {
           report(NR, "exempt-marker", "doc-rot-exempt marker gives no reason")
