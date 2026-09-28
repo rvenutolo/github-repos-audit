@@ -31,6 +31,13 @@ func JSON(snap *audit.Snapshot) ([]byte, error) {
 // destination and a rename, so a reader never sees half a file; and both are
 // staged before either is renamed, so a failure to produce one leaves the
 // other's committed copy alone.
+//
+// Two renames cannot be one atomic step, so there is one partial outcome: if
+// audit.json is committed and the README.md rename then fails, the new
+// snapshot sits beside the old README and an error is returned. That is
+// accepted rather than rolled back, because a restore could fail the same way
+// and the error is what matters: a non-zero exit stops the refresh workflow
+// before it commits either file, and its checkout is discarded.
 func WriteFiles(readmePath, readme, jsonPath string, snapshot []byte) error {
 	readmeTmp, err := stage(readmePath, []byte(readme))
 	if err != nil {

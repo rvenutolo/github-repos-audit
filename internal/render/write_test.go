@@ -159,7 +159,7 @@ func TestWriteFiles_leavesTheReadmeAloneWhenTheSnapshotCannotBeWritten(t *testin
 				t.Fatal("WriteFiles() error = nil, want the audit.json failure")
 			}
 
-			// The two artefacts are committed together or not at all: a README
+			// A failed audit.json write never reaches the README: a README
 			// describing a snapshot that was never written is worse than a
 			// stale one.
 			after, err := os.ReadFile(readmePath)
@@ -182,6 +182,54 @@ func TestWriteFiles_leavesTheReadmeAloneWhenTheSnapshotCannotBeWritten(t *testin
 				}
 			}
 		})
+	}
+}
+
+func TestWriteFiles_leavesTheNewSnapshotWhenTheReadmeCannotBeReplaced(t *testing.T) {
+	t.Parallel()
+
+	// README.md is a directory, so staging beside it succeeds and only the
+	// second rename fails — after audit.json has already been committed.
+	dir := t.TempDir()
+	readmePath := filepath.Join(dir, "README.md")
+	if err := os.Mkdir(readmePath, 0o700); err != nil {
+		t.Fatalf("mkdir %s: %v", readmePath, err)
+	}
+	jsonPath := filepath.Join(dir, "audit.json")
+	if err := os.WriteFile(jsonPath, []byte("old\n"), 0o600); err != nil {
+		t.Fatalf("write audit.json: %v", err)
+	}
+
+	err := render.WriteFiles(readmePath, "rendered\n", jsonPath, []byte("{}\n"))
+	if err == nil {
+		t.Fatal("WriteFiles() error = nil, want the README.md failure")
+	}
+	if !strings.Contains(err.Error(), readmePath) {
+		t.Errorf("WriteFiles() error = %q, want it to name %s", err, readmePath)
+	}
+
+	// The documented partial outcome: two renames cannot be one atomic step,
+	// so the snapshot committed first stays committed. The error is what
+	// keeps a caller from publishing the pair.
+	got, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatalf("read audit.json: %v", err)
+	}
+	if string(got) != "{}\n" {
+		t.Errorf("audit.json = %q, want the new snapshot %q", got, "{}\n")
+	}
+	if info, err := os.Stat(readmePath); err != nil || !info.IsDir() {
+		t.Errorf("README.md destination = %v (err %v), want the directory left in place", info, err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+	for _, e := range entries {
+		if name := e.Name(); name != "README.md" && name != "audit.json" {
+			t.Errorf("directory holds stray file %q after a failed write", name)
+		}
 	}
 }
 
