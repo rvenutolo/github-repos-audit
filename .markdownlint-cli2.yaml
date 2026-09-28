@@ -1,5 +1,3 @@
 config:
   # prettier owns line wrapping; tables and link-heavy lines run long.
   MD013: false
-  MD024:
-    siblings_only: true
