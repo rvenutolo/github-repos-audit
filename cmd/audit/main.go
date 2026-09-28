@@ -11,7 +11,9 @@ import (
 	"syscall"
 )
 
-// version is set by the linker with -X main.version=...
+// version is what --version prints. It stays "dev" unless a build passes
+// -ldflags "-X main.version=...", which nothing in this repository does: every
+// invocation is `go run ./cmd/audit`. A release build may override it.
 var version = "dev"
 
 func main() {

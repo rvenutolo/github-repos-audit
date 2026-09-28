@@ -40,6 +40,10 @@ never in the tool's own code path.
    would collide with whatever else in your repository shares that name, and
    you set it in the caller instead, where the name is unambiguous.
 
+   The SHA in each `uses:` line below is a placeholder, not a real commit:
+   there is no release yet, so replace it with the SHA of a released tag once
+   one exists.
+
    ```yaml
    # .github/workflows/audit.yml — daily report refresh, opens a pull request
    # when something changed.
