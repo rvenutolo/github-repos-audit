@@ -16,10 +16,8 @@
 #              crasher pull request must not be clobbered by the next run.
 #
 #              The commit goes through the GraphQL createCommitOnBranch
-#              mutation for the same reason .ci/refresh-pull-request does: the
-#              protect-main ruleset requires signed commits, and commits made
-#              through the API are GitHub-signed, where a push from a runner
-#              would not be.
+#              mutation for the same reason .ci/refresh-pull-request does (see
+#              its header): a runner push would be unsigned.
 #
 #              Auto-merge is deliberately never enabled here. This pull request
 #              is supposed to be red.

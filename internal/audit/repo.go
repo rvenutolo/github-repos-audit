@@ -68,14 +68,13 @@ type Repo struct {
 	// DefaultBranch is the live default branch name, empty for an empty
 	// repository.
 	DefaultBranch string `json:"default_branch,omitzero"`
-	// HeadOID is the default branch's head commit, all forty characters.
-	// Abbreviating it would silently break the smoke suite's cross-check,
-	// which queries actions/runs?head_sha= and answers total_count: 0 for a
-	// short SHA, with a 200.
+	// HeadOID is the default branch's head commit, all forty characters;
+	// TestLive_headShaNeedsTheFullOID in internal/github is why it is never
+	// abbreviated.
 	HeadOID string `json:"head_oid,omitzero"`
-	// Empty reports a repository with no commits at all — GraphQL answered
-	// defaultBranchRef: null. That is an ordinary answer, not a failure: the
-	// branch-derived cells are unknown and everything else still applies.
+	// Empty reports a repository with no commits at all: GraphQL answered
+	// defaultBranchRef: null, an ordinary answer rather than a failure. See
+	// toAudit in internal/github/collect.go for what still applies.
 	Empty bool `json:"empty,omitzero"`
 	// Identities is every distinct author and committer identity on the
 	// default branch's full history, exactly as the commits spell them,
@@ -99,7 +98,9 @@ type Repo struct {
 	Rulesets []Ruleset `json:"rulesets,omitzero"`
 	// Branch is the rule set as evaluated for the default branch.
 	Branch BranchRules `json:"branch"`
-	// Settings is every repository setting the modal computation tracks.
+	// Settings is every live repository setting: what the modal computation
+	// tracks, plus secret scanning and private vulnerability reporting, which
+	// are judged as checks.
 	Settings Settings `json:"settings"`
 }
 
@@ -193,10 +194,10 @@ type BranchRules struct {
 	RequiredChecks []string `json:"required_checks,omitzero"`
 }
 
-// Settings is every repository setting the modal computation tracks. Nothing
-// here has a declared expected value: the tool computes the most common value
-// across the repositories where the setting applies and reports the ones that
-// differ.
+// Settings is every live repository setting. Most feed the modal computation
+// (see internal/rules/modal.go); SecretScanning and
+// PrivateVulnerabilityReporting are judged as the secret_scanning and
+// vuln_reporting checks instead.
 type Settings struct {
 	HasIssues      bool `json:"has_issues"`
 	HasWiki        bool `json:"has_wiki"`
@@ -208,9 +209,8 @@ type Settings struct {
 	// DependabotSecurityUpdates is REST's automated-security-fixes.
 	DependabotSecurityUpdates bool `json:"dependabot_security_updates"`
 
-	// The merge settings come from GraphQL, not REST: REST silently drops them
-	// for a token with only read rights, and a token cannot tell you it was
-	// handed a trimmed answer.
+	// The merge settings come from GraphQL, not REST; see restRepo in
+	// internal/github/rest.go for why.
 	MergeCommitAllowed  bool   `json:"merge_commit_allowed"`
 	SquashMergeAllowed  bool   `json:"squash_merge_allowed"`
 	RebaseMergeAllowed  bool   `json:"rebase_merge_allowed"`
@@ -233,8 +233,9 @@ type Settings struct {
 	ActionsPolicy string `json:"actions_policy,omitzero"`
 	// SHAPinningRequired is the actions/permissions sha_pinning_required flag.
 	SHAPinningRequired bool `json:"sha_pinning_required"`
-	// AllowedActions is nil unless ActionsPolicy is "selected", where the
-	// selected-actions endpoint answers 404 for any other policy.
+	// AllowedActions is nil unless ActionsPolicy is "selected": the
+	// selected-actions endpoint answers 404 under any other policy, and 409
+	// under "all".
 	AllowedActions *AllowedActions `json:"allowed_actions,omitzero"`
 	// DefaultWorkflowPermissions is "read" or "write".
 	DefaultWorkflowPermissions string `json:"default_workflow_permissions,omitzero"`

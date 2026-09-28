@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-# @description Point core.hooksPath at the tracked .githooks directory. Invoked
-#              from the devShell's shellHook, because repo-local git config
-#              cannot be committed and a manual per-clone step silently never
-#              happens — which leaves tracked hooks inert. Idempotent and silent
-#              once the value is already correct.
+# @description Point core.hooksPath at the tracked .githooks directory, since
+#              repo-local git config cannot be committed. Invoked from the
+#              devShell's shellHook (flake.nix explains why a manual per-clone
+#              step is not enough). Idempotent and silent once the value is
+#              already correct.
 #
 #              Standalone, like .ci/in-devshell: it runs during shell startup,
 #              before any repo tooling is guaranteed available.

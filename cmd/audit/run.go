@@ -70,7 +70,7 @@ Exit codes:
 var errUsage = errors.New("usage")
 
 // run holds every decision the program makes. It touches no os global, so it
-// is driven directly from tests with buffers and a map-backed getenv.
+// is driven directly from tests with buffers and a stub getenv.
 func run(
 	ctx context.Context,
 	args []string,

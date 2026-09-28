@@ -2,8 +2,9 @@
 
 # @description Exercise .ci/check-doc-rot against throwaway repositories.
 #              Every fixture is inert prose; the words that trigger a class
-#              appear only inside printf strings below, never in this file's
-#              own comments, because the check scans this file too.
+#              appear only inside quoted string arguments below (fixture text
+#              and case names), never in this file's own comments, because
+#              the check scans this file too.
 # @noargs
 # @exitcode 0 every case passed
 # @exitcode 1 a case failed
@@ -22,7 +23,7 @@ source "${REPO_DIR}/.ci/lib.sh"
 
 readonly CHECK="${REPO_DIR}/.ci/check-doc-rot"
 
-# work is global, not local to main: the EXIT trap fires after main returns.
+# work is global, not local to main; see .ci/check-coverage-drop for why.
 work=''
 trap 'rm -rf -- "${work}"' EXIT
 

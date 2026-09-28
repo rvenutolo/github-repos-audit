@@ -11,9 +11,12 @@
 // Several responses that look like failures are ordinary answers and are
 // treated as such: a private repository omits security_and_analysis, answers
 // 404 from private-vulnerability-reporting, and a public one answers 422 from
-// the Actions access endpoint. Any status outside that documented set aborts
-// the whole run, because a field GitHub declined to answer is not a field that
-// is missing and rendering it as a gap would invent one.
+// the Actions access endpoint; the Actions allowlist endpoint answers 404 or
+// 409 under any policy but "selected", and a Renovate preset's contents read
+// answers 404 when the file is absent. Each getJSON call lists the statuses it
+// accepts, and any status outside that set aborts the whole run, because a
+// field GitHub declined to answer is not a field that is missing and rendering
+// it as a gap would invent one.
 //
 // Two conditions are neither answers nor failures and are waited out instead:
 // a rate limit, which a six-wide fan-out issuing nine calls per repository is
@@ -179,7 +182,7 @@ type Client struct {
 }
 
 // response is one answer from GitHub, already fully read. Holding the body as
-// bytes rather than a stream is what lets do drain and close it before
+// bytes rather than a stream is what lets send drain and close it before
 // returning, so the connection goes back to the pool on every path.
 type response struct {
 	status int
@@ -237,10 +240,9 @@ func (c *Client) Owner() string { return c.owner }
 
 // do sends one request and returns the whole answer, resending it while GitHub
 // answers with something transient: a rate limit carrying the headers that say
-// so, or a 5xx. A bare 403 is not transient — it is a token without a scope,
-// and resending it is a hang that looks like a stall — so it comes straight
-// back to the caller. Retrying is safe on every call this client makes,
-// including the one POST, because the document that POST carries is a query.
+// so, or a 5xx. A bare 403 comes straight back (see retryWait). Retrying is
+// safe on every call this client makes, including the one POST, because the
+// document that POST carries is a query.
 func (c *Client) do(ctx context.Context, method, rawURL string, body []byte) (*response, error) {
 	return c.doRetrying(ctx, method, rawURL, body, nil)
 }
@@ -381,7 +383,9 @@ func (c *Client) retryWait(resp *response, attempt int, transient transientBody)
 	}
 
 	// The discriminator: GitHub reports both a secondary rate limit and a
-	// missing scope as 403, and only the rate limit says when to come back.
+	// missing scope as 403, and only the rate limit says when to come back. A
+	// bare 403 is a token without a scope; resending it would never succeed,
+	// and the wait would look like a stall to whoever is watching the run.
 	if resp.header.Get("Retry-After") == "" && resp.header.Get("X-RateLimit-Remaining") != "0" {
 		return 0, retryNone
 	}

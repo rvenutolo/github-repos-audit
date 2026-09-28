@@ -84,9 +84,7 @@ function expect() {
 }
 
 function main() {
-  # work is intentionally not local: the EXIT trap below fires after main
-  # returns, in the script's global scope, so a local would already be
-  # unset by then and set -u would fault on the trap's own cleanup line.
+  # work is not local: see the EXIT-trap note in .ci/check-account-data main().
   local repo base rc=0 out got
   work="$(mktemp --directory)"
   trap 'rm -rf -- "${work}"' EXIT
@@ -210,10 +208,8 @@ function main() {
   # A NUL byte makes git grep -I (used by the tree scan) skip the file
   # entirely, so a blob with the login hidden inside it must still be caught
   # by the dedicated binary pass, reported by path, with the login itself
-  # never printed. Uses a fresh throwaway repository, not the one above: the
-  # tree scan greps the whole tree at each commit in range, not just its
-  # diff, so a file left behind by an earlier case (owner.go, link.md) would
-  # otherwise keep every later "clean" range finding something regardless.
+  # never printed. Its own repository, for the reason new_case_repo's header
+  # gives.
   local binary_work binary_repo
   binary_work="$(mktemp --directory)"
   binary_repo="${binary_work}/repo"

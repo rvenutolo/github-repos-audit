@@ -319,8 +319,8 @@ func TestRunRender_writesBothArtefactsAndReportsTheChange(t *testing.T) {
 		}
 	}
 
-	// Running again over its own output is a no-op, which is what stops the
-	// cron opening a pull request every night over a timestamp.
+	// Running again over its own output is a no-op; render.volatileFields
+	// says why that matters.
 	stdout.Reset()
 	err = runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
 		noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock)
@@ -533,7 +533,7 @@ func TestRunRender_leavesTheReadmeAloneWhenCollectionFails(t *testing.T) {
 		t.Fatal("runRender() error = nil, want the collection error")
 	}
 
-	// No non-zero exit ever leaves a partial report behind.
+	// A failure before the write leaves both artefacts untouched.
 	after, err := os.ReadFile(filepath.Join(dir, "README.md"))
 	if err != nil {
 		t.Fatalf("read README.md: %v", err)
@@ -611,12 +611,10 @@ func TestRunRender_rejectsADeadOverrideBeforeSpendingAnAPICall(t *testing.T) {
 	}
 }
 
-// TestCollectorAt_wiresTheTokenThroughToTheOwner proves the wiring
-// liveCollector's real call cannot: with a token from the environment and a
-// fake server answering /user, the owner it names is the client's Owner.
-// That wiring is exactly what breaks when the owner stops being a constant,
-// so it earns a test even though liveCollector itself can only be exercised
-// against the real API.
+// TestCollectorAt_wiresTheTokenThroughToTheOwner exercises collectorAt's seam
+// against a fake server answering /user: with a token from the environment,
+// the owner it names is the client's Owner. See collectorAt for why the seam
+// exists.
 func TestCollectorAt_wiresTheTokenThroughToTheOwner(t *testing.T) {
 	t.Parallel()
 
@@ -711,9 +709,8 @@ func TestRunRender_reportsADiscoveryFailure(t *testing.T) {
 func TestRunRender_reportsALiveOnlyConfigError(t *testing.T) {
 	t.Parallel()
 
-	// published on a private repository: the homepage and topics rules are
-	// defined for public-and-published or for neither, so the combination has
-	// no answer and must be rejected rather than rendered arbitrarily.
+	// published on a private repository, which rules.Validate rejects; see its
+	// comment for why.
 	dir, configPath := scratchProject(t, "[repos.alpha]\ntype = \"tools\"\npublished = true\n")
 	fake := &fakeCollector{names: []string{"alpha"}, repos: []audit.Repo{scratchRepo("alpha")}}
 

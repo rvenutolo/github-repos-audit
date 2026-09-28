@@ -21,12 +21,7 @@
 #              Two traps shape the reverse pass, both found the hard way:
 #
 #              1. Justification is decided by where a tool RESOLVES ON PATH, not
-#                 by scanning each output's bin/. An output the shell does not
-#                 need is never realised, so a scan asks about directories that
-#                 exist on one machine and not another: `nix` passed locally and
-#                 failed in CI for exactly that reason. Every output is still
-#                 enumerated, because the resolved path must be attributed to
-#                 one of them, and binaries live in `bin`, `out`, etc.
+#                 by scanning each output's bin/; reverse_check explains why.
 #              2. `nix eval` caches flake evaluations. A cached result reported
 #                 an inventory three packages stale while the tree on disk had
 #                 already moved. --no-eval-cache is mandatory, not tidiness.
@@ -121,9 +116,8 @@ function devshell_packages() {
     return
   fi
   # Bare `return`, never `return 0`: a trailing `return 0` would swallow a
-  # failed `nix eval` and hand back an empty inventory, which the caller would
-  # then report as "the devShell declares no packages" -- a wrong verdict
-  # dressed up as a real one.
+  # failed `nix eval`, so the nix eval status reaches reverse_check, which
+  # explains why an empty inventory must not pass.
   nix eval --raw --impure --no-eval-cache \
     --expr "${PACKAGES_EXPR//REPO_PLACEHOLDER/${REPO_DIR}}"
 }
@@ -164,13 +158,13 @@ function reverse_check() {
   local -ra tools=("$@")
   # Both statuses are tested explicitly rather than left to errexit. main calls
   # this function as `reverse_check ... || rc=1`, and that trailing `||` turns
-  # errexit off for the function's entire dynamic extent -- the same mechanism
-  # the guard relies on for repeat_check. So a failed `nix eval` here does NOT
-  # abort: without these guards it would fall through as an empty inventory and
-  # be reported as "the devShell declares no packages", which is a wrong verdict
-  # wearing the costume of a real one. `mapfile < <(...)` has the same hazard
-  # for a different reason -- a process substitution's status is invisible to
-  # mapfile -- which is why the reads below go through command substitution.
+  # errexit off for the function's entire dynamic extent. So a failed
+  # `nix eval` here does NOT abort: without these guards it would fall through
+  # as an empty inventory and be reported as "the devShell declares no
+  # packages", which is a wrong verdict wearing the costume of a real one.
+  # `mapfile < <(...)` has the same hazard for a different reason -- a process
+  # substitution's status is invisible to mapfile -- which is why the reads
+  # below go through command substitution.
   local packages_raw formatters_raw
   if ! packages_raw="$(devshell_packages)"; then
     printf 'FAIL: could not read the devShell package inventory\n' >&2
@@ -270,8 +264,8 @@ function main() {
   local rc=0
   if ((${#tools[@]} == 0)); then
     printf 'FAIL: no tools declared in %s\n' "${TOOLS_FILE}" >&2
-    # Every later pass needs this list; with it empty they would each report a
-    # second, derived failure. Stop here so the real cause is the only output.
+    # With it empty, reverse_check would report every package as unjustified --
+    # a derived failure. Stop here so the real cause is the only output.
     trap - ERR
     return 1
   fi
@@ -279,8 +273,7 @@ function main() {
   forward_check "${tools[@]}" || rc=1
   reverse_check "${tools[@]}" || rc=1
 
-  # A gate reporting its own verdict is not a crash: drop the ERR trap so the
-  # diagnostics above are the last thing the reader sees.
+  # Same reason as the trap reset above.
   trap - ERR
   return "${rc}"
 }

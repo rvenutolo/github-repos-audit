@@ -115,10 +115,9 @@ func TestValidateOffline_acceptsALiveOverride(t *testing.T) {
 	}
 }
 
-// TestValidateOffline_leavesVisibilityDependentRowsAlone is the reason the
-// validation is split in two: whether recipe-site's secret_scanning
-// override is a no-op depends on whether the repository is public, and
-// visibility is never declared.
+// TestValidateOffline_leavesVisibilityDependentRowsAlone pins that recipe-site's
+// secret_scanning override, a public cell, is left to Validate; see
+// decidesUnconditionally and ValidateOffline for why.
 func TestValidateOffline_leavesVisibilityDependentRowsAlone(t *testing.T) {
 	t.Parallel()
 
@@ -161,8 +160,7 @@ func TestValidate_acceptsTheSameOverrideOnAPublicRepository(t *testing.T) {
 func TestValidate_rejectsPublishedOnAPrivateRepository(t *testing.T) {
 	t.Parallel()
 
-	// The homepage and topics rules are defined for public-and-published or
-	// for neither, so this combination has no answer.
+	// published = true on a private repository has no answer; see Validate.
 	r := fixture("alpha", "software")
 	r.Published = true
 

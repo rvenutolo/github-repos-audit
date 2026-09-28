@@ -18,10 +18,8 @@ import (
 // header names api.github.com, so the client has to re-base it onto the server
 // it was configured with rather than following the host GitHub printed.
 //
-// The two discovery fixtures carry only the fields this tool reads. The live
-// payload has a hundred more, none of which can be used: security_and_analysis
-// is absent from the list even for a public repository, so folding any setting
-// into discovery would read a value that is not there.
+// Why discovery reads only name, fork and archived is on the discovered type
+// in discover.go.
 func TestClient_Discover(t *testing.T) {
 	t.Parallel()
 

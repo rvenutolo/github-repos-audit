@@ -86,7 +86,8 @@ func TestBlock_rejectsAReportWithNoOwner(t *testing.T) {
 }
 
 // TestBlock_nothingWrong is the empty-sections case: an account with no gaps,
-// no settings exceptions and no overrides renders the tables and nothing else.
+// no settings exceptions and no overrides renders the tables, the identities
+// list and the footer, and nothing else.
 func TestBlock_nothingWrong(t *testing.T) {
 	t.Parallel()
 
@@ -125,9 +126,8 @@ func TestBlock_padsItsOwnColumns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Block() error = %v, want nil", err)
 	}
-	// The cron commits this output directly, so every row of a table must be
-	// the same rendered width as its header. An unpadded table would land on
-	// the default branch and fail the repository's own format check daily.
+	// Every row must be as wide as its header; see the package doc in
+	// markdown.go for why the renderer pads.
 	var widths []int
 	for line := range strings.SplitSeq(got, "\n") {
 		if !strings.HasPrefix(line, "|") {
@@ -221,16 +221,15 @@ func TestBlock_naCellCarryingAScalar(t *testing.T) {
 	if !strings.Contains(got, "| 6 ") {
 		t.Errorf("want the topic count shown despite the n/a verdict:\n%s", got)
 	}
-	// flake.nix, by contrast, is present-or-absent, so its n/a cell says n/a
-	// rather than showing a bare cross that would look like a gap.
+	// flake.nix is present-or-absent, so its n/a cell reads n/a;
+	// rules.Cell.Scalar says why.
 	if !strings.Contains(got, "| n/a ") {
 		t.Errorf("want an n/a cell in:\n%s", got)
 	}
 }
 
-// TestBlock_backticksABareURLInADescription guards the gate against a
-// repository description carrying a plain URL: a bare URL in markdown is an
-// MD034 failure — on a file no human wrote and nobody can fix by editing it.
+// TestBlock_backticksABareURLInADescription guards a repository description
+// carrying a plain URL; escape() in markdown.go says why it is backticked.
 func TestBlock_backticksABareURLInADescription(t *testing.T) {
 	t.Parallel()
 
@@ -245,8 +244,7 @@ func TestBlock_backticksABareURLInADescription(t *testing.T) {
 	if !strings.Contains(got, "`https://www.chezmoi.io/`") {
 		t.Errorf("want the bare URL backticked in:\n%s", got)
 	}
-	// Backticks rather than a link: the gate must not depend on a third-party
-	// host being reachable.
+	// Not a link: see escape() in markdown.go.
 	if strings.Contains(got, "](https://www.chezmoi.io/)") {
 		t.Error("the URL became a link; lychee would then check a host this project does not control")
 	}

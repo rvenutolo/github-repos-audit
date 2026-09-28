@@ -5,8 +5,8 @@
 #              `go test ./...` runs a fuzz target against its seed corpus and
 #              nothing else: without `-fuzz`, no input is ever generated. This
 #              script is the only thing in the repo that actually fuzzes, and
-#              it is deliberately not part of the gate — fuzzing is unbounded
-#              work and the pull request gate must stay deterministic.
+#              it is deliberately not part of the gate; see
+#              .github/workflows/fuzz.yml for why.
 #
 #              One target per invocation, because `go test -fuzz` accepts
 #              exactly one target and exactly one package at a time. Targets

@@ -40,9 +40,7 @@ STUB
 }
 
 function main() {
-  # work is intentionally not local: the EXIT trap below fires after main
-  # returns, in the script's global scope, so a local would already be
-  # unset by then and set -u would fault on the trap's own cleanup line.
+  # work is not local: see the EXIT-trap note in .ci/check-account-data main().
   local rc=0
   work="$(mktemp --directory)"
   trap 'rm -rf -- "${work}"' EXIT
@@ -84,9 +82,8 @@ function main() {
     rc=1
   fi
 
-  # --dir with no value must be the same usage error (exit 2) as an unknown
-  # argument, not the exit 1 that "${2:?...}" would give by faulting through
-  # set -u: the two are otherwise indistinguishable from a runtime failure.
+  # --dir with no value is a usage error (exit 2); see the --dir case in
+  # .ci/refresh-pull-request for why not exit 1.
   local dir_got=0
   PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
     "${REPO_DIR}/.ci/refresh-pull-request" --dir > /dev/null 2>&1 || dir_got=$?

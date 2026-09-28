@@ -41,9 +41,10 @@ type call struct {
 	rawQuery    string
 }
 
-// scriptedFailure is one answer the fake gives instead of a fixture. It exists
-// so a test can put GitHub's transient failures — a secondary rate limit, a
-// bad gateway — in front of an endpoint that otherwise answers normally.
+// scriptedFailure is one answer the fake gives instead of a fixture: a
+// transient failure such as a secondary rate limit or a bad gateway, or a
+// GraphQL error page, put in front of an endpoint that otherwise answers
+// normally.
 type scriptedFailure struct {
 	status int
 	header map[string]string
@@ -219,9 +220,9 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 	f.serve(w, dir, "graphql")
 }
 
-// handleDiscover pages: the first answer carries a Link header naming
-// api.github.com, exactly as GitHub's does, so the client is forced to re-base
-// it onto this server rather than following the host it was given.
+// handleDiscover pages; the first answer carries an api.github.com Link header
+// exactly as GitHub's does (see nextPage in discover.go for why the client
+// must re-base it).
 func (f *fakeAPI) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	page := r.URL.Query().Get("page")
 	if page == "" || page == "1" {

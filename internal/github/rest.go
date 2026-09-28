@@ -55,9 +55,7 @@ type actionsAccess struct {
 	AccessLevel string `json:"access_level"`
 }
 
-// branchRule is one entry of rules/branches/{branch}, which answers with the
-// rules as evaluated for that branch — precisely the "can I push straight to
-// it?" question.
+// branchRule is one entry of rules/branches/{branch}; see audit.BranchRules.
 type branchRule struct {
 	Type       string          `json:"type"`
 	Parameters *ruleParameters `json:"parameters"`
@@ -214,11 +212,9 @@ func (c *Client) fetchActionsAccess(ctx context.Context, base string, repo *audi
 }
 
 // fetchBranchRules reads the rules in force on the default branch. An empty
-// repository has no default branch, so the endpoint is skipped entirely and
-// BranchRules.Known stays false: direct push is then derived from the rulesets
-// GraphQL already returned, and the signed-commit and required-check cells
-// render n/a, because a repository with no commits cannot be judged on what is
-// in them.
+// repository has no default branch, so the call is skipped and
+// BranchRules.Known stays false; audit.BranchRules documents what that means
+// downstream.
 func (c *Client) fetchBranchRules(ctx context.Context, base string, repo *audit.Repo) error {
 	if repo.Empty || repo.DefaultBranch == "" {
 		return nil

@@ -22,7 +22,8 @@
 # [repos.<name>]
 # type      which [types.*] table the repository is judged against
 # published meant for someone else to find and use; default false
-# overrides per-repo exceptions to the type; each needs a reason in a comment
+# overrides per-repo exceptions to the type; each should carry a reason in a
+#           comment (a convention, not something the tool checks)
 #
 # A type never implies a visibility, which is always read live from GitHub.
 # An override that names an unknown check is an error, and so is an override
@@ -204,15 +205,8 @@ last_push = "info"
 open_prs = "info"
 branches = "info"
 
-# [identity] is required once any type or override judges git_identity.
-# canonical is the one identity your commits should carry; match is an RE2
-# regular expression, unanchored, tested against each commit's "Name <email>"
-# for author and committer alike — whatever it matches is yours. A plain word
-# means "contains"; " Example <" means "a name whose last word is Example".
-# accepted is optional: identities of yours that are fine to find in a
-# history although they are not canonical. GitHub records merges and edits
-# made in its web UI under your noreply address, and every new one adds it
-# back, so list that address here rather than trying to rewrite it away.
+# Required once any type or override judges git_identity; README.md's
+# "[identity] declares your git identity" section explains each key.
 [identity]
 canonical = "Pat Example <pat@example.com>"
 accepted = ["Pat Example <12345+pat@users.noreply.github.com>"]

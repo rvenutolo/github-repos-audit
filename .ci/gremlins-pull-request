@@ -3,21 +3,13 @@
 # @description File the gremlins version bump `nix-update` just made as a pull
 #              request.
 #
-#              gremlins is hand-packaged in nix/gremlins.nix because nixpkgs
-#              does not ship it, and a hand-packaged Go tool carries a
-#              vendorHash that no human can compute by reading anything. A
-#              vendorHash derived from this repo's go.mod is invalidated by
-#              every Renovate bump and turns the gate red, which is why the
-#              flake packages nothing that way. This one comes from gremlins'
-#              own go.mod at a fixed tag, so nothing this repo does can
-#              invalidate it, and the only event that moves it is an upstream
-#              release.
-#
-#              Renovate cannot do this job: its postUpgradeTasks, which is what
-#              would recompute a hash after a version bump, is self-hosted
-#              only and this repo is on the hosted app. `nix-update` computes
-#              both hashes directly, so
-#              this workflow does what Renovate structurally cannot.
+#              gremlins is hand-packaged in nix/gremlins.nix, and a
+#              hand-packaged Go tool carries a vendorHash that no human can
+#              compute by reading anything. Why the hash is derived from
+#              gremlins' own go.mod: see the header of nix/gremlins.nix. Why
+#              nix-update rather than Renovate: see the header of
+#              .github/workflows/gremlins-bump.yml, which runs nix-update and
+#              then calls this script.
 #
 #              The commit goes through createCommitOnBranch for the same reason
 #              .ci/refresh-pull-request does: the protect-main ruleset requires
@@ -71,8 +63,9 @@ function main() {
   repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}"
 
   # nix-update rewrites the file in place, so a clean file means the pinned
-  # version is already the latest release. Not a failure: it is the normal
-  # outcome of almost every run, since gremlins releases roughly annually.
+  # version is already the latest release. Not a failure: it is the expected
+  # outcome of most runs (see the cadence note in
+  # .github/workflows/gremlins-bump.yml).
   if git diff --quiet -- "${PACKAGE_FILE}"; then
     ci::log "${PACKAGE_FILE} is unchanged; gremlins is already at its latest release"
     return 0

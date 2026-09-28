@@ -1,5 +1,7 @@
-# Tools the repo's own tooling shells out to. Every entry is justified by a
-# real call site. This file is data: one tool per line, `#` comments and blank
+# Tools the repo's own tooling shells out to inside the default devShell.
+# Every entry is justified by a real call site. Tools that live outside that
+# shell by design (gremlins in devShells.mutate, nix-update via `nix run`)
+# are not listed. This file is data: one tool per line, `#` comments and blank
 # lines ignored, no shebang and no executable bit.
 #
 # .ci/check-devshell-provides reads this file in both directions:
@@ -7,8 +9,8 @@
 # - reverse: every devShell package must be where one of these binaries
 #   RESOLVES on PATH, or back a formatter .treefmt.nix enables.
 #
-# That second escape is why gofumpt, nixfmt and taplo are absent: treefmt runs
-# them from the Nix store, never through PATH.
+# gofumpt, nixfmt and taplo are absent because of that second escape (rule 2);
+# see .ci/check-devshell-provides for why.
 
 # run-all-checks: go build, go vet, go test, `go run ./cmd/audit validate`
 go
@@ -34,14 +36,16 @@ zizmor
 markdownlint-cli2
 # .ci/run-lint-checks: every tracked file no formatter owns
 editorconfig-checker
-# .ci/run-lint-checks: the links README.md carries
+# .ci/run-lint-checks: the links every tracked Markdown file outside testdata
+# carries
 lychee
 # invoked by .ci/run-lint-checks and .ci/run-fixers
 typos
 # invoked by .ci/run-lint-checks (whole-tree scan of the tracked files)
 gitleaks
-# .ci/run-lint-checks: the golden audit.json fixture against audit.schema.json;
-# validate.yml also runs it, on the caller's report/audit.json when present
+# .ci/run-lint-checks: audit.schema.json against its metaschema, then the
+# golden audit.json fixture against audit.schema.json; validate.yml also runs
+# it, on the caller's report/audit.json when present
 check-jsonschema
 # invoked by .ci/run-lint-checks
 statix
@@ -49,7 +53,8 @@ statix
 deadnix
 # invoked by .ci/run-lint-checks; the binary name, not its `renovate` package
 renovate-config-validator
-# every script derives the repo root via `git rev-parse`
+# every script uses git: most derive the repo root via `git rev-parse`;
+# check-account-data runs git grep and git rev-list
 git
 # internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset
 gh
@@ -81,3 +86,11 @@ cut
 # .ci/check-patch-coverage turns git grep -z's NUL separators into bytes awk
 # can split on
 tr
+# .ci/check-account-data matches its patterns with `grep --extended-regexp`
+# and `grep --fixed-strings`; .ci/check-patch-coverage's test greps its own
+# findings. GNU long options, so gnugrep, not a BSD grep.
+grep
+# .ci/check-account-data strips allowed occurrences with `sed --regexp-extended`
+# and escapes names for the pattern file; .ci/gremlins-pull-request reads the
+# bumped version with `sed -n`
+sed

@@ -223,8 +223,8 @@ func exceptionsSection(rep *rules.Report) string {
 	return b.String()
 }
 
-// overridesSection lists every declared override, so an excused gap is visible
-// rather than silently absent.
+// overridesSection renders rep.Overrides; see rules.collectOverrides for why
+// they are listed.
 func overridesSection(rep *rules.Report) string {
 	if len(rep.Overrides) == 0 {
 		return ""
@@ -257,9 +257,8 @@ func yesNo(b bool) string {
 	return "no"
 }
 
-// cell renders one check's outcome. A value replaces the mark, except on the
-// direct-push row, where the value alone would hide the verdict and the
-// verdict alone would hide which way round the repository is.
+// cell renders one check's outcome. A value replaces the mark unless the cell
+// sets Mark (see rules.Cell.Mark), in which case both are shown.
 func cell(c rules.Cell) string {
 	value := c.Value
 	if c.Code {
@@ -273,11 +272,7 @@ func cell(c rules.Cell) string {
 	case rules.Fail:
 		mark = markFail
 	case rules.NA:
-		// An n/a cell that carries a scalar still shows it: the report
-		// withholds the judgement, not the fact. A present-or-absent check
-		// renders n/a instead, because a bare cross on a non-gap cell is
-		// indistinguishable from a gap in the same column — which is the
-		// confusion the whole n/a scheme exists to prevent.
+		// Scalar cells keep their value on n/a; see rules.Cell.Scalar for why.
 		if c.Scalar && value != "" {
 			return value
 		}

@@ -38,7 +38,8 @@ func always(f func(audit.Repo) string) func(audit.Repo) (string, bool) {
 }
 
 // present treats an empty value as "the setting does not apply here", which is
-// how every n/a in the collected model is spelled.
+// how every string-valued n/a in the collected model is spelled;
+// pointer-valued settings (AllowedActions) test nil instead.
 func present(f func(audit.Repo) string) func(audit.Repo) (string, bool) {
 	return func(r audit.Repo) (string, bool) {
 		v := f(r)
@@ -51,8 +52,8 @@ func present(f func(audit.Repo) string) func(audit.Repo) (string, bool) {
 // Push protection, the Actions allowlist and the approve-pull-requests flag
 // are here rather than in a [types.*] table because they are collected
 // but have no per-type expectation. Naming them explicitly matters: a field
-// that is fetched and then rendered nowhere is exactly the defect the
-// end-to-end test exists to catch.
+// that is fetched and then rendered nowhere would otherwise be invisible,
+// since no test checks that every audit.Settings field has a row here.
 //
 //nolint:gochecknoglobals // immutable lookup table
 var settings = []setting{
@@ -184,8 +185,8 @@ func modalValue(counts map[string]int, total int) (string, bool) {
 }
 
 // SettingLabels returns every tracked setting's label, in report order. It
-// exists so a test can assert that the collected model has no field the report
-// silently drops.
+// exists so a test can assert the labels are unique and non-empty, since a
+// shared label would make an exception unattributable.
 func SettingLabels() []string {
 	out := make([]string, 0, len(settings))
 	for _, s := range settings {

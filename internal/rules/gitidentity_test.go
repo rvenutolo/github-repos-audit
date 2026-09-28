@@ -122,8 +122,8 @@ func TestEvaluate_gitIdentityOverrideNotRequiredStillLists(t *testing.T) {
 	if got.Verdict != rules.NA || !got.Overridden {
 		t.Errorf("cell = %v overridden=%t; want n/a overridden=true", got.Verdict, got.Overridden)
 	}
-	// The listing is the working list for a history rewrite: excusing the
-	// verdict does not make the wrong identity disappear from the history.
+	// An override does not drop a repository from the listing; see
+	// identityLines for why.
 	if len(rep.Identities) != 1 || rep.Identities[0].Repo != "alpha" {
 		t.Errorf("Identities = %+v, want one line for alpha", rep.Identities)
 	}

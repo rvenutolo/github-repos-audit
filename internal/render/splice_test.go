@@ -88,8 +88,7 @@ func TestSplice_rejectsABrokenReadme(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Guessing where the block belongs would either duplicate the
-			// report or overwrite prose somebody wrote, so this is fatal.
+			// A broken layout is fatal for the reason on ErrMarkers.
 			_, err := render.Splice(tc.readme, "block")
 			if err == nil {
 				t.Fatal("Splice() error = nil, want a marker error")
@@ -115,8 +114,7 @@ func TestSplice_rejectsABlockContainingAMarker(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Writing such a block would produce a README the next run refuses
-			// to read, so it is refused up front instead.
+			// Refused up front; see Splice for why.
 			got, err := render.Splice(readmeWithMarkers, tc.block)
 			if err == nil {
 				t.Fatal("Splice() error = nil, want a marker error")
@@ -147,9 +145,7 @@ func TestGeneratedBlock(t *testing.T) {
 }
 
 // TestGeneratedBlock_rejectsABrokenReadme holds the reader to the same marker
-// rules as the writer. A layout Splice refuses is one whose block boundaries
-// are ambiguous, and reading it leniently would hand the change guard a block
-// chosen by guesswork from a README nobody can safely regenerate.
+// rules as the writer; GeneratedBlock and locateMarkers explain why.
 func TestGeneratedBlock_rejectsABrokenReadme(t *testing.T) {
 	t.Parallel()
 
@@ -174,8 +170,8 @@ func TestGeneratedBlock_rejectsABrokenReadme(t *testing.T) {
 // FuzzSplice holds Splice to its invariants over arbitrary input: it never
 // panics; an error comes with no output; and a success carries exactly the
 // block between the markers, with the prose on either side untouched, and is
-// a fixed point — splicing the same block into its own output changes nothing,
-// which is what keeps the daily refresh from drifting the file.
+// a fixed point — splicing the same block into its own output changes nothing
+// (see TestSplice_isIdempotent).
 func FuzzSplice(f *testing.F) {
 	f.Add(readmeWithMarkers, "## Gaps\n\n- nothing\n")
 	f.Add(readmeWithMarkers, "")
@@ -187,8 +183,7 @@ func FuzzSplice(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, readme, block string) {
 		out, err := render.Splice(readme, block)
-		// A block carrying a marker of its own would produce a README the next
-		// run refuses to read, so it must be refused up front.
+		// Splice refuses a block carrying a marker; see its doc.
 		if strings.Contains(block, render.BeginMarker) || strings.Contains(block, render.EndMarker) {
 			if !errors.Is(err, render.ErrMarkers) {
 				t.Errorf("Splice(block with a marker) error = %v, want ErrMarkers", err)

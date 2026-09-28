@@ -17,8 +17,9 @@ func TestRepoReport_Cell(t *testing.T) {
 	if diff := cmp.Diff(stored, report.Cell(rules.CheckLicense)); diff != "" {
 		t.Errorf("Cell(license) mismatch (-want +got):\n%s", diff)
 	}
-	// An absent check is the zero Cell: the report never invents a verdict,
-	// and the completeness of Cells is asserted elsewhere.
+	// An absent check is the zero Cell: the report never invents a verdict.
+	// Completeness comes from evaluateRepo ranging over Checks(), not from
+	// this accessor.
 	if diff := cmp.Diff(rules.Cell{}, report.Cell(rules.CheckREADME)); diff != "" {
 		t.Errorf("Cell(readme) mismatch (-want +got):\n%s", diff)
 	}

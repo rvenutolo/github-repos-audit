@@ -105,9 +105,8 @@ func TestEvaluate_naCellsStillCarryTheirValue(t *testing.T) {
 		t.Errorf("topics value = %q, want %q", cell.Value, "6")
 	}
 
-	// flake.nix, by contrast, is present-or-absent. An n/a cell there renders
-	// n/a, because a bare cross on a non-gap cell is indistinguishable from a
-	// gap in the same column.
+	// flake.nix, by contrast, is present-or-absent (observe sets no scalar),
+	// so its n/a cell carries no value; see render.cell in block.go for why.
 	if got := cells[rules.CheckFlakeNix].Value; got != "" {
 		t.Errorf("flake.nix value = %q, want empty so the cell renders n/a", got)
 	}
@@ -282,8 +281,7 @@ func TestEvaluate_ciRollupStates(t *testing.T) {
 		{"EXPECTED", rules.Pass},
 		{"FAILURE", rules.Fail},
 		{"ERROR", rules.Fail},
-		// A run in flight is not a failure, and the daily cadence means it will
-		// have settled by the next render.
+		// PENDING is Info, not Fail; see verdictFor in evaluate.go.
 		{"PENDING", rules.Info},
 		// A null rollup on a repository expected to have CI is a cross.
 		{"", rules.Fail},
@@ -325,8 +323,8 @@ func TestEvaluate_requiredChecksAndCIWorkflows(t *testing.T) {
 		if cell.Verdict != rules.Fail {
 			t.Errorf("required checks verdict = %v, want Fail", cell.Verdict)
 		}
-		// Renders ✗ rather than a count: a zero would read like a number
-		// somebody chose.
+		// Empty Value so the cell renders a cross, not "0"; see
+		// observeRequiredChecks for why.
 		if cell.Value != "" {
 			t.Errorf("required checks value = %q, want empty so the cell renders a cross", cell.Value)
 		}
@@ -346,13 +344,14 @@ func TestEvaluate_requiredChecksAndCIWorkflows(t *testing.T) {
 		}
 	})
 
-	// The case the two-row split exists for: a repository that allows direct
-	// push can still have real CI on its pull requests while having no
-	// required checks at all.
+	// The case the two-row split exists for: required checks go n/a from the
+	// LIVE direct-push answer, not the type, so a tools repo that allows direct
+	// push has its required-checks row withheld while the workflow on disk
+	// still passes the CI-workflows row and the direct-push row itself fails.
 	t.Run("required checks is n/a under direct push, CI workflows still reads pass", func(t *testing.T) {
 		t.Parallel()
 
-		r := fixture("a", "content")
+		r := fixture("a", "tools")
 		r.Branch.Types = []string{"required_signatures"} // no pull_request rule
 		r.Branch.RequiredChecks = nil
 		r.Files.Workflows = []string{"ci.yml"}
@@ -363,8 +362,11 @@ func TestEvaluate_requiredChecksAndCIWorkflows(t *testing.T) {
 		if got := cells[rules.CheckRequiredChecks].Verdict; got != rules.NA {
 			t.Errorf("required checks verdict = %v, want NA", got)
 		}
-		if got := cells[rules.CheckDirectPush].Verdict; got != rules.Pass {
-			t.Errorf("direct push verdict = %v, want Pass for a content repo", got)
+		if got := cells[rules.CheckCIWorkflows].Verdict; got != rules.Pass {
+			t.Errorf("CI workflows verdict = %v, want Pass with a workflow on disk", got)
+		}
+		if got := cells[rules.CheckDirectPush].Verdict; got != rules.Fail {
+			t.Errorf("direct push verdict = %v, want Fail for a tools repo that allows it", got)
 		}
 	})
 }
@@ -410,9 +412,9 @@ func TestEvaluate_directPush(t *testing.T) {
 }
 
 // TestEvaluate_emptyRepository covers the whole row for a repository with no
-// commits at all. That is an ordinary answer, not a failure: it cannot be
-// judged on what is in its commits, and it can and should still be judged on
-// its description, topics and settings.
+// commits at all: branch-derived cells are n/a, while the file probes, CI, the
+// description and direct push are still judged. The n/a-versus-gap split is
+// explained on audit.BranchRules.Known.
 func TestEvaluate_emptyRepository(t *testing.T) {
 	t.Parallel()
 
@@ -435,7 +437,8 @@ func TestEvaluate_emptyRepository(t *testing.T) {
 			t.Errorf("%s verdict = %v, want NA on an empty repository", c, got)
 		}
 	}
-	// File probes and CI are crosses where the type expects them.
+	// File probes, CI, the tag ruleset and the description are crosses where
+	// the type expects them.
 	for _, c := range []rules.Check{
 		rules.CheckREADME, rules.CheckGitignore, rules.CheckEditorconfig,
 		rules.CheckFlakeNix, rules.CheckJustfile, rules.CheckRenovate,
@@ -580,9 +583,10 @@ func TestEvaluate_overrides(t *testing.T) {
 	t.Run("a value override on a presence check only marks the cell", func(t *testing.T) {
 		t.Parallel()
 
-		// Only direct_push reads a value; on a present-or-absent row a value
-		// is meaningless, so the verdict stands and the cell is merely marked
-		// so the Overrides section can show what was declared.
+		// Only direct_push and renovate_min_release_age read a value; on a
+		// present-or-absent row a value is meaningless, so the verdict stands
+		// and the cell is merely marked so the Overrides section can show
+		// what was declared.
 		r := fixture("a", "tools")
 		r.Files.RenovateConfig = ""
 		r.Overrides = map[string]string{"renovate": "quarterly"}

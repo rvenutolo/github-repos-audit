@@ -6,10 +6,11 @@ name: validate
 #
 # The tool is checked out at the workspace root, so .ci/in-devshell and every
 # .ci script find their own repository through `git rev-parse --show-toplevel`,
-# and the caller lands under report/, which is what --config names. Every
-# formatting and schema tool below reads its config by walking up from the
-# file it is given, so a config at the workspace root (the tool) applies to a
-# file under report/ with no --config flag needed.
+# and the caller lands under report/, which is what --config names. Both
+# formatting tools below read their config by walking up from the file they
+# are given, so a config at the workspace root (the tool) applies to a file
+# under report/ with no --config flag needed; check-jsonschema is handed the
+# schema path explicitly.
 on:
   workflow_call: {}
 

@@ -16,11 +16,9 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
 
-// TestRepository_releases is why the query asks for five releases rather than
-// one. GitHub returns them newest first and counts drafts in the total, so the
-// summary has to subtract what a stranger cannot see and then look past it:
-// a draft published later than the newest real release must not become the
-// repository's last release date, and neither must an unpublished node.
+// TestRepository_releases exercises the five-node window releases() explains:
+// drafts are subtracted from the total and looked past, and an unpublished
+// node carries no date, so neither may become the last release date.
 func TestRepository_releases(t *testing.T) {
 	t.Parallel()
 
@@ -74,8 +72,8 @@ func TestRepository_releases(t *testing.T) {
 			wantLastPublish: time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			// The one shape the five-node window exists for: nothing but
-			// drafts in view, so there is a total but no date to show.
+			// The window can still be all drafts: a total but no date to
+			// show.
 			name: "a run of drafts hides nothing because there is nothing behind it",
 			nodes: `[
 				{"is_draft": true, "published_at": null},
@@ -173,8 +171,8 @@ func TestWaitFor(t *testing.T) {
 	})
 }
 
-// TestNew_rejectsAnUnparsableBaseURL keeps a bad --api-url from becoming a
-// request to somewhere else. A control character is the case url.Parse rejects
+// TestNew_rejectsAnUnparsableBaseURL keeps a bad Options.BaseURL from becoming
+// a request to somewhere else. A control character is the case url.Parse rejects
 // and string concatenation would otherwise carry all the way to the wire.
 func TestNew_rejectsAnUnparsableBaseURL(t *testing.T) {
 	t.Parallel()
@@ -245,8 +243,7 @@ func TestWalkHistory_guards(t *testing.T) {
 		wantText  string
 	}{
 		{
-			// Asking again without a cursor would return page one, which
-			// promises a next page again: a walk that never ends.
+			// See walkHistory: an empty cursor would refetch page one forever.
 			name:      "a next page promised with a null cursor",
 			first:     pageOne(nil),
 			wantCalls: 0,
@@ -298,11 +295,9 @@ func TestWalkHistory_guards(t *testing.T) {
 	}
 }
 
-// TestWalkHistory_abortsOnAStuckCursor covers a server that repeats the
-// cursor it was just asked for instead of advancing it. Asking again would
-// fetch the same page forever, so the walk aborts on the second sighting
-// rather than looping until the context is cancelled; the stub is asked only
-// once, for the cursor the page it returns then repeats.
+// TestWalkHistory_abortsOnAStuckCursor covers a page that repeats the cursor
+// it was asked for (see lastCursor in walkHistory for why that aborts); the
+// stub is asked once, for the cursor the page it returns then repeats.
 func TestWalkHistory_abortsOnAStuckCursor(t *testing.T) {
 	t.Parallel()
 
@@ -450,11 +445,9 @@ func TestClient_identities_noHistoryIsNoIdentities(t *testing.T) {
 }
 
 // TestClient_identities_abortsWhenTheFirstAnswerHasNoHistory covers a target
-// present without the history selection. The query always asks for history,
-// so its absence means the first answer came back malformed; reading that as
-// "no identities" would render a gap as a clean answer, so it aborts instead.
-// The fake server is never called: the malformed shape is in the repository
-// value handed in, not in a page fetched over the wire.
+// present without the history selection (see identities for why that is
+// malformed, not empty). The fake server is never called: the shape is in the
+// repository value handed in, not in a fetched page.
 func TestClient_identities_abortsWhenTheFirstAnswerHasNoHistory(t *testing.T) {
 	t.Parallel()
 

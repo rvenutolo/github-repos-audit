@@ -2,8 +2,10 @@
 #
 # Every recipe that runs a tool goes through .ci/in-devshell — except `fmt`,
 # `format-check` and the `nix fmt` half of `fix`, which drive the host's
-# `nix`, the one tool the devshell cannot provide to itself — so it runs
-# under the flake's pinned tools with the host environment stripped, the
+# `nix`, the one tool the devshell cannot provide to itself; `mutate`, which
+# enters its own devShell (see its body); `gremlins-bump`, which is `nix run`
+# on the host; and `hooks`, which runs before the devShell exists — so it
+# runs under the flake's pinned tools with the host environment stripped, the
 # same way CI runs. `just check` IS what CI runs.
 #
 # gh runs OUTSIDE the devshell so it sees the host's auth; the token is passed
@@ -36,12 +38,10 @@ cover:
 # Record current coverage as the new baseline. Commit the diff deliberately.
 cover-update:
     # A line that goes DOWN in the resulting diff is a loss of coverage. The
-    # commit that lowers it must say why, with a trailer in the message's
-    # last paragraph (the one carrying Co-Authored-By):
-    # `Coverage-Drop: <package dir> - <reason>`, which
-    # .ci/check-coverage-drop enforces. The gate fails on any drop without a
-    # baseline change; see .ci/check-coverage's header for why there is no
-    # tolerance.
+    # commit that lowers it needs a Coverage-Drop trailer;
+    # .ci/check-coverage-drop documents the format. The gate fails on any
+    # drop without a baseline change; see .ci/check-coverage's header for why
+    # there is no tolerance.
     ./.ci/in-devshell go test ./... -race -shuffle=on -coverprofile=coverage.out
     ./.ci/in-devshell ./.ci/check-coverage --update
 
@@ -65,9 +65,8 @@ mutate package="./internal/rules/":
 
 # Bump gremlins to its latest release, rewriting both hashes. Needs network.
 gremlins-bump:
-    # The same command .github/workflows/gremlins-bump.yml runs. Never edit the
-    # version or either hash in nix/gremlins.nix by hand; vendorHash in
-    # particular cannot be computed by reading anything.
+    # Same command as .github/workflows/gremlins-bump.yml; see nix/gremlins.nix
+    # for why the hashes are never edited by hand.
     nix run nixpkgs#nix-update -- --flake --version=stable gremlins
 
 # Report vulnerabilities in the code paths this binary reaches.

@@ -6,15 +6,8 @@
 #              relative (`./.github/...`) or self-repository (`$/...`): both
 #              are this repo's own tree, already pinned by the checkout.
 #
-#              A self-repository (`$/...`) ref is checked for a different
-#              defect instead: nothing else in the gate verifies that the path
-#              after `$/` actually exists. actionlint does not understand the
-#              `$/` syntax yet (see .ci/run-lint-checks' -ignore list) and so
-#              never flags a bad one, and there is no zizmor config that would.
-#              A `$/<path>` names a local composite action, which git tracks
-#              as a FILE (`<path>/action.yml` or `<path>/action.yaml`), not a
-#              directory, so the check looks for that file with `git
-#              ls-files` rather than testing the directory on disk.
+#              A `$/...` ref is instead checked to resolve to a tracked
+#              action.yml; see the comment in main() for why.
 # @noargs
 # @exitcode 0 every uses: is SHA-pinned with a version comment, and every $/
 #             local-action path resolves to a tracked action.yml

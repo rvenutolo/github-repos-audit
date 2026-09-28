@@ -9,10 +9,9 @@ import (
 	"fmt"
 )
 
-// Check identifies one row of the report, or direct push, the one declared
-// setting a type decides. Every check a repository can be judged on appears
-// here exactly once, and the identifiers are the names an override in
-// repos.toml may use.
+// Check identifies one row of the report. Every check a repository can be
+// judged on appears here exactly once, and the identifiers are the names
+// repos.toml types and overrides use.
 type Check int
 
 // The checks, in the fixed order the Gaps worklist reports them: most

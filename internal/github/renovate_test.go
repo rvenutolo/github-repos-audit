@@ -73,9 +73,9 @@ func TestCollect_presetFetchedOncePerRun(t *testing.T) {
 	}
 }
 
-// TestCollect_presetCacheIsPerRun: the cache lives for one Collect call, so a
-// second run on the same Client reads the preset afresh rather than trusting
-// an answer from an earlier run.
+// TestCollect_presetCacheIsPerRun: the cache is made per Collect call (see
+// Client.Collect), so a second run on the same Client fetches the preset
+// again.
 func TestCollect_presetCacheIsPerRun(t *testing.T) {
 	t.Parallel()
 	api := newFakeAPI(t)

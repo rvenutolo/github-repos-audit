@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 
 # Git commit-msg hook: validates the message against Conventional Commits via
-# commitlint, inside the devShell so the same commitlint runs locally and in CI.
+# commitlint, run inside the devShell so the pinned commitlint is used locally;
+# CI checks the same rules (.commitlintrc.yml) via wagoid/commitlint-github-action.
 
 set -Eeuo pipefail
 # Git runs hooks under the HOST bash, before .ci/in-devshell enters the
-# devShell, so the host's version is whatever the machine ships. `shopt -s
-# inherit_errexit` below is a bash 4.4 builtin option: on stock macOS bash 3.2
-# the shell aborts with `shopt: inherit_errexit: invalid shell option name`,
-# which tells a coworker nothing about what to install. Check first, and say
-# what to do. Must stay ABOVE the `shopt` line it is protecting.
+# devShell, so the same bash version guard is repeated here; the rationale is
+# in .ci/in-devshell. Must stay ABOVE the `shopt` line it is protecting.
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
   printf '%s: bash 4.4+ required to run this hook (found %s.%s). On macOS: brew install bash.\n' \
     "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2

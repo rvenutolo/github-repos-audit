@@ -34,7 +34,7 @@ import (
 // real account's repositories:
 //
 //   - SMOKE_OWNER is the account the token belongs to.
-//   - SMOKE_PUBLIC_REPO is public, has CI and cuts releases.
+//   - SMOKE_PUBLIC_REPO is public and has CI.
 //   - SMOKE_PRIVATE_REPO is private, which is what makes the n/a paths
 //     observable: security_and_analysis and private-vulnerability-reporting
 //     both behave differently there.
@@ -179,10 +179,11 @@ func TestLive_collectParsesEveryField(t *testing.T) {
 	}
 }
 
-// TestLive_normalNotErrors asserts every row of the design's
-// normal-not-errors table still behaves as documented. Each of these was a
-// hard-won lesson; a change to any of them turns an ordinary answer into an
-// aborted run.
+// TestLive_normalNotErrors asserts every documented n/a answer in rest.go (a
+// missing security_and_analysis block, 404 on private-vulnerability-reporting,
+// 422 on actions/permissions/access) still behaves as documented. Each of
+// these was a hard-won lesson; a change to any of them turns an ordinary
+// answer into an aborted run.
 func TestLive_normalNotErrors(t *testing.T) {
 	t.Parallel()
 

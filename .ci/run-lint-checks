@@ -141,9 +141,9 @@ function main() {
     lychee_auth=(--github-token "${GITHUB_TOKEN}")
   fi
   # --include only github.com: every link the generator emits is a
-  # repository URL. A homepage is rendered as inline code rather than a
-  # link, precisely so the gate never depends on a third-party host being
-  # up, and so an egress-blocked runner cannot fail on one.
+  # repository URL. A homepage is reduced to a pass/fail mark and the URL is
+  # never rendered, precisely so the gate never depends on a third-party host
+  # being up, and so an egress-blocked runner cannot fail on one.
   lychee --no-progress --max-concurrency 4 --cache --max-cache-age 1d \
     "${lychee_auth[@]+"${lychee_auth[@]}"}" \
     --include 'https://github\.com/.*' "${md_files[@]}" || rc=1
