@@ -310,6 +310,7 @@ func dateCell(c rules.Cell, at time.Time) string {
 	return age(c.At, at)
 }
 
+// doc-rot-exempt: "today" is a word the renderer emits, not a date relative to the writer
 // age is the relative date vocabulary: "today", "12d", "4mo", "3y". Deliberately
 // coarse — there is no staleness threshold on any of these, so the number is
 // shown to be read rather than compared against anything.

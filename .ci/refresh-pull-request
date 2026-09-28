@@ -103,12 +103,12 @@ function main() {
   # Note the open pull request BEFORE touching the branch. Resetting the branch
   # onto the base makes its head momentarily identical to the base, and GitHub
   # closes a pull request the instant that is true. Without this, every run
-  # would abandon yesterday's pull request and open a new number, leaving a
+  # would abandon the previous run's pull request and open a new number, leaving a
   # trail of auto-closed ones — the opposite of "at most one refresh pull
   # request exists at a time".
   existing="$(gh pr list --repo "${repo}" --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')"
 
-  # Recreate the branch from the current base rather than reusing yesterday's,
+  # Recreate the branch from the current base rather than reusing the last run's,
   # so the diff is always against current main and a red refresh pull request
   # is replaced rather than stacked on.
   if gh api "repos/${repo}/git/ref/heads/${BRANCH}" > '/dev/null' 2>&1; then

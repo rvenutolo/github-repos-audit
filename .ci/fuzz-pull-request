@@ -11,7 +11,7 @@
 #              branch, ready to fix.
 #
 #              The branch is named after the input's hash, so re-finding the
-#              same crasher next week reuses the branch and files nothing new.
+#              same crasher on a later run reuses the branch and files nothing new.
 #              One branch per input, never reset onto the base: an unfixed
 #              crasher pull request must not be clobbered by the next run.
 #

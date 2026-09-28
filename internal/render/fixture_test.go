@@ -37,7 +37,7 @@ func fixtureIdentity() audit.IdentityStandard {
 }
 
 // renderedAt is the instant every golden file is rendered against, so the
-// relative dates in them are fixed rather than yesterday's.
+// relative dates in them are fixed rather than tied to the clock.
 var renderedAt = time.Date(2026, 9, 5, 7, 30, 0, 0, time.UTC)
 
 func at(y int, m time.Month, d int) time.Time {
