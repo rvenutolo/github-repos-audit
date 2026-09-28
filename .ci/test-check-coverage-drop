@@ -24,7 +24,7 @@ readonly MODULE='example.com/marker'
 # Sits in every trailer's reason; see expect_run.
 readonly REASON_SENTINEL='markerReasonSentinel'
 
-# work is global, not local to main: the EXIT trap fires after main returns.
+# work is global, not local to main; see .ci/check-coverage-drop for why.
 work=''
 trap 'rm -rf -- "${work}"' EXIT
 
@@ -351,9 +351,8 @@ function main() {
   commit_all "${repo}" "$(printf 'refactor: drop the retry path\n\nCoverage-Drop: internal/x - the retry path it covered was removed, markerReasonSentinel\n\nCo-Authored-By: Marker <marker@example.invalid>')"
   expect "${repo}" "${base}..HEAD" 1 'lowers internal/x' 'a trailer in its own paragraph above Co-Authored-By' || rc=1
 
-  # A malformed figure used to read as 0, so a malformed parent figure hid
-  # the drop below it. Either side malformed fails the run, naming the
-  # package and never quoting the figure.
+  # Either side malformed fails the run, naming the package and never quoting
+  # the figure (why: judge_commit in .ci/check-coverage-drop).
   repo="$(new_repo)"
   write_baseline "${repo}" '90.0%' '8O.0%' 'n/a'
   commit_all "${repo}" 'chore: mangle a figure'
@@ -411,9 +410,8 @@ function main() {
     expect "${repo}" "${base}..HEAD" 2 "git show failed for ${short}^:.ci/coverage-baseline.txt" \
     'git show fails on the baseline' || rc=1
 
-  # Each producer of the per-commit facts is guarded on its own: a failure
-  # in the parent's or the commit's side must not leave the facts without
-  # that side, which reads as "no drop" and passes an unjustified one.
+  # Each facts producer (O, N, T) is guarded on its own (why: the comment
+  # above the awk producers in .ci/check-coverage-drop main).
   repo="$(new_repo)"
   base="$(git -C "${repo}" rev-parse HEAD)"
   write_baseline "${repo}" '90.0%' '75.0%' 'n/a'

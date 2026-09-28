@@ -38,12 +38,10 @@ cover:
 # Record current coverage as the new baseline. Commit the diff deliberately.
 cover-update:
     # A line that goes DOWN in the resulting diff is a loss of coverage. The
-    # commit that lowers it must say why, with a trailer in the message's
-    # last paragraph (the one carrying Co-Authored-By):
-    # `Coverage-Drop: <package dir> - <reason>`, which
-    # .ci/check-coverage-drop enforces. The gate fails on any drop without a
-    # baseline change; see .ci/check-coverage's header for why there is no
-    # tolerance.
+    # commit that lowers it needs a Coverage-Drop trailer;
+    # .ci/check-coverage-drop documents the format. The gate fails on any
+    # drop without a baseline change; see .ci/check-coverage's header for why
+    # there is no tolerance.
     ./.ci/in-devshell go test ./... -race -shuffle=on -coverprofile=coverage.out
     ./.ci/in-devshell ./.ci/check-coverage --update
 
@@ -67,9 +65,8 @@ mutate package="./internal/rules/":
 
 # Bump gremlins to its latest release, rewriting both hashes. Needs network.
 gremlins-bump:
-    # The same command .github/workflows/gremlins-bump.yml runs. Never edit the
-    # version or either hash in nix/gremlins.nix by hand; vendorHash in
-    # particular cannot be computed by reading anything.
+    # Same command as .github/workflows/gremlins-bump.yml; see nix/gremlins.nix
+    # for why the hashes are never edited by hand.
     nix run nixpkgs#nix-update -- --flake --version=stable gremlins
 
 # Report vulnerabilities in the code paths this binary reaches.

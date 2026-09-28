@@ -71,8 +71,8 @@ func TestParseCheck_rejectsAnUnknownName(t *testing.T) {
 }
 
 // TestCheck_ValueOnly pins the four checks that carry a value and no pass or
-// fail. Requiring one of them could only ever render a cross that no worklist
-// entry explains, so config refuses it and a type may not ask for it.
+// fail. internal/config refuses a required override on one; see the ValueOnly
+// guard in config.go for why.
 func TestCheck_ValueOnly(t *testing.T) {
 	t.Parallel()
 

@@ -29,7 +29,7 @@ readonly MODULE='example.com/marker'
 # every case.
 readonly SENTINEL='markerSentinelValue'
 
-# work is global, not local to main: the EXIT trap fires after main returns.
+# work is global, not local to main; see .ci/check-coverage-drop for why.
 work=''
 trap 'rm -rf -- "${work}"' EXIT
 
@@ -730,10 +730,8 @@ EOF
   printf 'not a profile\n' > "${repo}/bad.out"
   expect "${repo}" "${base}" "${repo}/bad.out" 2 'not a Go coverage profile' 'a profile with no mode: line' || rc=1
 
-  # A line that is not Go's exact "<file>:<l>.<c>,<l>.<c> <n> <n>" used to be
-  # skipped, which failed open: a CRLF profile read as having no blocks at
-  # all, so every change passed. Each must fail the run instead, naming the
-  # line by number and never quoting it.
+  # read_blocks fails the run on any line go would not write (see its header):
+  # a CRLF profile and a non-numeric count, named by line number only.
   set_line "${repo}/a.go" 6 '    return 4'
   a_profile | awk '{ printf "%s\r\n", $0 }' > "${repo}/crlf.out"
   expect "${repo}" "${base}" "${repo}/crlf.out" 2 'crlf.out line 2 is not a Go coverage profile line' \
@@ -744,8 +742,7 @@ EOF
   } > "${repo}/count.out"
   expect "${repo}" "${base}" "${repo}/count.out" 2 'count.out line 5 is not a Go coverage profile line' \
     'a non-numeric count fails closed' || rc=1
-  # Every block belongs to another module: a profile from some other
-  # repository. Read as "nothing here is profiled", every change would pass.
+  # A profile whose blocks all belong to another module (read_blocks' exit 4).
   a_profile | awk '{ sub(/^example\.com\/marker\//, "example.com/other/"); print }' > "${repo}/other.out"
   expect "${repo}" "${base}" "${repo}/other.out" 2 \
     "no block in ${repo}/other.out belongs to module ${MODULE}; was it written for this repository?" \

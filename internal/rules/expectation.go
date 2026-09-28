@@ -80,9 +80,7 @@ func (e expectation) resolve(public, published bool) expectation {
 
 // decidesUnconditionally reports whether an expectation depends on nothing
 // but the type — required, not_required or info rather than public or
-// public_published. An override against such a cell can be checked for
-// deadness offline; an override against a visibility-dependent cell cannot,
-// because visibility is never declared.
+// public_published. See ValidateOffline for why that split matters.
 func decidesUnconditionally(e expectation) bool {
 	return e == expAlways || e == expNA || e == expInfo
 }

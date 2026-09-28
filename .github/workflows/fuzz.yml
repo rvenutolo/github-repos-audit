@@ -11,9 +11,9 @@ name: fuzz
 # after its last access: a weekly run sits exactly on that boundary and the
 # corpus would keep cold-starting from the seeds.
 #
-# A crasher becomes a pull request rather than a red X, because the failing
-# input lives only in the runner's working tree and a discarded run discards
-# it. The run still fails afterwards, so a finding also arrives by mail.
+# A crasher is filed as a pull request rather than lost with the run (why:
+# .ci/fuzz-pull-request); the run still fails afterwards, so a finding also
+# arrives by mail.
 on:
   schedule:
     # :17 because on-the-hour slots are the most contended on GitHub's
@@ -41,10 +41,9 @@ jobs:
     # twenty-five minutes; the rest is headroom for a longer dispatched duration.
     timeout-minutes: 45
     # contents: read is for actions/checkout and nothing else. The pull request
-    # a crasher produces is opened with REFRESH_TOKEN, for the same reason the
-    # refresh uses it: nothing the built-in token creates triggers a workflow
-    # run, so its pull request would sit without checks forever — and a red
-    # gate on the input is the entire point here.
+    # a crasher produces is opened with REFRESH_TOKEN for the same reason the
+    # refresh does (audit.yml): the built-in token's pull request would get no
+    # checks — and a red gate on the input is the entire point here.
     permissions:
       contents: read
     steps:

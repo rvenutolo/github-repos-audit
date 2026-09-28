@@ -47,8 +47,7 @@ func TestJSON_endsWithNewline(t *testing.T) {
 func TestJSON_doesNotEscapeHTML(t *testing.T) {
 	t.Parallel()
 
-	// HTML escaping off, so a description containing an ampersand reads as
-	// itself rather than as an entity.
+	// JSON sets SetEscapeHTML(false); see its doc in write.go.
 	esc := &audit.Snapshot{Repos: []audit.Repo{{Name: "a", Description: "this & that <b>"}}}
 	data, err := render.JSON(esc)
 	if err != nil {
@@ -70,8 +69,7 @@ func TestJSON_usesSnakeCaseKeys(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("the output is not valid JSON: %v", err)
 	}
-	// The key names are an interface: audit.json is committed, so a rename
-	// rewrites the history of the account this repository keeps.
+	// The key names are a public interface; see the internal/audit package doc.
 	for _, key := range []string{"generated_at", "types", "repos"} {
 		if _, ok := decoded[key]; !ok {
 			t.Errorf("audit.json has no %q key", key)
@@ -99,8 +97,8 @@ func TestWriteFiles(t *testing.T) {
 		}
 	}
 
-	// Overwriting works, and leaves no temp file behind: the write goes
-	// through a temp file in the same directory so the rename is atomic.
+	// Overwriting works and leaves no temp file behind (stage in write.go
+	// explains the temp-file-and-rename scheme).
 	if err := render.WriteFiles(readmePath, "again\n", jsonPath, []byte("[]\n")); err != nil {
 		t.Fatalf("WriteFiles() error = %v, want nil", err)
 	}

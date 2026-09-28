@@ -145,10 +145,8 @@ func TestParse_keepsTheIdentityStandard(t *testing.T) {
 	}
 }
 
-// TestParse_acceptedEmptyIsNil: `accepted = []` and no accepted key both mean
-// nothing is accepted beyond canonical, so both must produce the same
-// standard — otherwise audit.json would gain "accepted": [] and the guard
-// would call an edit that changes nothing a material change.
+// TestParse_acceptedEmptyIsNil pins that `accepted = []` and no accepted key
+// both produce a nil Accepted, the rule identityProblems explains.
 func TestParse_acceptedEmptyIsNil(t *testing.T) {
 	t.Parallel()
 
@@ -244,9 +242,8 @@ func TestParse_acceptsATypeNoRepositoryUses(t *testing.T) {
 	}
 }
 
-// TestParse_reportsTypeProblemsBeforeRepositoryProblems keeps `audit validate`
-// output in a stable, readable order: the tables first, then the entries that
-// use them.
+// TestParse_reportsTypeProblemsBeforeRepositoryProblems pins the order Parse
+// explains: type problems before repository problems.
 func TestParse_reportsTypeProblemsBeforeRepositoryProblems(t *testing.T) {
 	t.Parallel()
 
@@ -469,9 +466,8 @@ func TestParse_rejects(t *testing.T) {
 func TestParse_rejectsUnknownKeys(t *testing.T) {
 	t.Parallel()
 
-	// A key that is almost right would otherwise decode into nothing and be
-	// silently dropped: `publish = true` reads as "not published" and the file
-	// looks valid. Naming the key is what turns that into a one-line fix.
+	// Why an unknown key is refused rather than dropped, and named in the
+	// error: see Parse in config.go.
 	_, err := config.Parse(strings.NewReader(unknownKeyFile))
 	if err == nil {
 		t.Fatal("Parse() error = nil, want an unknown-key error")

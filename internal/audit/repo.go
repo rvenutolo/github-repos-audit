@@ -68,14 +68,13 @@ type Repo struct {
 	// DefaultBranch is the live default branch name, empty for an empty
 	// repository.
 	DefaultBranch string `json:"default_branch,omitzero"`
-	// HeadOID is the default branch's head commit, all forty characters.
-	// Abbreviating it would silently break the smoke suite's cross-check,
-	// which queries actions/runs?head_sha= and answers total_count: 0 for a
-	// short SHA, with a 200.
+	// HeadOID is the default branch's head commit, all forty characters;
+	// TestLive_headShaNeedsTheFullOID in internal/github is why it is never
+	// abbreviated.
 	HeadOID string `json:"head_oid,omitzero"`
-	// Empty reports a repository with no commits at all — GraphQL answered
-	// defaultBranchRef: null. That is an ordinary answer, not a failure: the
-	// branch-derived cells are unknown and everything else still applies.
+	// Empty reports a repository with no commits at all: GraphQL answered
+	// defaultBranchRef: null, an ordinary answer rather than a failure. See
+	// toAudit in internal/github/collect.go for what still applies.
 	Empty bool `json:"empty,omitzero"`
 	// Identities is every distinct author and committer identity on the
 	// default branch's full history, exactly as the commits spell them,
@@ -210,9 +209,8 @@ type Settings struct {
 	// DependabotSecurityUpdates is REST's automated-security-fixes.
 	DependabotSecurityUpdates bool `json:"dependabot_security_updates"`
 
-	// The merge settings come from GraphQL, not REST: REST silently drops them
-	// for a token with only read rights, and a token cannot tell you it was
-	// handed a trimmed answer.
+	// The merge settings come from GraphQL, not REST; see restRepo in
+	// internal/github/rest.go for why.
 	MergeCommitAllowed  bool   `json:"merge_commit_allowed"`
 	SquashMergeAllowed  bool   `json:"squash_merge_allowed"`
 	RebaseMergeAllowed  bool   `json:"rebase_merge_allowed"`

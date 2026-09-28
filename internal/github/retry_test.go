@@ -13,12 +13,9 @@ import (
 	"time"
 )
 
-// These tests live in the package because the policy they hold to its contract
-// is deliberately unexported: retryWait is a decision, not an API, and the two
-// seams that make it testable — the injected clock and the injected wait — are
-// there so a test can assert a sixty-second backoff without spending sixty
-// seconds. What a caller can see of all this is asserted through Client in the
-// exported tests.
+// These tests live in the package because retryWait is a decision, not an
+// API; see the now/sleep field comment on Client for why the seams exist.
+// What a caller can see is asserted through Client in the exported tests.
 
 // theInstant is the wall clock every test that reads a header date pins to.
 var theInstant = time.Date(2026, time.September, 7, 12, 0, 0, 0, time.UTC)
@@ -116,9 +113,8 @@ type scriptedResponse struct {
 }
 
 // TestClient_retryWait holds the policy to its discriminator: a 403 is
-// retryable only when it carries evidence of a rate limit, because a bare 403
-// is a token without a scope and resending it is a hang that looks like a
-// stall.
+// retryable only when it carries evidence of a rate limit (see retryWait for
+// why a bare 403 is not).
 func TestClient_retryWait(t *testing.T) {
 	t.Parallel()
 
@@ -446,9 +442,8 @@ func TestClient_do_givesUpAfterTheBudget(t *testing.T) {
 	}
 }
 
-// TestClient_do_failsWhenTheResetIsTooFarOut covers the deliberate refusal to
-// wait out a primary rate limit: sleeping forty minutes inside an unattended
-// nightly run is worse than failing and letting the next one refresh.
+// TestClient_do_failsWhenTheResetIsTooFarOut covers a Retry-After beyond
+// maxRetryWait; see maxRetryWait for why it is not waited out.
 func TestClient_do_failsWhenTheResetIsTooFarOut(t *testing.T) {
 	t.Parallel()
 
@@ -606,8 +601,7 @@ func TestClient_fetchRepository_doesNotRetryAnotherGraphQLError(t *testing.T) {
 			body: `{"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a Repository"}]}`,
 		},
 		{
-			// Waiting could clear the limit but never the FORBIDDEN, so the
-			// whole budget would be spent to fail anyway.
+			// A mixed array is final; see graphQLRateLimited.
 			name: "a rate limit alongside another error",
 			body: `{"errors":[{"type":"RATE_LIMITED","message":"slow down"},{"type":"FORBIDDEN","message":"no"}]}`,
 		},
@@ -636,10 +630,9 @@ func TestClient_fetchRepository_doesNotRetryAnotherGraphQLError(t *testing.T) {
 	}
 }
 
-// TestClient_fetchRepository_givesUpOnAPersistentRateLimit pins what a limit
-// that outlasts the budget is reported as. It is not an unexpected status: the
-// status was 200 every time, and saying so would send the reader of a failed
-// nightly run looking for the wrong thing.
+// TestClient_fetchRepository_givesUpOnAPersistentRateLimit pins that a limit
+// outlasting the budget is ErrRateLimited, not ErrUnexpectedStatus; see
+// doRetrying.
 func TestClient_fetchRepository_givesUpOnAPersistentRateLimit(t *testing.T) {
 	t.Parallel()
 
@@ -661,9 +654,9 @@ func TestClient_fetchRepository_givesUpOnAPersistentRateLimit(t *testing.T) {
 	}
 }
 
-// TestClient_fetchRepository_doesNotWaitOutAPrimaryLimit is the same refusal a
-// REST rate limit gets: an hour is longer than an unattended nightly run
-// should sit, and the next run refreshes the report anyway.
+// TestClient_fetchRepository_doesNotWaitOutAPrimaryLimit is the REST refusal
+// (TestClient_do_failsWhenTheResetIsTooFarOut) read out of a 200 body; see
+// maxRetryWait.
 func TestClient_fetchRepository_doesNotWaitOutAPrimaryLimit(t *testing.T) {
 	t.Parallel()
 
@@ -689,9 +682,9 @@ func TestClient_fetchRepository_doesNotWaitOutAPrimaryLimit(t *testing.T) {
 	}
 }
 
-// TestClient_do_stopsWaitingWhenTheContextIsCancelled is why the wait is a
-// select and not a sleep: a SIGINT during a sixty-second backoff has to exit
-// now, not in sixty seconds.
+// TestClient_do_stopsWaitingWhenTheContextIsCancelled holds waitFor to its
+// contract: a cancel during a backoff returns now; see waitFor for why it is
+// not a sleep.
 func TestClient_do_stopsWaitingWhenTheContextIsCancelled(t *testing.T) {
 	t.Parallel()
 

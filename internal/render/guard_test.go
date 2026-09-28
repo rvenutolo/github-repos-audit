@@ -151,10 +151,8 @@ func TestMaterialChange_reportsBrokenInput(t *testing.T) {
 	}
 }
 
-// TestMaterialChange_ignoresAMovedHead is the case that turned the daily cron
-// into a nightly pull request over a SHA. This repository's own head advances
-// with every merge, the previous refresh's own merge included, so a head_oid
-// left in the comparison means the guard can never fire.
+// TestMaterialChange_ignoresAMovedHead pins head_oid as volatile; see
+// volatileFields in guard.go for why a moved head must not open a pull request.
 func TestMaterialChange_ignoresAMovedHead(t *testing.T) {
 	t.Parallel()
 

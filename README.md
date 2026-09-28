@@ -248,10 +248,8 @@ restated — and with `git_identity` judged by no type, so it needs no
   history mixed (two or more identities that are canonical or wrong) or not
   canonical (any wrong one) — overridden repositories included, since it is
   the list to rewrite from. Reading the history costs one extra request per
-  100 commits beyond the first hundred. A commit made through GitHub's web UI
-  is recorded under the account's noreply identity (a
-  `…@users.noreply.github.com` address); if `match` catches it, list it under
-  `accepted`.
+  100 commits beyond the first hundred. Web-UI commits carry your noreply
+  identity; see `accepted` above.
 - **secret_scanning**, **vuln_reporting** — the two security features
   GitHub can enable on a repository.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
@@ -293,9 +291,9 @@ if err != nil { // coverage-exempt: the reader never fails on a bytes.Buffer
 A marker needs a reason and must still mark unrun code; a stale one fails.
 Markers are judged in every tracked `.go` file, not only changed ones, so a
 stale marker fails even a change that never touched it. And a commit that
-lowers a figure in the baseline must say why, with a
-trailer in its message's last paragraph, next to the `Co-Authored-By` lines
-(a paragraph of its own is not a trailer to git):
+lowers a figure in the baseline must say why, with a trailer in its message's
+last paragraph, next to the `Co-Authored-By` lines; the header of
+`.ci/check-coverage-drop` says why it must sit there:
 
 ```text
 Coverage-Drop: internal/github - the retry path it covered was removed

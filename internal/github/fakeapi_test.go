@@ -220,9 +220,9 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 	f.serve(w, dir, "graphql")
 }
 
-// handleDiscover pages: the first answer carries a Link header naming
-// api.github.com, exactly as GitHub's does, so the client is forced to re-base
-// it onto this server rather than following the host it was given.
+// handleDiscover pages; the first answer carries an api.github.com Link header
+// exactly as GitHub's does (see nextPage in discover.go for why the client
+// must re-base it).
 func (f *fakeAPI) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	page := r.URL.Query().Get("page")
 	if page == "" || page == "1" {

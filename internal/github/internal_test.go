@@ -92,10 +92,9 @@ func TestResolveToken(t *testing.T) {
 	}
 }
 
-// TestResolveToken_reportsAnInterruptedGhAsCancellation covers Ctrl-C landing
-// while gh is running. exec kills the child and reports "signal: killed" as
-// an ExitError with no context error in its chain, which would exit 1 rather
-// than 130 unless the cancellation is put back.
+// TestResolveToken_reportsAnInterruptedGhAsCancellation covers the
+// cancellation put back in resolveToken (token.go) so an interrupted gh exits
+// 130, not 1.
 func TestResolveToken_reportsAnInterruptedGhAsCancellation(t *testing.T) {
 	t.Parallel()
 
@@ -144,13 +143,11 @@ var (
 		"internal: where the holder records its grandchild's pid")
 )
 
-// TestRunCapture_returnsAfterWaitDelayWhenAChildHoldsThePipe covers the reason
-// runCapture sets WaitDelay. exec kills the child on cancellation but Wait
-// blocks on the pipes, not the process, so a descendant that inherited stdout
-// and outlived the kill would hang the tool forever. gh itself never does
-// this on demand, so the child is this test binary: the holder starts a
-// grandchild that keeps stdout open, then is killed with the grandchild still
-// holding it. Only WaitDelay gets runCapture back.
+// TestRunCapture_returnsAfterWaitDelayWhenAChildHoldsThePipe covers why
+// runCapture sets WaitDelay (see ghWaitDelay in token.go). gh never holds
+// stdout on demand, so the holder role of this test binary starts a
+// grandchild that keeps the pipe open and is killed with it still held; only
+// WaitDelay gets runCapture back.
 func TestRunCapture_returnsAfterWaitDelayWhenAChildHoldsThePipe(t *testing.T) {
 	t.Parallel()
 
@@ -328,14 +325,13 @@ func TestNextPage_rejectsLinksThatWouldLeaveTheBaseURL(t *testing.T) {
 		link string
 	}{
 		{
-			// The crasher fuzzing found: an empty authority leaves a path
-			// beginning "//", and appending that to the base URL hands the
-			// next parser a host made of what used to be path.
+			// The crasher fuzzing found. A leading "//" is read as an
+			// authority: see rootedPath.
 			name: "empty authority",
 			link: `<A:////00000000 00000000000>; rel=next`,
 		},
 		{
-			// Concatenation would make this "https://api.github.comrepos".
+			// Concatenated, not resolved: see rootedPath.
 			name: "relative",
 			link: `<repos?page=2>; rel="next"`,
 		},

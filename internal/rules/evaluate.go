@@ -62,11 +62,8 @@ type observation struct {
 // Evaluate turns a snapshot into a report: one cell per check per repository,
 // the gap worklist, the settings exceptions and the declared overrides.
 //
-// It reads only the snapshot. Everything repos.toml declares — the types
-// table onto the snapshot, and type, published and the overrides onto each
-// audit.Repo — has already been copied by the caller, which is what keeps
-// this package free of a dependency on config and therefore free of an
-// import cycle with it.
+// It reads only the snapshot: the caller copies everything repos.toml
+// declares onto it (see config.Declarations), so rules never imports config.
 func Evaluate(snap *audit.Snapshot) (*Report, error) {
 	if snap == nil {
 		return nil, errors.New("evaluate: nil snapshot")
@@ -275,13 +272,12 @@ func observe(c Check, r audit.Repo) observation {
 		return observeTagRuleset(r)
 
 	case CheckLicense:
-		// NOASSERTION means GitHub found a license file it could not identify,
-		// which is not a pass.
+		// NOASSERTION is not a pass; see audit.Repo.License.
 		return observation{ok: r.License != "" && r.License != "NOASSERTION", value: r.License, scalar: true}
 
 	case CheckSecretScanning:
-		// An absent security_and_analysis block is n/a, not disabled: GitHub
-		// omits it entirely for a private repository on a personal plan.
+		// Empty means GitHub omitted the block: n/a, not disabled; see
+		// audit.Settings.SecretScanning.
 		if r.Settings.SecretScanning == "" {
 			return observation{unknown: true}
 		}
@@ -432,10 +428,10 @@ func directPushCell(r audit.Repo, want string, overrides map[string]string) Cell
 
 // observeDirectPush answers "can I push straight to the default branch?".
 //
-// The live branch rules answer it directly. An empty repository has no default
-// branch, so that endpoint is never called and the answer comes from the
-// rulesets instead: allowed unless an ACTIVE branch ruleset carries a pull
-// request rule.
+// The live branch rules answer it directly. When they are unknown (an empty
+// repository; see audit.BranchRules.Known) the answer comes from the rulesets
+// instead: allowed unless an ACTIVE branch ruleset carries a pull request
+// rule.
 func observeDirectPush(r audit.Repo) string {
 	if r.Branch.Known {
 		if slices.Contains(r.Branch.Types, "pull_request") {

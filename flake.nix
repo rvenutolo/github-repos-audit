@@ -100,14 +100,11 @@
             # credential persistence. They overlap nowhere.
             zizmor
             markdownlint-cli2
-            # editorconfig-checker covers every tracked file no formatter owns:
-            # .gitignore, LICENSE, .ci/required-tools. "Cannot be
-            # auto-formatted" must not become "unchecked".
+            # editorconfig-checker covers every tracked file no formatter
+            # owns; see .ci/run-lint-checks for why.
             editorconfig-checker
-            # lychee checks the links in README.md. This repository carries no
-            # generated report, so every link is public and GITHUB_TOKEN is
-            # only used opportunistically, to avoid api.github.com's anonymous
-            # rate limit.
+            # lychee: link check; see .ci/run-lint-checks for why a token is
+            # optional.
             lychee
             typos
             gitleaks

@@ -45,8 +45,8 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		PushedAt:         at(t, "2025-09-05T01:39:25Z"),
 		DefaultBranch:    "main",
 		HeadOID:          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
-		// Byte order, so the null name's "" sorts first and the bot last. The
-		// null author contributes nothing: there is nobody to record.
+		// Byte order, so the null name's "" sorts first and the bot last; the
+		// null author is skipped (see walkHistory).
 		Identities: []audit.Identity{
 			{Name: "", Email: "robin@example.org"},
 			{Name: "GitHub", Email: "noreply@github.com"},
@@ -122,8 +122,8 @@ func wantShellScripts(t *testing.T) audit.Repo {
 				},
 			},
 			DefaultWorkflowPermissions: "read",
-			// Left empty by the 422 from the access endpoint: the setting does
-			// not exist on a public repository.
+			// Left empty by the 422 the access endpoint answers on a public
+			// repository (see fetchActionsAccess).
 			ActionsAccessLevel: "",
 		},
 		// The value is set in the repository's own JSONC file, so the source is
@@ -145,9 +145,9 @@ func wantWebApp(t *testing.T) audit.Repo {
 		PushedAt:      at(t, "2025-09-02T01:44:53Z"),
 		DefaultBranch: "main",
 		HeadOID:       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
-		// The union of all three history pages. The two spellings of one
-		// address stay two identities: whether case matters is internal/rules'
-		// decision, and byte order puts "Pat@" before "pat@".
+		// The union of all three history pages; the two spellings of one
+		// address stay two identities (see walkHistory), and byte order puts
+		// "Pat@" before "pat@".
 		Identities: []audit.Identity{
 			{Name: "Pat Example", Email: "Pat@Example.com"},
 			{Name: "Pat Example", Email: "pat@example.com"},
@@ -261,9 +261,9 @@ func TestClient_Collect(t *testing.T) {
 
 // TestClient_Collect_walksTheWholeHistory follows web-app's history across all
 // three pages. Patrick Example appears only on the last one, so a walk that
-// stopped early would drop him silently; and every later page must be asked of
-// the head commit the repository query answered, not of the branch, so a push
-// mid-walk cannot splice two histories together.
+// stopped early would drop him silently; and every later page must carry the
+// head oid the repository query answered, not the branch name (why: see
+// identities).
 func TestClient_Collect_walksTheWholeHistory(t *testing.T) {
 	t.Parallel()
 
@@ -298,9 +298,8 @@ func TestClient_Collect_walksTheWholeHistory(t *testing.T) {
 }
 
 // TestClient_Collect_abortsOnAFailedHistoryPage makes web-app's second history
-// page answer with a GraphQL error. The identities from page one are half a
-// history, and recording them as the whole would hide whoever committed only
-// on the pages that failed, so the run aborts instead.
+// page answer with a GraphQL error and asserts the walk aborts at that page
+// rather than recording page one as the whole (why: identities in history.go).
 func TestClient_Collect_abortsOnAFailedHistoryPage(t *testing.T) {
 	t.Parallel()
 
@@ -556,9 +555,8 @@ func TestClient_Collect_usesTheLiveDefaultBranch(t *testing.T) {
 	}
 }
 
-// TestClient_Collect_keepsTheFullOID pins the forty characters. Abbreviating
-// would silently break the smoke suite's cross-check, which answers
-// total_count: 0 for a short SHA with a 200 rather than an error.
+// TestClient_Collect_keepsTheFullOID pins the forty characters;
+// TestLive_headShaNeedsTheFullOID in live_integration_test.go is why.
 func TestClient_Collect_keepsTheFullOID(t *testing.T) {
 	t.Parallel()
 
@@ -711,9 +709,8 @@ func TestClient_Collect_isLeakFree(t *testing.T) {
 }
 
 // TestClient_Collect_abortsOnFailure asserts the whole run fails when one
-// repository does. Nothing partial may reach the renderer: a field GitHub
-// declined to answer is not a field that is missing, and rendering it as a gap
-// would invent one.
+// repository does, and nothing partial reaches the renderer; Collect's doc
+// says why.
 func TestClient_Collect_abortsOnFailure(t *testing.T) {
 	t.Parallel()
 
@@ -843,10 +840,9 @@ func TestClient_Collect_directPushRepository(t *testing.T) {
 	}
 }
 
-// TestClient_Collect_survivesARateLimit is what the retry policy exists for,
-// at the level it actually happens: a six-wide fan-out trips GitHub's
-// secondary rate limiter on one endpoint, and the nightly refresh has to come
-// back for the answer rather than fail and leave the report stale.
+// TestClient_Collect_survivesARateLimit pins the retry policy at the level it
+// actually happens: a secondary rate limit on one endpoint mid fan-out; the
+// github.go package doc says why the policy exists.
 func TestClient_Collect_survivesARateLimit(t *testing.T) {
 	t.Parallel()
 

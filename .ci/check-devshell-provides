@@ -21,12 +21,7 @@
 #              Two traps shape the reverse pass, both found the hard way:
 #
 #              1. Justification is decided by where a tool RESOLVES ON PATH, not
-#                 by scanning each output's bin/. An output the shell does not
-#                 need is never realised, so a scan asks about directories that
-#                 exist on one machine and not another: `nix` passed locally and
-#                 failed in CI for exactly that reason. Every output is still
-#                 enumerated, because the resolved path must be attributed to
-#                 one of them, and binaries live in `bin`, `out`, etc.
+#                 by scanning each output's bin/; reverse_check explains why.
 #              2. `nix eval` caches flake evaluations. A cached result reported
 #                 an inventory three packages stale while the tree on disk had
 #                 already moved. --no-eval-cache is mandatory, not tidiness.
@@ -121,9 +116,8 @@ function devshell_packages() {
     return
   fi
   # Bare `return`, never `return 0`: a trailing `return 0` would swallow a
-  # failed `nix eval` and hand back an empty inventory, which the caller would
-  # then report as "the devShell declares no packages" -- a wrong verdict
-  # dressed up as a real one.
+  # failed `nix eval`, so the nix eval status reaches reverse_check, which
+  # explains why an empty inventory must not pass.
   nix eval --raw --impure --no-eval-cache \
     --expr "${PACKAGES_EXPR//REPO_PLACEHOLDER/${REPO_DIR}}"
 }
@@ -279,8 +273,7 @@ function main() {
   forward_check "${tools[@]}" || rc=1
   reverse_check "${tools[@]}" || rc=1
 
-  # A gate reporting its own verdict is not a crash: drop the ERR trap so the
-  # diagnostics above are the last thing the reader sees.
+  # Same reason as the trap reset above.
   trap - ERR
   return "${rc}"
 }

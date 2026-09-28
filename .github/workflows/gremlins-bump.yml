@@ -14,12 +14,8 @@ name: gremlins-bump
 # workflow earns its keep by never leaving a stale pinned tool for someone to
 # notice, not by volume.
 #
-# This workflow is the ONLY place gremlins is built and exercised. `nix flake
-# check` evaluates the packages attribute set but does not build it, which is
-# deliberate — see the comment on the packages attribute set in flake.nix —
-# so a gremlins that fails to compile would pass the gate unnoticed. The
-# build and mutation steps below are the compensating control, and they run
-# BEFORE the pull request is opened.
+# The gate never builds gremlins; the build and mutation steps below
+# compensate for that (see their comment).
 on:
   schedule:
     # :23 on the 4th, because on-the-hour slots are the most contended on
@@ -43,9 +39,9 @@ jobs:
     # skipped and the run finishes in under five minutes.
     timeout-minutes: 30
     # contents: read is for actions/checkout and nothing else. The pull request
-    # is opened with REFRESH_TOKEN, for the same reason the refresh and the
-    # fuzz workflows use it: nothing the built-in token creates triggers a
-    # workflow run, so the bump would sit without checks and never auto-merge.
+    # is opened with REFRESH_TOKEN for the same reason the refresh does
+    # (audit.yml): the built-in token's pull request would get no checks, so
+    # the bump would never auto-merge.
     permissions:
       contents: read
     steps:

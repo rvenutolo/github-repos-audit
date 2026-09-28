@@ -53,11 +53,8 @@ type Cell struct {
 	// turns it into "12d" or "4mo" against its injected clock; rules never
 	// formats a relative date, because that would rot the golden files daily.
 	At time.Time
-	// Scalar reports that Value survives an n/a verdict. A check that carries
-	// a scalar still renders it on a – cell — the report withholds the
-	// judgement, not the fact — while a check that is merely present-or-absent
-	// renders n/a, because a bare cross on a non-gap cell is
-	// indistinguishable from a gap in the same column.
+	// Scalar reports that Value survives an n/a verdict; see render.cell in
+	// block.go for why.
 	Scalar bool
 	// Code asks the renderer to show Value as inline code — a Renovate config
 	// path, a ruleset name.
@@ -112,8 +109,8 @@ type Exception struct {
 	Modal string
 }
 
-// Override is one entry from a repos.toml override list, reported so that an
-// excused gap is visible rather than silently absent.
+// Override is one entry from a repos.toml override list; see collectOverrides
+// for why every one is reported.
 type Override struct {
 	// Repo is the repository the override belongs to.
 	Repo string
@@ -140,11 +137,9 @@ type Report struct {
 	NoConsensus []string
 	// Overrides is every declared override, sorted by repository then check.
 	Overrides []Override
-	// Identities is one line per repository with any of the account holder's
-	// git identities, in report order, whatever its git_identity verdict — it
-	// is the working list for history rewrites, and an excused repository's
-	// history is no less what it is. Empty when the snapshot has no identity
-	// standard.
+	// Identities is one line per repository carrying any of the account
+	// holder's git identities, in report order, whatever its verdict; nil
+	// without an identity standard. See identityLines.
 	Identities []IdentityLine
 }
 
@@ -159,8 +154,7 @@ type IdentityLine struct {
 	Identities []IdentityEntry
 	// Mixed reports two or more distinct identities that are canonical or
 	// wrong: the history switched between identities that matter. Accepted
-	// identities do not count, since a web-UI merge beside the owner's own
-	// commits is not a switch anyone needs to rewrite.
+	// identities do not count; see identityLines.
 	Mixed bool
 	// Clean reports that no identity is wrong: each is canonical or accepted.
 	Clean bool

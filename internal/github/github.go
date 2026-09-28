@@ -240,10 +240,9 @@ func (c *Client) Owner() string { return c.owner }
 
 // do sends one request and returns the whole answer, resending it while GitHub
 // answers with something transient: a rate limit carrying the headers that say
-// so, or a 5xx. A bare 403 is not transient — it is a token without a scope,
-// and resending it is a hang that looks like a stall — so it comes straight
-// back to the caller. Retrying is safe on every call this client makes,
-// including the one POST, because the document that POST carries is a query.
+// so, or a 5xx. A bare 403 comes straight back (see retryWait). Retrying is
+// safe on every call this client makes, including the one POST, because the
+// document that POST carries is a query.
 func (c *Client) do(ctx context.Context, method, rawURL string, body []byte) (*response, error) {
 	return c.doRetrying(ctx, method, rawURL, body, nil)
 }
@@ -384,7 +383,9 @@ func (c *Client) retryWait(resp *response, attempt int, transient transientBody)
 	}
 
 	// The discriminator: GitHub reports both a secondary rate limit and a
-	// missing scope as 403, and only the rate limit says when to come back.
+	// missing scope as 403, and only the rate limit says when to come back. A
+	// bare 403 is a token without a scope; resending it would never succeed,
+	// and the wait would look like a stall to whoever is watching the run.
 	if resp.header.Get("Retry-After") == "" && resp.header.Get("X-RateLimit-Remaining") != "0" {
 		return 0, retryNone
 	}

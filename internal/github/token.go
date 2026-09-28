@@ -21,10 +21,8 @@ const tokenEnvVar = "GITHUB_TOKEN"
 // authentication error, which is a much slower thing to diagnose.
 const ghHostname = "github.com"
 
-// ghWaitDelay is how long, once the context is cancelled, runCapture waits
-// for the child's pipes to close before closing them itself. Without it a gh
-// that has spawned a helper still holding stdout keeps Wait blocked past the
-// interrupt.
+// ghWaitDelay bounds how long runCapture waits for a killed child's pipes;
+// see the WaitDelay comment in runCapture.
 const ghWaitDelay = 2 * time.Second
 
 // errNoToken reports that neither GITHUB_TOKEN nor gh produced a token.

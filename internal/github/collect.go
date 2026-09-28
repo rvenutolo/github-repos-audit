@@ -127,9 +127,8 @@ func (r *repository) toAudit(name string) audit.Repo {
 	}
 	repo.DefaultBranch = r.DefaultBranchRef.Name
 	if target := r.DefaultBranchRef.Target; target != nil {
-		// The oid is kept whole. Abbreviating it would silently break the smoke
-		// suite's cross-check, which queries actions/runs?head_sha= and answers
-		// total_count: 0 for a short SHA, with a 200.
+		// The oid is kept whole; TestLive_headShaNeedsTheFullOID in
+		// live_integration_test.go is why it is never abbreviated.
 		repo.HeadOID = target.OID
 		if target.StatusCheckRollup != nil {
 			repo.CIState = target.StatusCheckRollup.State

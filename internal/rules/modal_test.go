@@ -37,9 +37,8 @@ func TestModal_reportsTheMinorityAgainstAClearMajority(t *testing.T) {
 	t.Parallel()
 
 	repos := toolsRepos("alpha", "bravo", "charlie", "delta")
-	// One repository runs the wiki. It is a deliberate deviation, and it stays
-	// listed: there is no accepted-exceptions list, because a deviation that
-	// had been forgotten could hide inside one.
+	// One repository runs the wiki: a deliberate deviation that stays listed
+	// (see modalExceptions for why there is no accepted-exceptions list).
 	repos[2].Settings.HasWiki = true
 
 	exceptions, noConsensus := exceptionsFor(t, repos...)
@@ -58,8 +57,7 @@ func TestModal_reportsNoConsensusAtExactlyHalf(t *testing.T) {
 	t.Parallel()
 
 	repos := toolsRepos("alpha", "bravo", "charlie", "delta")
-	// Two on, two off. Listing two exceptions out of four would say nothing
-	// about which side is the norm, so the setting has no consensus instead.
+	// Two on, two off: exactly half is no consensus (see modalValue).
 	repos[0].Settings.HasWiki = true
 	repos[1].Settings.HasWiki = true
 
@@ -87,10 +85,9 @@ func TestModal_aBareMajorityIsAConsensus(t *testing.T) {
 	}
 }
 
-// TestModal_denominatorIsTheRepositoriesTheSettingAppliesTo is the reason the
-// tie rule counts applicable repositories rather than all of them:
-// actions-reuse exists only on private repositories, and measuring it against
-// every repository would leave it permanently without consensus.
+// TestModal_denominatorIsTheRepositoriesTheSettingAppliesTo pins that the tie
+// rule counts applicable repositories, not all of them; see setting.read in
+// modal.go for why.
 func TestModal_denominatorIsTheRepositoriesTheSettingAppliesTo(t *testing.T) {
 	t.Parallel()
 

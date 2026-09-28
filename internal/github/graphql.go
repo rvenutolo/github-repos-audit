@@ -9,9 +9,8 @@ import (
 	"time"
 )
 
-// graphQLPath is the one endpoint this client posts to. GitHub's GraphQL API
-// accepts no other verb, which is why the read-only test asserts the operation
-// in the document rather than banning POST outright.
+// graphQLPath is the one endpoint this client posts to;
+// TestClient_Collect_isReadOnly is why it is the only one.
 const graphQLPath = "/graphql"
 
 // repoQuery is the single query sent per repository. Every field is aliased to
@@ -171,10 +170,8 @@ const historyFields = `page_info: pageInfo { has_next_page: hasNextPage end_curs
               committer { name email }
             }`
 
-// historyQuery fetches one later page of the default branch's history. It is
-// anchored to the head commit the repository query already answered, not to
-// the branch name, so a push while the walk is in progress cannot change the
-// history out from under it.
+// historyQuery fetches one later page of a commit's history, anchored to an
+// oid rather than the branch name; identities explains why.
 const historyQuery = `query RepoHistory($owner: String!, $name: String!, $oid: GitObjectID!, $cursor: String!) {
   repository(owner: $owner, name: $name) {
     object(oid: $oid) {
@@ -438,11 +435,11 @@ const rateLimitedType = "RATE_LIMITED"
 // The GraphQL API has no status for a primary rate limit: it answers 200 with
 // an errors array whose entries carry RATE_LIMITED, so the retry policy cannot
 // see it from the status the way it sees a 429. Every other error type is
-// final on the first response, for the same reason a bare 403 is: NOT_FOUND
-// and FORBIDDEN answer the same however many times they are asked, and
-// resending them is a hang that looks like a stall. An array mixing a rate
-// limit with one of those is final too — waiting could clear the limit but
-// never the rest, so the run would spend its whole budget to fail anyway.
+// final on the first response, for the same reason a bare 403 is (see
+// retryWait): NOT_FOUND and FORBIDDEN answer the same however many times they
+// are asked. An array mixing a rate limit with one of those is final too —
+// waiting could clear the limit but never the rest, so the run would spend
+// its whole budget to fail anyway.
 func graphQLRateLimited(body []byte) bool {
 	var decoded struct {
 		Errors []graphQLError `json:"errors"`

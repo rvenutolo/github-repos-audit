@@ -105,9 +105,8 @@ func TestEvaluate_naCellsStillCarryTheirValue(t *testing.T) {
 		t.Errorf("topics value = %q, want %q", cell.Value, "6")
 	}
 
-	// flake.nix, by contrast, is present-or-absent. An n/a cell there renders
-	// n/a, because a bare cross on a non-gap cell is indistinguishable from a
-	// gap in the same column.
+	// flake.nix, by contrast, is present-or-absent (observe sets no scalar),
+	// so its n/a cell carries no value; see render.cell in block.go for why.
 	if got := cells[rules.CheckFlakeNix].Value; got != "" {
 		t.Errorf("flake.nix value = %q, want empty so the cell renders n/a", got)
 	}
@@ -282,8 +281,7 @@ func TestEvaluate_ciRollupStates(t *testing.T) {
 		{"EXPECTED", rules.Pass},
 		{"FAILURE", rules.Fail},
 		{"ERROR", rules.Fail},
-		// A run in flight is not a failure, and the daily cadence means it will
-		// have settled by the next render.
+		// PENDING is Info, not Fail; see verdictFor in evaluate.go.
 		{"PENDING", rules.Info},
 		// A null rollup on a repository expected to have CI is a cross.
 		{"", rules.Fail},
@@ -325,8 +323,8 @@ func TestEvaluate_requiredChecksAndCIWorkflows(t *testing.T) {
 		if cell.Verdict != rules.Fail {
 			t.Errorf("required checks verdict = %v, want Fail", cell.Verdict)
 		}
-		// Renders ✗ rather than a count: a zero would read like a number
-		// somebody chose.
+		// Empty Value so the cell renders a cross, not "0"; see
+		// observeRequiredChecks for why.
 		if cell.Value != "" {
 			t.Errorf("required checks value = %q, want empty so the cell renders a cross", cell.Value)
 		}
@@ -410,9 +408,9 @@ func TestEvaluate_directPush(t *testing.T) {
 }
 
 // TestEvaluate_emptyRepository covers the whole row for a repository with no
-// commits at all. That is an ordinary answer, not a failure: it cannot be
-// judged on what is in its commits, and it can and should still be judged on
-// its description, topics and settings.
+// commits at all: branch-derived cells are n/a, while the file probes, CI, the
+// description and direct push are still judged. The n/a-versus-gap split is
+// explained on audit.BranchRules.Known.
 func TestEvaluate_emptyRepository(t *testing.T) {
 	t.Parallel()
 

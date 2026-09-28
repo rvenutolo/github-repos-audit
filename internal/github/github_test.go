@@ -147,8 +147,8 @@ func TestNew_defaultsAreUsable(t *testing.T) {
 }
 
 // TestClient_sendsAuthAndVersionHeaders pins the request shape: the token
-// travels as a bearer credential and the REST schema is pinned, so a future
-// default cannot silently reshape a response this package parses.
+// travels as a bearer credential and the REST schema is pinned (see
+// apiVersion).
 func TestClient_sendsAuthAndVersionHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -232,8 +232,7 @@ func TestClient_unexpectedStatusAborts(t *testing.T) {
 // TestClient_unexpectedStatusQuotesTheBody pins the user-facing shape of the
 // abort message: the body GitHub answered with is quoted, collapsed onto one
 // line so it reads inside an error, and cut short with an ellipsis when it is
-// long. GitHub's error bodies are short JSON objects, so the quote is usually
-// the whole diagnosis.
+// long; see snippet for why quoting is safe.
 func TestClient_unexpectedStatusQuotesTheBody(t *testing.T) {
 	t.Parallel()
 

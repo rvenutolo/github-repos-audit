@@ -7,8 +7,8 @@
 # - reverse: every devShell package must be where one of these binaries
 #   RESOLVES on PATH, or back a formatter .treefmt.nix enables.
 #
-# That second escape is why gofumpt, nixfmt and taplo are absent: treefmt runs
-# them from the Nix store, never through PATH.
+# gofumpt, nixfmt and taplo are absent because of that second escape (rule 2);
+# see .ci/check-devshell-provides for why.
 
 # run-all-checks: go build, go vet, go test, `go run ./cmd/audit validate`
 go
