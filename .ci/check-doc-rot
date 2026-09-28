@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+# @description Fail when tracked prose describes a past state of this
+#              repository or states a value that drifts with ordinary edits.
+#              Prose is every Markdown file and the full-line comments of Go,
+#              shell, TOML, YAML, Nix and the justfile; trailing comments
+#              after code are not scanned, so a string literal can never be
+#              a finding. Each finding names its class:
+#
+#              - history-phrasing: narrates what the code did before
+#              - drift-value:      a line number, a count of lines or files
+#              - deferral:         a marker that promises later work
+#              - absolute-path:    a path that only resolves on one machine
+#              - provenance-ref:   a pull request or issue number in prose
+#              - person-time:      a person or a date relative to the writer
+#
+#              The escape is `doc-rot-exempt: <reason>` in the same comment,
+#              on the hit line or the line directly above it. A marker with
+#              no reason, or one that exempts nothing, is itself a finding.
+#              Fixtures under testdata/, JSON, lockfiles and LICENSE are
+#              skipped: they are data, not prose about this repository.
+# @noargs
+# @exitcode 0 nothing found
+# @exitcode 1 at least one finding, or no prose files to scan
+# @exitcode 2 usage error
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# @description Print every tracked prose-bearing file and how its prose is
+#              found, tab-separated: `md` (whole file), `slash` (full-line
+#              `//` comments) or `hash` (full-line `#` comments).
+# @noargs
+# @stdout `<path>\t<mode>` per file
+function prose_files() {
+  local file
+  while IFS= read -r file; do
+    case "${file}" in
+      */testdata/* | *.json | go.sum | flake.lock | LICENSE) continue ;;
+    esac
+    case "${file}" in
+      *.md) printf '%s\tmd\n' "${file}" ;;
+      *.go) printf '%s\tslash\n' "${file}" ;;
+      *.sh | *.toml | *.yml | *.yaml | *.nix | .justfile | .ci/* | .githooks/* | run-all-checks)
+        printf '%s\thash\n' "${file}"
+        ;;
+    esac
+  done < <(git -C "${REPO_DIR}" ls-files)
+}
+
+# @description Scan one file; print one FAIL line per finding to stderr.
+# @arg $1 repo-relative path
+# @arg $2 mode: md, slash or hash
+# @exitcode 0 nothing found
+# @exitcode 1 at least one finding
+function scan_file() {
+  local -r file="$1" mode="$2"
+  awk -v file="${file}" -v mode="${mode}" '
+    END { exit found ? 1 : 0 }
+  ' "${REPO_DIR}/${file}" >&2
+}
+
+function main() {
+  if (($# != 0)); then
+    printf 'usage: %s (no arguments)\n' "${0##*/}" >&2
+    return 2
+  fi
+  local rc=0 count=0 file mode
+  while IFS=$'\t' read -r file mode; do
+    count=$((count + 1))
+    scan_file "${file}" "${mode}" || rc=1
+  done < <(prose_files)
+  if ((count == 0)); then
+    printf 'FAIL: no prose files tracked - the scan looks broken\n' >&2
+    rc=1
+  fi
+  # A finding is this check's verdict, not a crash: drop the ERR trap so the
+  # FAIL lines above are the last thing the reader sees.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"
