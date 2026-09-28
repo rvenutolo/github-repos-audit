@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/check-doc-rot against throwaway repositories.
+#              Every fixture is inert prose; the words that trigger a class
+#              appear only inside printf strings below, never in this file's
+#              own comments, because the check scans this file too.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly CHECK="${REPO_DIR}/.ci/check-doc-rot"
+
+# work is global, not local to main: the EXIT trap fires after main returns.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Create a fresh throwaway repository under the shared work
+#              directory and print its path. Each case gets its own so a
+#              fixture from one case can never decide another's verdict.
+# @stdout the repository's absolute path
+function new_repo() {
+  local repo
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  printf '%s\n' "${repo}"
+}
+
+# @description Write one file into a repository and stage it. The check
+#              lists files with git ls-files, so staging is enough; no
+#              commit is needed.
+# @arg $1 repo
+# @arg $2 path (parent directories are created)
+# @arg $3 content
+function add_file() {
+  mkdir --parents "$(dirname -- "$1/$2")"
+  printf '%s\n' "$3" > "$1/$2"
+  git -C "$1" add -- "$2"
+}
+
+# @description Run the check inside a repository and compare its exit status,
+#              and optionally require a substring in its output.
+# @arg $1 repo
+# @arg $2 expected exit status
+# @arg $3 case name
+# @arg $4 substring the output must contain (optional)
+function expect() {
+  local -r repo="$1" want="$2" name="$3" want_text="${4:-}"
+  local out got=0
+  out="$(cd "${repo}" && "${CHECK}" 2>&1)" || got=$?
+  if [[ "${got}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: exit ${got}, want ${want} (output: ${out})"
+    return 1
+  fi
+  if [[ -n "${want_text}" && "${out}" != *"${want_text}"* ]]; then
+    ci::log "FAIL: ${name}: output lacks '${want_text}' (output: ${out})"
+    return 1
+  fi
+  # A finding is the check's designed return, not a crash, so the ERR trap
+  # must never fire on either verdict.
+  if [[ "${out}" == *'ERROR:'* ]]; then
+    ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
+    return 1
+  fi
+}
+
+function main() {
+  local rc=0 repo
+  work="$(mktemp --directory)"
+
+  repo="$(new_repo)"
+  expect "${repo}" 1 'an empty repository' 'no prose files' || rc=1
+
+  local usage_got=0
+  repo="$(new_repo)"
+  (cd "${repo}" && "${CHECK}" --anything > /dev/null 2>&1) || usage_got=$?
+  if [[ "${usage_got}" != 2 ]]; then
+    ci::log "FAIL: an argument: exit ${usage_got}, want 2"
+    rc=1
+  fi
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The collector reads every repository the account owns.'
+  expect "${repo}" 0 'present-tense markdown' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'intro\nThe collector previously read forks as well.'
+  expect "${repo}" 1 'history phrasing in markdown' 'notes.md:2 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// It used to read forks; now it does not.\nvar x = 1'
+  expect "${repo}" 1 'history phrasing in a go comment' 'a.go:3 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// The collector reads every repository.\nvar previously = "no longer" // formerly\nvar u = "https://example.invalid/previously"'
+  expect "${repo}" 0 'trigger words on go code lines' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// Compare now with the clock: time.Now() is injected.\nvar x = 1'
+  expect "${repo}" 0 'bare now in a go comment' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# The token is used to authenticate.\necho ok'
+  expect "${repo}" 0 'is used to, and a shebang' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# This script used to fork.\necho ok'
+  expect "${repo}" 1 'subject used to in a shell comment' 's.sh:2 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" c.yml $'# no longer needed\nkey: value'
+  expect "${repo}" 1 'history phrasing in yaml' 'c.yml:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'text\n```\n# as of this writing\n```'
+  expect "${repo}" 1 'a fenced code block in markdown is prose too' 'notes.md:3 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" internal/x/testdata/f.md 'previously'
+  add_file "${repo}" data.json '{"note": "previously"}'
+  add_file "${repo}" notes.md 'clean'
+  expect "${repo}" 0 'testdata and json are skipped' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'See internal/rules/check.go:42 for the list.'
+  expect "${repo}" 1 'a file:line reference' 'notes.md:1 [drift-value]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// The helper is 30 lines long and has 4 tests.\nvar x = 1'
+  expect "${repo}" 1 'a line count' 'a.go:3 [drift-value]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# Fails on line 12 of the baseline.\necho ok'
+  expect "${repo}" 1 'a bare line number' 's.sh:2 [drift-value]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# git grep --line-number reports LINENO-style positions; each line is a record.\necho ok'
+  expect "${repo}" 0 'line-number flags and prose about lines' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The collector previously read forks; see check.go:42.'
+  expect "${repo}" 1 'two classes on one line report the first' 'notes.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// TODO: handle the empty case.\nvar x = 1'
+  expect "${repo}" 1 'a todo marker' 'a.go:3 [deferral]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'For now the report is spliced by hand.'
+  expect "${repo}" 1 'for now' 'notes.md:1 [deferral]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# Copies the tree into a temporary directory.\necho ok'
+  expect "${repo}" 0 'a temporary directory is present tense' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'Config lives at /home/someone/Projects/x/repos.toml.'
+  expect "${repo}" 1 'an absolute home path' 'notes.md:1 [absolute-path]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// Added in #12 after the review.\nvar x = 1'
+  expect "${repo}" 1 'a pull request number' 'a.go:3 [provenance-ref]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# 1. first step\n# 2. second step\necho ok'
+  expect "${repo}" 0 'numbered list in a shell comment' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'We decided last week to drop forks; recently that changed.'
+  expect "${repo}" 1 'a person and a relative date' 'notes.md:1 [person-time]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The word previously is quoted here. doc-rot-exempt: quoted as an example'
+  expect "${repo}" 0 'exemption on the hit line' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n// doc-rot-exempt: the sentence quotes the old name\n// It was formerly called scan.\nvar x = 1'
+  expect "${repo}" 0 'exemption on the line above' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'previously doc-rot-exempt:'
+  expect "${repo}" 1 'exemption with no reason' 'notes.md:1 [exempt-marker]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'clean text doc-rot-exempt: nothing here needs it\nstill clean\nand clean'
+  expect "${repo}" 1 'a stale exemption' 'notes.md:1 [exempt-marker]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'clean\nclean doc-rot-exempt: stale on the last line'
+  expect "${repo}" 1 'a stale exemption on the last line' 'notes.md:2 [exempt-marker]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'doc-rot-exempt: covers the next line only\nclean\npreviously'
+  expect "${repo}" 1 'an exemption two lines above does not reach' 'notes.md:3 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'<!-- doc-rot-exempt: -->\npreviously'
+  expect "${repo}" 1 'an html comment marker with no reason' 'notes.md:1 [exempt-marker]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'<!-- doc-rot-exempt: quoted below -->\npreviously'
+  expect "${repo}" 0 'an html comment marker with a reason' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env bash\n# See .ci/check-coverage:42 and run-all-checks:10 for the guard.\necho ok'
+  expect "${repo}" 1 'a line reference into an extensionless script' 's.sh:2 [drift-value]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'See check.go#L42 for the guard.'
+  expect "${repo}" 1 'a github line anchor' 'notes.md:1 [drift-value]' || rc=1
+
+  ((rc == 0)) && ci::log 'check-doc-rot: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

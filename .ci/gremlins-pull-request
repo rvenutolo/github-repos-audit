@@ -5,18 +5,18 @@
 #
 #              gremlins is hand-packaged in nix/gremlins.nix because nixpkgs
 #              does not ship it, and a hand-packaged Go tool carries a
-#              vendorHash that no human can compute by reading anything. That
-#              is the same hash that killed the flake package in #33 -- but for
-#              a DIFFERENT reason than here. There, the hash came from this
-#              repo's go.mod, so every Renovate bump invalidated it and turned
-#              the gate red. Here it comes from gremlins' own go.mod at a fixed
-#              tag, so nothing this repo does can invalidate it, and the only
-#              event that moves it is an upstream release.
+#              vendorHash that no human can compute by reading anything. A
+#              vendorHash derived from this repo's go.mod is invalidated by
+#              every Renovate bump and turns the gate red, which is why the
+#              flake packages nothing that way. This one comes from gremlins'
+#              own go.mod at a fixed tag, so nothing this repo does can
+#              invalidate it, and the only event that moves it is an upstream
+#              release.
 #
 #              Renovate cannot do this job: its postUpgradeTasks, which is what
 #              would recompute a hash after a version bump, is self-hosted
-#              only and this repo is on the hosted app. That is exactly what
-#              #48 recorded. `nix-update` computes both hashes directly, so
+#              only and this repo is on the hosted app. `nix-update` computes
+#              both hashes directly, so
 #              this workflow does what Renovate structurally cannot.
 #
 #              The commit goes through createCommitOnBranch for the same reason

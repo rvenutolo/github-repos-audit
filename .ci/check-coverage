@@ -12,12 +12,12 @@
 #              achieves, and it can never quietly slide back.
 #
 #              There is no tolerance because coverage is reproducible run to
-#              run, and it has to stay that way. The gate used to allow a
-#              1.0-point drop for a cancellation test in internal/github that
-#              reached doRetrying's backoff exit only sometimes. Once #6 made
-#              that test wait for the client to be in its backoff before
-#              cancelling, 46 runs made after #8 (including GOMAXPROCS=1 and 2)
-#              covered exactly the same blocks. A block that comes and goes between runs is a racy test,
+#              run, and it has to stay that way. The precedent is the
+#              cancellation test in internal/github: it reaches doRetrying's
+#              backoff exit only because it waits for the client to be in its
+#              backoff before cancelling, and with that wait in place repeated
+#              runs (including GOMAXPROCS=1 and 2) cover exactly the same
+#              blocks. A block that comes and goes between runs is a racy test,
 #              and the fix is that test, never a tolerance: slack sized for one
 #              flake hides every real drop smaller than it, and a gate that
 #              fails on its own nondeterminism teaches people to rerun until
@@ -216,6 +216,7 @@ function check() {
     rc=1
   fi
 
+  # doc-rot-exempt: describes the condition this loop tests for, not history
   # A baseline line naming a package that no longer exists is a line nobody
   # will ever notice is stale, which is the same reasoning CheckCoverage
   # applies to repos.toml.
@@ -254,7 +255,7 @@ function main() {
   esac
 
   # A gate reporting its own verdict is not a crash: drop the ERR trap so the
-  # diagnostics above are the last thing the reader sees (#43, invariant 6).
+  # diagnostics above are the last thing the reader sees.
   trap - ERR
   return "${rc}"
 }

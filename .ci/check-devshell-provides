@@ -259,7 +259,7 @@ function main() {
   if [[ ! -r "${TOOLS_FILE}" ]]; then
     printf 'FAIL: %s is missing or unreadable\n' "${TOOLS_FILE}" >&2
     # A gate reporting its own verdict is not a crash: drop the ERR trap so the
-    # diagnostics above are the last thing the reader sees (#43, invariant 6).
+    # diagnostics above are the last thing the reader sees.
     trap - ERR
     return 1
   fi
@@ -280,7 +280,7 @@ function main() {
   reverse_check "${tools[@]}" || rc=1
 
   # A gate reporting its own verdict is not a crash: drop the ERR trap so the
-  # diagnostics above are the last thing the reader sees (#43, invariant 6).
+  # diagnostics above are the last thing the reader sees.
   trap - ERR
   return "${rc}"
 }

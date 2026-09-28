@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+
+# @description Fail when tracked prose describes a past state of this
+#              repository or states a value that drifts with ordinary edits.
+#              Prose is every Markdown file and the full-line comments of Go,
+#              shell, TOML, YAML, Nix and the justfile. A trailing comment
+#              after code is not scanned, so a trigger word in an ordinary
+#              string literal is not a finding; a comment-shaped line inside
+#              a Go raw string or a shell heredoc is scanned like any other.
+#              Each finding names its class:
+#
+#              - history-phrasing: narrates what the code did before
+#              - drift-value:      a line number, a count of lines or files
+#              - deferral:         a marker that promises later work
+#              - absolute-path:    a path that only resolves on one machine
+#              - provenance-ref:   a pull request or issue number in prose
+#              - person-time:      a person or a date relative to the writer
+#
+#              The escape is the marker `doc-rot-exempt`, a colon and a
+#              reason, in the same comment on the hit line or the line
+#              directly above it. A marker with no reason, or one that
+#              exempts nothing, is itself a finding.
+#              Fixtures under testdata/, JSON, lockfiles and LICENSE are
+#              skipped: they are data, not prose about this repository.
+# @noargs
+# @exitcode 0 nothing found
+# @exitcode 1 at least one finding, or no prose files to scan
+# @exitcode 2 usage error
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# @description Print every tracked prose-bearing file and how its prose is
+#              found, tab-separated: `md` (whole file), `slash` (full-line
+#              `//` comments) or `hash` (full-line `#` comments).
+# @noargs
+# @stdout `<path>\t<mode>` per file
+function prose_files() {
+  local file
+  while IFS= read -r file; do
+    case "${file}" in
+      */testdata/* | *.json | go.sum | flake.lock | LICENSE) continue ;;
+    esac
+    case "${file}" in
+      *.md) printf '%s\tmd\n' "${file}" ;;
+      *.go) printf '%s\tslash\n' "${file}" ;;
+      *.sh | *.toml | *.yml | *.yaml | *.nix | .justfile | .ci/* | .githooks/* | run-all-checks)
+        printf '%s\thash\n' "${file}"
+        ;;
+    esac
+  done < <(git -C "${REPO_DIR}" ls-files)
+}
+
+# @description Scan one file; print one FAIL line per finding to stderr.
+# @arg $1 repo-relative path
+# @arg $2 mode: md, slash or hash
+# @exitcode 0 nothing found
+# @exitcode 1 at least one finding
+function scan_file() {
+  local -r file="$1" mode="$2"
+  awk -v file="${file}" -v mode="${mode}" '
+    function report(lineno, class, text) {
+      printf "FAIL: %s:%d [%s] %s\n", file, lineno, class, text
+      found = 1
+    }
+    # The class the text belongs to, or "" when it is clean. English words
+    # match case-insensitively on a lowered copy; markers match as written.
+    function classify(text,   lc) {
+      lc = tolower(text)
+      if (lc ~ /(^|[^a-z])(previously|formerly|historically|renamed from|as of this writing|(it|this|that|which|we|they|code|script|check|gate|tool|collector|workflow) used to|no longer|now (uses|does|is|has|only)|as of (v[0-9]|[0-9][0-9][0-9][0-9]-))([^a-z]|$)/) return "history-phrasing"
+      if (lc ~ /[a-z0-9_.\/-]+\.(go|sh|md|yml|yaml|nix|toml)(:|#l)[0-9]+([^0-9]|$)/) return "drift-value"
+      if (lc ~ /(^|[^a-z0-9_.\/-])((\.ci|\.githooks)\/[a-z0-9_.-]+|run-all-checks):[0-9]+([^0-9]|$)/) return "drift-value"
+      if (lc ~ /(^|[^a-z-])lines? [0-9]+([^0-9]|$)/) return "drift-value"
+      if (lc ~ /(^|[^a-z0-9])[0-9]+ (lines|files|tests|functions|checks|statements|packages|scripts)([^a-z]|$)/) return "drift-value"
+      if (text ~ /(^|[^A-Za-z])(TODO|FIXME|XXX|HACK)([^A-Za-z]|$)/) return "deferral"
+      if (lc ~ /(^|[^a-z])(for now|temporarily|temporary (fix|workaround|hack|measure))([^a-z]|$)/) return "deferral"
+      if (text ~ /\/home\/|\$HOME\/Projects|~\/Projects/) return "absolute-path"
+      if (text ~ /(^|[ (])#[0-9]+([^0-9A-Za-z]|$)/) return "provenance-ref"
+      if (lc ~ /(^|[^a-z])(pr|pull request|issue) #?[0-9]+([^0-9]|$)/) return "provenance-ref"
+      if (lc ~ /(^|[^a-z])((i|we) (decided|chose|changed|moved|added|removed|fixed|switched)|(last|next) (week|month|year)|recently|yesterday|today)([^a-z]|$)/) return "person-time"
+      return ""
+    }
+    # A marker covers its own line and the next one. marker_nr is the line it
+    # sits on (0 when none is open) and marker_used says whether a hit in that
+    # window consumed it; a window that closes unused is a stale marker.
+    function close_marker(now) {
+      if (marker_nr && now > marker_nr + 1) {
+        if (!marker_used) report(marker_nr, "exempt-marker", "doc-rot-exempt marker exempts nothing; remove it")
+        marker_nr = 0
+      }
+    }
+    {
+      close_marker(NR)
+      line = $0
+      if (mode == "slash") {
+        if (line !~ /^[ \t]*\/\//) next
+        sub(/^[ \t]*\/\/+/, "", line)
+      } else if (mode == "hash") {
+        if (NR == 1 && line ~ /^#!/) next
+        if (line !~ /^[ \t]*#/) next
+        sub(/^[ \t]*#+/, "", line)
+      }
+      at = index(line, "doc-rot-exempt:")
+      if (at) {
+        reason = substr(line, at + 15)
+        # In Markdown the marker sits in an HTML comment, so its closer is
+        # not a reason.
+        sub(/-->[ \t]*$/, "", reason)
+        sub(/^[ \t]+/, "", reason)
+        if (reason == "") {
+          report(NR, "exempt-marker", "doc-rot-exempt marker gives no reason")
+          next
+        }
+        # The reason may quote the very word it exempts, so only the text
+        # before the marker is classified.
+        line = substr(line, 1, at - 1)
+        marker_nr = NR
+        marker_used = 0
+      }
+      class = classify(line)
+      if (class == "") next
+      if (marker_nr && (NR == marker_nr || NR == marker_nr + 1)) {
+        marker_used = 1
+        next
+      }
+      report(NR, class, line)
+    }
+    END {
+      close_marker(NR + 2)
+      exit found ? 1 : 0
+    }
+  ' "${REPO_DIR}/${file}" >&2
+}
+
+function main() {
+  if (($# != 0)); then
+    printf 'usage: %s (no arguments)\n' "${0##*/}" >&2
+    return 2
+  fi
+  local rc=0 count=0 file mode
+  while IFS=$'\t' read -r file mode; do
+    count=$((count + 1))
+    scan_file "${file}" "${mode}" || rc=1
+  done < <(prose_files)
+  if ((count == 0)); then
+    printf 'FAIL: no prose files tracked - the scan looks broken\n' >&2
+    rc=1
+  fi
+  # A finding is this check's verdict, not a crash: drop the ERR trap so the
+  # FAIL lines above are the last thing the reader sees.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

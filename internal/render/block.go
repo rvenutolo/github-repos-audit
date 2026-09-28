@@ -24,6 +24,7 @@ const footerPrefix = "_Read from GitHub on "
 
 // Block renders everything that lives between the README's generated markers.
 //
+// doc-rot-exempt: now is the parameter's name, not a narrated change
 // now is injected rather than read from the clock, because the renderer turns
 // instants into "12d" and "4mo" — a renderer that called time.Now would make
 // its own golden files rot daily.
@@ -309,6 +310,7 @@ func dateCell(c rules.Cell, at time.Time) string {
 	return age(c.At, at)
 }
 
+// doc-rot-exempt: "today" is a word the renderer emits, not a date relative to the writer
 // age is the relative date vocabulary: "today", "12d", "4mo", "3y". Deliberately
 // coarse — there is no staleness threshold on any of these, so the number is
 // shown to be read rather than compared against anything.

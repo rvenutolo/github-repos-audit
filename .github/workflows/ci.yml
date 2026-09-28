@@ -81,9 +81,9 @@ jobs:
         # run is still --ignore-environment, so the hermetic boundary is
         # unchanged.
         shell: nix develop --command bash -o errexit {0}
-        # lychee runs anonymously because every link left in this repository
-        # is public; the report it used to check lived in a separate
-        # repository this one no longer carries. No AUDIT_TOKEN is needed
+        # lychee runs anonymously because every link in this repository is
+        # public; the generated report, with its links to private
+        # repositories, lives in the report repository. No AUDIT_TOKEN is needed
         # here; the only secret the tool repository holds is CODECOV_TOKEN.
         run: ./.ci/in-devshell ./run-all-checks
       # Reporting only: .ci/check-coverage inside the gate is the source of

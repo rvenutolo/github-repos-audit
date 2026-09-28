@@ -247,7 +247,7 @@ type runsResponse struct {
 // invisible check run would report green on a red branch.
 //
 // This is the guard that makes the cheap method safe. A disagreement means the
-// rollup can no longer be trusted and the collector should switch to
+// rollup cannot be trusted and the collector should switch to
 // aggregating runs.
 func TestLive_rollupAgreesWithRunAggregation(t *testing.T) {
 	t.Parallel()

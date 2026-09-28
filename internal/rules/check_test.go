@@ -119,7 +119,7 @@ func TestCheck_StringOnAnOutOfRangeValue(t *testing.T) {
 	// upper guard is `int(c) >= len(checkNames)`, and relaxing it to `>` leaves
 	// exactly this one value indexing off the end of the table: a panic, not a
 	// wrong string. Surfaced as a surviving CONDITIONALS_BOUNDARY mutant at
-	// check.go:82 by `just mutate`.
+	// String's upper guard in check.go by `just mutate`.
 	n := len(rules.Checks())
 	if got, want := rules.Check(n).String(), fmt.Sprintf("Check(%d)", n); got != want {
 		t.Errorf("Check(%d).String() = %q, want %q", n, got, want)
