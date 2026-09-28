@@ -173,8 +173,8 @@ func TestWaitFor(t *testing.T) {
 	})
 }
 
-// TestNew_rejectsAnUnparsableBaseURL keeps a bad --api-url from becoming a
-// request to somewhere else. A control character is the case url.Parse rejects
+// TestNew_rejectsAnUnparsableBaseURL keeps a bad Options.BaseURL from becoming
+// a request to somewhere else. A control character is the case url.Parse rejects
 // and string concatenation would otherwise carry all the way to the wire.
 func TestNew_rejectsAnUnparsableBaseURL(t *testing.T) {
 	t.Parallel()

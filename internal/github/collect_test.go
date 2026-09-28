@@ -406,9 +406,10 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 	}
 }
 
-// TestClient_Collect_normalNotErrors walks every row of the spec's
-// normal-not-errors table. Each one is an ordinary answer that must reach the
-// model as a fact rather than aborting the run.
+// TestClient_Collect_normalNotErrors walks every answer the collector documents
+// as ordinary rather than an error (see the n/a notes in rest.go and
+// collect.go). Each one must reach the model as a fact rather than aborting
+// the run.
 func TestClient_Collect_normalNotErrors(t *testing.T) {
 	t.Parallel()
 

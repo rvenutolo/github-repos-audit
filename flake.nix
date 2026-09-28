@@ -101,8 +101,8 @@
             zizmor
             markdownlint-cli2
             # editorconfig-checker covers every tracked file no formatter owns:
-            # .gitignore, LICENSE, CODEOWNERS. "Cannot be auto-formatted" must
-            # not become "unchecked".
+            # .gitignore, LICENSE, .ci/required-tools. "Cannot be
+            # auto-formatted" must not become "unchecked".
             editorconfig-checker
             # lychee checks the links in README.md. This repository carries no
             # generated report, so every link is public and GITHUB_TOKEN is

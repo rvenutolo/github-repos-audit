@@ -179,10 +179,11 @@ func TestLive_collectParsesEveryField(t *testing.T) {
 	}
 }
 
-// TestLive_normalNotErrors asserts every row of the design's
-// normal-not-errors table still behaves as documented. Each of these was a
-// hard-won lesson; a change to any of them turns an ordinary answer into an
-// aborted run.
+// TestLive_normalNotErrors asserts every documented n/a answer in rest.go (a
+// missing security_and_analysis block, 404 on private-vulnerability-reporting,
+// 422 on actions/permissions/access) still behaves as documented. Each of
+// these was a hard-won lesson; a change to any of them turns an ordinary
+// answer into an aborted run.
 func TestLive_normalNotErrors(t *testing.T) {
 	t.Parallel()
 

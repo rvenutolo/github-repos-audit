@@ -32,8 +32,9 @@ if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); 
     "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
   exit 1
 fi
-# Without this, errexit is off inside every $(...) subshell, so a helper called
-# as `n="$(scan ...)"` runs past a failed command and this gate exits 0.
+# Without this, errexit is off inside every $(...) subshell, so a command
+# substitution runs past a failed command and the caller never notices. Set
+# here for parity with every gate script that runs through this wrapper.
 shopt -s inherit_errexit
 IFS=$'\n\t'
 
@@ -41,9 +42,9 @@ trap 'printf "\033[0;31m[%s] ERROR: line %s (exit %s): %s\033[0m\n" "${0##*/}" "
 
 # `--keep` on an unset variable is silent and harmless, so every name is passed
 # unconditionally rather than set-checked. HOME is a deliberate residue: gh
-# auth, tofu's plugin cache and the nix config live there, so host dotfiles
-# such as ~/.shellcheckrc or ~/.terraformrc can still shape a LOCAL run in
-# ways a clean CI HOME will not.
+# auth, the Go module and build caches (~/go, ~/.cache/go-build) and the nix
+# config live there, so host dotfiles such as ~/.shellcheckrc can still shape
+# a LOCAL run in ways a clean CI HOME will not.
 readonly KEEP_VARS=(
   HOME
   TERM

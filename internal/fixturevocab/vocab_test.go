@@ -259,8 +259,8 @@ var apiRules = []rule{
 		`open_issues_count`, `message`, `documentation_url`, `status`, `\[\]\.type`,
 		`\[\]\.ruleset_source_type`,
 		// A ruleset parameter's value is never account data (a branch-name
-		// pattern, a boolean, a count): keep accepts it unconditionally,
-		// which is the "Kept" row the spec intends here, not an oversight.
+		// pattern, a boolean, a count): keep accepts it unconditionally;
+		// this is deliberate, not an oversight.
 		`\[\]\.parameters\.[a-z_]+(\[\])?`,
 		`security_and_analysis\.[a-z_]+\.status`,
 		`data\.repository\.(auto_merge_allowed|delete_branch_on_merge|has_issues|has_wiki|has_projects|has_discussions|merge_commit_allowed|merge_commit_message|merge_commit_title|rebase_merge_allowed|squash_merge_allowed|visibility|vulnerability_alerts)`,
