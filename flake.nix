@@ -131,12 +131,16 @@
             nix.out
             # baseline userland the gates shell out to: cp, mktemp, sort, cut,
             # base64 and tr from coreutils, xargs from findutils, awk from
-            # gawk (the coverage checks, which keep to POSIX awk). Nothing
-            # here needs GNU grep or sed — the scripts use `git grep` and bash
-            # parameter expansion — so neither is declared.
+            # gawk (the coverage checks, which keep to POSIX awk), and GNU
+            # grep and sed for the long options (--extended-regexp,
+            # --regexp-extended) the account-data scan passes. Declared here
+            # rather than inherited from stdenv so .ci/check-devshell-provides
+            # can hold .ci/required-tools to them.
             coreutils
             findutils
             gawk
+            gnugrep
+            gnused
           ];
 
           # GOTOOLCHAIN=local, not the default `auto`: `auto` would let a

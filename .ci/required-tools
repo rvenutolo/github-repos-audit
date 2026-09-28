@@ -86,3 +86,11 @@ cut
 # .ci/check-patch-coverage turns git grep -z's NUL separators into bytes awk
 # can split on
 tr
+# .ci/check-account-data matches its patterns with `grep --extended-regexp`
+# and `grep --fixed-strings`; .ci/check-patch-coverage's test greps its own
+# findings. GNU long options, so gnugrep, not a BSD grep.
+grep
+# .ci/check-account-data strips allowed occurrences with `sed --regexp-extended`
+# and escapes names for the pattern file; .ci/gremlins-pull-request reads the
+# bumped version with `sed -n`
+sed
