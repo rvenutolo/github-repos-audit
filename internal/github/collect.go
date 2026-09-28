@@ -166,23 +166,32 @@ func (r *repository) files() audit.Files {
 	return files
 }
 
-// renovateConfig returns the first of the seven accepted paths that exists, so
-// the report can say where the configuration lives rather than only that it
-// does, together with that file's blob, which is the configuration Renovate
-// reads. The order is fixed so the reported path is deterministic when more
-// than one candidate exists.
+// renovateConfig returns the first accepted path that exists, so the report
+// can say where the configuration lives rather than only that it does,
+// together with that file's blob, which is the configuration Renovate reads.
+// The candidates are Renovate's own lookup order
+// (docs.renovatebot.com/configuration-options): Renovate stops at the first
+// file it finds, so a repository holding two config files is judged by the one
+// Renovate actually uses, not by one it ignores. The deprecated "renovate" key
+// in package.json, last in Renovate's order, is not read.
 func (r *repository) renovateConfig() (string, *renovateBlob) {
 	candidates := []struct {
 		path string
 		blob *renovateBlob
 	}{
 		{"renovate.json", r.RenovateJSON},
+		{"renovate.jsonc", r.RenovateJSONC},
 		{"renovate.json5", r.RenovateJSON5},
+		{".github/renovate.json", r.RenovateGitHubJSON},
+		{".github/renovate.jsonc", r.RenovateGitHubJSONC},
+		{".github/renovate.json5", r.RenovateGitHubJSON5},
+		{".gitlab/renovate.json", r.RenovateGitLabJSON},
+		{".gitlab/renovate.jsonc", r.RenovateGitLabJSONC},
+		{".gitlab/renovate.json5", r.RenovateGitLabJSON5},
 		{".renovaterc", r.RenovateRC},
 		{".renovaterc.json", r.RenovateRCJSON},
+		{".renovaterc.jsonc", r.RenovateRCJSONC},
 		{".renovaterc.json5", r.RenovateRCJSON5},
-		{".github/renovate.json", r.RenovateGitHubJSON},
-		{".github/renovate.json5", r.RenovateGitHubJSON5},
 	}
 	for _, c := range candidates {
 		if c.blob != nil {

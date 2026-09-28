@@ -332,7 +332,7 @@
         "contributing": { "type": "boolean" },
         "code_of_conduct": { "type": "boolean" },
         "renovate_config": {
-          "description": "Where the Renovate configuration lives: the first of the seven accepted paths to match. Absent when there is none.",
+          "description": "Where the Renovate configuration lives: the first accepted path to match, in Renovate's own lookup order. Absent when there is none.",
           "type": "string",
           "minLength": 1
         },

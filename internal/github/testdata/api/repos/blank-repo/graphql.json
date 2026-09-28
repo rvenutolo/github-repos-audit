@@ -57,12 +57,18 @@
       "coc_github": null,
       "coc_docs": null,
       "renovate_json": null,
+      "renovate_jsonc": null,
       "renovate_json5": null,
+      "renovate_github_json": null,
+      "renovate_github_jsonc": null,
+      "renovate_github_json5": null,
+      "renovate_gitlab_json": null,
+      "renovate_gitlab_jsonc": null,
+      "renovate_gitlab_json5": null,
       "renovaterc": null,
       "renovaterc_json": null,
+      "renovaterc_jsonc": null,
       "renovaterc_json5": null,
-      "renovate_github_json": null,
-      "renovate_github_json5": null,
       "workflows": null
     }
   }

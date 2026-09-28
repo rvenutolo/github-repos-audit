@@ -3,6 +3,7 @@ package github_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,6 +26,15 @@ const presetDefault = "/repos/gh-owner/preset-store/contents/default.json"
 // and needs no new repository name in the fake vocabulary.
 func scriptRenovateProbe(t *testing.T, api *fakeAPI, probe map[string]any) {
 	t.Helper()
+	scriptRenovateProbes(t, api, map[string]any{"renovate_json": probe})
+}
+
+// scriptRenovateProbes is scriptRenovateProbe for several probes at once,
+// keyed by GraphQL alias; a nil value records that path as absent. Every key
+// must already be a probe in the recorded answer, so a probe the query does
+// not ask for cannot be scripted into a passing test.
+func scriptRenovateProbes(t *testing.T, api *fakeAPI, probes map[string]any) {
+	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(fixtureRoot, "repos", "mixedCase-flake", "graphql.json"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
@@ -37,10 +47,12 @@ func scriptRenovateProbe(t *testing.T, api *fakeAPI, probe map[string]any) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("decode fixture: %v", err)
 	}
-	if _, ok := doc.Data.Repository["renovate_json"]; !ok {
-		t.Fatal("fixture has no renovate_json probe to replace")
+	for key, probe := range probes {
+		if _, ok := doc.Data.Repository[key]; !ok {
+			t.Fatalf("fixture has no %s probe to replace", key)
+		}
+		doc.Data.Repository[key] = probe
 	}
-	doc.Data.Repository["renovate_json"] = probe
 	body, err := json.Marshal(doc)
 	if err != nil {
 		t.Fatalf("encode fixture: %v", err)
@@ -257,5 +269,66 @@ func TestCollect_presetPathAndRefAreEscaped(t *testing.T) {
 	if got[0].method != http.MethodGet || got[0].escapedPath != wantPath || got[0].rawQuery != "ref=v1.0" {
 		t.Errorf("request = %s %s?%s, want GET %s?ref=v1.0",
 			got[0].method, got[0].escapedPath, got[0].rawQuery, wantPath)
+	}
+}
+
+// renovateLookupOrder is Renovate's documented config file search order
+// (docs.renovatebot.com/configuration-options, less the deprecated
+// package.json key), each path paired with the GraphQL alias that probes it.
+// Renovate stops at the first file it finds, so the audit must too.
+var renovateLookupOrder = []struct{ alias, path string }{
+	{"renovate_json", "renovate.json"},
+	{"renovate_jsonc", "renovate.jsonc"},
+	{"renovate_json5", "renovate.json5"},
+	{"renovate_github_json", ".github/renovate.json"},
+	{"renovate_github_jsonc", ".github/renovate.jsonc"},
+	{"renovate_github_json5", ".github/renovate.json5"},
+	{"renovate_gitlab_json", ".gitlab/renovate.json"},
+	{"renovate_gitlab_jsonc", ".gitlab/renovate.jsonc"},
+	{"renovate_gitlab_json5", ".gitlab/renovate.json5"},
+	{"renovaterc", ".renovaterc"},
+	{"renovaterc_json", ".renovaterc.json"},
+	{"renovaterc_jsonc", ".renovaterc.jsonc"},
+	{"renovaterc_json5", ".renovaterc.json5"},
+}
+
+// TestCollect_renovateConfigFollowsRenovateLookupOrder: with a config at a
+// candidate and at every candidate after it, the audit reports that
+// candidate's path and judges its contents, as Renovate would read it. The
+// last case is a config at the final candidate alone, so every accepted path
+// is also shown to be found on its own merits.
+func TestCollect_renovateConfigFollowsRenovateLookupOrder(t *testing.T) {
+	t.Parallel()
+	for i, want := range renovateLookupOrder {
+		t.Run(want.path, func(t *testing.T) {
+			t.Parallel()
+			probes := map[string]any{}
+			for j, c := range renovateLookupOrder {
+				if j < i {
+					probes[c.alias] = nil
+					continue
+				}
+				// Each file names its own age, so the verdict shows which
+				// file's contents were read, not only which path was named.
+				probes[c.alias] = map[string]any{
+					"oid":          fmt.Sprintf("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa%04d", j),
+					"text":         fmt.Sprintf(`{"minimumReleaseAge": "%d days"}`, j+1),
+					"is_truncated": false,
+					"is_binary":    false,
+				}
+			}
+			api := newFakeAPI(t)
+			scriptRenovateProbes(t, api, probes)
+			repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+			if err != nil {
+				t.Fatalf("Collect() error = %v", err)
+			}
+			if got := repos[0].Files.RenovateConfig; got != want.path {
+				t.Errorf("Files.RenovateConfig = %q, want %q", got, want.path)
+			}
+			if got, wantAge := repos[0].Renovate.MinReleaseAge, fmt.Sprintf("%d days", i+1); got != wantAge {
+				t.Errorf("Renovate.MinReleaseAge = %q, want %q (read from %s)", got, wantAge, want.path)
+			}
+		})
 	}
 }

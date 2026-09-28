@@ -201,10 +201,10 @@ func keepNil(paths ...string) rule {
 	return rule{path: regexp.MustCompile(`^(` + strings.Join(paths, "|") + `)$`), ok: isNil, want: "null (never populated in this fixture set)"}
 }
 
-// renovateProbes is the alternation of the seven Renovate config probes. A
+// renovateProbes is the alternation of the Renovate config probes. A
 // present one is an object whose oid, text and flags are ruled separately;
 // an absent one is null.
-const renovateProbes = `(renovate_json|renovate_json5|renovaterc|renovaterc_json|renovaterc_json5|renovate_github_json|renovate_github_json5)`
+const renovateProbes = `(renovate_json|renovate_jsonc|renovate_json5|renovate_github_json|renovate_github_jsonc|renovate_github_json5|renovate_gitlab_json|renovate_gitlab_jsonc|renovate_gitlab_json5|renovaterc|renovaterc_json|renovaterc_jsonc|renovaterc_json5)`
 
 // isFakeBase64Content decodes a contents-API content field — base64 wrapped
 // with newlines, as GitHub sends it — and holds the text to namesOnlyFakeRepos.
