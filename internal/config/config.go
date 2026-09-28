@@ -213,8 +213,7 @@ func validate(name string, e entryShape, types rules.Types) (Repo, []error) {
 			problems = append(problems, fmt.Errorf("%s: override %q has an empty value", name, key))
 			continue
 		}
-		// A value-only check has nothing that can be missing, so requiring it
-		// would render a cross that no worklist entry ever explains.
+		// Required makes no sense for a value-only check; see Check.ValueOnly.
 		if check.ValueOnly() && value == rules.OverrideRequired {
 			problems = append(problems, fmt.Errorf("%s: override %s = %q names a value-only check (want %s)",
 				name, key, value, rules.OverrideNotRequired))

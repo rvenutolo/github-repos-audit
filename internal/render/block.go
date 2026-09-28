@@ -153,13 +153,10 @@ func activitySection(rep *rules.Report, at time.Time) string {
 	return heading("Activity", t)
 }
 
-// identitiesSection lists, for every repository with any of the account
-// holder's identities, which ones its history carries: the working list for a
-// history rewrite. The Policy column says whether a repository is wrong; this
-// says what to rewrite from. It is omitted when no repository has any of the
-// owner's identities, which includes a report with no identity standard.
-// Accepted identities are listed, tagged, and never make a line mixed or not
-// canonical: the markers flag only what there is to rewrite.
+// identitiesSection renders rep.Identities, one line per repository with any
+// of the account holder's identities, and is omitted when there are none. Why
+// the listing exists beside the Policy column, and how accepted identities
+// are tagged, is on identityLines in internal/rules/identitylines.go.
 func identitiesSection(rep *rules.Report) string {
 	if len(rep.Identities) == 0 {
 		return ""
