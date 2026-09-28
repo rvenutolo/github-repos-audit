@@ -16,9 +16,10 @@
 #              - provenance-ref:   a pull request or issue number in prose
 #              - person-time:      a person or a date relative to the writer
 #
-#              The escape is `doc-rot-exempt: <reason>` in the same comment,
-#              on the hit line or the line directly above it. A marker with
-#              no reason, or one that exempts nothing, is itself a finding.
+#              The escape is the marker `doc-rot-exempt`, a colon and a
+#              reason, in the same comment on the hit line or the line
+#              directly above it. A marker with no reason, or one that
+#              exempts nothing, is itself a finding.
 #              Fixtures under testdata/, JSON, lockfiles and LICENSE are
 #              skipped: they are data, not prose about this repository.
 # @noargs
