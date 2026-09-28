@@ -105,7 +105,11 @@ function scan_if_public() {
     IFS=' ' read -r _ local_sha _ remote_sha <<< "${update}"
     [[ "${local_sha}" =~ ^0+$ ]] && continue # a deletion sends no commits
     if [[ "${remote_sha}" =~ ^0+$ ]]; then
-      range="${local_sha}"
+      # A new branch: scan only what origin/main lacks. Its whole history
+      # would re-scan commits already published, including GitHub's own merge
+      # commits, whose re-wrapped pull request bodies can put a repository
+      # name alone on a line and trip the scan on a commit nobody can amend.
+      range="$(git merge-base "${local_sha}" origin/main)..${local_sha}"
     else
       range="${remote_sha}..${local_sha}"
     fi
