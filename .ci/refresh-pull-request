@@ -155,7 +155,8 @@ function main() {
   ci::log 'opening the pull request'
   # GITHUB_WORKFLOW is always set in Actions and, in a called workflow, holds
   # the CALLER's workflow name rather than this repository's own — the README
-  # example names the caller workflow audit.yml, but nothing requires that,
+  # example names the caller file audit.yml and the workflow `audit`, but
+  # nothing requires either,
   # so the body cannot hardcode a filename that may not exist in the reader's
   # repository.
   local workflow_name="${GITHUB_WORKFLOW:-the scheduled refresh workflow}"

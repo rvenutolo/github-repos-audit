@@ -34,7 +34,7 @@ import (
 // real account's repositories:
 //
 //   - SMOKE_OWNER is the account the token belongs to.
-//   - SMOKE_PUBLIC_REPO is public, has CI and cuts releases.
+//   - SMOKE_PUBLIC_REPO is public and has CI.
 //   - SMOKE_PRIVATE_REPO is private, which is what makes the n/a paths
 //     observable: security_and_analysis and private-vulnerability-reporting
 //     both behave differently there.

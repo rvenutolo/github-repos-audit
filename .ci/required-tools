@@ -1,5 +1,7 @@
-# Tools the repo's own tooling shells out to. Every entry is justified by a
-# real call site. This file is data: one tool per line, `#` comments and blank
+# Tools the repo's own tooling shells out to inside the default devShell.
+# Every entry is justified by a real call site. Tools that live outside that
+# shell by design (gremlins in devShells.mutate, nix-update via `nix run`)
+# are not listed. This file is data: one tool per line, `#` comments and blank
 # lines ignored, no shebang and no executable bit.
 #
 # .ci/check-devshell-provides reads this file in both directions:
@@ -34,14 +36,16 @@ zizmor
 markdownlint-cli2
 # .ci/run-lint-checks: every tracked file no formatter owns
 editorconfig-checker
-# .ci/run-lint-checks: the links README.md carries
+# .ci/run-lint-checks: the links every tracked Markdown file outside testdata
+# carries
 lychee
 # invoked by .ci/run-lint-checks and .ci/run-fixers
 typos
 # invoked by .ci/run-lint-checks (whole-tree scan of the tracked files)
 gitleaks
-# .ci/run-lint-checks: the golden audit.json fixture against audit.schema.json;
-# validate.yml also runs it, on the caller's report/audit.json when present
+# .ci/run-lint-checks: audit.schema.json against its metaschema, then the
+# golden audit.json fixture against audit.schema.json; validate.yml also runs
+# it, on the caller's report/audit.json when present
 check-jsonschema
 # invoked by .ci/run-lint-checks
 statix
