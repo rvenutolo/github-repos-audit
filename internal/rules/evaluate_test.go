@@ -344,13 +344,14 @@ func TestEvaluate_requiredChecksAndCIWorkflows(t *testing.T) {
 		}
 	})
 
-	// Required checks go n/a from the LIVE direct-push answer, not the type: a
-	// content repo that allows direct push has its required-checks row
-	// withheld even with a real workflow on disk.
+	// The case the two-row split exists for: required checks go n/a from the
+	// LIVE direct-push answer, not the type, so a tools repo that allows direct
+	// push has its required-checks row withheld while the workflow on disk
+	// still passes the CI-workflows row and the direct-push row itself fails.
 	t.Run("required checks is n/a under direct push, CI workflows still reads pass", func(t *testing.T) {
 		t.Parallel()
 
-		r := fixture("a", "content")
+		r := fixture("a", "tools")
 		r.Branch.Types = []string{"required_signatures"} // no pull_request rule
 		r.Branch.RequiredChecks = nil
 		r.Files.Workflows = []string{"ci.yml"}
@@ -361,8 +362,11 @@ func TestEvaluate_requiredChecksAndCIWorkflows(t *testing.T) {
 		if got := cells[rules.CheckRequiredChecks].Verdict; got != rules.NA {
 			t.Errorf("required checks verdict = %v, want NA", got)
 		}
-		if got := cells[rules.CheckDirectPush].Verdict; got != rules.Pass {
-			t.Errorf("direct push verdict = %v, want Pass for a content repo", got)
+		if got := cells[rules.CheckCIWorkflows].Verdict; got != rules.Pass {
+			t.Errorf("CI workflows verdict = %v, want Pass with a workflow on disk", got)
+		}
+		if got := cells[rules.CheckDirectPush].Verdict; got != rules.Fail {
+			t.Errorf("direct push verdict = %v, want Fail for a tools repo that allows it", got)
 		}
 	})
 }
