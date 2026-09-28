@@ -730,7 +730,7 @@ func TestEvaluate_topicsFailWhenThereAreNone(t *testing.T) {
 	// turns on `r.Topics > 0`. Relaxing that to `>= 0` makes every repository
 	// pass while still rendering an honest "0", which is the worst kind of
 	// wrong — the number on the page contradicts the tick beside it. Surfaced
-	// as a surviving CONDITIONALS_BOUNDARY mutant at evaluate.go:241.
+	// as a surviving CONDITIONALS_BOUNDARY mutant at the topics guard in evaluate.go.
 	tests := []struct {
 		name   string
 		topics int
@@ -770,7 +770,7 @@ func TestEvaluate_requiredChecksCountsOnlyItsOwn(t *testing.T) {
 	// always-green merge-gate placeholder. Nothing asserted the number itself,
 	// only that the row passed, so turning the `own++` that produces it into
 	// `own--` went unnoticed: the row still passed and rendered "-2". Surfaced
-	// as a surviving INCREMENT_DECREMENT mutant at evaluate.go:300.
+	// as a surviving INCREMENT_DECREMENT mutant at the `own++` in evaluate.go.
 	tests := []struct {
 		name     string
 		required []string
@@ -827,7 +827,7 @@ func TestEvaluate_directPushGapsNameTheDirectionThatFailed(t *testing.T) {
 	// labels wholesale: every repository that wrongly allows direct push gets
 	// filed under "blocked", and vice versa. Both gaps still appear, with the
 	// right repository counts, which is why nothing noticed. Surfaced as a
-	// surviving CONDITIONALS_NEGATION mutant at gaps.go:124.
+	// surviving CONDITIONALS_NEGATION mutant at the `cell.Value == observed` test in gaps.go.
 	//
 	// Both directions have to fail at once for the pairing to be observable,
 	// and the two types expect opposite things: content wants direct push

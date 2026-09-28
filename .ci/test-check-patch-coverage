@@ -32,9 +32,10 @@ readonly SENTINEL='markerSentinelValue'
 work=''
 trap 'rm -rf -- "${work}"' EXIT
 
-# @description Print the base a.go: three blocks, lines 4-5 (run), 5-7
-#              (never run: the x < 0 branch) and 8-8 (run). An `if` body's
-#              block starts on the `if` line itself, at the `{`, so line 5
+# @description Print the base a.go: three blocks, the function's opening
+#              through its `if` (run), the `if` body (never run: the x < 0
+#              branch) and the final return (run). An `if` body's block
+#              starts on the `if` line itself, at the `{`, so that line
 #              belongs to two blocks.
 function a_go() {
   cat << EOF
