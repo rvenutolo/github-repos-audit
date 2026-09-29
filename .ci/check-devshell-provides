@@ -22,9 +22,9 @@
 #
 #              1. Justification is decided by where a tool RESOLVES ON PATH, not
 #                 by scanning each output's bin/; reverse_check explains why.
-#              2. `nix eval` caches flake evaluations. A cached result reported
-#                 an inventory three packages stale while the tree on disk had
-#                 already moved. --no-eval-cache is mandatory, not tidiness.
+#              2. `nix eval` caches flake evaluations. A cached result can
+#                 report a stale inventory while the tree on disk has already
+#                 moved. --no-eval-cache is mandatory, not tidiness.
 #
 #              Must be run INSIDE the devShell (run-all-checks always is).
 # @arg $1 dir optional fixture directory, which makes the script read

@@ -70,10 +70,10 @@ function fail_setup() {
 }
 
 # @description Succeed when a commit's tree holds a path and fail when it
-#              does not; exit 2 when git cannot say. `git cat-file -e` used to
-#              answer this, but it exits non-zero alike for a missing path and
-#              for git failing, so a failure read as "no baseline" and the
-#              commit passed unjudged. ls-tree prints nothing for a missing
+#              does not; exit 2 when git cannot say. `git cat-file -e` cannot
+#              answer this: it exits non-zero alike for a missing path and for
+#              git failing, so a failure would read as "no baseline" and the
+#              commit would pass unjudged. ls-tree prints nothing for a missing
 #              path and fails only when git does.
 # @arg $1 commit
 # @arg $2 path from the repository root

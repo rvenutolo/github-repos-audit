@@ -165,7 +165,7 @@ func TestLive_collectParsesEveryField(t *testing.T) {
 	// Shape only, never values: the identities are real people's names and
 	// addresses, and this suite's output is a CI log. A repository with
 	// commits has at least one identity, and at least one of them carries
-	// both halves; none at all means the history selection was renamed.
+	// both halves; none at all means the history selection has been renamed.
 	if len(pub.Identities) == 0 {
 		t.Errorf("%s has no identities; the history selection may have changed", pub.Name)
 	}
