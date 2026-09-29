@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+
+# @description Exercise the file-listing helpers in .ci/lib.sh against
+#              throwaway repositories, and guard every other listing in the
+#              .ci/ scripts: run-lint-checks and run-fixers are too heavy to
+#              run from a test, so the guard is what keeps them on verbatim
+#              names.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# work is global, not local to main; see .ci/check-coverage-drop for why.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Create a fresh throwaway repository under the shared work
+#              directory and print its path.
+# @stdout the repository's absolute path
+function new_repo() {
+  local repo
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  printf '%s\n' "${repo}"
+}
+
+# @description Write one file into a repository and stage it.
+# @arg $1 repo
+# @arg $2 path (parent directories are created)
+# @arg $3 content
+function add_file() {
+  mkdir --parents "$(dirname -- "$1/$2")"
+  printf '%s\n' "$3" > "$1/$2"
+  git -C "$1" add -- "$2"
+}
+
+# @description Run one lib.sh function with REPO_DIR pointed at a throwaway
+#              repository, in a fresh shell so this script's own readonly
+#              REPO_DIR is left alone.
+# @arg $1 repo
+# @arg $@ the function and its arguments
+# @stdout whatever the function prints
+function in_repo() {
+  local -r repo="$1"
+  shift
+  # shellcheck disable=SC2016 # expanded by the inner shell, not this one
+  env REPO_DIR="${repo}" bash -c 'source "$1/.ci/lib.sh"; shift; "$@"' _ "${REPO_DIR}" "$@"
+}
+
+# @description Compare a NUL-delimited listing against the expected names,
+#              in order.
+# @arg $1 case name
+# @arg $2 the listing, as a file holding its raw bytes
+# @arg $@ the expected names
+function expect_names() {
+  local -r name="$1" listing="$2"
+  shift 2
+  local -a got=()
+  mapfile -d '' -t got < "${listing}"
+  local -r want_joined="$(printf '[%s] ' "$@")" got_joined="$(printf '[%s] ' "${got[@]}")"
+  if [[ "${got_joined}" != "${want_joined}" ]]; then
+    ci::log "FAIL: ${name}: got ${got_joined}, want ${want_joined}"
+    return 1
+  fi
+}
+
+# @description Fail on any git listing in the .ci/ scripts, run-all-checks or
+#              the hooks that can hand back a quoted name: an `ls-files`,
+#              `ls-tree` or `--files-with-matches` call without -z. Exempt:
+#              comment lines, `--error-unmatch` probes (only the exit status
+#              is read), and a call on or just below a line carrying
+#              `quoted-name-ok: <reason>`. The test-* harnesses are skipped:
+#              they build fixtures and name these commands in case names and
+#              messages, but list nothing a check consumes.
+# @noargs
+# @exitcode 0 every listing is verbatim
+# @exitcode 1 at least one is not
+function guard_listings() {
+  local rc=0 file line lineno previous
+  local -a files=()
+  mapfile -d '' -t files < <(ci::ls_files '.ci/*' '.githooks/*' 'run-all-checks')
+  for file in "${files[@]}"; do
+    [[ "${file}" == .ci/test-* ]] && continue
+    lineno=0
+    line=''
+    while previous="${line}" && IFS= read -r line || [[ -n "${line}" ]]; do
+      lineno=$((lineno + 1))
+      [[ "${line}" =~ ^[[:space:]]*# ]] && continue
+      [[ "${line}" =~ (ls-files|ls-tree|--files-with-matches) ]] || continue
+      [[ "${line}" =~ [[:space:]]-z([[:space:]]|$) ]] && continue
+      [[ "${line}" == *'--error-unmatch'* ]] && continue
+      [[ "${line}" == *'quoted-name-ok:'* || "${previous}" == *'quoted-name-ok:'* ]] && continue
+      ci::log "FAIL: ${file}:${lineno}: a git listing without -z quotes non-ASCII names: ${line}"
+      rc=1
+    done < "${REPO_DIR}/${file}"
+  done
+  return "${rc}"
+}
+
+function main() {
+  local rc=0 repo
+  work="$(mktemp --directory)"
+
+  repo="$(new_repo)"
+  add_file "${repo}" 'a.md' 'plain'
+  add_file "${repo}" 'ü.md' 'non-ascii'
+  add_file "${repo}" 'x.txt' 'not markdown'
+  in_repo "${repo}" ci::ls_files '*.md' > "${work}/listing" || rc=1
+  expect_names 'ls_files: a non-ascii name, verbatim' "${work}/listing" 'a.md' 'ü.md' || rc=1
+
+  printf 'untracked\n' > "${repo}/ü.txt"
+  in_repo "${repo}" ci::ls_files --others --exclude-standard > "${work}/listing" || rc=1
+  expect_names 'ls_files: options pass through to git' "${work}/listing" 'ü.txt' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" 'd/über.sh' 'echo PAYLOAD_RAN'
+  add_file "${repo}" 'd/über' $'#!/usr/bin/env bash\necho PAYLOAD_RAN'
+  add_file "${repo}" 'd/ü.md' 'prose'
+  add_file "${repo}" 'd/ünix' $'#!/bin/sh\necho PAYLOAD_RAN'
+  add_file "${repo}" 'run' $'#!/usr/bin/env bash\necho PAYLOAD_RAN'
+  in_repo "${repo}" ci::shell_files > "${work}/listing" || rc=1
+  expect_names 'shell_files: non-ascii scripts, by extension and by shebang' "${work}/listing" \
+    'd/über' 'd/über.sh' 'run' || rc=1
+
+  guard_listings || rc=1
+
+  ((rc == 0)) && ci::log 'lib.sh: every case passed'
+  # A failing case is this harness's verdict, not a crash; see
+  # .ci/test-check-account-data.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"
