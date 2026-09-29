@@ -2,8 +2,9 @@
 
 # @description Fail when tracked prose describes a past state of this
 #              repository or states a value that drifts with ordinary edits.
-#              Prose is every Markdown file and the full-line comments of Go,
-#              shell, TOML, YAML, Nix and the justfile. A trailing comment
+#              Prose is every Markdown file, the full-line comments of Go,
+#              shell, TOML, YAML, Nix and the justfile, and Go /* */ comments
+#              that open at the start of a line. A trailing comment
 #              after code is not scanned, so a trigger word in an ordinary
 #              string literal is not a finding; a comment-shaped line inside
 #              a Go raw string or a shell heredoc is scanned like any other.
@@ -72,18 +73,39 @@ function scan_file() {
     }
     # The class the text belongs to, or "" when it is clean. English words
     # match case-insensitively on a lowered copy; markers match as written.
-    function classify(text,   lc) {
+    function classify(text,   lc, t) {
       lc = tolower(text)
-      if (lc ~ /(^|[^a-z])(previously|formerly|historically|renamed from|as of this writing|(it|this|that|which|we|they|code|script|check|gate|tool|collector|workflow) used to|no longer|now (uses|does|is|has|only)|as of (v[0-9]|[0-9][0-9][0-9][0-9]-))([^a-z]|$)/) return "history-phrasing"
+      # Phrases that share a trigger word but describe the present are
+      # blanked first, so each pattern below stays a plain match: a passive
+      # or idiomatic "is used to", a relative clause stating what something
+      # is now ("a token that no longer authenticates"), "most recently" as a
+      # superlative, and "is temporarily" as a present condition.
+      gsub(/(^|[^a-z])(is|are|am|be|been|being|get|gets|getting|got|gotten) used to( |$)/, " ", lc)
+      gsub(/(^|[^a-z])(that|which|who) no longer /, " ", lc)
+      gsub(/(^|[^a-z])most recently([^a-z]|$)/, " ", lc)
+      gsub(/(^|[^a-z])(is|are) temporarily([^a-z]|$)/, " ", lc)
+      if (lc ~ /(^|[^a-z])(previously|formerly|historically|originally|anymore|renamed from|(was|were) renamed|as of this writing|used to( [a-z]+|$)|no longer|now (uses|does|is|has|only)|(is|are) now [a-z]+|as of (v[0-9]|[0-9][0-9][0-9][0-9]-))([^a-z]|$)/) return "history-phrasing"
       if (lc ~ /[a-z0-9_.\/-]+\.(go|sh|md|yml|yaml|nix|toml)(:|#l)[0-9]+([^0-9]|$)/) return "drift-value"
       if (lc ~ /(^|[^a-z0-9_.\/-])((\.ci|\.githooks)\/[a-z0-9_.-]+|run-all-checks):[0-9]+([^0-9]|$)/) return "drift-value"
-      if (lc ~ /(^|[^a-z-])lines? [0-9]+([^0-9]|$)/) return "drift-value"
-      if (lc ~ /(^|[^a-z0-9])[0-9]+ (lines|files|tests|functions|checks|statements|packages|scripts)([^a-z]|$)/) return "drift-value"
+      # Line 1 is the one line number no edit moves.
+      if (lc ~ /(^|[^a-z-])lines? ([02-9]|[1-9][0-9]+)([^0-9]|$)/) return "drift-value"
+      # A count spelled out drifts like one in digits. One and two are left
+      # out: "one line per finding" and "these two lines" name fixed shapes
+      # far more often than tallies.
+      if (lc ~ /(^|[^a-z0-9])([0-9]+|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty) (lines|files|tests|functions|checks|statements|packages|scripts)([^a-z]|$)/) return "drift-value"
       if (text ~ /(^|[^A-Za-z])(TODO|FIXME|XXX|HACK)([^A-Za-z]|$)/) return "deferral"
       if (lc ~ /(^|[^a-z])(for now|temporarily|temporary (fix|workaround|hack|measure))([^a-z]|$)/) return "deferral"
-      if (text ~ /\/home\/|\$HOME\/Projects|~\/Projects/) return "absolute-path"
-      if (text ~ /(^|[ (])#[0-9]+([^0-9A-Za-z]|$)/) return "provenance-ref"
+      # The Actions runner home is the same path on every hosted runner, and
+      # a Markdown anchor such as ](#1-setup) is not a reference; both are
+      # blanked from a copy that keeps its case.
+      t = text
+      gsub(/\/home\/runner([^A-Za-z0-9_.-]|$)/, " ", t)
+      gsub(/\]\(#/, "](", t)
+      if (t ~ /\/home\/|\$HOME\/Projects|~\/Projects/) return "absolute-path"
+      # Up to five digits: a six-digit hex colour is not a reference.
+      if (t ~ /(^|[ (])#[0-9]{1,5}([^0-9A-Za-z]|$)/) return "provenance-ref"
       if (lc ~ /(^|[^a-z])(pr|pull request|issue) #?[0-9]+([^0-9]|$)/) return "provenance-ref"
+      if (lc ~ /(^|[^a-z0-9_.-])(pull|issues)\/[0-9]+([^0-9]|$)|[a-z0-9_.-]+\/[a-z0-9_.-]+#[0-9]+([^0-9]|$)/) return "provenance-ref"
       if (lc ~ /(^|[^a-z])((i|we) (decided|chose|changed|moved|added|removed|fixed|switched)|(last|next) (week|month|year)|recently|yesterday|today)([^a-z]|$)/) return "person-time"
       return ""
     }
@@ -100,8 +122,26 @@ function scan_file() {
       close_marker(NR)
       line = $0
       if (mode == "slash") {
-        if (line !~ /^[ \t]*\/\//) next
-        sub(/^[ \t]*\/\/+/, "", line)
+        # A /* */ comment is prose like a // one when it opens at the start
+        # of a line; in_block carries it across lines until */ closes it,
+        # and whatever follows the closer on that line is code.
+        if (in_block) {
+          end = index(line, "*/")
+          if (end) {
+            line = substr(line, 1, end - 1)
+            in_block = 0
+          }
+          sub(/^[ \t]*\*?/, "", line)
+        } else if (line ~ /^[ \t]*\/\*/) {
+          sub(/^[ \t]*\/\*+/, "", line)
+          end = index(line, "*/")
+          if (end) line = substr(line, 1, end - 1)
+          else in_block = 1
+        } else if (line ~ /^[ \t]*\/\//) {
+          sub(/^[ \t]*\/\/+/, "", line)
+        } else {
+          next
+        }
       } else if (mode == "hash") {
         if (NR == 1 && line ~ /^#!/) next
         if (line !~ /^[ \t]*#/) next

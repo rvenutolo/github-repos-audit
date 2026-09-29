@@ -211,7 +211,6 @@ function check() {
     rc=1
   fi
 
-  # doc-rot-exempt: describes the condition this loop tests for, not history
   # A baseline line naming a package that no longer exists is a line nobody
   # will ever notice is stale, which is the same reasoning CheckCoverage
   # applies to repos.toml.
