@@ -53,7 +53,7 @@ function ere_quote() {
 #              status above 1 -- a bad regex, a corrupt object -- means the
 #              scan itself failed rather than found nothing, so it aborts
 #              the whole script instead of being swallowed the way a bare
-#              `|| true` used to swallow it. Relies on the caller never
+#              `|| true` would swallow it. Relies on the caller never
 #              wrapping the call in its own `|| true`, so this exit still
 #              trips `set -e`/`inherit_errexit` at the call site.
 # @arg $@ arguments to pass to `git grep`

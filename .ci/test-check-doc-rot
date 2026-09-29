@@ -221,6 +221,122 @@ function main() {
   add_file "${repo}" notes.md 'See check.go#L42 for the guard.'
   expect "${repo}" 1 'a github line anchor' 'notes.md:1 [drift-value]' || rc=1
 
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'A malformed figure used to read as 0.'
+  expect "${repo}" 1 'used to after any subject' 'notes.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'The old probe used to\nanswer this.'
+  expect "${repo}" 1 'used to at the end of a line' 'notes.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'The token is used to\nsign.'
+  expect "${repo}" 0 'is used to at the end of a line' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'The token is used to sign.\nThe values are used to sort.\nIt can be used to probe.\nThe marker has been used to skip.\nCallers get used to it.'
+  expect "${repo}" 0 'passive and idiomatic used to' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The step is now run first.'
+  expect "${repo}" 1 'is now before a verb' 'notes.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The flag was renamed.'
+  expect "${repo}" 1 'was renamed' 'notes.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'It originally read forks.'
+  expect "${repo}" 1 'originally' 'notes.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'It does not read forks anymore.'
+  expect "${repo}" 1 'anymore' 'notes.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'There are eleven checks.'
+  expect "${repo}" 1 'a count written as a word' 'notes.md:1 [drift-value]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'It prints one line per finding.'
+  expect "${repo}" 0 'one line per finding is stable' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'See https://github.com/o/r/pull/13 for the review.'
+  expect "${repo}" 1 'a pull request url' 'notes.md:1 [provenance-ref]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'See https://github.com/o/r/issues/13 for the report.'
+  expect "${repo}" 1 'an issue url' 'notes.md:1 [provenance-ref]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'Tracked in o/r#13 upstream.'
+  expect "${repo}" 1 'an owner/repo reference' 'notes.md:1 [provenance-ref]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n/*\nThe collector previously read forks.\n*/\nvar previously = 1'
+  expect "${repo}" 1 'a go block comment' 'a.go:4 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" a.go $'package a\n\n/* The collector reads forks. */\nvar previously = 1'
+  expect "${repo}" 0 'code after a closed block comment' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'It picks the most recently pushed repository.'
+  expect "${repo}" 0 'most recently' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'Retry when GitHub is temporarily unavailable.'
+  expect "${repo}" 0 'is temporarily' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The run aborts on a token that no longer authenticates.'
+  expect "${repo}" 0 'that no longer' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The collector no longer reads forks.'
+  expect "${repo}" 1 'no longer after a subject' 'notes.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The runner checks out into /home/runner/work.'
+  expect "${repo}" 0 'the actions runner home' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The badge colour is #123456 and [the guide](#1-setup) covers setup.'
+  expect "${repo}" 0 'a hex colour and a markdown anchor' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'Skip line 1 of the file.'
+  expect "${repo}" 0 'line 1 is stable' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'<!-- doc-rot-exempt: first -->\n<!-- doc-rot-exempt: second -->\nclean\nclean'
+  expect "${repo}" 1 'a stale exemption followed by another' 'notes.md:1 [exempt-marker]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md $'previously doc-rot-exempt: quoted\n<!-- doc-rot-exempt: quoted below -->\nformerly'
+  expect "${repo}" 0 'two used exemptions on adjacent lines' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" 'd/über.md' 'previously'
+  expect "${repo}" 1 'a non-ascii file name' 'd/über.md:1 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env -S bash --previously\necho ok'
+  expect "${repo}" 0 'a shebang is not prose' || rc=1
+
+  # A line hitting two classes must yield one FAIL line naming the first,
+  # not one per class.
+  local once_out once_count
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The collector previously read forks; see check.go:42.'
+  once_out="$(cd "${repo}" && "${CHECK}" 2>&1)" || true
+  once_count="$(grep --count '^FAIL:' <<< "${once_out}")" || true
+  if [[ "${once_count}" != 1 || "${once_out}" == *'[drift-value]'* ]]; then
+    ci::log "FAIL: reported once per line: ${once_count} FAIL lines (output: ${once_out})"
+    rc=1
+  fi
+
   ((rc == 0)) && ci::log 'check-doc-rot: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
   # so a non-zero return does not add its own "ERROR: line ..." after the

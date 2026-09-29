@@ -130,7 +130,7 @@ function main() {
   # or rewritten ref) must abort the scan, not be misread by the caller as
   # "nothing found": `git rev-list` fails, and that failure has to reach the
   # scan's own exit status rather than being hidden by a process
-  # substitution the way `while ... done < <(git rev-list ...)` used to hide
+  # substitution the way `while ... done < <(git rev-list ...)` would hide
   # it from `set -e`.
   local unresolvable_out unresolvable_got=0
   unresolvable_out="$(cd "${repo}" && "${REPO_DIR}/.ci/check-account-data" \

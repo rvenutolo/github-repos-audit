@@ -70,7 +70,7 @@ func TestParseCheck_rejectsAnUnknownName(t *testing.T) {
 	}
 }
 
-// TestCheck_ValueOnly pins the four checks that carry a value and no pass or
+// TestCheck_ValueOnly pins the checks that carry a value and no pass or
 // fail. internal/config refuses a required override on one; see the ValueOnly
 // guard in config.go for why.
 func TestCheck_ValueOnly(t *testing.T) {

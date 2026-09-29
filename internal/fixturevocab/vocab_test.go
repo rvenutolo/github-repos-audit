@@ -116,7 +116,7 @@ func namesOnlyFakeRepos(v any) bool {
 }
 
 // pipeDescription is the one deliberate escaping fixture: a description
-// containing a pipe character, used to prove the Markdown renderer escapes
+// containing a pipe character, which proves the Markdown renderer escapes
 // table cells correctly. It names no account.
 const pipeDescription = "a flake | with a pipe in its description"
 
