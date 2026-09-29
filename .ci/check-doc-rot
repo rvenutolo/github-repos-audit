@@ -161,6 +161,9 @@ function scan_file() {
         # The reason may quote the very word it exempts, so only the text
         # before the marker is classified.
         line = substr(line, 1, at - 1)
+        # A marker opening while the one above is still open replaces it, so
+        # the old one is judged now or its verdict is lost.
+        if (marker_nr && !marker_used) report(marker_nr, "exempt-marker", "doc-rot-exempt marker exempts nothing; remove it")
         marker_nr = NR
         marker_used = 0
       }
