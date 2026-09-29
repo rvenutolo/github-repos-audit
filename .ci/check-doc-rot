@@ -38,6 +38,11 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 REPO_DIR="$(git rev-parse --show-toplevel)"
 readonly REPO_DIR
 
+# From beside this script, not from REPO_DIR: its tests run it inside
+# throwaway repositories, which carry no .ci/lib.sh of their own.
+# shellcheck source=.ci/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+
 # @description Print every tracked prose-bearing file and how its prose is
 #              found, tab-separated: `md` (whole file), `slash` (full-line
 #              `//` comments) or `hash` (full-line `#` comments).
@@ -45,8 +50,6 @@ readonly REPO_DIR
 # @stdout `<path>\t<mode>` per file
 function prose_files() {
   local file
-  # -z with quotePath off hands over every name verbatim; the default
-  # quotes a non-ASCII name, which then matches no pattern and no file.
   while IFS= read -r -d '' file; do
     case "${file}" in
       */testdata/* | *.json | go.sum | flake.lock | LICENSE) continue ;;
@@ -58,7 +61,7 @@ function prose_files() {
         printf '%s\thash\n' "${file}"
         ;;
     esac
-  done < <(git -C "${REPO_DIR}" -c core.quotePath=false ls-files -z)
+  done < <(ci::ls_files)
 }
 
 # @description Scan one file; print one FAIL line per finding to stderr.
