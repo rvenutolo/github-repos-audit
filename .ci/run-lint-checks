@@ -32,7 +32,7 @@ function main() {
   golangci-lint run ./... || rc=1
 
   local -a files=()
-  mapfile -t files < <(ci::shell_files)
+  mapfile -d '' -t files < <(ci::shell_files)
   if ((${#files[@]} == 0)); then
     ci::log 'no shell files found - this is a failure, not a clean pass'
     rc=1
@@ -52,7 +52,7 @@ function main() {
 
   ci::log 'running statix and deadnix'
   local -a nix_files=()
-  mapfile -t nix_files < <(git ls-files '*.nix')
+  mapfile -d '' -t nix_files < <(ci::ls_files '*.nix')
   if ((${#nix_files[@]} == 0)); then
     ci::log 'no nix files found - this is a failure, not a clean pass'
     rc=1
@@ -65,7 +65,7 @@ function main() {
 
   ci::log 'running actionlint'
   local -a workflow_files=()
-  mapfile -t workflow_files < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml')
+  mapfile -d '' -t workflow_files < <(ci::ls_files '.github/workflows/*.yml' '.github/workflows/*.yaml')
   if ((${#workflow_files[@]} == 0)); then
     ci::log 'workflow_files list is empty - this is a failure, not a clean pass'
     rc=1
@@ -92,7 +92,7 @@ function main() {
 
   ci::log 'running yamllint'
   local -a yaml_files=()
-  mapfile -t yaml_files < <(git ls-files '*.yml' '*.yaml')
+  mapfile -d '' -t yaml_files < <(ci::ls_files '*.yml' '*.yaml')
   if ((${#yaml_files[@]} == 0)); then
     ci::log 'yaml_files list is empty - this is a failure, not a clean pass'
     rc=1
@@ -122,7 +122,7 @@ function main() {
   # byte-exact fixtures whose links are fabricated, so linting or
   # link-checking them is meaningless. The glob magic is what makes ** cross a
   # directory separator, which a bare pathspec does not.
-  mapfile -t md_files < <(git ls-files '*.md' ':(exclude,glob)**/testdata/**')
+  mapfile -d '' -t md_files < <(ci::ls_files '*.md' ':(exclude,glob)**/testdata/**')
   if ((${#md_files[@]} == 0)); then
     ci::log 'md_files list is empty - this is a failure, not a clean pass'
     rc=1
@@ -159,7 +159,7 @@ function main() {
   # Every tracked text file. A bare `typos` skips hidden paths (.ci, .github)
   # and walks untracked ones.
   local -a text_files=()
-  mapfile -t text_files < <(git grep -I --files-with-matches '')
+  mapfile -d '' -t text_files < <(git -c core.quotePath=false grep -z -I --files-with-matches '')
   if ((${#text_files[@]} == 0)); then
     ci::log 'text_files list is empty - this is a failure, not a clean pass'
     rc=1

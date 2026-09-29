@@ -26,19 +26,19 @@ function main() {
 
   ci::log 'running shfmt --write'
   local -a files=()
-  mapfile -t files < <(ci::shell_files)
+  mapfile -d '' -t files < <(ci::shell_files)
   if ((${#files[@]} > 0)); then
     shfmt --write --indent 2 --case-indent --binary-next-line --space-redirects "${files[@]}" || rc=1
   fi
 
   ci::log 'running markdownlint-cli2 --fix'
   local -a md_files=()
-  mapfile -t md_files < <(git ls-files '*.md' ':(exclude,glob)**/testdata/**')
+  mapfile -d '' -t md_files < <(ci::ls_files '*.md' ':(exclude,glob)**/testdata/**')
   markdownlint-cli2 --fix "${md_files[@]}" || rc=1
 
   ci::log 'running typos --write-changes'
   local -a text_files=()
-  mapfile -t text_files < <(git grep -I --files-with-matches '')
+  mapfile -d '' -t text_files < <(git -c core.quotePath=false grep -z -I --files-with-matches '')
   typos --write-changes "${text_files[@]}" || rc=1
 
   if ((rc != 0)); then

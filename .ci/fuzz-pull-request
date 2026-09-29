@@ -121,8 +121,8 @@ function main() {
   # Untracked only: fuzzing adds corpus files and never rewrites one, so an
   # untracked file under testdata/fuzz is exactly a newly discovered input.
   local -a crashers=()
-  mapfile -t crashers < <(
-    git ls-files --others --exclude-standard -- 'testdata/fuzz/*' '*/testdata/fuzz/*'
+  mapfile -d '' -t crashers < <(
+    ci::ls_files --others --exclude-standard -- 'testdata/fuzz/*' '*/testdata/fuzz/*'
   )
   if ((${#crashers[@]} == 0)); then
     ci::log 'no new crashers; nothing to file'

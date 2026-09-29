@@ -22,6 +22,11 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 REPO_DIR="$(git rev-parse --show-toplevel)"
 readonly REPO_DIR
 
+# From beside this script, not from REPO_DIR: its tests run it inside
+# throwaway repositories, which carry no .ci/lib.sh of their own.
+# shellcheck source=.ci/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+
 # @description Scan every tracked workflow and composite action for `uses:` lines.
 # @noargs
 function main() {
@@ -33,7 +38,7 @@ function main() {
     '.github/actions/*/action.yml'
     '.github/actions/*/action.yaml'
   )
-  mapfile -t files < <(git -C "${REPO_DIR}" ls-files "${patterns[@]}")
+  mapfile -d '' -t files < <(ci::ls_files "${patterns[@]}")
 
   if ((${#files[@]} == 0)); then
     printf 'FAIL: no workflow files tracked - the scan looks broken\n' >&2

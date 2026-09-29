@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/check-uses-sha-pinned against throwaway
+#              repositories. The workflows are never run; only their `uses:`
+#              lines are read.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly CHECK="${REPO_DIR}/.ci/check-uses-sha-pinned"
+readonly PINNED='      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1'
+readonly UNPINNED='      - uses: actions/checkout@v7'
+
+# work is global, not local to main; see .ci/check-coverage-drop for why.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Create a fresh throwaway repository under the shared work
+#              directory and print its path.
+# @stdout the repository's absolute path
+function new_repo() {
+  local repo
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  printf '%s\n' "${repo}"
+}
+
+# @description Write a one-step workflow into a repository and stage it. The
+#              check lists files with git ls-files, so staging is enough.
+# @arg $1 repo
+# @arg $2 path
+# @arg $3 the step's `uses:` line
+function add_workflow() {
+  mkdir --parents "$(dirname -- "$1/$2")"
+  printf 'on: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n%s\n' "$3" > "$1/$2"
+  git -C "$1" add -- "$2"
+}
+
+# @description Run the check inside a repository and compare its exit status,
+#              and optionally require a substring in its output.
+# @arg $1 repo
+# @arg $2 expected exit status
+# @arg $3 case name
+# @arg $4 substring the output must contain (optional)
+function expect() {
+  local -r repo="$1" want="$2" name="$3" want_text="${4:-}"
+  local out got=0
+  out="$(cd "${repo}" && "${CHECK}" 2>&1)" || got=$?
+  if [[ "${got}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: exit ${got}, want ${want} (output: ${out})"
+    return 1
+  fi
+  if [[ -n "${want_text}" && "${out}" != *"${want_text}"* ]]; then
+    ci::log "FAIL: ${name}: output lacks '${want_text}' (output: ${out})"
+    return 1
+  fi
+  # A finding is the check's designed return, not a crash, so the ERR trap
+  # must never fire on either verdict.
+  if [[ "${out}" == *'ERROR:'* ]]; then
+    ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
+    return 1
+  fi
+}
+
+function main() {
+  local rc=0 repo
+  work="$(mktemp --directory)"
+
+  repo="$(new_repo)"
+  add_workflow "${repo}" '.github/workflows/ci.yml' "${PINNED}"
+  expect "${repo}" 0 'a pinned uses:' || rc=1
+
+  repo="$(new_repo)"
+  add_workflow "${repo}" '.github/workflows/ci.yml' "${UNPINNED}"
+  expect "${repo}" 1 'an unpinned uses:' '.github/workflows/ci.yml:6 not SHA-pinned' || rc=1
+
+  repo="$(new_repo)"
+  add_workflow "${repo}" '.github/workflows/ci.yml' "${PINNED}"
+  add_workflow "${repo}" '.github/workflows/ü.yml' "${UNPINNED}"
+  expect "${repo}" 1 'an unpinned uses: in a non-ascii file name' '.github/workflows/ü.yml:6 not SHA-pinned' || rc=1
+
+  ((rc == 0)) && ci::log 'check-uses-sha-pinned: every case passed'
+  # A failing case is this harness's verdict, not a crash; see
+  # .ci/test-check-account-data.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

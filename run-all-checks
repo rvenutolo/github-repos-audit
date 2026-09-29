@@ -26,7 +26,7 @@ source "${REPO_DIR}/.ci/lib.sh"
 # @noargs
 function warn_untracked() {
   local -a untracked=()
-  mapfile -t untracked < <(git -C "${REPO_DIR}" ls-files --others --exclude-standard)
+  mapfile -d '' -t untracked < <(ci::ls_files --others --exclude-standard)
   if ((${#untracked[@]} == 0)); then
     return 0
   fi
@@ -56,6 +56,8 @@ function main() {
   "${REPO_DIR}/.ci/test-check-patch-coverage" || rc=1
   "${REPO_DIR}/.ci/test-check-coverage-drop" || rc=1
   "${REPO_DIR}/.ci/test-check-doc-rot" || rc=1
+  "${REPO_DIR}/.ci/test-check-uses-sha-pinned" || rc=1
+  "${REPO_DIR}/.ci/test-lib" || rc=1
   "${REPO_DIR}/.ci/check-doc-rot" || rc=1
 
   ci::log 'running lint checks'

@@ -80,6 +80,7 @@ function fail_setup() {
 # @arg $3 how to name the commit in a message
 function has_path() {
   local listed
+  # quoted-name-ok: only whether the listing is empty is read, never the name.
   listed="$(git ls-tree --name-only "$1" -- "$2")" || fail_setup "git ls-tree failed for $3:$2"
   [[ -n "${listed}" ]]
 }
