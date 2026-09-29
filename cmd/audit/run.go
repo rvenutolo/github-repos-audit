@@ -57,9 +57,9 @@ Environment:
 
 Exit codes:
   0   success
-  1   runtime failure — an unexpected API response, a coverage mismatch, or a
+  1   runtime failure: an unexpected API response, a coverage mismatch, or a
       malformed repos.toml. The invocation was fine; something else was not.
-  2   usage error — an unknown subcommand, a flag that does not parse, or a
+  2   usage error: an unknown subcommand, a flag that does not parse, or a
       missing or invalid argument.
   130 interrupted by SIGINT or SIGTERM.
 `

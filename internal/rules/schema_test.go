@@ -5,12 +5,15 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
 )
 
@@ -244,5 +247,132 @@ func TestSchema_aRepositoryTypeIsAnyDefinedName(t *testing.T) {
 
 	if got := loadSchema(t).Defs.Repo.Properties.Type.Enum; len(got) != 0 {
 		t.Errorf("$defs.repo.properties.type.enum = %q, want no enum", got)
+	}
+}
+
+// object is the shape every object in audit.schema.json shares, the root and
+// each $defs entry alike: which keys it may have and which it must.
+type object struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}
+
+// defNames maps each internal/audit struct to the schema object that
+// describes it; the empty name is the document root. Written out rather than
+// derived from the type names, since the schema's names are snake_case and
+// Identity/IdentityStandard do not convert mechanically.
+var defNames = map[reflect.Type]string{
+	reflect.TypeFor[audit.Snapshot]():         "",
+	reflect.TypeFor[audit.Repo]():             "repo",
+	reflect.TypeFor[audit.Renovate]():         "renovate",
+	reflect.TypeFor[audit.Files]():            "files",
+	reflect.TypeFor[audit.Releases]():         "releases",
+	reflect.TypeFor[audit.Ruleset]():          "ruleset",
+	reflect.TypeFor[audit.BranchRules]():      "branch_rules",
+	reflect.TypeFor[audit.Settings]():         "settings",
+	reflect.TypeFor[audit.AllowedActions]():   "allowed_actions",
+	reflect.TypeFor[audit.Identity]():         "identity",
+	reflect.TypeFor[audit.IdentityStandard](): "identity_standard",
+}
+
+// loadObjects reads the root and every $defs entry of audit.schema.json as an
+// object, the root under the empty name.
+func loadObjects(t *testing.T) map[string]object {
+	t.Helper()
+
+	schemaPath := filepath.Join("..", "..", "audit.schema.json")
+	data, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", schemaPath, err)
+	}
+	var doc struct {
+		object
+
+		Defs map[string]object `json:"$defs"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("parse %s: %v", schemaPath, err)
+	}
+	objects := map[string]object{"": doc.object}
+	maps.Copy(objects, doc.Defs)
+	return objects
+}
+
+// auditStructs returns every internal/audit struct reachable from
+// audit.Snapshot through its fields, looking through pointers, slices and
+// maps. time.Time is reached too but belongs to another package, so it is
+// left out: the schema describes it as a string, not an object.
+func auditStructs() []reflect.Type {
+	pkg := reflect.TypeFor[audit.Snapshot]().PkgPath()
+	var found []reflect.Type
+	var walk func(reflect.Type)
+	walk = func(typ reflect.Type) {
+		for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Map {
+			typ = typ.Elem()
+		}
+		if typ.Kind() != reflect.Struct || typ.PkgPath() != pkg || slices.Contains(found, typ) {
+			return
+		}
+		found = append(found, typ)
+		for field := range typ.Fields() {
+			walk(field.Type)
+		}
+	}
+	walk(reflect.TypeFor[audit.Snapshot]())
+	return found
+}
+
+// TestSchema_objectsMatchTheAuditTags: audit.json is audit.Snapshot marshaled,
+// so its keys are the json tags in internal/audit, and the schema publishes
+// them to consumers who never read Go. check-jsonschema judges only the
+// documents it is shown, so a field the schema forgot, or one made optional in
+// Go but still required in the schema, passes until some audit.json happens to
+// carry or omit it. So for every struct audit.json can contain: the object's
+// properties are exactly the struct's tags, and its required list is exactly
+// the tags without omitzero.
+func TestSchema_objectsMatchTheAuditTags(t *testing.T) {
+	t.Parallel()
+
+	objects := loadObjects(t)
+	reached := auditStructs()
+	for typ := range defNames {
+		if !slices.Contains(reached, typ) {
+			t.Errorf("defNames maps audit.%s, which audit.json can no longer contain", typ.Name())
+		}
+	}
+	for _, typ := range reached {
+		name, ok := defNames[typ]
+		if !ok {
+			t.Errorf("audit.%s can appear in audit.json but defNames does not map it to a $defs entry", typ.Name())
+			continue
+		}
+		where := "the root"
+		if name != "" {
+			where = "$defs." + name
+		}
+		obj, ok := objects[name]
+		if !ok {
+			t.Errorf("audit.%s: audit.schema.json has no %s", typ.Name(), where)
+			continue
+		}
+		var keys, required []string
+		for field := range typ.Fields() {
+			tag, ok := field.Tag.Lookup("json")
+			key, opts, _ := strings.Cut(tag, ",")
+			if !ok || key == "" || key == "-" {
+				t.Errorf("audit.%s.%s has no json key; every field of audit.json is named by its tag", typ.Name(), field.Name)
+				continue
+			}
+			keys = append(keys, key)
+			if !slices.Contains(strings.Split(opts, ","), "omitzero") {
+				required = append(required, key)
+			}
+		}
+		if diff := cmp.Diff(slices.Sorted(slices.Values(keys)), slices.Sorted(maps.Keys(obj.Properties))); diff != "" {
+			t.Errorf("audit.%s json tags differ from %s.properties (-tags +schema):\n%s", typ.Name(), where, diff)
+		}
+		if diff := cmp.Diff(slices.Sorted(slices.Values(required)), slices.Sorted(slices.Values(obj.Required))); diff != "" {
+			t.Errorf("audit.%s tags without omitzero differ from %s.required (-tags +schema):\n%s", typ.Name(), where, diff)
+		}
 	}
 }
