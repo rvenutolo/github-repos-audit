@@ -45,7 +45,9 @@ readonly REPO_DIR
 # @stdout `<path>\t<mode>` per file
 function prose_files() {
   local file
-  while IFS= read -r file; do
+  # -z with quotePath off hands over every name verbatim; the default
+  # quotes a non-ASCII name, which then matches no pattern and no file.
+  while IFS= read -r -d '' file; do
     case "${file}" in
       */testdata/* | *.json | go.sum | flake.lock | LICENSE) continue ;;
     esac
@@ -56,7 +58,7 @@ function prose_files() {
         printf '%s\thash\n' "${file}"
         ;;
     esac
-  done < <(git -C "${REPO_DIR}" ls-files)
+  done < <(git -C "${REPO_DIR}" -c core.quotePath=false ls-files -z)
 }
 
 # @description Scan one file; print one FAIL line per finding to stderr.
