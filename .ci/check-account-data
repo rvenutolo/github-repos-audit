@@ -214,7 +214,13 @@ function main() {
     # manual step was renaming directories away from real repository names;
     # this is what actually checks that it stuck. Reported as "path name",
     # never the path itself, because here the path IS the leaked data.
-    paths="$(git ls-tree -r --name-only "${commit}")"
+    #
+    # -z with quotePath off lists every path verbatim. The default quotes a
+    # non-ASCII path whole, and its leading quote keeps `(^|/)<name>` from
+    # anchoring on the first segment. The NULs become newlines for grep; a
+    # path that itself holds a newline splits in two, and each half is
+    # still scanned.
+    paths="$(git -c core.quotePath=false ls-tree -r -z --name-only "${commit}" | tr '\0' '\n')"
     stripped_paths="$(printf '%s\n' "${paths}" | sed --regexp-extended "s#${allowed}##Ig")"
     if printf '%s\n' "${stripped_paths}" | grep --quiet --ignore-case --extended-regexp --file="${patterns}"; then
       printf 'commit %s: path name\n' "${commit}"
