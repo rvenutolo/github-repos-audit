@@ -317,6 +317,10 @@ function main() {
   add_file "${repo}" notes.md $'previously doc-rot-exempt: quoted\n<!-- doc-rot-exempt: quoted below -->\nformerly'
   expect "${repo}" 0 'two used exemptions on adjacent lines' || rc=1
 
+  repo="$(new_repo)"
+  add_file "${repo}" 'd/über.md' 'previously'
+  expect "${repo}" 1 'a non-ascii file name' 'd/über.md:1 [history-phrasing]' || rc=1
+
   ((rc == 0)) && ci::log 'check-doc-rot: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
   # so a non-zero return does not add its own "ERROR: line ..." after the
