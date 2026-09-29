@@ -321,6 +321,22 @@ function main() {
   add_file "${repo}" 'd/über.md' 'previously'
   expect "${repo}" 1 'a non-ascii file name' 'd/über.md:1 [history-phrasing]' || rc=1
 
+  repo="$(new_repo)"
+  add_file "${repo}" s.sh $'#!/usr/bin/env -S bash --previously\necho ok'
+  expect "${repo}" 0 'a shebang is not prose' || rc=1
+
+  # A line hitting two classes must yield one FAIL line naming the first,
+  # not one per class.
+  local once_out once_count
+  repo="$(new_repo)"
+  add_file "${repo}" notes.md 'The collector previously read forks; see check.go:42.'
+  once_out="$(cd "${repo}" && "${CHECK}" 2>&1)" || true
+  once_count="$(grep --count '^FAIL:' <<< "${once_out}")" || true
+  if [[ "${once_count}" != 1 || "${once_out}" == *'[drift-value]'* ]]; then
+    ci::log "FAIL: reported once per line: ${once_count} FAIL lines (output: ${once_out})"
+    rc=1
+  fi
+
   ((rc == 0)) && ci::log 'check-doc-rot: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
   # so a non-zero return does not add its own "ERROR: line ..." after the
