@@ -157,6 +157,21 @@ function main() {
   expect "${path_repo}" "${path_base}" 1 'a repository name as a path segment, with clean content' || rc=1
   rm -rf -- "${path_repo%/repo}"
 
+  # The same leak one level up, with a non-ASCII file under it. By default
+  # git quotes such a path whole ("<name>/\303\274.md"), and the leading
+  # quote stops `(^|/)<name>` from anchoring at the start of the path, so
+  # only a verbatim listing sees the top-level segment at all.
+  local utf8_repo utf8_base
+  utf8_repo="$(new_case_repo)"
+  commit_file "${utf8_repo}" README.md 'nothing account-shaped here' 'chore: start'
+  utf8_base="$(git -C "${utf8_repo}" rev-parse HEAD)"
+  mkdir --parents "${utf8_repo}/${NAME}"
+  printf 'clean content only\n' > "${utf8_repo}/${NAME}/ü.md"
+  git -C "${utf8_repo}" add -- "${NAME}/ü.md"
+  git -C "${utf8_repo}" commit --quiet --no-verify --message 'test: non-ascii path name'
+  expect "${utf8_repo}" "${utf8_base}" 1 'a repository name as a top-level segment over a non-ascii file' || rc=1
+  rm -rf -- "${utf8_repo%/repo}"
+
   # A git log failure (not merely "no match") must abort the scan, and it
   # must be the message check's OWN guard that catches it, not a lucky
   # abort from some other pass on the same object. A commit object cannot
