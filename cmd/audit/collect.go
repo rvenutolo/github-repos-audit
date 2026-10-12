@@ -89,7 +89,11 @@ func collect(
 		}
 	}
 	if len(configured) == 0 {
-		return nil, fmt.Errorf("%w: repos.toml names no repository the account has", rules.ErrConfig)
+		// The counts tell the two causes apart: an account of 0 is a token that
+		// sees nothing, a larger one is a config pointed at the wrong account.
+		// Names stay out of the message: it reaches logs.
+		return nil, fmt.Errorf("%w: repos.toml names no repository the account has (the account has %d, repos.toml declares %d)",
+			rules.ErrConfig, len(discovered), len(cfg.Repos))
 	}
 	warnDrift(ctx, logger, drift)
 

@@ -696,9 +696,12 @@ func TestRunRender_failsWhenNoDeclaredRepositoryExists(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		names []string
+		// counts are the two phrases that tell a token that sees nothing
+		// from a config pointed at the wrong account.
+		counts []string
 	}{
-		{name: "nothing discovered", names: nil},
-		{name: "nothing in common", names: []string{"fresh"}},
+		{name: "nothing discovered", names: nil, counts: []string{"the account has 0", "repos.toml declares 2"}},
+		{name: "nothing in common", names: []string{"fresh"}, counts: []string{"the account has 1", "repos.toml declares 2"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -715,6 +718,11 @@ func TestRunRender_failsWhenNoDeclaredRepositoryExists(t *testing.T) {
 				noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock)
 			if !errors.Is(err, rules.ErrConfig) {
 				t.Fatalf("runRender() error = %v, want it to wrap rules.ErrConfig", err)
+			}
+			for _, want := range tc.counts {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q, want it to contain %q", err, want)
+				}
 			}
 			if got := exitCode(err); got != 1 {
 				t.Errorf("exitCode = %d, want 1", got)
