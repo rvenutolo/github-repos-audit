@@ -57,6 +57,7 @@ function main() {
   "${REPO_DIR}/.ci/test-check-coverage-drop" || rc=1
   "${REPO_DIR}/.ci/test-check-doc-rot" || rc=1
   "${REPO_DIR}/.ci/test-check-uses-sha-pinned" || rc=1
+  "${REPO_DIR}/.ci/test-check-vulns" || rc=1
   "${REPO_DIR}/.ci/test-lib" || rc=1
   "${REPO_DIR}/.ci/check-doc-rot" || rc=1
 
@@ -108,10 +109,13 @@ function main() {
   fi
 
   ci::log 'running govulncheck'
-  # Reports only vulnerabilities in code paths this binary actually reaches, so
-  # a finding is a real exposure. Never `|| true`: that converts a security
-  # gate into a log line, for every future advisory as well as this one.
-  govulncheck ./... || rc=1
+  # Counts only vulnerabilities in code paths this binary actually reaches, so
+  # a finding is a real exposure. One in a dependency module fails; one in the
+  # standard library warns, because only a newer Go from nixpkgs fixes it.
+  # .ci/check-vulns draws that line and says why. Never `|| true` here: that
+  # would turn the dependency half into a log line as well, for every future
+  # advisory.
+  "${REPO_DIR}/.ci/check-vulns" || rc=1
 
   ci::log 'running audit validate (offline config gate)'
   # The tool repository carries no repos.toml of its own; the examples are the

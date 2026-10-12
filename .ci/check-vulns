@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+
+# @description Run govulncheck and fail only on the findings a change to this
+#              repository can fix.
+#
+#              govulncheck's own verdict counts a vulnerability when the code
+#              reaches the vulnerable symbol. This check keeps that rule and
+#              then splits what is left by where the fix comes from:
+#
+#              - A dependency module is fixed by raising its version in
+#                go.mod. That is this repository's to do, so it FAILS.
+#              - The standard library is fixed only by a newer Go, and the Go
+#                here is whatever flake.lock's nixpkgs ships. Until nixpkgs
+#                carries the fixed release there is nothing to change, and a
+#                gate that is red for a reason nobody can act on gets bypassed
+#                along with every other check in it. So it WARNS, on stderr
+#                and as a workflow annotation, and the next flake.lock update
+#                that brings the fixed Go clears it.
+#
+#              A scan that did not run is never a pass: govulncheck exiting
+#              non-zero, or printing a report this check cannot read, fails.
+#
+#              The traces behind a finding are not printed here; `govulncheck
+#              -show verbose ./...` prints them.
+# @noargs
+# @exitcode 0 no reachable vulnerability in a dependency module
+# @exitcode 1 at least one, or the scan did not complete
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# One row per reachable vulnerability and module. A finding is reachable when
+# the first frame of its trace, the vulnerable one, names a function;
+# govulncheck also reports modules and packages that are merely required or
+# imported, and its own exit status ignores those too. A report always opens
+# with a config message, so one without it is not a report.
+readonly ROWS_FILTER='
+  if any(.[]; has("config")) | not then error("no config message") else . end
+  | [ .[] | .finding? // empty | select(.trace[0].function != null)
+      | { osv,
+          module: .trace[0].module,
+          version: (.trace[0].version // "unknown"),
+          fixed: (.fixed_version // "none released") } ]
+  | unique_by([.osv, .module]) | .[]
+  | [(if .module == "stdlib" then "stdlib" else "module" end), .osv, .module, .version, .fixed]
+  | @tsv'
+
+# @description Scan the module and judge the findings.
+# @noargs
+function main() {
+  # A finding is this check's designed return, not a crash, so the ERR trap
+  # stays out of every verdict below.
+  trap - ERR
+
+  # -format json, because the text report is for people and its layout is no
+  # interface. In this format govulncheck exits 0 whatever it finds, so a
+  # non-zero status means the scan itself broke.
+  local report rows
+  if ! report="$(govulncheck -format json ./...)"; then
+    printf 'FAIL: govulncheck did not complete; no vulnerability verdict\n' >&2
+    return 1
+  fi
+  if ! rows="$(jq --slurp --raw-output "${ROWS_FILTER}" <<< "${report}")"; then
+    printf 'FAIL: could not read govulncheck'"'"'s report; no vulnerability verdict\n' >&2
+    return 1
+  fi
+
+  local rc=0 kind osv module version fixed
+  local -a stdlib_ids=()
+  while IFS=$'\t' read -r kind osv module version fixed; do
+    [[ -n "${kind}" ]] || continue
+    if [[ "${kind}" == 'stdlib' ]]; then
+      printf 'WARN: %s in the Go standard library %s, fixed in %s (https://pkg.go.dev/vuln/%s)\n' \
+        "${osv}" "${version}" "${fixed}" "${osv}" >&2
+      stdlib_ids+=("${osv}")
+    else
+      printf 'FAIL: %s in %s@%s, fixed in %s (https://pkg.go.dev/vuln/%s)\n' \
+        "${osv}" "${module}" "${version}" "${fixed}" "${osv}" >&2
+      rc=1
+    fi
+  done <<< "${rows}"
+
+  if ((${#stdlib_ids[@]} > 0)); then
+    local -r summary="reachable standard library vulnerabilities: ${#stdlib_ids[@]} (only a newer Go than the devShell has fixes them; not failing)"
+    printf 'WARN: %s\n' "${summary}" >&2
+    # A warning in a passing job's log is read by nobody; the annotation puts
+    # it on the run's summary page.
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      local IFS=' '
+      printf '::warning title=govulncheck::%s: %s\n' "${summary}" "${stdlib_ids[*]}"
+    fi
+  fi
+  return "${rc}"
+}
+
+main "$@"

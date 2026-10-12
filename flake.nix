@@ -86,6 +86,8 @@
             # still reports import grouping.
             gofumpt
             govulncheck
+            # jq reads govulncheck's JSON report in .ci/check-vulns.
+            jq
             # formatters (also wired into .treefmt.nix)
             shfmt
             prettier
