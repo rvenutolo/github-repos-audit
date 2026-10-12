@@ -126,6 +126,9 @@ type Report struct {
 	GeneratedAt time.Time
 	// Owner is the snapshot's account, carried through unchanged.
 	Owner string
+	// Drift is the snapshot's disagreement between repos.toml and the
+	// account, carried through unchanged.
+	Drift audit.ConfigDrift
 	// Repos is sorted by name, case-insensitively.
 	Repos []RepoReport
 	// Gaps is in the fixed worklist order. A check with no failures is absent.

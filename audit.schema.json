@@ -25,7 +25,7 @@
       "minProperties": 1
     },
     "repos": {
-      "description": "Every declared repository, sorted by name case-insensitively. Never empty: config.Parse rejects a repos.toml with no [repos.*] entries.",
+      "description": "Every declared repository the account has, sorted by name case-insensitively. Never empty: a run in which repos.toml names no repository the account has fails instead of writing a document.",
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/repo" }
@@ -33,9 +33,35 @@
     "identity": {
       "description": "repos.toml's [identity] table: the identity git_identity holds the account holder's commits to. Absent when nothing judges git_identity, which is also the only case repos.toml may omit the table.",
       "$ref": "#/$defs/identity_standard"
+    },
+    "config_drift": {
+      "description": "Where repos.toml and the account disagree about which repositories exist. Absent when they agree.",
+      "$ref": "#/$defs/config_drift"
     }
   },
   "$defs": {
+    "config_drift": {
+      "description": "The disagreement between repos.toml and the account. It stops nothing: the repositories both name are audited and appear in `repos`, and these are reported so the config gets fixed. At least one list is present.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "unconfigured": {
+          "description": "Every repository the account has that repos.toml has no entry for, sorted by name case-insensitively. Named only: with no type to judge it against, it is not read and has no item in `repos`.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "stale_entries": {
+          "description": "Every repos.toml entry naming a repository the account does not have: deleted, archived, or turned into a fork. Sorted by name case-insensitively.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "repo": {
       "description": "Everything known about one repository: what repos.toml declares and what GitHub answered.",
       "type": "object",

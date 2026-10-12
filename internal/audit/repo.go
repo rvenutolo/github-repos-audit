@@ -27,6 +27,25 @@ type Snapshot struct {
 	Identity IdentityStandard `json:"identity,omitzero"`
 	// Repos is sorted by name, case-insensitively.
 	Repos []Repo `json:"repos"`
+	// Drift is where repos.toml and the account disagree about which
+	// repositories exist. Absent when they agree, so a clean account's
+	// audit.json carries no trace of it.
+	Drift ConfigDrift `json:"config_drift,omitzero"`
+}
+
+// ConfigDrift is the disagreement between repos.toml and the account. Neither
+// list stops a run: the repositories both sides name are audited, and these
+// are reported so the config gets fixed.
+type ConfigDrift struct {
+	// Unconfigured is every repository the account has that repos.toml has no
+	// entry for, sorted by name case-insensitively. Such a repository is
+	// named and nothing more: with no type there is nothing to judge it
+	// against, so it is not read.
+	Unconfigured []string `json:"unconfigured,omitzero"`
+	// StaleEntries is every repos.toml entry naming a repository the account
+	// does not have: deleted, archived, or turned into a fork. Sorted by name
+	// case-insensitively.
+	StaleEntries []string `json:"stale_entries,omitzero"`
 }
 
 // Repo is everything known about one repository: what repos.toml declares and

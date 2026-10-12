@@ -107,6 +107,39 @@ func Validate(snap *audit.Snapshot) error {
 	return join(problems)
 }
 
+// Coverage compares the account with repos.toml and returns where they
+// disagree. A disagreement is a fact for the report, not an error: creating
+// or archiving a repository is routine, and it must not cost every other
+// repository its report.
+//
+// Names are compared exactly, so two spellings differing only in case are
+// drift in both directions rather than a match the declared-field lookup
+// would then miss. Each list is sorted, free of duplicates, and nil when
+// empty — nil, because that is what keeps config_drift out of audit.json.
+func Coverage(discovered, declared []string) audit.ConfigDrift {
+	return audit.ConfigDrift{
+		Unconfigured: missingFrom(discovered, declared),
+		StaleEntries: missingFrom(declared, discovered),
+	}
+}
+
+// missingFrom returns the names in have that are absent from other, sorted
+// and free of duplicates, or nil when there are none.
+func missingFrom(have, other []string) []string {
+	known := make(map[string]bool, len(other))
+	for _, name := range other {
+		known[name] = true
+	}
+	var missing []string
+	for _, name := range have {
+		if !known[name] {
+			missing = append(missing, name)
+		}
+	}
+	slices.SortFunc(missing, compareNames)
+	return slices.Compact(missing)
+}
+
 // CheckCoverage enforces, in both directions, that repos.toml describes
 // exactly the repositories that exist. A discovered repository with no entry
 // would quietly escape the standard; an entry naming a repository that no

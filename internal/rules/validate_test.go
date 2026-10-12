@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
 )
@@ -330,6 +332,83 @@ func TestValidate_skipsWhatIsNotItsToJudge(t *testing.T) {
 
 			if err := rules.Validate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{tc.repo}}); err != nil {
 				t.Errorf("Validate() error = %v, want nil", err)
+			}
+		})
+	}
+}
+
+// TestCoverage: the account and repos.toml are compared name for name, and a
+// disagreement is a fact to report rather than an error. Each list is sorted
+// the way the report sorts, free of duplicates, and nil when empty, because a
+// nil list is what keeps config_drift out of a clean account's audit.json.
+func TestCoverage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		discovered []string
+		declared   []string
+		want       audit.ConfigDrift
+	}{
+		{
+			name:       "an exact match in any order is no drift",
+			discovered: []string{"alpha", "bravo"},
+			declared:   []string{"bravo", "alpha"},
+			want:       audit.ConfigDrift{},
+		},
+		{
+			name:       "a repository with no entry is unconfigured",
+			discovered: []string{"alpha", "fresh"},
+			declared:   []string{"alpha"},
+			want:       audit.ConfigDrift{Unconfigured: []string{"fresh"}},
+		},
+		{
+			name:       "an entry with no repository is stale",
+			discovered: []string{"alpha"},
+			declared:   []string{"alpha", "retired"},
+			want:       audit.ConfigDrift{StaleEntries: []string{"retired"}},
+		},
+		{
+			name:       "both directions at once",
+			discovered: []string{"alpha", "fresh"},
+			declared:   []string{"alpha", "retired"},
+			want:       audit.ConfigDrift{Unconfigured: []string{"fresh"}, StaleEntries: []string{"retired"}},
+		},
+		{
+			name:       "each list sorts case-insensitively",
+			discovered: []string{"zulu", "Yankee", "xray"},
+			declared:   []string{"Mike", "lima", "kilo"},
+			want: audit.ConfigDrift{
+				Unconfigured: []string{"xray", "Yankee", "zulu"},
+				StaleEntries: []string{"kilo", "lima", "Mike"},
+			},
+		},
+		{
+			name:       "case differs",
+			discovered: []string{"alpha"},
+			declared:   []string{"Alpha"},
+			want:       audit.ConfigDrift{Unconfigured: []string{"alpha"}, StaleEntries: []string{"Alpha"}},
+		},
+		{
+			name:       "duplicates collapse",
+			discovered: []string{"fresh", "alpha", "fresh"},
+			declared:   []string{"retired", "alpha", "retired"},
+			want:       audit.ConfigDrift{Unconfigured: []string{"fresh"}, StaleEntries: []string{"retired"}},
+		},
+		{
+			name:       "nothing discovered",
+			discovered: nil,
+			declared:   []string{"alpha"},
+			want:       audit.ConfigDrift{StaleEntries: []string{"alpha"}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// No EquateEmpty: nil and empty must not be confused here.
+			if diff := cmp.Diff(tc.want, rules.Coverage(tc.discovered, tc.declared)); diff != "" {
+				t.Errorf("Coverage() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

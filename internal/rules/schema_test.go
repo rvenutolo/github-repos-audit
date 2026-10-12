@@ -263,6 +263,7 @@ type object struct {
 // Identity/IdentityStandard do not convert mechanically.
 var defNames = map[reflect.Type]string{
 	reflect.TypeFor[audit.Snapshot]():         "",
+	reflect.TypeFor[audit.ConfigDrift]():      "config_drift",
 	reflect.TypeFor[audit.Repo]():             "repo",
 	reflect.TypeFor[audit.Renovate]():         "renovate",
 	reflect.TypeFor[audit.Files]():            "files",
@@ -373,6 +374,72 @@ func TestSchema_objectsMatchTheAuditTags(t *testing.T) {
 		}
 		if diff := cmp.Diff(slices.Sorted(slices.Values(required)), slices.Sorted(slices.Values(obj.Required))); diff != "" {
 			t.Errorf("audit.%s tags without omitzero differ from %s.required (-tags +schema):\n%s", typ.Name(), where, diff)
+		}
+	}
+}
+
+// TestSchema_configDriftCannotBeEmpty: a clean account omits config_drift
+// altogether, so its presence has to mean something. check-jsonschema only
+// judges the documents it is shown, and none of them is an empty drift; these
+// are the keywords that reject one.
+func TestSchema_configDriftCannotBeEmpty(t *testing.T) {
+	t.Parallel()
+
+	schemaPath := filepath.Join("..", "..", "audit.schema.json")
+	data, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", schemaPath, err)
+	}
+	type list struct {
+		Type        string `json:"type"`
+		MinItems    int    `json:"minItems"`    //nolint:tagliatelle // a JSON Schema keyword; the spec spells it, this project does not
+		UniqueItems bool   `json:"uniqueItems"` //nolint:tagliatelle // a JSON Schema keyword; the spec spells it, this project does not
+		Items       struct {
+			Type      string `json:"type"`
+			MinLength int    `json:"minLength"` //nolint:tagliatelle // a JSON Schema keyword; the spec spells it, this project does not
+		} `json:"items"`
+	}
+	var doc struct {
+		Properties struct {
+			ConfigDrift ref `json:"config_drift"`
+		} `json:"properties"`
+		Defs struct {
+			ConfigDrift struct {
+				Type                 string          `json:"type"`
+				AdditionalProperties *bool           `json:"additionalProperties"` //nolint:tagliatelle // a JSON Schema keyword; the spec spells it, this project does not
+				MinProperties        int             `json:"minProperties"`        //nolint:tagliatelle // a JSON Schema keyword; the spec spells it, this project does not
+				Properties           map[string]list `json:"properties"`
+			} `json:"config_drift"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("parse %s: %v", schemaPath, err)
+	}
+
+	if got, want := doc.Properties.ConfigDrift.Ref, "#/$defs/config_drift"; got != want {
+		t.Errorf("properties.config_drift.$ref = %q, want %q", got, want)
+	}
+	def := doc.Defs.ConfigDrift
+	if def.Type != "object" {
+		t.Errorf("$defs.config_drift.type = %q, want object", def.Type)
+	}
+	if def.AdditionalProperties == nil || *def.AdditionalProperties {
+		t.Error("$defs.config_drift must set additionalProperties to false")
+	}
+	if def.MinProperties != 1 {
+		t.Errorf("$defs.config_drift.minProperties = %d, want 1: an empty object says nothing", def.MinProperties)
+	}
+	for _, key := range []string{"unconfigured", "stale_entries"} {
+		l, ok := def.Properties[key]
+		if !ok {
+			t.Errorf("$defs.config_drift has no %s property", key)
+			continue
+		}
+		if l.Type != "array" || l.MinItems != 1 || !l.UniqueItems {
+			t.Errorf("%s = %+v, want an array with minItems 1 and uniqueItems", key, l)
+		}
+		if l.Items.Type != "string" || l.Items.MinLength != 1 {
+			t.Errorf("%s.items = %+v, want a non-empty string", key, l.Items)
 		}
 	}
 }
