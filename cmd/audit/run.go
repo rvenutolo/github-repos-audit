@@ -36,6 +36,12 @@ or false, saying whether anything a reader would notice differs from what is
 already committed. The refresh workflow appends that line to $GITHUB_OUTPUT
 and opens a pull request only when it is true.
 
+A repository the account has with no repos.toml entry, or an entry naming no
+repository the account has, does not stop render or json. The repositories
+both name are audited. The rest are listed first in the report, under
+Configuration drift, and in the snapshot under config_drift, and are logged
+as warnings.
+
 Flags:
   -h, --help      print this message
       --version   print the version
@@ -57,8 +63,9 @@ Environment:
 
 Exit codes:
   0   success
-  1   runtime failure: an unexpected API response, a coverage mismatch, or a
-      malformed repos.toml. The invocation was fine; something else was not.
+  1   runtime failure: an unexpected API response, a malformed repos.toml, or
+      a repos.toml naming no repository the account has. The invocation was
+      fine; something else was not.
   2   usage error: an unknown subcommand, a flag that does not parse, or a
       missing or invalid argument.
   130 interrupted by SIGINT or SIGTERM.

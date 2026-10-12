@@ -975,3 +975,25 @@ func TestEvaluate_rejectsASnapshotWithoutATypesTable(t *testing.T) {
 		t.Fatalf("Evaluate() error = %v, want tools reported as an unknown type", err)
 	}
 }
+
+// TestEvaluate_carriesTheDriftThrough: the report is what the renderer reads,
+// so drift recorded on the snapshot has to arrive on it unchanged.
+func TestEvaluate_carriesTheDriftThrough(t *testing.T) {
+	t.Parallel()
+
+	drift := audit.ConfigDrift{Unconfigured: []string{"fresh"}, StaleEntries: []string{"retired"}}
+	snap := &audit.Snapshot{
+		Owner:    "gh-owner",
+		Types:    standardTypes(),
+		Repos:    toolsRepos("alpha"),
+		Identity: fixtureIdentity(),
+		Drift:    drift,
+	}
+	rep, err := rules.Evaluate(snap)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v, want nil", err)
+	}
+	if diff := cmp.Diff(drift, rep.Drift); diff != "" {
+		t.Errorf("Report.Drift mismatch (-want +got):\n%s", diff)
+	}
+}

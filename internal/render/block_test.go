@@ -533,3 +533,120 @@ func TestBlock_widensTheFenceAroundABacktickInAnIdentity(t *testing.T) {
 		t.Errorf("Block() should contain %q; got:\n%s", want, got)
 	}
 }
+
+// TestBlock_configDrift: a repository with no entry, or an entry with no
+// repository, is the first thing the report says, because it is the one
+// finding that means the rest of the report is incomplete.
+func TestBlock_configDrift(t *testing.T) {
+	t.Parallel()
+
+	got, err := render.Block(evaluate(t, driftSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if !strings.HasPrefix(got, "## Configuration drift\n") {
+		t.Errorf("the block does not open with the drift section:\n%s", got)
+	}
+	// Linked, since the repository exists.
+	if want := "[hook-guard](https://github.com/gh-owner/hook-guard)"; !strings.Contains(got, want) {
+		t.Errorf("the block does not link the unconfigured repository %s", want)
+	}
+	// Not linked: there may be nothing at the other end.
+	if strings.Contains(got, "gh-owner/media-server") {
+		t.Error("the block links a stale entry, whose repository may not exist")
+	}
+	if !strings.Contains(got, "`media-server`") {
+		t.Error("the block does not name the stale entry")
+	}
+	// The configured repositories are still reported.
+	for _, name := range []string{"alpha", "bravo"} {
+		if !strings.Contains(got, "["+name+"](https://github.com/gh-owner/"+name+")") {
+			t.Errorf("the block dropped the configured repository %s", name)
+		}
+	}
+	golden(t, "drift.md", got)
+}
+
+// TestBlock_configDriftListsOnlyWhatDrifted: each direction has its own
+// bullet, and a bullet with nothing under it is not written.
+func TestBlock_configDriftListsOnlyWhatDrifted(t *testing.T) {
+	t.Parallel()
+
+	const unconfigured, stale = "Needs a `repos.toml` entry", "Stale `repos.toml` entry"
+	tests := []struct {
+		name    string
+		drift   audit.ConfigDrift
+		want    string
+		wantNot string
+	}{
+		{name: "only unconfigured", drift: audit.ConfigDrift{Unconfigured: []string{"hook-guard"}}, want: unconfigured, wantNot: stale},
+		{name: "only stale", drift: audit.ConfigDrift{StaleEntries: []string{"media-server"}}, want: stale, wantNot: unconfigured},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			snap := driftSnapshot()
+			snap.Drift = tc.drift
+			got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+			if err != nil {
+				t.Fatalf("Block() error = %v, want nil", err)
+			}
+			if !strings.Contains(got, "**"+tc.want+"**") {
+				t.Errorf("the block has no %q bullet:\n%s", tc.want, got)
+			}
+			if strings.Contains(got, "**"+tc.wantNot+"**") {
+				t.Errorf("the block has an empty %q bullet", tc.wantNot)
+			}
+		})
+	}
+}
+
+// TestBlock_configDriftCountsAndJoins: several names share one bullet, in the
+// order the report was given, with the count the Gaps bullets carry.
+func TestBlock_configDriftCountsAndJoins(t *testing.T) {
+	t.Parallel()
+
+	snap := driftSnapshot()
+	snap.Drift = audit.ConfigDrift{StaleEntries: []string{"media-server", "updater"}}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if want := "(2) — `media-server`, `updater`\n"; !strings.Contains(got, want) {
+		t.Errorf("the block does not carry %q:\n%s", want, got)
+	}
+}
+
+// TestBlock_noDriftSectionWhenTheConfigMatches: the section is a finding, so
+// an account whose config matches has none.
+func TestBlock_noDriftSectionWhenTheConfigMatches(t *testing.T) {
+	t.Parallel()
+
+	snap := driftSnapshot()
+	snap.Drift = audit.ConfigDrift{}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if strings.Contains(got, "Configuration drift") {
+		t.Errorf("a matching config rendered a drift section:\n%s", got)
+	}
+}
+
+// TestBlock_configDriftComesBeforeTheGaps: the worklist below it is only as
+// complete as the config, so the drift is read first.
+func TestBlock_configDriftComesBeforeTheGaps(t *testing.T) {
+	t.Parallel()
+
+	snap := fullSnapshot()
+	snap.Drift = audit.ConfigDrift{Unconfigured: []string{"hook-guard"}}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	drift, gaps := strings.Index(got, "## Configuration drift"), strings.Index(got, "## Gaps")
+	if drift < 0 || gaps < 0 || drift > gaps {
+		t.Errorf("drift section at %d, Gaps at %d; want drift first and both present", drift, gaps)
+	}
+}

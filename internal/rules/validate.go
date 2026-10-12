@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
@@ -107,44 +106,37 @@ func Validate(snap *audit.Snapshot) error {
 	return join(problems)
 }
 
-// CheckCoverage enforces, in both directions, that repos.toml describes
-// exactly the repositories that exist. A discovered repository with no entry
-// would quietly escape the standard; an entry naming a repository that no
-// longer exists is a line nobody will ever notice is stale.
-func CheckCoverage(discovered, declared []string) error {
-	inDeclared := make(map[string]bool, len(declared))
-	for _, name := range declared {
-		inDeclared[name] = true
+// Coverage compares the account with repos.toml and returns where they
+// disagree. A disagreement is a fact for the report, not an error: creating
+// or archiving a repository is routine, and it must not cost every other
+// repository its report.
+//
+// Names are compared exactly, so two spellings differing only in case are
+// drift in both directions rather than a match the declared-field lookup
+// would then miss. Each list is sorted, free of duplicates, and nil when
+// empty — nil, because that is what keeps config_drift out of audit.json.
+func Coverage(discovered, declared []string) audit.ConfigDrift {
+	return audit.ConfigDrift{
+		Unconfigured: missingFrom(discovered, declared),
+		StaleEntries: missingFrom(declared, discovered),
 	}
-	inDiscovered := make(map[string]bool, len(discovered))
-	for _, name := range discovered {
-		inDiscovered[name] = true
-	}
+}
 
-	var missing, extra []string
-	for _, name := range discovered {
-		if !inDeclared[name] {
+// missingFrom returns the names in have that are absent from other, sorted
+// and free of duplicates, or nil when there are none.
+func missingFrom(have, other []string) []string {
+	known := make(map[string]bool, len(other))
+	for _, name := range other {
+		known[name] = true
+	}
+	var missing []string
+	for _, name := range have {
+		if !known[name] {
 			missing = append(missing, name)
 		}
 	}
-	for _, name := range declared {
-		if !inDiscovered[name] {
-			extra = append(extra, name)
-		}
-	}
 	slices.SortFunc(missing, compareNames)
-	slices.SortFunc(extra, compareNames)
-
-	var problems []error
-	if len(missing) > 0 {
-		problems = append(problems, fmt.Errorf(
-			"repos.toml has no entry for %s", strings.Join(missing, ", ")))
-	}
-	if len(extra) > 0 {
-		problems = append(problems, fmt.Errorf(
-			"repos.toml names %s, which no longer exists on the account", strings.Join(extra, ", ")))
-	}
-	return join(problems)
+	return slices.Compact(missing)
 }
 
 // deadReason explains why an override says nothing, or returns "" when it

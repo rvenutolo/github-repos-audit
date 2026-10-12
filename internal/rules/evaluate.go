@@ -78,7 +78,7 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 		return nil, fmt.Errorf("evaluate: identity: %w", err)
 	}
 
-	rep := &Report{GeneratedAt: snap.GeneratedAt, Owner: snap.Owner}
+	rep := &Report{GeneratedAt: snap.GeneratedAt, Owner: snap.Owner, Drift: snap.Drift}
 	rep.Repos = make([]RepoReport, 0, len(snap.Repos))
 	for _, r := range snap.Repos {
 		cells, err := evaluateRepo(r, specs, std)

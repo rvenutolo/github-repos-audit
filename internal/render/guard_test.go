@@ -171,3 +171,55 @@ func TestMaterialChange_ignoresAMovedHead(t *testing.T) {
 		t.Error("MaterialChange() = true, want false; only the head commit moved")
 	}
 }
+
+// TestMaterialChange_seesConfigDriftComeAndGo: drift has to reach the
+// committed report the night it appears and leave it the night it is fixed,
+// and it has to stop there — the same drift a second night is not news.
+func TestMaterialChange_seesConfigDriftComeAndGo(t *testing.T) {
+	t.Parallel()
+
+	clean := func() *audit.Snapshot {
+		snap := driftSnapshot()
+		snap.Drift = audit.ConfigDrift{}
+		return snap
+	}
+	other := func() *audit.Snapshot {
+		snap := driftSnapshot()
+		snap.Drift = audit.ConfigDrift{Unconfigured: []string{"hook-guard", "updater"}}
+		return snap
+	}
+	tests := []struct {
+		name          string
+		before, after func() *audit.Snapshot
+		want          bool
+	}{
+		{name: "drift appears", before: clean, after: driftSnapshot, want: true},
+		{name: "drift changes", before: driftSnapshot, after: other, want: true},
+		{name: "drift clears", before: driftSnapshot, after: clean, want: true},
+		{name: "drift persists", before: driftSnapshot, after: driftSnapshot, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			oldREADME, oldJSON := artefacts(t, tc.before(), renderedAt)
+			// A day later, as a nightly run is. Each repository's last push moves
+			// with the clock, as TestMaterialChange_ignoresTheClock does: the
+			// README's relative ages would otherwise change on their own, and
+			// that is a different change from the drift under test.
+			after := tc.after()
+			for i := range after.Repos {
+				after.Repos[i].PushedAt = after.Repos[i].PushedAt.Add(24 * time.Hour)
+			}
+			newREADME, newJSON := artefacts(t, after, renderedAt.Add(24*time.Hour))
+
+			got, err := render.MaterialChange(oldJSON, newJSON, oldREADME, newREADME)
+			if err != nil {
+				t.Fatalf("MaterialChange() error = %v, want nil", err)
+			}
+			if got != tc.want {
+				t.Errorf("MaterialChange() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}

@@ -147,7 +147,7 @@
             lychee
             typos
             gitleaks
-            # check-jsonschema validates the golden audit.json fixture against
+            # check-jsonschema validates the golden audit.json fixtures against
             # audit.schema.json. Offline: the schema is a local file, so
             # nothing is fetched and no cache is consulted.
             check-jsonschema

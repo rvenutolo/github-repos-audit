@@ -20,6 +20,7 @@ import (
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/render"
+	"github.com/rvenutolo/github-repos-audit/internal/rules"
 )
 
 // noEnv is a getenv that reports every variable as unset.
@@ -224,17 +225,29 @@ type fakeCollector struct {
 	discoverErr error
 	collectErr  error
 	log         *slog.Logger
+	// asked is the names the last Collect call was given; nil if Collect was
+	// never called. A test reads it to learn what the program chose to read.
+	asked []string
 }
 
 func (f *fakeCollector) Discover(context.Context) ([]string, error) {
 	return f.names, f.discoverErr
 }
 
-func (f *fakeCollector) Collect(ctx context.Context, _ []string) ([]audit.Repo, error) {
-	if f.log != nil {
-		f.log.InfoContext(ctx, "collected repositories", "count", len(f.repos))
+// Collect answers, like the real client, only for the names it is given: a
+// repository the program did not ask about is not read.
+func (f *fakeCollector) Collect(ctx context.Context, names []string) ([]audit.Repo, error) {
+	f.asked = slices.Clone(names)
+	repos := make([]audit.Repo, 0, len(names))
+	for _, r := range f.repos {
+		if slices.Contains(names, r.Name) {
+			repos = append(repos, r)
+		}
 	}
-	return f.repos, f.collectErr
+	if f.log != nil {
+		f.log.InfoContext(ctx, "collected repositories", "count", len(repos))
+	}
+	return repos, f.collectErr
 }
 
 // Owner answers with the fake account every render test is written against.
@@ -495,25 +508,267 @@ func TestRun_logLevelFlags(t *testing.T) {
 	}
 }
 
-func TestRunRender_reportsACoverageMismatch(t *testing.T) {
+// staleConfig is scratchConfig plus an entry for a repository the fake
+// account never has.
+const staleConfig = scratchConfig + "\n[repos.retired]\ntype = \"tools\"\n"
+
+// driftFake is an account holding both scratchConfig repositories and one
+// more, fresh, that no config in this file names. It can answer for fresh, so
+// a test can tell "not asked" from "could not answer".
+func driftFake() *fakeCollector {
+	return &fakeCollector{
+		names: []string{"alpha", "bravo", "fresh"},
+		repos: []audit.Repo{scratchRepo("alpha"), scratchRepo("bravo"), scratchRepo("fresh")},
+	}
+}
+
+// rendered is what one render run left behind.
+type rendered struct {
+	stdout, stderr string
+	readme         string
+	// raw is audit.json as written; snap is the same bytes decoded.
+	raw  string
+	snap audit.Snapshot
+}
+
+// renderInto runs render over dir and reads back everything it wrote.
+func renderInto(t *testing.T, dir, configPath string, fake *fakeCollector) rendered {
+	t.Helper()
+
+	var stdout, stderr bytes.Buffer
+	if err := runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
+		noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock); err != nil {
+		t.Fatalf("runRender() error = %v, want nil", err)
+	}
+	readme, err := os.ReadFile(filepath.Join(dir, "README.md"))
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "audit.json"))
+	if err != nil {
+		t.Fatalf("read audit.json: %v", err)
+	}
+	out := rendered{stdout: stdout.String(), stderr: stderr.String(), readme: string(readme), raw: string(raw)}
+	if err := json.Unmarshal(raw, &out.snap); err != nil {
+		t.Fatalf("audit.json is not valid JSON: %v", err)
+	}
+	return out
+}
+
+// repoNames is the names of a snapshot's audited repositories, in order.
+func repoNames(snap audit.Snapshot) []string {
+	names := make([]string, 0, len(snap.Repos))
+	for _, r := range snap.Repos {
+		names = append(names, r.Name)
+	}
+	return names
+}
+
+// TestRunRender_reportsAnUnconfiguredRepository: creating a repository is
+// routine, and it must not cost every other repository its report. The run
+// succeeds, audits what repos.toml names, and says in the report itself —
+// where the owner looks — which repository needs an entry.
+func TestRunRender_reportsAnUnconfiguredRepository(t *testing.T) {
 	t.Parallel()
 
 	dir, configPath := scratchProject(t, scratchConfig)
-	// A repository created since the last run must abort the run rather than
-	// quietly escape the standard.
-	fake := &fakeCollector{names: []string{"alpha", "bravo", "fresh"}}
+	fake := driftFake()
+	got := renderInto(t, dir, configPath, fake)
+
+	// Material, or the refresh workflow never commits the report that says so.
+	if got.stdout != "material-change=true\n" {
+		t.Errorf("stdout = %q, want the material-change line alone, true", got.stdout)
+	}
+	if !strings.Contains(got.readme, "## Configuration drift") {
+		t.Errorf("README.md has no Configuration drift section:\n%s", got.readme)
+	}
+	if want := "[fresh](https://github.com/gh-owner/fresh)"; !strings.Contains(got.readme, want) {
+		t.Errorf("README.md does not name the unconfigured repository as %s", want)
+	}
+	for _, name := range []string{"alpha", "bravo"} {
+		if !strings.Contains(got.readme, "["+name+"](https://github.com/gh-owner/"+name+")") {
+			t.Errorf("README.md dropped the configured repository %s", name)
+		}
+	}
+	if diff := cmp.Diff(audit.ConfigDrift{Unconfigured: []string{"fresh"}}, got.snap.Drift); diff != "" {
+		t.Errorf("audit.json config_drift mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"alpha", "bravo"}, repoNames(got.snap)); diff != "" {
+		t.Errorf("audit.json repos mismatch (-want +got):\n%s", diff)
+	}
+	// With no type there is nothing to judge it against, so it is not read.
+	if diff := cmp.Diff([]string{"alpha", "bravo"}, fake.asked); diff != "" {
+		t.Errorf("collected names mismatch (-want +got):\n%s", diff)
+	}
+	// Someone reading the workflow run, rather than the report, is told too.
+	if !strings.Contains(got.stderr, "level=WARN") || !strings.Contains(got.stderr, "fresh") {
+		t.Errorf("stderr = %q, want a warning naming fresh", got.stderr)
+	}
+
+	// The same drift the next night is not news: no pull request over it.
+	again := renderInto(t, dir, configPath, fake)
+	if again.stdout != "material-change=false\n" {
+		t.Errorf("stdout = %q, want material-change=false on an unchanged rerun", again.stdout)
+	}
+}
+
+// TestRunRender_reportsAStaleEntry: archiving or deleting a repository is as
+// routine as creating one, and is treated the same way.
+func TestRunRender_reportsAStaleEntry(t *testing.T) {
+	t.Parallel()
+
+	dir, configPath := scratchProject(t, staleConfig)
+	fake := healthyFake()
+	got := renderInto(t, dir, configPath, fake)
+
+	if got.stdout != "material-change=true\n" {
+		t.Errorf("stdout = %q, want the material-change line alone, true", got.stdout)
+	}
+	if !strings.Contains(got.readme, "## Configuration drift") || !strings.Contains(got.readme, "`retired`") {
+		t.Errorf("README.md does not report the stale entry retired:\n%s", got.readme)
+	}
+	if diff := cmp.Diff(audit.ConfigDrift{StaleEntries: []string{"retired"}}, got.snap.Drift); diff != "" {
+		t.Errorf("audit.json config_drift mismatch (-want +got):\n%s", diff)
+	}
+	// A stale entry describes nothing that exists, so it is not a repository.
+	if diff := cmp.Diff([]string{"alpha", "bravo"}, repoNames(got.snap)); diff != "" {
+		t.Errorf("audit.json repos mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"alpha", "bravo"}, fake.asked); diff != "" {
+		t.Errorf("collected names mismatch (-want +got):\n%s", diff)
+	}
+	if !strings.Contains(got.stderr, "level=WARN") || !strings.Contains(got.stderr, "retired") {
+		t.Errorf("stderr = %q, want a warning naming retired", got.stderr)
+	}
+}
+
+// TestRunRender_reportsBothDirectionsOfDrift is what a rename looks like: the
+// new name has no entry and the old entry has no repository, in one run.
+func TestRunRender_reportsBothDirectionsOfDrift(t *testing.T) {
+	t.Parallel()
+
+	dir, configPath := scratchProject(t, staleConfig)
+	got := renderInto(t, dir, configPath, driftFake())
+
+	want := audit.ConfigDrift{Unconfigured: []string{"fresh"}, StaleEntries: []string{"retired"}}
+	if diff := cmp.Diff(want, got.snap.Drift); diff != "" {
+		t.Errorf("audit.json config_drift mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"alpha", "bravo"}, repoNames(got.snap)); diff != "" {
+		t.Errorf("audit.json repos mismatch (-want +got):\n%s", diff)
+	}
+	for _, name := range []string{"fresh", "retired"} {
+		if !strings.Contains(got.readme, name) {
+			t.Errorf("README.md does not name %s", name)
+		}
+		if !strings.Contains(got.stderr, name) {
+			t.Errorf("stderr = %q, want a warning naming %s", got.stderr, name)
+		}
+	}
+}
+
+// TestRunRender_aMatchingConfigLeavesNoTraceOfDrift: audit.json is committed
+// and diffed, so an account with nothing to report gains no key, no section
+// and no warning.
+func TestRunRender_aMatchingConfigLeavesNoTraceOfDrift(t *testing.T) {
+	t.Parallel()
+
+	dir, configPath := scratchProject(t, scratchConfig)
+	got := renderInto(t, dir, configPath, healthyFake())
+
+	if strings.Contains(got.raw, "config_drift") {
+		t.Error("audit.json carries a config_drift key for a matching config")
+	}
+	if strings.Contains(got.readme, "Configuration drift") {
+		t.Error("README.md carries a drift section for a matching config")
+	}
+	if got.stderr != "" {
+		t.Errorf("stderr = %q, want it empty", got.stderr)
+	}
+}
+
+// TestRunRender_failsWhenNoDeclaredRepositoryExists: with nothing in common
+// there is nothing to audit. That is a config pointed at the wrong account or
+// a token that sees nothing, and an empty report would hide it.
+func TestRunRender_failsWhenNoDeclaredRepositoryExists(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		names []string
+		// counts are the two phrases that tell a token that sees nothing
+		// from a config pointed at the wrong account.
+		counts []string
+	}{
+		{name: "nothing discovered", names: nil, counts: []string{"the account has 0", "repos.toml declares 2"}},
+		{name: "nothing in common", names: []string{"fresh"}, counts: []string{"the account has 1", "repos.toml declares 2"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir, configPath := scratchProject(t, scratchConfig)
+			before, err := os.ReadFile(filepath.Join(dir, "README.md"))
+			if err != nil {
+				t.Fatalf("read README.md: %v", err)
+			}
+			fake := &fakeCollector{names: tc.names, repos: []audit.Repo{scratchRepo("fresh")}}
+
+			var stdout, stderr bytes.Buffer
+			err = runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
+				noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock)
+			if !errors.Is(err, rules.ErrConfig) {
+				t.Fatalf("runRender() error = %v, want it to wrap rules.ErrConfig", err)
+			}
+			for _, want := range tc.counts {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q, want it to contain %q", err, want)
+				}
+			}
+			if got := exitCode(err); got != 1 {
+				t.Errorf("exitCode = %d, want 1", got)
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("stdout = %q, want nothing: there is no verdict to report", stdout.String())
+			}
+			if fake.asked != nil {
+				t.Errorf("Collect was asked for %v, want no collection at all", fake.asked)
+			}
+			after, err := os.ReadFile(filepath.Join(dir, "README.md"))
+			if err != nil {
+				t.Fatalf("read README.md: %v", err)
+			}
+			if string(before) != string(after) {
+				t.Error("runRender() rewrote README.md despite failing")
+			}
+			if _, err := os.Stat(filepath.Join(dir, "audit.json")); err == nil {
+				t.Error("runRender() wrote audit.json despite failing")
+			}
+		})
+	}
+}
+
+// TestRunJSON_carriesTheDrift: json prints the snapshot render would write,
+// so it tolerates and records the same disagreement.
+func TestRunJSON_carriesTheDrift(t *testing.T) {
+	t.Parallel()
+
+	_, configPath := scratchProject(t, staleConfig)
 
 	var stdout, stderr bytes.Buffer
-	err := runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
-		noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock)
-	if err == nil {
-		t.Fatal("runRender() error = nil, want a coverage error")
+	if err := runJSON(t.Context(), []string{"--config", configPath},
+		noEnv, &stdout, &stderr, fakeFactory(driftFake()), fixedClock); err != nil {
+		t.Fatalf("runJSON() error = %v, want nil", err)
 	}
-	if !strings.Contains(err.Error(), "fresh") {
-		t.Errorf("runRender() error = %q, want it to name the undeclared repository", err)
+	var snap audit.Snapshot
+	if err := json.Unmarshal(stdout.Bytes(), &snap); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v", err)
 	}
-	if got := exitCode(err); got != 1 {
-		t.Errorf("exitCode = %d, want 1", got)
+	want := audit.ConfigDrift{Unconfigured: []string{"fresh"}, StaleEntries: []string{"retired"}}
+	if diff := cmp.Diff(want, snap.Drift); diff != "" {
+		t.Errorf("config_drift mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"alpha", "bravo"}, repoNames(snap)); diff != "" {
+		t.Errorf("repos mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -873,5 +1128,23 @@ func TestRunRender_reportsAMissingConfig(t *testing.T) {
 	}
 	if called {
 		t.Error("the client was built despite the configuration failing to load")
+	}
+}
+
+// TestRunValidate_knowsNothingOfTheAccount: validate judges repos.toml alone.
+// Whether its entries match the account is render's to report, so a config
+// that names repositories no account has is still a valid config, and no
+// collector is ever built to find out.
+func TestRunValidate_knowsNothingOfTheAccount(t *testing.T) {
+	t.Parallel()
+
+	_, configPath := scratchProject(t, scratchConfig+"\n[repos.retired]\ntype = \"tools\"\n")
+
+	var stdout, stderr bytes.Buffer
+	if err := runValidate([]string{"--config", configPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("runValidate() error = %v, want nil", err)
+	}
+	if want := "3 repositories, no problems found"; !strings.Contains(stdout.String(), want) {
+		t.Errorf("stdout = %q, want it to contain %q", stdout.String(), want)
 	}
 }

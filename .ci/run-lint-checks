@@ -4,7 +4,7 @@
 # shfmt over the tracked shell scripts, just --fmt, statix and deadnix,
 # actionlint and zizmor over the workflows, yamllint,
 # renovate-config-validator, check-jsonschema over the golden audit.json
-# fixture, markdownlint, lychee, editorconfig-checker, typos,
+# fixtures, markdownlint, lychee, editorconfig-checker, typos,
 # a merge-conflict-marker scan and a whole-tree gitleaks scan. Formatting of
 # everything else is `nix flake check`'s job. Exit codes aggregate rather than
 # fail fast, so one run surfaces every failing category. Must run inside the
@@ -110,11 +110,13 @@ function main() {
   # not know, so a typo'd `additionalProperties` would leave the schema
   # asserting nothing while every instance still passed.
   check-jsonschema --check-metaschema "${REPO_DIR}/audit.schema.json" || rc=1
-  # Then the golden fixture the end-to-end test writes: this repository
-  # carries no rendered audit.json of its own, so the golden is the only
-  # document the schema has left to check itself against.
+  # Then the golden fixtures the end-to-end tests write: this repository
+  # carries no rendered audit.json of its own, so the goldens are the only
+  # documents the schema has left to check itself against. The drift golden
+  # is the one that carries config_drift, which the full one omits.
   check-jsonschema --schemafile "${REPO_DIR}/audit.schema.json" \
-    "${REPO_DIR}/internal/render/testdata/golden/audit.json" || rc=1
+    "${REPO_DIR}/internal/render/testdata/golden/audit.json" \
+    "${REPO_DIR}/internal/render/testdata/golden/drift-audit.json" || rc=1
 
   ci::log 'running markdownlint'
   local -a md_files=()

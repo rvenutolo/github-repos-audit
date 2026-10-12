@@ -1,8 +1,9 @@
 # An example repos.toml for someone else's account. Copy it into your report
 # repository and replace the [repos.*] tables below with your own
-# repositories: `audit render` refuses to run while repos.toml and the
-# account disagree, so every repository the account has must get an entry
-# here, and every entry here must name a repository the account still has.
+# repositories. The file and the account are meant to name the same ones:
+# every repository the account has gets an entry here, and every entry here
+# names a repository the account has. `audit render` reports any difference
+# under Configuration drift and audits the rest.
 #
 # [types.<name>] a category of repository and what it is expected to have.
 #                Every type lists every check, each set to required,

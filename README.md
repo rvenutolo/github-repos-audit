@@ -21,8 +21,9 @@ token. `audit --help` lists the flags (`--config`, `--dir`, `--verbose`,
 of the interface:
 
 - `0` — success.
-- `1` — runtime failure: an unexpected API response, a coverage mismatch, or
-  a malformed `repos.toml`. The invocation was fine; something else was not.
+- `1` — runtime failure: an unexpected API response, a malformed
+  `repos.toml`, or a `repos.toml` naming no repository the account has. The
+  invocation was fine; something else was not.
 - `2` — usage error: an unknown subcommand, a flag that does not parse, or a
   missing or invalid argument.
 - `130` — interrupted by SIGINT or SIGTERM.
@@ -35,9 +36,15 @@ of the interface:
 
 2. Copy `examples/repos.toml` from this repository into the report repository
    as `repos.toml`, then replace every `[repos.<name>]` table with your own
-   repositories. `audit render` refuses to run while the config and the
-   account disagree: every repository the account has needs an entry, and
-   every entry needs a repository the account still has. See the reference
+   repositories. The config and the account are meant to name the same
+   repositories: every repository the account has needs an entry, and every
+   entry needs a repository the account has. Where they disagree,
+   `audit render` reports on the repositories both name and opens the report
+   with a **Configuration drift** section listing the repositories that need
+   an entry and the entries that name no repository — deleted, archived or
+   turned into a fork. The same two lists are in `audit.json` under
+   `config_drift`, and the run logs each as a warning. Only a `repos.toml`
+   that names no repository the account has stops the run. See the reference
    below for what the file can say.
 
    Give the report repository a `README.md` that carries these two lines,

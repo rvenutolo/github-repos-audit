@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/render"
 )
 
@@ -26,45 +27,73 @@ func TestEndToEnd_theRenderedReadmeIsPrettierClean(t *testing.T) {
 		t.Skip("prettier is not on PATH; run this through .ci/in-devshell")
 	}
 
-	block, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
-	if err != nil {
-		t.Fatalf("Block() error = %v, want nil", err)
-	}
-	readme, err := render.Splice(readmeWithMarkers, block)
-	if err != nil {
-		t.Fatalf("Splice() error = %v, want nil", err)
-	}
+	for _, tc := range []struct {
+		name string
+		snap *audit.Snapshot
+	}{
+		{name: "the full report", snap: fullSnapshot()},
+		// The drift section is prose and bullets rather than a table, which
+		// prettier normalises by different rules.
+		{name: "a report with config drift", snap: driftSnapshot()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	dir := t.TempDir()
-	// prettier reads its configuration by walking up from the file, so the
-	// repository's own .prettierrc.yaml has to come along.
-	cfg, err := os.ReadFile(filepath.Join("..", "..", ".prettierrc.yaml"))
+			block, err := render.Block(evaluate(t, tc.snap), clock(renderedAt))
+			if err != nil {
+				t.Fatalf("Block() error = %v, want nil", err)
+			}
+			readme, err := render.Splice(readmeWithMarkers, block)
+			if err != nil {
+				t.Fatalf("Splice() error = %v, want nil", err)
+			}
+
+			dir := t.TempDir()
+			// prettier reads its configuration by walking up from the file, so the
+			// repository's own .prettierrc.yaml has to come along.
+			cfg, err := os.ReadFile(filepath.Join("..", "..", ".prettierrc.yaml"))
+			if err != nil {
+				t.Fatalf("read .prettierrc.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, ".prettierrc.yaml"), cfg, 0o600); err != nil {
+				t.Fatalf("write .prettierrc.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o600); err != nil {
+				t.Fatalf("write README.md: %v", err)
+			}
+
+			check := exec.CommandContext(t.Context(), prettier, "--check", "README.md")
+			check.Dir = dir
+			out, err := check.CombinedOutput()
+			if err == nil {
+				return
+			}
+
+			// Show what prettier would have written, so the failure names the bytes
+			// rather than only the file.
+			format := exec.CommandContext(t.Context(), prettier, "README.md")
+			format.Dir = dir
+			want, ferr := format.Output()
+			if ferr != nil {
+				t.Fatalf("prettier --check failed: %s", out)
+			}
+			t.Errorf("prettier --check failed: %s\n--- prettier would write ---\n%s", out, want)
+		})
+	}
+}
+
+// TestEndToEnd_aDriftSnapshotIsTheGoldenTheSchemaIsCheckedAgainst writes the
+// one committed document that carries config_drift. The gate validates it
+// against audit.schema.json; without it the schema's description of the key
+// is checked against nothing.
+func TestEndToEnd_aDriftSnapshotIsTheGoldenTheSchemaIsCheckedAgainst(t *testing.T) {
+	t.Parallel()
+
+	data, err := render.JSON(driftSnapshot())
 	if err != nil {
-		t.Fatalf("read .prettierrc.yaml: %v", err)
+		t.Fatalf("JSON() error = %v, want nil", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".prettierrc.yaml"), cfg, 0o600); err != nil {
-		t.Fatalf("write .prettierrc.yaml: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o600); err != nil {
-		t.Fatalf("write README.md: %v", err)
-	}
-
-	check := exec.CommandContext(t.Context(), prettier, "--check", "README.md")
-	check.Dir = dir
-	out, err := check.CombinedOutput()
-	if err == nil {
-		return
-	}
-
-	// Show what prettier would have written, so the failure names the bytes
-	// rather than only the file.
-	format := exec.CommandContext(t.Context(), prettier, "README.md")
-	format.Dir = dir
-	want, ferr := format.Output()
-	if ferr != nil {
-		t.Fatalf("prettier --check failed: %s", out)
-	}
-	t.Errorf("prettier --check failed: %s\n--- prettier would write ---\n%s", out, want)
+	golden(t, "drift-audit.json", string(data))
 }
 
 // TestEndToEnd_pipelineProducesTheGoldenReadme drives the whole thing —

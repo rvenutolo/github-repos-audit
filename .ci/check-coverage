@@ -211,9 +211,9 @@ function check() {
     rc=1
   fi
 
-  # A baseline line naming a package that no longer exists is a line nobody
-  # will ever notice is stale, which is the same reasoning CheckCoverage
-  # applies to repos.toml.
+  # A baseline line naming a package that is gone is a line nobody will ever
+  # notice is stale, which is the reasoning rules.Coverage applies to a
+  # repos.toml entry naming a repository the account does not have.
   for pkg in "${!want[@]}"; do
     if [[ -z "${present[${pkg}]:-}" ]]; then
       printf 'FAIL: the baseline names %s, which is no longer a package; run: just cover-update\n' \

@@ -46,7 +46,7 @@ typos
 # invoked by .ci/run-lint-checks (whole-tree scan of the tracked files)
 gitleaks
 # .ci/run-lint-checks: audit.schema.json against its metaschema, then the
-# golden audit.json fixture against audit.schema.json; validate.yml also runs
+# golden audit.json fixtures against audit.schema.json; validate.yml also runs
 # it, on the caller's report/audit.json when present
 check-jsonschema
 # invoked by .ci/run-lint-checks

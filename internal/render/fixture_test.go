@@ -208,3 +208,20 @@ func fullSnapshot() *audit.Snapshot {
 		Repos:       []audit.Repo{soft, content, tools, empty, cfg},
 	}
 }
+
+// driftSnapshot is an otherwise clean account whose repos.toml disagrees with
+// it in both directions: hook-guard exists with no entry, and media-server
+// has an entry and no repository.
+func driftSnapshot() *audit.Snapshot {
+	return &audit.Snapshot{
+		GeneratedAt: renderedAt,
+		Owner:       "gh-owner",
+		Types:       standardTypes(),
+		Identity:    fixtureIdentity(),
+		Repos:       []audit.Repo{baseRepo("alpha", "tools"), baseRepo("bravo", "tools")},
+		Drift: audit.ConfigDrift{
+			Unconfigured: []string{"hook-guard"},
+			StaleEntries: []string{"media-server"},
+		},
+	}
+}
