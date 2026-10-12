@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/render"
 )
@@ -239,5 +241,53 @@ func TestWriteFiles_reportsAnUnwritableDestination(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "no-such-dir", "README.md")
 	if err := render.WriteFiles(missing, "x", missing, []byte("{}")); err == nil {
 		t.Error("WriteFiles() error = nil, want a create error")
+	}
+}
+
+// TestJSON_recordsConfigDriftOnlyWhenThereIsSome: audit.json is diffed over
+// time, so a clean account's document must not gain an empty key.
+func TestJSON_recordsConfigDriftOnlyWhenThereIsSome(t *testing.T) {
+	t.Parallel()
+
+	withDrift, err := render.JSON(driftSnapshot())
+	if err != nil {
+		t.Fatalf("JSON() error = %v, want nil", err)
+	}
+	var doc struct {
+		ConfigDrift struct {
+			Unconfigured []string `json:"unconfigured"`
+			StaleEntries []string `json:"stale_entries"`
+		} `json:"config_drift"`
+	}
+	if err := json.Unmarshal(withDrift, &doc); err != nil {
+		t.Fatalf("audit.json is not valid JSON: %v", err)
+	}
+	if diff := cmp.Diff([]string{"hook-guard"}, doc.ConfigDrift.Unconfigured); diff != "" {
+		t.Errorf("config_drift.unconfigured mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"media-server"}, doc.ConfigDrift.StaleEntries); diff != "" {
+		t.Errorf("config_drift.stale_entries mismatch (-want +got):\n%s", diff)
+	}
+
+	clean := driftSnapshot()
+	clean.Drift = audit.ConfigDrift{}
+	without, err := render.JSON(clean)
+	if err != nil {
+		t.Fatalf("JSON() error = %v, want nil", err)
+	}
+	if strings.Contains(string(without), "config_drift") {
+		t.Error("a matching config wrote a config_drift key")
+	}
+
+	// One direction alone leaves the other key out, as the schema's
+	// minItems demands.
+	oneWay := driftSnapshot()
+	oneWay.Drift = audit.ConfigDrift{Unconfigured: []string{"hook-guard"}}
+	half, err := render.JSON(oneWay)
+	if err != nil {
+		t.Fatalf("JSON() error = %v, want nil", err)
+	}
+	if strings.Contains(string(half), "stale_entries") {
+		t.Error("an empty stale_entries list was written")
 	}
 }

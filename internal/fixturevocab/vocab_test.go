@@ -299,6 +299,9 @@ var apiRules = []rule{
 var snapshotRules = []rule{
 	{regexp.MustCompile(`^owner$`), func(v any) bool { return v == fakeOwner }, "gh-owner"},
 	{regexp.MustCompile(`^repos\[\]\.name$`), isFakeRepo, "a fake repository name"},
+	// A drifted name is a repository name like any other, and in a real
+	// report it is a real one.
+	{regexp.MustCompile(`^config_drift\.(unconfigured|stale_entries)\[\]$`), isFakeRepo, "a fake repository name"},
 	{regexp.MustCompile(`^repos\[\]\.description$`), isDescription, "empty, the placeholder or 'the <fake> repository'"},
 	{regexp.MustCompile(`^repos\[\]\.homepage$`), isHomepage, "empty or https://example.com/<fake> or https://example.invalid/<slug>"},
 	{regexp.MustCompile(`^repos\[\]\.head_oid$`), matches(oid), "a pattern oid"},
@@ -562,9 +565,62 @@ func tableCellName(cell string) string {
 	return cell
 }
 
+// driftIntroLine is the one prose line the Configuration drift section carries.
+// It is spelled out here, not imported, so this test depends on nothing it is
+// policing; a section line that is not this one or a well-formed bullet fails.
+const driftIntroLine = "`repos.toml` and the account disagree. " +
+	"Add a `[repos.<name>]` table for each repository that needs one, and remove each stale entry: " +
+	"its repository was deleted, archived or turned into a fork. " +
+	"Everything below covers only the repositories both name."
+
+// driftUnconfiguredBullet and driftStaleBullet match the section's two
+// bullets, e.g. "- **Stale `repos.toml` entry** (1) — `media-server`". Group 1
+// is the name list. The names carry markup (a link, or backticks), so the
+// generic gap-list check, which compares a bare name, cannot hold them.
+var (
+	driftUnconfiguredBullet = regexp.MustCompile("^- \\*\\*Needs a `repos\\.toml` entry\\*\\* \\(\\d+\\) — (.+)$")
+	driftStaleBullet        = regexp.MustCompile("^- \\*\\*Stale `repos\\.toml` entry\\*\\* \\(\\d+\\) — (.+)$")
+	driftLink               = regexp.MustCompile(`^\[([^\]]+)\]\(https://github\.com/gh-owner/([^)]+)\)$`)
+	driftCode               = regexp.MustCompile("^`([^`]+)`$")
+)
+
+// checkDriftLine holds one line of the Configuration drift section to the fake
+// vocabulary. The section names repositories in link text, in link targets and
+// inside backticks, so it fails closed: a line that is not the intro or a
+// well-formed bullet over fakeRepos is a problem, and so is any name that is
+// not in fakeRepos, whichever of the three places it sits.
+func checkDriftLine(n int, line string) []string {
+	if line == driftIntroLine {
+		return nil
+	}
+	var problems []string
+	switch {
+	case driftUnconfiguredBullet.MatchString(line):
+		for item := range strings.SplitSeq(driftUnconfiguredBullet.FindStringSubmatch(line)[1], ", ") {
+			m := driftLink.FindStringSubmatch(item)
+			if m == nil || m[1] != m[2] || !slices.Contains(fakeRepos, m[1]) {
+				problems = append(problems, fmt.Sprintf("line %d: an unconfigured drift name that is not a link to a fake repository", n))
+			}
+		}
+	case driftStaleBullet.MatchString(line):
+		for item := range strings.SplitSeq(driftStaleBullet.FindStringSubmatch(line)[1], ", ") {
+			m := driftCode.FindStringSubmatch(item)
+			if m == nil || !slices.Contains(fakeRepos, m[1]) {
+				problems = append(problems, fmt.Sprintf("line %d: a stale drift entry that is not a fake repository in backticks", n))
+			}
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("line %d: a Configuration drift line that is neither the intro nor a well-formed bullet", n))
+	}
+	return problems
+}
+
 func checkMarkdown(text string) []string {
 	var problems []string
 	lines := strings.Split(text, "\n")
+	// inDrift is true from the "## Configuration drift" heading to the next
+	// heading; blank lines inside it are separators and carry no text.
+	inDrift := false
 	descCol := -1 // index of the current table's Description column, if any; -1 outside a table or when it has none.
 	inTable := false
 	// inIdentities is true from the "## Git identities" heading until the blank
@@ -574,12 +630,15 @@ func checkMarkdown(text string) []string {
 		n := i + 1
 		switch {
 		case strings.HasPrefix(line, "## "):
+			inDrift = line == "## Configuration drift"
 			inIdentities, identityLines = line == "## Git identities", 0
 		case inIdentities && strings.TrimSpace(line) == "":
 			inIdentities = identityLines == 0 // the blank below the heading
 		case inIdentities:
 			identityLines++
 			problems = append(problems, checkIdentityLine(n, line)...)
+		case inDrift && strings.TrimSpace(line) != "":
+			problems = append(problems, checkDriftLine(n, line)...)
 		}
 		switch {
 		case githubIOLink.MatchString(line):
@@ -610,7 +669,9 @@ func checkMarkdown(text string) []string {
 			}
 		}
 
-		if m := gapListName.FindStringSubmatch(line); m != nil {
+		// The drift bullets have the gap lists' shape but their names carry
+		// markup, and checkDriftLine has already held them.
+		if m := gapListName.FindStringSubmatch(line); m != nil && !inDrift {
 			for name := range strings.SplitSeq(m[1], ", ") {
 				if !slices.Contains(fakeRepos, name) {
 					problems = append(problems, fmt.Sprintf("line %d: a gap-list name outside the fake vocabulary", n))
@@ -668,6 +729,8 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 		{name: "unknown repository", doc: `{"name": "not-in-the-vocabulary"}`},
 		{name: "id outside the synthetic pattern", doc: `{"id": 987654321}`},
 		{name: "unknown key path", doc: `{"brand_new_field": true}`},
+		{name: "an unconfigured name outside the vocabulary", doc: `{"config_drift": {"unconfigured": ["not-in-the-vocabulary"]}}`},
+		{name: "a stale entry outside the vocabulary", doc: `{"config_drift": {"stale_entries": ["not-in-the-vocabulary"]}}`},
 		{name: "real description", doc: `{"description": "My personal media stack"}`},
 		{name: "renovate text naming a real preset", doc: `{"data": {"repository": {"renovate_json": {"text": "{\"extends\": [\"github>someone/real-repo\"]}"}}}}`},
 		// base64 of {"extends": ["github>someone/real-repo"]}
@@ -862,6 +925,27 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 		"an identity tagged twice": "" +
 			"## Git identities\n\n" +
 			"- **web-app** — `Pat Example <pat@example.com>` (canonical) (accepted)",
+		"a foreign backticked name in a Stale drift bullet": "" +
+			"## Configuration drift\n\n" +
+			"- **Stale `repos.toml` entry** (1) — `marker-repo`",
+		"a foreign name beside a fake one in a Stale drift bullet": "" +
+			"## Configuration drift\n\n" +
+			"- **Stale `repos.toml` entry** (2) — `media-server`, `marker-repo`",
+		"a foreign name in an unconfigured drift link": "" +
+			"## Configuration drift\n\n" +
+			"- **Needs a `repos.toml` entry** (1) — [marker-repo](https://github.com/gh-owner/marker-repo)",
+		"a foreign link text over a fake target": "" +
+			"## Configuration drift\n\n" +
+			"- **Needs a `repos.toml` entry** (1) — [marker-repo](https://github.com/gh-owner/web-app)",
+		"a bare foreign name in an unconfigured drift bullet": "" +
+			"## Configuration drift\n\n" +
+			"- **Needs a `repos.toml` entry** (1) — marker-repo",
+		"a stale drift name that is not in backticks": "" +
+			"## Configuration drift\n\n" +
+			"- **Stale `repos.toml` entry** (1) — media-server",
+		"free prose in the drift section": "" +
+			"## Configuration drift\n\n" +
+			"marker-repo has no entry.",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -872,6 +956,12 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 	}
 
 	for name, text := range map[string]string{
+		"the Configuration drift section": "" +
+			"## Configuration drift\n\n" +
+			driftIntroLine + "\n\n" +
+			"- **Needs a `repos.toml` entry** (2) — [hook-guard](https://github.com/gh-owner/hook-guard), [web-app](https://github.com/gh-owner/web-app)\n" +
+			"- **Stale `repos.toml` entry** (1) — `media-server`\n\n" +
+			"## Metadata",
 		"a fake gap-list name": "- **No README** (1) — web-app, go-linter",
 		"a clean metadata table row": "" +
 			"| Repository | Description |\n" +

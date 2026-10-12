@@ -41,6 +41,7 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	at := now().UTC()
 
 	var b strings.Builder
+	writeSection(&b, driftSection(rep))
 	writeSection(&b, gapsSection(rep))
 	writeSection(&b, metadataSection(rep))
 	writeSection(&b, treeSection(rep))
@@ -59,6 +60,45 @@ func writeSection(b *strings.Builder, s string) {
 	}
 	b.WriteString(s)
 	b.WriteString("\n")
+}
+
+// driftIntro is one line on purpose: the block is committed unformatted, and
+// a wrapped paragraph is something prettier has an opinion about.
+const driftIntro = "`repos.toml` and the account disagree. " +
+	"Add a `[repos.<name>]` table for each repository that needs one, and remove each stale entry: " +
+	"its repository was deleted, archived or turned into a fork. " +
+	"Everything below covers only the repositories both name."
+
+// driftSection says where repos.toml and the account disagree. It comes
+// first because it qualifies everything after it: a repository with no entry
+// is in none of the tables, so a reader who starts at Gaps would take the
+// worklist for complete.
+//
+// A repository with no entry is linked, since it exists. A stale entry is
+// not: its repository may be gone, and a link to nothing reads as a broken
+// report rather than as the finding it is.
+func driftSection(rep *rules.Report) string {
+	drift := rep.Drift
+	if len(drift.Unconfigured) == 0 && len(drift.StaleEntries) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## Configuration drift\n\n" + driftIntro + "\n\n")
+	if n := len(drift.Unconfigured); n > 0 {
+		links := make([]string, 0, n)
+		for _, name := range drift.Unconfigured {
+			links = append(links, repoLink(rep.Owner, name))
+		}
+		fmt.Fprintf(&b, "- **Needs a `repos.toml` entry** (%d) — %s\n", n, strings.Join(links, ", "))
+	}
+	if n := len(drift.StaleEntries); n > 0 {
+		names := make([]string, 0, n)
+		for _, name := range drift.StaleEntries {
+			names = append(names, code(name))
+		}
+		fmt.Fprintf(&b, "- **Stale `repos.toml` entry** (%d) — %s\n", n, strings.Join(names, ", "))
+	}
+	return b.String()
 }
 
 // gapsSection is the worklist: one bullet per failing check, naming the
