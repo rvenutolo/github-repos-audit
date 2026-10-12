@@ -875,3 +875,21 @@ func TestRunRender_reportsAMissingConfig(t *testing.T) {
 		t.Error("the client was built despite the configuration failing to load")
 	}
 }
+
+// TestRunValidate_knowsNothingOfTheAccount: validate judges repos.toml alone.
+// Whether its entries match the account is render's to report, so a config
+// that names repositories no account has is still a valid config, and no
+// collector is ever built to find out.
+func TestRunValidate_knowsNothingOfTheAccount(t *testing.T) {
+	t.Parallel()
+
+	_, configPath := scratchProject(t, scratchConfig+"\n[repos.retired]\ntype = \"tools\"\n")
+
+	var stdout, stderr bytes.Buffer
+	if err := runValidate([]string{"--config", configPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("runValidate() error = %v, want nil", err)
+	}
+	if want := "3 repositories, no problems found"; !strings.Contains(stdout.String(), want) {
+		t.Errorf("stdout = %q, want it to contain %q", stdout.String(), want)
+	}
+}
