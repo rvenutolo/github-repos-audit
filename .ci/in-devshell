@@ -42,9 +42,13 @@ trap 'printf "\033[0;31m[%s] ERROR: line %s (exit %s): %s\033[0m\n" "${0##*/}" "
 
 # `--keep` on an unset variable is silent and harmless, so every name is passed
 # unconditionally rather than set-checked. HOME is a deliberate residue: gh
-# auth, the Go module and build caches (~/go, ~/.cache/go-build) and the nix
-# config live there, so host dotfiles such as ~/.shellcheckrc can still shape
-# a LOCAL run in ways a clean CI HOME will not.
+# auth, the Go module cache (~/go), the Go build cache and the nix config live
+# there, so host dotfiles such as ~/.shellcheckrc can still shape a LOCAL run
+# in ways a clean CI HOME will not. The build cache is not Go's default
+# ~/.cache/go-build, which every Go on the machine shares: flake.nix's
+# shellHook exports a GOCACHE under ~/.cache/github-repos-audit/go-build that
+# is named after this devShell's toolchain. No GO* variable is kept, so a
+# GOCACHE from the caller never replaces it.
 readonly KEEP_VARS=(
   HOME
   TERM
@@ -78,6 +82,9 @@ function main() {
   fi
 
   # Already inside the boundary: run directly, skip a second nix evaluation.
+  # Everything the shellHook exported, the keyed GOCACHE included, reaches
+  # the command by inheritance; .ci/check-gocache-keyed fails the gate when
+  # IN_DEVSHELL was set by something that never ran the hook.
   if [[ -n "${IN_DEVSHELL:-}" ]]; then
     exec "$@"
   fi

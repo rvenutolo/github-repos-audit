@@ -18,6 +18,42 @@
     let
       eachSystem = f: nixpkgs.lib.genAttrs (import systems) (system: f nixpkgs.legacyPackages.${system});
       treefmtEval = eachSystem (pkgs: treefmt-nix.lib.evalModule pkgs ./.treefmt.nix);
+
+      # A Go build cache per toolchain, shared by every shell that runs `go`.
+      #
+      # Go keys a cache entry on its tools' VERSION strings and on the compiler
+      # proper behind `cc`, never on the cc wrapper. The wrapper is what picks
+      # the glibc a cgo package records as its dynamic loader, so two Nix
+      # builds of one Go and gcc version that differ only in glibc share
+      # entries in a common cache, and a binary linked from the other build's
+      # entry names a loader that garbage collection may already have removed:
+      # it builds, then fails to start. Go cannot tell those entries apart, so
+      # the directory does: it is named after BOTH store paths, and a
+      # toolchain that differs in either starts from an empty cache.
+      #
+      # A shellHook and not `env.GOCACHE`, because the path is under HOME,
+      # which exists only at run time. .ci/check-gocache-keyed holds the gate
+      # to this exact directory, for the callers that skip the hook.
+      #
+      # The fuzz corpus Go keeps at $GOCACHE/fuzz is input data, not build
+      # output, and is the same for every toolchain, so each keyed directory
+      # links it to one shared sibling: a toolchain bump keeps the corpus, and
+      # fuzz.yml caches one fixed path.
+      #
+      # Nothing prunes a directory once its toolchain is gone; Go trims only
+      # the cache it is using. Reclaim the space by removing
+      # ~/.cache/github-repos-audit/go-build: every entry in it is rebuilt on
+      # demand, the corpus from the seeds in testdata.
+      goCacheHook = pkgs: ''
+        go_cache_root="$HOME/.cache/github-repos-audit/go-build"
+        export GOCACHE="$go_cache_root/${baseNameOf pkgs.go}_${baseNameOf pkgs.stdenv.cc}"
+        if mkdir -p "$GOCACHE" "$go_cache_root/fuzz"; then
+          [ -e "$GOCACHE/fuzz" ] || ln -s ../fuzz "$GOCACHE/fuzz" \
+            || echo 'warning: could not link the shared fuzz corpus' >&2
+        else
+          echo 'warning: could not create the Go build cache directory' >&2
+        fi
+      '';
     in
     {
       formatter = eachSystem (pkgs: treefmtEval.${pkgs.stdenv.hostPlatform.system}.config.build.wrapper);
@@ -72,6 +108,7 @@
             self.packages.${pkgs.stdenv.hostPlatform.system}.gremlins
           ];
           env.GOTOOLCHAIN = "local";
+          shellHook = goCacheHook pkgs;
         };
 
         # mkShell, NOT mkShellNoCC: `go test -race` requires cgo and therefore a
@@ -155,7 +192,7 @@
           # Activate the tracked git hooks for this clone. A manual per-clone
           # step silently never happens; the devShell is the one place
           # onboarding cannot skip. Tolerant of failure on purpose.
-          shellHook = ''
+          shellHook = goCacheHook pkgs + ''
             if hooks_repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
               "$hooks_repo_root/.ci/activate-githooks" \
                 || echo 'warning: could not activate tracked git hooks' >&2
