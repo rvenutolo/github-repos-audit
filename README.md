@@ -357,4 +357,11 @@ last paragraph, next to the `Co-Authored-By` lines; the header of
 Coverage-Drop: internal/github - the retry path it covered was removed
 ```
 
+The gate scans for known vulnerabilities with govulncheck and counts only
+those the code actually reaches. One in a dependency module fails the gate,
+because raising the module's version fixes it. One in the Go standard library
+only warns: the fix is a newer Go, which arrives with a `flake.lock` update
+and not with any change here. `just vuln` prints govulncheck's full report
+either way.
+
 Run `just` on its own to list every recipe with its one-line description.

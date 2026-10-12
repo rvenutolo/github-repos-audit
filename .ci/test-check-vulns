@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/check-vulns against recorded reports. A stand-in
+#              `govulncheck`, put first on PATH, prints the report a case
+#              names and exits with the status it names; nothing is scanned
+#              and the vulnerability database is never contacted.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly CHECK="${REPO_DIR}/.ci/check-vulns"
+
+# The messages a report is made of, one JSON value each, as govulncheck
+# streams them.
+readonly CONFIG='{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck"}}'
+readonly STDLIB_CALLED='{"finding":{"osv":"GO-0000-0001","fixed_version":"v1.2.4","trace":[{"module":"stdlib","version":"v1.2.3","package":"net/http","function":"Serve"},{"module":"example.test/app","package":"example.test/app","function":"main"}]}}'
+# The same vulnerability reached by a second path: one finding per trace.
+readonly STDLIB_CALLED_AGAIN='{"finding":{"osv":"GO-0000-0001","fixed_version":"v1.2.4","trace":[{"module":"stdlib","version":"v1.2.3","package":"net/http","function":"Serve"},{"module":"example.test/app","package":"example.test/app","function":"run"}]}}'
+readonly MODULE_CALLED='{"finding":{"osv":"GO-0000-0002","fixed_version":"v0.9.1","trace":[{"module":"example.test/dep","version":"v0.9.0","package":"example.test/dep","function":"Parse"}]}}'
+readonly MODULE_IMPORTED='{"finding":{"osv":"GO-0000-0003","fixed_version":"v0.9.1","trace":[{"module":"example.test/dep","version":"v0.9.0","package":"example.test/dep"}]}}'
+readonly MODULE_REQUIRED='{"finding":{"osv":"GO-0000-0004","fixed_version":"v0.9.1","trace":[{"module":"example.test/dep","version":"v0.9.0"}]}}'
+readonly MODULE_UNFIXED='{"finding":{"osv":"GO-0000-0005","trace":[{"module":"example.test/dep","version":"v0.9.0","package":"example.test/dep","function":"Parse"}]}}'
+
+# work is global, not local to main; see .ci/check-coverage-drop for why.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Run the check against a report and compare its exit status,
+#              and optionally require a substring in its output.
+# @arg $1 the report the stand-in govulncheck prints
+# @arg $2 the status the stand-in govulncheck exits with
+# @arg $3 GITHUB_ACTIONS to export; empty for a local run
+# @arg $4 expected exit status
+# @arg $5 case name
+# @arg $6 substring the output must contain (optional)
+# @arg $7 substring the output must NOT contain (optional)
+function expect() {
+  local -r report="$1" scan_status="$2" actions="$3" want="$4" name="$5" want_text="${6:-}" unwanted="${7:-}"
+  local out got=0
+  printf '%s\n' "${report}" > "${work}/report.json"
+  out="$(PATH="${work}/bin:${PATH}" STAND_IN_REPORT="${work}/report.json" STAND_IN_STATUS="${scan_status}" \
+    GITHUB_ACTIONS="${actions}" "${CHECK}" 2>&1)" || got=$?
+  if [[ "${got}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: exit ${got}, want ${want} (output: ${out})"
+    return 1
+  fi
+  if [[ -n "${want_text}" && "${out}" != *"${want_text}"* ]]; then
+    ci::log "FAIL: ${name}: output lacks '${want_text}' (output: ${out})"
+    return 1
+  fi
+  if [[ -n "${unwanted}" && "${out}" == *"${unwanted}"* ]]; then
+    ci::log "FAIL: ${name}: output has '${unwanted}' (output: ${out})"
+    return 1
+  fi
+  # A finding is the check's designed return, not a crash, so the ERR trap
+  # must never fire on either verdict.
+  if [[ "${out}" == *'ERROR:'* ]]; then
+    ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
+    return 1
+  fi
+}
+
+function main() {
+  local rc=0
+  work="$(mktemp --directory)"
+  mkdir "${work}/bin"
+  # shellcheck disable=SC2016 # the stand-in expands these when it runs
+  printf '#!/usr/bin/env bash\ncat -- "${STAND_IN_REPORT}"\nexit "${STAND_IN_STATUS}"\n' > "${work}/bin/govulncheck"
+  chmod +x "${work}/bin/govulncheck"
+
+  expect "${CONFIG}" 0 '' 0 'a report with no findings' '' 'WARN' || rc=1
+
+  expect "${CONFIG}"$'\n'"${STDLIB_CALLED}" 0 '' 0 'a reachable standard library vulnerability' \
+    'WARN: GO-0000-0001 in the Go standard library v1.2.3, fixed in v1.2.4' 'FAIL' || rc=1
+
+  expect "${CONFIG}"$'\n'"${STDLIB_CALLED}"$'\n'"${STDLIB_CALLED_AGAIN}" 0 '' 0 \
+    'one vulnerability reached by two paths' \
+    'reachable standard library vulnerabilities: 1 ' || rc=1
+
+  expect "${CONFIG}"$'\n'"${MODULE_CALLED}" 0 '' 1 'a reachable dependency vulnerability' \
+    'FAIL: GO-0000-0002 in example.test/dep@v0.9.0, fixed in v0.9.1' || rc=1
+
+  expect "${CONFIG}"$'\n'"${STDLIB_CALLED}"$'\n'"${MODULE_CALLED}" 0 '' 1 \
+    'a dependency vulnerability beside a standard library one' 'WARN: GO-0000-0001' || rc=1
+
+  # No released fix does not make a dependency vulnerability less reachable:
+  # the module can still be replaced or the call removed.
+  expect "${CONFIG}"$'\n'"${MODULE_UNFIXED}" 0 '' 1 'a dependency vulnerability with no fix' \
+    'FAIL: GO-0000-0005 in example.test/dep@v0.9.0, fixed in none released' || rc=1
+
+  expect "${CONFIG}"$'\n'"${MODULE_IMPORTED}"$'\n'"${MODULE_REQUIRED}" 0 '' 0 \
+    'a dependency vulnerability the code never reaches' '' 'GO-0000-000' || rc=1
+
+  expect "${CONFIG}"$'\n'"${STDLIB_CALLED}" 0 'true' 0 'a standard library vulnerability in a workflow' \
+    '::warning title=govulncheck::' || rc=1
+
+  expect "${CONFIG}"$'\n'"${STDLIB_CALLED}" 0 '' 0 'a standard library vulnerability outside a workflow' \
+    '' '::warning' || rc=1
+
+  expect "${CONFIG}" 1 '' 1 'govulncheck exiting non-zero' 'govulncheck did not complete' || rc=1
+
+  expect '' 0 '' 1 'an empty report' 'could not read' || rc=1
+
+  expect "${MODULE_IMPORTED}" 0 '' 1 'a report with no config message' 'could not read' || rc=1
+
+  expect 'not json' 0 '' 1 'a report that is not JSON' 'could not read' || rc=1
+
+  ((rc == 0)) && ci::log 'check-vulns: every case passed'
+  # A failing case is this harness's verdict, not a crash; see
+  # .ci/test-check-account-data.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

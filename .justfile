@@ -71,6 +71,9 @@ gremlins-bump:
 
 # Report vulnerabilities in the code paths this binary reaches.
 vuln:
+    # govulncheck's whole report, traces included, and its own exit status:
+    # non-zero for ANY reachable vulnerability. The gate runs .ci/check-vulns
+    # instead, which fails only for one in a dependency module.
     ./.ci/in-devshell govulncheck ./...
 
 # Format every file via treefmt (gofumpt, prettier, nixfmt, taplo, shfmt, just).

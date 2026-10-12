@@ -7,7 +7,9 @@ on:
   # The gate is pinned by flake.lock, but it still depends on cache.nixos.org,
   # the Nix installer and the Go module proxy. A weekly run catches those
   # breaking in a week nobody pushed, and it is the only thing that notices a
-  # govulncheck advisory published against code that has not changed.
+  # govulncheck advisory published against code that has not changed: a red
+  # run for one in a dependency, a warning annotation for one in the standard
+  # library.
   # :47 because on-the-hour slots are the most contended on GitHub's scheduler.
   schedule:
     - cron: "47 12 * * 1"
