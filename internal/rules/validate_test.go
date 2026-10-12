@@ -175,60 +175,6 @@ func TestValidate_rejectsPublishedOnAPrivateRepository(t *testing.T) {
 	}
 }
 
-func TestCheckCoverage(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		discovered []string
-		declared   []string
-		contains   string
-	}{
-		{
-			name:       "a new repository has no entry",
-			discovered: []string{"alpha", "go-linter"},
-			declared:   []string{"alpha"},
-			contains:   "no entry for go-linter",
-		},
-		{
-			name:       "an entry names a repository that is gone",
-			discovered: []string{"alpha"},
-			declared:   []string{"alpha", "deleted"},
-			contains:   "no longer exists",
-		},
-		{
-			name:       "both directions at once",
-			discovered: []string{"alpha", "fresh"},
-			declared:   []string{"alpha", "deleted"},
-			contains:   "fresh",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := rules.CheckCoverage(tc.discovered, tc.declared)
-			if err == nil {
-				t.Fatalf("CheckCoverage() error = nil, want one mentioning %q", tc.contains)
-			}
-			if !errors.Is(err, rules.ErrConfig) {
-				t.Errorf("CheckCoverage() error = %v, want it to wrap ErrConfig", err)
-			}
-			if !strings.Contains(err.Error(), tc.contains) {
-				t.Errorf("CheckCoverage() error = %q, want it to contain %q", err, tc.contains)
-			}
-		})
-	}
-}
-
-func TestCheckCoverage_acceptsAnExactMatch(t *testing.T) {
-	t.Parallel()
-
-	if err := rules.CheckCoverage([]string{"alpha", "bravo"}, []string{"bravo", "alpha"}); err != nil {
-		t.Errorf("CheckCoverage() error = %v, want nil", err)
-	}
-}
-
 func TestVerdict_String(t *testing.T) {
 	t.Parallel()
 

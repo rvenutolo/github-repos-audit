@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
@@ -54,36 +55,53 @@ func collectorAt(
 	return github.New(github.Options{Owner: owner, Token: token, BaseURL: baseURL, Logger: logger})
 }
 
-// collect discovers the account, checks coverage, reads every repository and
-// runs the live validation, returning a snapshot with the declared fields
-// filled in. The offline validation is prepare's, and has already passed.
+// collect discovers the account, compares it with repos.toml, reads every
+// repository both name and runs the live validation, returning a snapshot
+// with the declared fields filled in. The offline validation is prepare's,
+// and has already passed.
 //
-// The order matters. Coverage is checked before anything else is fetched, so
-// a repository created since the last run aborts the run rather than being
-// quietly skipped. Only then is the fan-out worth starting.
+// A disagreement between the account and repos.toml does not stop the run.
+// Creating or archiving a repository is routine, and the report is where the
+// owner looks: so the repositories both name are audited, and the rest are
+// recorded on the snapshot for the report to say. Only a config with nothing
+// in common with the account is an error, because then there is no report.
+//
+// The order matters. The comparison comes before anything else is fetched, so
+// a repository with no entry costs no API call and a config pointed at the
+// wrong account costs none either.
 func collect(
 	ctx context.Context,
 	cfg *config.Config,
 	client collector,
+	logger *slog.Logger,
 	now func() time.Time,
 ) (*audit.Snapshot, error) {
 	discovered, err := client.Discover(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := rules.CheckCoverage(discovered, cfg.Names()); err != nil {
-		return nil, err
-	}
+	drift := rules.Coverage(discovered, cfg.Names())
 
-	repos, err := client.Collect(ctx, discovered)
+	configured := make([]string, 0, len(discovered))
+	for _, name := range discovered {
+		if _, ok := cfg.Repos[name]; ok {
+			configured = append(configured, name)
+		}
+	}
+	if len(configured) == 0 {
+		return nil, fmt.Errorf("%w: repos.toml names no repository the account has", rules.ErrConfig)
+	}
+	warnDrift(ctx, logger, drift)
+
+	repos, err := client.Collect(ctx, configured)
 	if err != nil {
 		return nil, err
 	}
 	for i := range repos {
 		declared, ok := cfg.Repos[repos[i].Name]
-		if !ok {
-			// CheckCoverage has already proved this cannot happen; saying so
-			// beats a silently untyped repository if it ever does.
+		if !ok { // coverage-exempt: unreachable while Collect answers only for the names it is given
+			// Only configured names were asked for, so this cannot happen;
+			// saying so beats a silently untyped repository if it ever does.
 			return nil, fmt.Errorf("collect: %s has no repos.toml entry", repos[i].Name)
 		}
 		repos[i].Type = string(declared.Type)
@@ -97,6 +115,7 @@ func collect(
 		Types:       cfg.Types,
 		Identity:    cfg.Identity,
 		Repos:       repos,
+		Drift:       drift,
 	}
 	// The half of the validation that needs live data: published on a private
 	// repository, and an override dead against a visibility-dependent row.
@@ -104,6 +123,23 @@ func collect(
 		return nil, err
 	}
 	return snap, nil
+}
+
+// warnDrift tells whoever reads the run's log what the report says at its
+// top. It is a warning and not an error because the run succeeds; it is not
+// left to the report alone because a log is what a failed-looking refresh is
+// first read through.
+func warnDrift(ctx context.Context, logger *slog.Logger, drift audit.ConfigDrift) {
+	if len(drift.Unconfigured) > 0 {
+		logger.WarnContext(ctx,
+			"repositories with no repos.toml entry are not audited; add a [repos.<name>] table for each",
+			"repositories", strings.Join(drift.Unconfigured, ", "))
+	}
+	if len(drift.StaleEntries) > 0 {
+		logger.WarnContext(ctx,
+			"repos.toml entries name no repository the account has; remove each, or check whether it was archived, deleted or turned into a fork",
+			"entries", strings.Join(drift.StaleEntries, ", "))
+	}
 }
 
 // prepare does the work render and json share: load the configuration, run the
@@ -128,5 +164,5 @@ func prepare(
 	if err != nil {
 		return nil, err
 	}
-	return collect(ctx, cfg, client, now)
+	return collect(ctx, cfg, client, logger, now)
 }

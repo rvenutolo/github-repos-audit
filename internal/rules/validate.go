@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
@@ -138,46 +137,6 @@ func missingFrom(have, other []string) []string {
 	}
 	slices.SortFunc(missing, compareNames)
 	return slices.Compact(missing)
-}
-
-// CheckCoverage enforces, in both directions, that repos.toml describes
-// exactly the repositories that exist. A discovered repository with no entry
-// would quietly escape the standard; an entry naming a repository that no
-// longer exists is a line nobody will ever notice is stale.
-func CheckCoverage(discovered, declared []string) error {
-	inDeclared := make(map[string]bool, len(declared))
-	for _, name := range declared {
-		inDeclared[name] = true
-	}
-	inDiscovered := make(map[string]bool, len(discovered))
-	for _, name := range discovered {
-		inDiscovered[name] = true
-	}
-
-	var missing, extra []string
-	for _, name := range discovered {
-		if !inDeclared[name] {
-			missing = append(missing, name)
-		}
-	}
-	for _, name := range declared {
-		if !inDiscovered[name] {
-			extra = append(extra, name)
-		}
-	}
-	slices.SortFunc(missing, compareNames)
-	slices.SortFunc(extra, compareNames)
-
-	var problems []error
-	if len(missing) > 0 {
-		problems = append(problems, fmt.Errorf(
-			"repos.toml has no entry for %s", strings.Join(missing, ", ")))
-	}
-	if len(extra) > 0 {
-		problems = append(problems, fmt.Errorf(
-			"repos.toml names %s, which no longer exists on the account", strings.Join(extra, ", ")))
-	}
-	return join(problems)
 }
 
 // deadReason explains why an override says nothing, or returns "" when it

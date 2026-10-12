@@ -358,10 +358,10 @@ func TestLive_rollupNeedsNoChecksPermission(t *testing.T) {
 	}
 }
 
-// TestLive_discoverSeesTheWholeAccount checks the token still has repository
-// access "All repositories" rather than a selected list — a selected list
-// would make a repository created after the token invisible to exactly the
-// coverage check that exists to catch it.
+// TestLive_discoverSeesTheWholeAccount checks the token has repository access
+// "All repositories" rather than a selected list — a selected list would
+// make a repository created after the token invisible to the very comparison
+// that exists to report it as having no repos.toml entry.
 func TestLive_discoverSeesTheWholeAccount(t *testing.T) {
 	t.Parallel()
 
