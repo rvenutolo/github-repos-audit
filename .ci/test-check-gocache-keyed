@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/check-gocache-keyed against throwaway toolchains:
+#              a stand-in `go` and `cc`, each in a directory shaped like a
+#              store path, put first on PATH. The stand-in `go` only answers
+#              `go env GOCACHE`, from the environment as the real one does;
+#              nothing is compiled and the real cache is never touched.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly CHECK="${REPO_DIR}/.ci/check-gocache-keyed"
+readonly GO_NAME='aaaa-go-1.2.3'
+readonly CC_NAME='bbbb-gcc-wrapper-4.5.6'
+readonly CACHE_ROOT='.cache/github-repos-audit/go-build'
+
+# work is global, not local to main; see .ci/check-coverage-drop for why.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Create <work>/<name>/bin/<tool> as an executable stand-in and
+#              print the bin directory.
+# @arg $1 package directory name
+# @arg $2 tool name
+# @arg $3 the stand-in's body
+# @stdout the bin directory's absolute path
+function new_tool() {
+  local -r bin="${work}/$1/bin"
+  mkdir --parents "${bin}"
+  printf '#!/usr/bin/env bash\n%s\n' "$3" > "${bin}/$2"
+  chmod +x "${bin}/$2"
+  printf '%s\n' "${bin}"
+}
+
+# @description Run the check with a given PATH prefix, HOME and GOCACHE, and
+#              compare its exit status, and optionally require a substring in
+#              its output.
+# @arg $1 directories to put first on PATH, colon-separated
+# @arg $2 GOCACHE to export
+# @arg $3 expected exit status
+# @arg $4 case name
+# @arg $5 substring the output must contain (optional)
+function expect() {
+  local -r path_prefix="$1" gocache="$2" want="$3" name="$4" want_text="${5:-}"
+  local out got=0
+  out="$(PATH="${path_prefix}:${PATH}" HOME="${work}/home" GOCACHE="${gocache}" "${CHECK}" 2>&1)" || got=$?
+  if [[ "${got}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: exit ${got}, want ${want} (output: ${out})"
+    return 1
+  fi
+  if [[ -n "${want_text}" && "${out}" != *"${want_text}"* ]]; then
+    ci::log "FAIL: ${name}: output lacks '${want_text}' (output: ${out})"
+    return 1
+  fi
+  # A finding is the check's designed return, not a crash, so the ERR trap
+  # must never fire on either verdict.
+  if [[ "${out}" == *'ERROR:'* ]]; then
+    ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
+    return 1
+  fi
+}
+
+function main() {
+  local rc=0 go_bin cc_bin other_cc_bin
+  work="$(mktemp --directory)"
+
+  # shellcheck disable=SC2016 # the stand-in expands GOCACHE when it runs
+  go_bin="$(new_tool "${GO_NAME}" go 'printf "%s\n" "${GOCACHE}"')"
+  cc_bin="$(new_tool "${CC_NAME}" cc 'exit 0')"
+  other_cc_bin="$(new_tool 'cccc-gcc-wrapper-4.5.6' cc 'exit 0')"
+  local -r keyed="${work}/home/${CACHE_ROOT}/${GO_NAME}_${CC_NAME}"
+
+  expect "${go_bin}:${cc_bin}" "${keyed}" 0 'the cache keyed to go and cc' || rc=1
+
+  expect "${go_bin}:${cc_bin}" "${work}/home/.cache/go-build" 1 \
+    'the shared default cache' 'not keyed to this toolchain' || rc=1
+
+  # The same Go and the same gcc VERSION behind a different wrapper is the
+  # pair Go's own cache keys cannot tell apart.
+  expect "${go_bin}:${other_cc_bin}" "${keyed}" 1 \
+    'a cache keyed to another cc wrapper' "${GO_NAME}_cccc-gcc-wrapper-4.5.6" || rc=1
+
+  expect "${go_bin}:${cc_bin}" "${work}/home/${CACHE_ROOT}" 1 \
+    'the unkeyed parent directory' 'not keyed to this toolchain' || rc=1
+
+  ((rc == 0)) && ci::log 'check-gocache-keyed: every case passed'
+  # A failing case is this harness's verdict, not a crash; see
+  # .ci/test-check-account-data.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

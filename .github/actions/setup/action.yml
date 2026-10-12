@@ -10,14 +10,21 @@ runs:
       with:
         primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
         restore-prefixes-first-match: nix-${{ runner.os }}-
-    # .ci/in-devshell keeps HOME but no GO* variables, so the module and build
-    # caches resolve under ~/go and ~/.cache/go-build. cache-nix-action covers
-    # the Nix store and not those, so they are cached here or every run
-    # re-downloads the module graph and recompiles the standard library.
+    # .ci/in-devshell keeps HOME but no GO* variables, so the module cache
+    # resolves under ~/go, and the build cache where flake.nix's shellHook
+    # puts it: one directory per toolchain under
+    # ~/.cache/github-repos-audit/go-build. cache-nix-action covers the Nix
+    # store and not those, so they are cached here or every run re-downloads
+    # the module graph and recompiles the standard library.
+    #
+    # flake.lock is in the key AND in the restore prefix because it is what
+    # selects the toolchain. A build cache restored across a lock change
+    # holds only directories no toolchain in the new lock reads, and each
+    # save would carry them forward.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/go/pkg/mod
-          ~/.cache/go-build
-        key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
-        restore-keys: go-${{ runner.os }}-
+          ~/.cache/github-repos-audit/go-build
+        key: go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('go.sum') }}
+        restore-keys: go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-

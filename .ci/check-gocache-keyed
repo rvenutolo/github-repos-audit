@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+# @description Assert the Go build cache in use belongs to the toolchain on
+#              PATH and to nothing else: GOCACHE must be the directory named
+#              after the store paths of both `go` and `cc`, under
+#              ~/.cache/github-repos-audit/go-build.
+#
+#              Go keys a cache entry on its tools' VERSION strings and on the
+#              compiler proper behind `cc`, never on the cc wrapper. The
+#              wrapper is what chooses the glibc a cgo package records as its
+#              dynamic loader, so two Nix builds of one Go and gcc version
+#              that differ only in glibc share entries, and a binary linked
+#              from the other build's entry names a loader that garbage
+#              collection may already have removed. Go cannot tell those
+#              entries apart, so each toolchain gets a directory of its own.
+#
+#              flake.nix's shellHook is what exports that GOCACHE. This check
+#              exists for the paths that skip the hook: .ci/in-devshell runs
+#              its command directly when IN_DEVSHELL is already set, so a
+#              caller that sets it by hand, or a shell that exports GOCACHE
+#              itself, would otherwise build into a shared cache and say
+#              nothing.
+#
+#              Must be run INSIDE the devShell (run-all-checks always is).
+# @noargs
+# @exitcode 0 GOCACHE is the directory keyed to the go and cc on PATH
+# @exitcode 1 it is not, or go or cc does not resolve
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# @description Print the name of the package directory a tool on PATH lives
+#              in: for <store>/<name>/bin/<tool>, print <name>. The tool is
+#              resolved, never run.
+# @arg $1 tool
+# @stdout the package directory's base name
+# @exitcode 1 the tool is not on PATH
+function package_name() {
+  local tool_path
+  if ! tool_path="$(command -v -- "$1")"; then
+    return 1
+  fi
+  tool_path="${tool_path%/bin/*}"
+  printf '%s\n' "${tool_path##*/}"
+}
+
+# @description Compare `go env GOCACHE` with the directory this toolchain owns.
+# @noargs
+function main() {
+  # A finding is this check's designed return, not a crash, so the ERR trap
+  # stays out of every verdict below.
+  trap - ERR
+
+  local go_name cc_name
+  if ! go_name="$(package_name go)"; then
+    printf 'FAIL: go is not on PATH; run this inside the devShell\n' >&2
+    return 1
+  fi
+  if ! cc_name="$(package_name cc)"; then
+    printf 'FAIL: cc is not on PATH; run this inside the devShell\n' >&2
+    return 1
+  fi
+
+  local -r want="${HOME}/.cache/github-repos-audit/go-build/${go_name}_${cc_name}"
+  local got
+  got="$(go env GOCACHE)"
+  if [[ "${got}" != "${want}" ]]; then
+    printf 'FAIL: the Go build cache is not keyed to this toolchain\n' >&2
+    printf '  GOCACHE is: %s\n' "${got}" >&2
+    printf '  want:       %s\n' "${want}" >&2
+    printf '  Enter the devShell through ./.ci/in-devshell with IN_DEVSHELL and GOCACHE unset.\n' >&2
+    return 1
+  fi
+}
+
+main "$@"
