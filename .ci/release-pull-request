@@ -328,7 +328,7 @@ function main() {
   notes="$("${RELEASE_VERSION}" notes "${new}" "${version}")" || exit 1
   {
     printf '## %s\n\n%s\n' "${version}" "${notes}"
-    printf '\nMerging this pull request publishes %s: the release workflow builds, signs and attests the binaries, then creates the tag.\n' "${version}"
+    printf '\nMerging this pull request publishes %s: the release workflow builds the binaries from the merge commit, signs their checksum file, attests them and publishes the release, which creates the tag.\n' "${version}"
   } > "${body}"
   # The mutation reads the changelog from this file. As an argument it
   # would be one string holding the whole file, and a single argument has a

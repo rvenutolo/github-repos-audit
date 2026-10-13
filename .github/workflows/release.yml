@@ -1,6 +1,7 @@
 name: release
 
-# Propose a release, or prove that the release assets still build.
+# Propose a release, publish one, or prove that the release assets still
+# build.
 #
 # propose keeps one pull request open, titled chore(release): vX.Y.Z, that
 # changes CHANGELOG.md and nothing else. The version is computed from the
@@ -8,10 +9,22 @@ name: release
 # input names one. Merging that pull request is the release decision, so
 # nothing here enables auto-merge: a human reads the section and merges it.
 #
+# publish is what that merge sets off. It runs on every push to the default
+# branch and asks one question of the repository's state: does the newest
+# version in CHANGELOG.md have a tag? When it does not, the job builds the
+# release assets from the commit that put the version there, signs the
+# checksum file, attests the binaries and publishes the release, which
+# creates the tag. Asking the state, and not the push, is what lets a later
+# run finish a release an earlier run did not.
+#
 # dry-run builds the release assets with the script a release uses and uploads
 # them as a workflow artifact. It proves the build; nothing is tagged or
 # published by it, which is why the version it builds is a placeholder.
+# dry-run-signed is the same run with the signing and the attestation added,
+# for trying those two steps from a branch.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
@@ -26,24 +39,54 @@ on:
         description: Build the release assets as a workflow artifact; no pull request.
         type: boolean
         default: false
+      sign:
+        description: >-
+          With dry-run, also sign the checksum file and attest the binaries.
+          Each such run writes a public transparency-log entry that cannot be
+          removed. Ignored without dry-run.
+        type: boolean
+        default: false
 
 permissions: {}
 
 concurrency:
-  # Two proposals must not race on the same release branch. A dry run touches
-  # no branch, so it has its own group: GitHub keeps one pending run per
-  # group, and a dry run sharing propose's would cancel a queued proposal.
+  # propose and publish both act on the one release in progress, so every
+  # run that may hold either job shares a group and they run one at a time.
+  # A dry run touches no branch, tag or release, so it has its own group:
+  # GitHub keeps one pending run per group, and a dry run sharing the other
+  # would cancel a queued proposal or publish.
+  #
+  # A push has no inputs, so inputs.dry-run is empty there, which is false:
+  # a push lands in the release group, as it must.
+  #
+  # One pending run per group also means a queued push run is dropped when
+  # a newer push arrives. Neither job depends on being the run of a
+  # particular push: propose works from the default branch's head, and
+  # publish from the state of the changelog and the tags.
   group: ${{ github.workflow }}-${{ inputs.dry-run && 'dry-run' || 'release' }}
   cancel-in-progress: false
 
 jobs:
   propose:
     name: propose
-    # The script itself refuses a checkout that is not the default branch's
-    # head, before any write. This condition means a run from a side branch
-    # (a tag of the same name included, hence the full ref) spends no setup
-    # time and never puts REFRESH_TOKEN in a job's environment.
-    if: ${{ !inputs.dry-run && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    # On a push, or on a run started by hand that is not a dry run; the
+    # default branch only, in both cases. The script itself refuses a
+    # checkout that is not the default branch's head, before any write. This
+    # condition means a run from a side branch (a tag of the same name
+    # included, hence the full ref) spends no setup time and never puts
+    # REFRESH_TOKEN in a job's environment.
+    #
+    # propose and publish run side by side on a push, and neither waits for
+    # the other. The push that merges a release pull request is the one
+    # where both have something to look at, and there the script does
+    # nothing: a changelog whose newest version has no tag is a release
+    # being published. Once the tag exists the script proposes the release
+    # after it, which is right as well, so either order is safe.
+    if: >-
+      ${{
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        && (github.event_name == 'push' || !inputs.dry-run)
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # contents: read is for actions/checkout and nothing else. The pull request
@@ -56,6 +99,11 @@ jobs:
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
+          # GitHub's hosts serve the checkout, the actions, the caches and the
+          # API; the nixos.org hosts and install.determinate.systems install
+          # Nix and fill its store; proxy.golang.org, sum.golang.org and
+          # storage.googleapis.com serve the Go modules the binaries are
+          # built from.
           allowed-endpoints: >-
             api.github.com:443
             cache.nixos.org:443
@@ -94,14 +142,149 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           args=()
+          # A push's run checks out the pushed commit, and a newer push can
+          # move the default branch on before this step runs. That newer
+          # push has a run of its own, so this one has nothing to do and
+          # nothing to report. A run started by hand keeps the failure.
+          if [[ "${GITHUB_EVENT_NAME}" == 'push' ]]; then
+            args+=(--skip-if-stale)
+          fi
           if [[ -n "${VERSION}" ]]; then
             args+=(--version "${VERSION}")
           fi
           ./.ci/in-devshell ./.ci/release-pull-request "${args[@]}"
 
+  publish:
+    name: publish
+    # A push to the default branch and nothing else: a run started by hand
+    # never publishes, from any branch.
+    if: >-
+      ${{
+        github.event_name == 'push'
+        && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      }}
+    runs-on: ubuntu-latest
+    # A cold Nix store plus five cross-compiled binaries and an SBOM, then
+    # the signing and the uploads.
+    timeout-minutes: 30
+    # The only job that can write a release, and the only place these three
+    # are granted together.
+    #
+    # contents: write creates the draft release, uploads its assets and
+    # publishes it, which creates the tag. The built-in token does this, not
+    # REFRESH_TOKEN: a release published with it starts no other workflow,
+    # and it is gone when the job ends.
+    #
+    # id-token: write lets the job ask GitHub for its OIDC token, which
+    # Sigstore exchanges for a certificate naming this workflow. Both the
+    # signature and the attestation are made with one; there is no key.
+    #
+    # attestations: write stores the provenance attestation with the
+    # repository, where `gh attestation verify` finds it.
+    permissions:
+      contents: write # the release, its assets and its tag
+      id-token: write # the OIDC token Sigstore certifies
+      attestations: write # storing the provenance attestation
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          # GitHub's hosts serve the checkout, the actions, the caches and the
+          # API; the nixos.org hosts and install.determinate.systems install
+          # Nix and fill its store; proxy.golang.org, sum.golang.org and
+          # storage.googleapis.com serve the Go modules the binaries are
+          # built from.
+          #
+          # The sigstore.dev hosts are the signing: Fulcio issues the
+          # short-lived certificate, Rekor is the transparency log, the TUF
+          # host serves the trust root both are checked against, and the
+          # timestamp authority countersigns. cosign and the attestation
+          # action use the same ones.
+          #
+          # uploads.github.com takes the release's assets.
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            fulcio.sigstore.dev:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            rekor.sigstore.dev:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+            timestamp.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            uploads.github.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The commit a release is cut from is found in the history, and
+          # may lie behind the pushed one.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      - name: Ask whether a release is waiting
+        id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./.ci/in-devshell ./.ci/release-publish pending >> "${GITHUB_OUTPUT}"
+
+      # The release is the commit that put its version into the changelog,
+      # which is the merge of the release pull request, and this run need
+      # not be that push's: a run waiting in the concurrency group is
+      # dropped for a newer one, and a failed publish is finished by the
+      # next push. So the work tree is moved to that commit, and everything
+      # below comes from it: the sources that are built, the scripts that
+      # build and publish them, the changelog the notes are read from, and
+      # the commit the tag is put on. The values reach the shell through
+      # env, never through the script text.
+      - name: Check out the commit the release is cut from
+        if: steps.pending.outputs.publish == 'true'
+        env:
+          SHA: ${{ steps.pending.outputs.sha }}
+        run: git checkout --detach "${SHA}"
+
+      - name: Build the release assets
+        if: steps.pending.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.pending.outputs.version }}
+        run: ./.ci/in-devshell ./.ci/build-release --version "${VERSION}" --out dist
+
+      - name: Sign the checksum file
+        if: steps.pending.outputs.publish == 'true'
+        run: ./.ci/in-devshell ./.ci/release-publish sign --dist dist
+
+      # The five binaries and nothing else in dist: the SBOM is named
+      # audit.cdx.json, with a dot where the binaries have a hyphen.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: steps.pending.outputs.publish == 'true'
+        with:
+          subject-path: dist/audit-*
+
+      # Last, because it is the one step that cannot be taken back: the
+      # signature and the attestation exist before the tag does.
+      - name: Publish the release
+        if: steps.pending.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.pending.outputs.version }}
+          SHA: ${{ steps.pending.outputs.sha }}
+        run: ./.ci/in-devshell ./.ci/release-publish release --version "${VERSION}" --dist dist --sha "${SHA}"
+
   dry-run:
     name: dry-run
-    if: ${{ inputs.dry-run }}
+    # From any branch: it writes nothing. With the sign input the other dry
+    # run takes over, so this job never holds a permission to sign.
+    if: ${{ inputs.dry-run && !inputs.sign }}
     runs-on: ubuntu-latest
     # A cold Nix store plus five cross-compiled binaries and an SBOM.
     timeout-minutes: 30
@@ -111,6 +294,11 @@ jobs:
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
+          # GitHub's hosts serve the checkout, the actions, the caches and the
+          # API; the nixos.org hosts and install.determinate.systems install
+          # Nix and fill its store; proxy.golang.org, sum.golang.org and
+          # storage.googleapis.com serve the Go modules the binaries are
+          # built from.
           allowed-endpoints: >-
             api.github.com:443
             cache.nixos.org:443
@@ -135,6 +323,88 @@ jobs:
 
       - name: Build the release assets
         run: ./.ci/in-devshell ./.ci/build-release --version v0.0.0 --out dist
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: dist
+          # An empty upload would pass while proving nothing.
+          if-no-files-found: error
+          # The assets are for a look, not for keeping.
+          retention-days: 7
+
+  dry-run-signed:
+    name: dry-run-signed
+    # The dry run plus the two steps of a release that need an identity. It
+    # runs from any branch, because the signing is tried from a branch
+    # before the change that needs it is merged. It creates no tag, no
+    # release and no pull request, and has no permission to. What it does
+    # leave behind, for good, is a transparency-log entry for the signature
+    # and one for the attestation, both naming the branch it ran from.
+    if: ${{ inputs.dry-run && inputs.sign }}
+    runs-on: ubuntu-latest
+    # A cold Nix store plus five cross-compiled binaries and an SBOM, then
+    # the signing.
+    timeout-minutes: 30
+    # contents: read is for actions/checkout. id-token: write and
+    # attestations: write are what publish holds them for: the OIDC token
+    # Sigstore turns into a certificate, and storing the attestation.
+    permissions:
+      contents: read # actions/checkout
+      id-token: write # the OIDC token Sigstore certifies
+      attestations: write # storing the provenance attestation
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          # GitHub's hosts serve the checkout, the actions, the caches and the
+          # API; the nixos.org hosts and install.determinate.systems install
+          # Nix and fill its store; proxy.golang.org, sum.golang.org and
+          # storage.googleapis.com serve the Go modules the binaries are
+          # built from.
+          #
+          # The sigstore.dev hosts are the signing: Fulcio issues the
+          # short-lived certificate, Rekor is the transparency log, the TUF
+          # host serves the trust root both are checked against, and the
+          # timestamp authority countersigns. cosign and the attestation
+          # action use the same ones.
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            fulcio.sigstore.dev:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            rekor.sigstore.dev:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+            timestamp.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      - name: Build the release assets
+        run: ./.ci/in-devshell ./.ci/build-release --version v0.0.0 --out dist
+
+      - name: Sign the checksum file
+        run: ./.ci/in-devshell ./.ci/release-publish sign --dist dist
+
+      # The five binaries and nothing else in dist: the SBOM is named
+      # audit.cdx.json, with a dot where the binaries have a hyphen.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/audit-*
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
