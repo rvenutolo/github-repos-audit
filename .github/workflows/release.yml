@@ -250,7 +250,9 @@ jobs:
       # run, and sha is this commit. One is waiting and this is another
       # commit: the step fails, because the run that should have published
       # it was dropped from the queue or failed, and somebody has to run it
-      # again.
+      # again. It fails as well when the default branch has given the
+      # version up since, which is what a run started again long after its
+      # push can meet.
       #
       # A run is never failed merely for coming early. Every run that holds
       # this job is a push to the default branch, all of them are in the

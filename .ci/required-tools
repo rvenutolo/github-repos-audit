@@ -73,14 +73,14 @@ renovate-config-validator
 # every script uses git: most derive the repo root via `git rev-parse`;
 # check-account-data runs git grep and git rev-list; .ci/release-version
 # reads tags and merge commits, .ci/release-pull-request resolves HEAD and
-# .ci/release-publish looks for a release's tag
+# .ci/release-publish looks for a release's tag and its release commit
 git
 # internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset;
 # every .ci/*-pull-request script, .ci/release-pull-request included, commits
 # through `gh api` and opens or updates its pull request with `gh pr`;
 # .ci/release-publish asks whether a release or its tag exists, drafts,
 # reads back and publishes the release with `gh release`, and reads the tag
-# with `gh api`
+# and the default branch's changelog with `gh api`
 gh
 # the task runner .justfile documents; .ci/run-lint-checks runs `just --fmt`
 # and .ci/check-readme-recipes runs `just --summary`

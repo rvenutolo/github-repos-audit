@@ -61,6 +61,8 @@ readonly READ_STATE="release view ${VERSION} --repo gh-owner/tool --json isDraft
 readonly WRITE_DELETE="release delete ${VERSION} --repo gh-owner/tool --yes"
 readonly WRITE_EDIT="release edit ${VERSION} --repo gh-owner/tool --draft=false"
 readonly READ_TAG="api repos/gh-owner/tool/git/ref/tags/${VERSION} --jq .object.sha"
+# The default branch's changelog as GitHub holds it, raw.
+readonly READ_DEFAULT='api repos/gh-owner/tool/contents/CHANGELOG.md --header Accept: application/vnd.github.raw'
 # Set by main, once the assets' paths are known.
 write_create=''
 read_assets=''
@@ -150,6 +152,10 @@ function write_dist() {
 #              - `remote-tag`: what a tag of that name points at before
 #                anything is published; absent when there is no such tag,
 #                `unreachable` for a GitHub that cannot be asked
+#              - `default-changelog`: the changelog on the default branch;
+#                absent, the answer is the changelog in the working tree,
+#                as when the checkout is the default branch's head;
+#                `unreachable` for a GitHub that cannot be asked
 #              - `tag-sha`: the commit the tag points at once the release is
 #                published; absent when publishing creates no tag
 #              - `tag-misses`: how many reads after the publish go by before
@@ -200,6 +206,16 @@ case "\$*" in
         exit 1
         ;;
     esac
+    ;;
+  '${READ_DEFAULT}')
+    if [[ ! -e '${dir}/default-changelog' ]]; then
+      cat '${dir}/../CHANGELOG.md'
+    elif [[ "\$(< '${dir}/default-changelog')" == 'unreachable' ]]; then
+      echo 'gh: Bad Gateway (HTTP 502)' >&2
+      exit 1
+    else
+      cat '${dir}/default-changelog'
+    fi
     ;;
   '${WRITE_DELETE}')
     if [[ -e '${dir}/delete-fails' ]]; then
@@ -432,7 +448,7 @@ function test_pending() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${head}" || rc=1
-  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
 
   # A draft is a publish that stopped half way: the next run replaces it.
   name='pending: an untagged version with a draft release'
@@ -440,7 +456,7 @@ function test_pending() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${head}" || rc=1
-  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
 
   # The tag is fetched after the release is published, so a published
   # release can be all there is to see.
@@ -551,7 +567,7 @@ function test_pending_publishes_only_from_the_release_commit() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${merge}" || rc=1
-  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
   # The commit on the pull request's branch is not on the default branch's
   # own line of history; the tag belongs on the merge.
   if [[ "${output}" == *"${branch_commit}"* ]]; then
@@ -595,7 +611,52 @@ function test_pending_publishes_only_from_the_release_commit() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${merge}" || rc=1
-  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+
+  # The merge's run started again after the default branch gave the
+  # version up: its section is withdrawn there, or the heading renamed.
+  # The checkout still names the version, and must not publish it.
+  name='pending: the default branch names another version'
+  printf '# Changelog\n\n## v1.1.1\n\n- add widget\n\n## v1.0.0\n\nThe first stable release.\n' \
+    > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+  want_text "${name}" "${errors}" 'v1.1.1' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+
+  name='pending: the default branch withdrew the version'
+  printf '# Changelog\n\n## v1.0.0\n\nThe first stable release.\n' > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+
+  name='pending: the default branch changelog holds no release'
+  printf '# Changelog\n\nEvery release of this tool, newest first.\n' > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+
+  name='pending: the default branch changelog starts with no version'
+  printf '# Changelog\n\n## Unreleased\n\n- add widget\n' > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+
+  # Not knowing is not agreement.
+  name='pending: GitHub cannot be asked for the default branch changelog'
+  printf 'unreachable\n' > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'cannot read CHANGELOG.md on the default branch' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+  mv -- "${repo}/.stub/default-changelog" "${repo}/.stub/default-changelog.aside"
 
   # Once the release is out, a later run has nothing to complain about.
   name='pending: a later commit after the release is tagged'

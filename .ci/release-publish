@@ -47,13 +47,22 @@
 #                names the release commit; its run, cancelled or failed, is
 #                run again from the Actions page.
 #
-#                When that run cannot succeed, because of a defect in the
-#                scripts at that commit for one, the version is given up:
-#                fix the defect, then merge a change that renames the
-#                changelog's top heading to the next patch version. That
-#                merge is the release commit of the new version. A tag is
-#                never moved or deleted, and none exists for the version
-#                given up.
+#                Last, the default branch is asked: `publish=true` is
+#                printed only while the CHANGELOG.md GitHub holds there
+#                still names the version at its top. A version the default
+#                branch has given up, by withdrawing its section or
+#                renaming its heading, is exit 1 from every commit, so
+#                running an old run again cannot bring it back.
+#
+#                When the release commit's run cannot succeed, because of
+#                a defect in the scripts at that commit for one, the
+#                version has no tag: the tag is the last thing a release
+#                creates. Fix the defect, merge a change that takes the
+#                version's section out of CHANGELOG.md, and propose the
+#                same version again; the merge of that pull request is its
+#                new release commit. Only when the tag exists already is
+#                the next version the way out, since a tag is never moved
+#                or deleted.
 #
 #                A full clone is needed to find the release commit.
 #              - sign --dist <dir>: sign <dir>/SHA256SUMS with cosign's
@@ -81,7 +90,8 @@
 #             runs in a shallow clone, finds a CHANGELOG.md that differs
 #             from the committed one or that no commit holds, or finds an
 #             unpublished version from a commit other than its release
-#             commit, the directory
+#             commit or one the default branch does not propose, the
+#             directory
 #             is not a complete, verifying set of release files, the
 #             changelog has no section for the version, GITHUB_REPOSITORY
 #             is not set, GitHub cannot be asked, the tag or a published
@@ -285,6 +295,27 @@ function remote_tag() {
   printf '%s\n' "${answer}"
 }
 
+# @description Print the version at the top of the changelog on the
+#              default branch, as GitHub holds it now, or nothing when
+#              that changelog names none there. GitHub is asked, and no
+#              local ref is read: the checkout of a run that is run again
+#              is as old as the run. The contents endpoint answers for the
+#              default branch when no ref is given. A read that fails is
+#              exit 1 and never an answer.
+# @arg $1 repo owner/name
+# @arg $2 file where to keep the changelog while it is read
+# @stdout the version, or nothing
+function default_branch_version() {
+  local -r repo="$1" file="$2"
+  local answer
+  if ! answer="$(gh api "repos/${repo}/contents/CHANGELOG.md" --header 'Accept: application/vnd.github.raw' 2>&1 > "${file}")"; then
+    fail "cannot read CHANGELOG.md on the default branch of ${repo}: ${answer}"
+  fi
+  # A first heading that is no version names no version; release-version
+  # says which heading it was, on stderr.
+  "${RELEASE_VERSION}" top "${file}" || true
+}
+
 # @description Print what GitHub holds under a release name: `none`, `draft`
 #              or `published`. One read answers all three: gh prints whether
 #              the release is a draft, and says "release not found" when
@@ -460,6 +491,13 @@ function pending() {
   # either: the run that should have published it did not.
   if [[ "${sha}" != "${head}" ]]; then
     fail "the release ${version} is not published, and this is not its commit: HEAD is ${head}, the release commit is ${sha}. A release is published by its own commit's run, so that its signature and attestation name the commit that is tagged: re-run the workflow run of that commit from the Actions page"
+  fi
+  # A run can be run again long after its push. What it would publish must
+  # still be what the default branch proposes.
+  local proposed
+  proposed="$(default_branch_version "${repo}" "${work}/default-CHANGELOG.md")" || exit 1
+  if [[ "${proposed}" != "${version}" ]]; then
+    fail "the default branch no longer proposes ${version}: its CHANGELOG.md names ${proposed:-no version} at its top. The version was given up there, and this run does not publish it"
   fi
   ci::log "${version} has no tag and no published release (GitHub holds: ${state}); it is to be published from ${sha}"
   printf 'publish=true\nversion=%s\nsha=%s\n' "${version}" "${sha}"

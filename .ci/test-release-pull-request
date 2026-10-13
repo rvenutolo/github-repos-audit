@@ -671,6 +671,17 @@ function test_mid_publish() {
   want_log "${name}" 'release v1.1.0 is being published' || rc=1
   want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
 
+  # A version whose release could not be made, and which has no tag, is
+  # given up by taking its section out of the changelog. The same version
+  # can then be proposed again, by hand or as what the commits call for.
+  cp -- "${work}/skeleton.md" "${repo}/CHANGELOG.md"
+  run_script "${repo}" --version v1.1.0
+  want_status 'a withdrawn version proposed again by hand' 0 || rc=1
+  want_call 'a withdrawn version proposed again by hand' '--field headline=chore(release): v1.1.0' || rc=1
+  run_script "${repo}"
+  want_status 'a withdrawn version proposed again' 0 || rc=1
+  want_call 'a withdrawn version proposed again' '--field headline=chore(release): v1.1.0' || rc=1
+
   # A first heading that is not a version is a failure, and nothing is
   # written over it.
   printf '# Changelog\n\n## Unreleased\n\n- add widget\n' > "${repo}/CHANGELOG.md"
