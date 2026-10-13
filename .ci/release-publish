@@ -8,8 +8,8 @@
 #              the tag is the last thing `release` creates. Everything
 #              before it is a draft release, which has no tag and can be
 #              deleted: the files are uploaded to the draft, the draft is
-#              read back and held to the full list of assets, and only then
-#              is it published. Publishing is what creates the tag, at the
+#              read back and every asset held to the SHA-256 of the local
+#              file it was uploaded from, and only then is it published. Publishing is what creates the tag, at the
 #              commit the draft targets. A run that fails before that leaves
 #              at most a draft, which the next run replaces.
 #
@@ -53,8 +53,8 @@
 #             is not a complete, verifying set of release files, the
 #             changelog has no section for the version, GITHUB_REPOSITORY
 #             is not set, GitHub cannot be asked, the tag or a published
-#             release of that name exists, the draft does not list every
-#             asset, or
+#             release of that name exists, the draft does not hold exactly
+#             the files as they are on disk, or
 #             the tag is not at the commit after the publish. Only the last
 #             of those leaves something that cannot be taken back.
 # @exitcode 2 a usage error: an unknown subcommand or argument, a missing
@@ -92,6 +92,13 @@ readonly SUMS='SHA256SUMS'
 readonly BUNDLE='SHA256SUMS.sigstore.json'
 # Every asset of a release.
 readonly -a ASSETS=("${CHECKSUMMED[@]}" "${SUMS}" "${BUNDLE}")
+
+# What is read from each asset of the draft: the digest GitHub computed
+# over the bytes it stored, and the name, as one line in the layout of
+# SHA256SUMS. Only assets GitHub has finished storing are counted. An asset
+# with no digest gets a word no digest equals, so it can never pass for
+# verified.
+readonly ASSET_FILTER='.assets[] | select(.state == "uploaded") | "\(.digest // "sha256:unknown")  \(.name)"'
 
 # How many drafts of one name are deleted before giving up. One is the
 # expected number; the bound only keeps a GitHub that goes on answering
@@ -239,6 +246,34 @@ function check_dist() {
   if ! report="$(cd "${dir}" && sha256sum --check --strict "${SUMS}" 2>&1)"; then
     fail "the files in ${dir} do not match ${SUMS}: ${report//$'\n'/; }"
   fi
+}
+
+# @description Print one line per asset, `sha256:<digest>  <name>`, for the
+#              files in a directory: what GitHub must say of the draft once
+#              they are uploaded.
+# @arg $1 dir
+# @stdout one line per asset, in ASSETS order
+function local_digests() {
+  local sums line
+  sums="$(cd "$1" && sha256sum -- "${ASSETS[@]}")"
+  while IFS= read -r line; do
+    printf 'sha256:%s\n' "${line}"
+  done <<< "${sums}"
+}
+
+# @description Print the lines of one text that are not lines of another,
+#              joined with `, `.
+# @arg $1 text
+# @arg $2 other
+# @stdout the lines only the first text has, or nothing
+function lines_only_in() {
+  local line only=''
+  while IFS= read -r line; do
+    if [[ -n "${line}" && $'\n'"$2"$'\n' != *$'\n'"${line}"$'\n'* ]]; then
+      only+="${only:+, }${line}"
+    fi
+  done <<< "$1"
+  printf '%s\n' "${only}"
 }
 
 # @description Write the release's notes: the version's changelog section,
@@ -404,6 +439,8 @@ function release() {
   work="$(mktemp --directory)"
   local -r notes="${work}/notes.md"
   write_notes "${repo}" "${version}" "${sha}" "${notes}"
+  local want
+  want="$(local_digests "${dist}")"
 
   # Everything above reads the local machine only. From here GitHub is
   # asked, and the tag comes first. Publishing a draft creates the tag only
@@ -453,17 +490,18 @@ function release() {
     fail "could not create the draft release ${version}; no tag was created, and a draft left behind is replaced by the next run"
   fi
 
-  # The draft is read back before anything permanent happens. Only assets
-  # GitHub has finished storing count.
-  local uploaded want
-  if ! uploaded="$(gh release view "${version}" --repo "${repo}" --json assets \
-    --jq '.assets[] | select(.state == "uploaded") | .name')"; then
+  # The draft is read back before anything permanent happens, and held to
+  # the bytes on disk, not to a list of names: an upload that was cut short
+  # or stored wrong has the right name too.
+  local uploaded
+  if ! uploaded="$(gh release view "${version}" --repo "${repo}" --json assets --jq "${ASSET_FILTER}")"; then
     fail "could not read the draft release ${version} back; it is left as a draft, with no tag"
   fi
-  uploaded="$(printf '%s\n' "${uploaded}" | LC_ALL=C sort)"
-  want="$(printf '%s\n' "${ASSETS[@]}" | LC_ALL=C sort)"
-  if [[ "${uploaded}" != "${want}" ]]; then
-    fail "the draft release ${version} holds ${uploaded//$'\n'/, }; it must hold exactly ${want//$'\n'/, }. It is left as a draft, with no tag, to be looked at"
+  local absent stray
+  absent="$(lines_only_in "${want}" "${uploaded}")"
+  stray="$(lines_only_in "${uploaded}" "${want}")"
+  if [[ -n "${absent}" || -n "${stray}" ]]; then
+    fail "the draft release ${version} does not hold the files in ${dist} as they are on disk. Not in the draft: ${absent:-nothing}. In the draft and not on disk: ${stray:-nothing}. It is left as a draft, with no tag, to be looked at"
   fi
 
   # The one step that cannot be taken back: publishing the draft creates

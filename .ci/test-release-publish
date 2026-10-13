@@ -113,8 +113,8 @@ EOF
   if [[ -n "$1" ]]; then
     git -C "${repo}" tag "$1"
   fi
-  write_stubs "${repo}/.stub"
   write_dist "${repo}/dist"
+  write_stubs "${repo}/.stub"
   printf '%s\n' "${repo}"
 }
 
@@ -141,7 +141,8 @@ function write_dist() {
 #                that name exists, absent when there is none, anything else
 #                for a GitHub that cannot be asked
 #              - `assets.json`: what `--json assets` prints for the draft;
-#                starts as all eight assets, uploaded
+#                starts as all eight assets, uploaded, each with the digest
+#                of the file in the dist beside the directory
 #              - `remote-tag`: what a tag of that name points at before
 #                anything is published; absent when there is no such tag,
 #                `unreachable` for a GitHub that cannot be asked
@@ -161,9 +162,10 @@ function write_stubs() {
   mkdir --parents "${dir}/bin"
   : > "${dir}/calls.log"
   : > "${dir}/cosign.log"
-  local name assets=''
+  local name digest assets=''
   for name in "${ASSETS[@]}"; do
-    assets+="${assets:+,}{\"name\":\"${name}\",\"state\":\"uploaded\"}"
+    digest="$(sha256sum < "${dir}/../dist/${name}")"
+    assets+="${assets:+,}{\"name\":\"${name}\",\"state\":\"uploaded\",\"digest\":\"sha256:${digest%% *}\"}"
   done
   printf '{"assets":[%s]}\n' "${assets}" > "${dir}/assets.json"
   cat > "${dir}/bin/gh" << STUB
@@ -633,11 +635,45 @@ function test_draft_is_incomplete() {
 
   name='release: the draft holds an asset nobody uploaded'
   repo="$(make_repo '')"
-  jq --compact-output '.assets += [{"name":"stray","state":"uploaded"}]' \
+  jq --compact-output '.assets += [{"name":"stray","state":"uploaded","digest":"sha256:00"}]' \
     "${repo}/.stub/assets.json" > "${repo}/.stub/assets.long.json"
   cp -- "${repo}/.stub/assets.long.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+
+  # The right name over the wrong bytes: an upload that was cut short.
+  name='release: an asset of the draft has another digest'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets |= map(if .name == "audit-linux-arm64" then .digest = "sha256:0000" else . end)' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.wrong.json"
+  cp -- "${repo}/.stub/assets.wrong.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'sha256:0000  audit-linux-arm64' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+  want_no_call "${name}" 'release edit' || rc=1
+
+  # Not knowing what GitHub stored is not the same as it being right.
+  name='release: an asset of the draft has no digest'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets |= map(if .name == "SHA256SUMS" then .digest = null else . end)' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.null.json"
+  cp -- "${repo}/.stub/assets.null.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'sha256:unknown  SHA256SUMS' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+  want_no_call "${name}" 'release edit' || rc=1
+
+  name='release: an asset of the draft lacks the digest field'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets |= map(if .name == "audit.cdx.json" then del(.digest) else . end)' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.bare.json"
+  cp -- "${repo}/.stub/assets.bare.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'sha256:unknown  audit.cdx.json' || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
 
   # The publish went through and the tag is not where it was asked to be:
@@ -754,7 +790,10 @@ function main() {
     paths+=" dist/${name}"
   done
   write_create="release create ${VERSION} --repo gh-owner/tool --draft --target ${SHA} --title ${VERSION} --notes-file NOTES${paths}"
-  read_assets="release view ${VERSION} --repo gh-owner/tool --json assets --jq .assets[] | select(.state == \"uploaded\") | .name"
+  # The script's filter, spelled out again: what it asks of GitHub is part
+  # of what is held here.
+  read_assets="release view ${VERSION} --repo gh-owner/tool --json assets --jq "
+  read_assets+='.assets[] | select(.state == "uploaded") | "\(.digest // "sha256:unknown")  \(.name)"'
 
   test_pending || rc=1
   test_sign || rc=1
