@@ -49,6 +49,10 @@ readonly -a ASSETS=(
   SHA256SUMS.sigstore.json
 )
 
+# The repository the script is told to publish to; a case empties it to run
+# the script without one.
+repository='gh-owner/tool'
+
 # Every gh call the script may make, as the stub logs it. NOTES stands for
 # the notes file's path, which is the script's own temporary file; run_script
 # puts the word in its place.
@@ -138,13 +142,17 @@ function write_dist() {
 #                for a GitHub that cannot be asked
 #              - `assets.json`: what `--json assets` prints for the draft;
 #                starts as all eight assets, uploaded
+#              - `remote-tag`: what a tag of that name points at before
+#                anything is published; absent when there is no such tag,
+#                `unreachable` for a GitHub that cannot be asked
 #              - `tag-sha`: the commit the tag points at once the release is
-#                published; absent when the tag does not exist
+#                published; absent when publishing creates no tag
 #
 #              A write only logs, and leaves a marker: `deleted` after a
 #              delete, which is what makes the next state read say there is
-#              no release, and `notes.md`, a copy of the notes file, after a
-#              create. cosign logs its arguments and writes a marker at the
+#              no release, `notes.md`, a copy of the notes file, after a
+#              create, and `published` after the edit that publishes, which
+#              is what makes the tag read answer with `tag-sha`. cosign logs its arguments and writes a marker at the
 #              bundle path. Nothing here runs a command with an effect
 #              outside the directory or the dist beside it.
 # @arg $1 dir directory to put the stand-ins and their files in
@@ -191,13 +199,22 @@ case "\$*" in
     # so which assets it counts is the script's doing and not the stub's.
     jq --raw-output "\${!#}" '${dir}/assets.json'
     ;;
-  '${WRITE_EDIT}') : ;;
+  '${WRITE_EDIT}') : > '${dir}/published' ;;
   '${READ_TAG}')
-    if [[ ! -e '${dir}/tag-sha' ]]; then
-      echo 'HTTP 404: Not Found' >&2
+    if [[ -e '${dir}/remote-tag' ]]; then
+      if [[ "\$(< '${dir}/remote-tag')" == 'unreachable' ]]; then
+        echo 'gh: Bad Gateway (HTTP 502)' >&2
+        exit 1
+      fi
+      cat '${dir}/remote-tag'
+    elif [[ -e '${dir}/published' && -e '${dir}/tag-sha' ]]; then
+      cat '${dir}/tag-sha'
+    else
+      # As gh answers a 404: the body on stdout, the status on stderr.
+      echo '{"message":"Not Found","status":"404"}'
+      echo 'gh: Not Found (HTTP 404)' >&2
       exit 1
     fi
-    cat '${dir}/tag-sha'
     ;;
   *)
     printf 'stub gh: unexpected call: %s\n' "\$*" >&2
@@ -246,7 +263,7 @@ function run_script() {
   : > "${repo}/.stub/notes.md"
   (
     cd "${repo}"
-    PATH="${repo}/.stub/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/tool' \
+    PATH="${repo}/.stub/bin:${PATH}" GITHUB_REPOSITORY="${repository}" \
       "${SCRIPT}" "$@" > "${repo}/.stub/stdout" 2> "${repo}/.stub/stderr"
   ) || status=$?
   calls="$(< "${repo}/.stub/calls.log")"
@@ -356,7 +373,7 @@ function test_pending() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}" || rc=1
-  want_only_calls "${name}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
 
   # A draft is a publish that stopped half way: the next run replaces it.
   name='pending: an untagged version with a draft release'
@@ -364,7 +381,7 @@ function test_pending() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}" || rc=1
-  want_only_calls "${name}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
 
   # The tag is fetched after the release is published, so a published
   # release can be all there is to see.
@@ -373,15 +390,46 @@ function test_pending() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
-  want_only_calls "${name}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
 
   # Not knowing is not "nothing to publish": the run fails and says nothing.
-  name='pending: GitHub cannot be asked'
+  name='pending: GitHub cannot be asked about the release'
   printf 'unreachable\n' > "${repo}/.stub/release-state"
   run_script "${repo}" pending
   want_status "${name}" 1 || rc=1
   want_same "${name}" 'the output' "${output}" '' || rc=1
-  want_only_calls "${name}" "${READ_STATE}" || rc=1
+  want_text "${name}" "${errors}" "cannot tell whether a release ${VERSION} exists" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+
+  # A checkout need not hold the tags. One that exists on GitHub with no
+  # release is still a name that is taken: publishing would attach the
+  # release to it, wherever it points.
+  name='pending: the tag exists on GitHub only, with no release'
+  repo="$(make_repo '')"
+  printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" "the tag ${VERSION} exists on GitHub" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  name='pending: GitHub cannot be asked about the tag'
+  printf 'unreachable\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "cannot tell whether the tag ${VERSION} exists" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  name='pending: no repository to ask about'
+  repo="$(make_repo '')"
+  repository=''
+  run_script "${repo}" pending
+  repository='gh-owner/tool'
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'GITHUB_REPOSITORY is not set' || rc=1
+  want_only_calls "${name}" || rc=1
 
   name='pending: the tag exists'
   repo="$(make_repo "${VERSION}")"
@@ -452,7 +500,7 @@ function test_release() {
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 0 || rc=1
   # write_create holds --draft, --target and all eight paths.
-  want_only_calls "${name}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" "${READ_TAG}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" "${READ_TAG}" || rc=1
 
   # The ordering invariant, said once more on its own: the draft, then the
   # look at its assets, then the publish. Publishing is what creates the tag.
@@ -490,7 +538,7 @@ function test_existing_release() {
   want_status "${name}" 0 || rc=1
   # The state is read again after the delete: drafts are not unique by
   # name, and the one published must be the one just uploaded.
-  want_only_calls "${name}" "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" \
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" \
     "${write_create}" "${read_assets}" "${WRITE_EDIT}" "${READ_TAG}" || rc=1
   local delete create
   delete="$(line_of "release delete ${VERSION} ")"
@@ -505,17 +553,57 @@ function test_existing_release() {
   printf 'published\n' > "${repo}/.stub/release-state"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_only_calls "${name}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
   want_no_call "${name}" 'release delete' || rc=1
   want_no_call "${name}" 'release create' || rc=1
   want_no_call "${name}" 'release edit' || rc=1
 
-  name='release: GitHub cannot be asked'
+  name='release: GitHub cannot be asked about the release'
   repo="$(make_repo '')"
   printf 'unreachable\n' > "${repo}/.stub/release-state"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_only_calls "${name}" "${READ_STATE}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+  return "${rc}"
+}
+
+# A tag that exists on GitHub is never published onto: GitHub would attach
+# the release to it and ignore the commit asked for. It is found out before
+# the first write, the delete of an old draft included.
+function test_existing_tag() {
+  local rc=0 repo
+  local name='release: the tag exists on GitHub with no release'
+  repo="$(make_repo '')"
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "the tag ${VERSION} exists on GitHub, at bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  name='release: GitHub cannot be asked about the tag'
+  printf 'unreachable\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "cannot tell whether the tag ${VERSION} exists" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  # An answer that is no commit id is not "no tag" either.
+  name='release: the tag read answers with something else'
+  printf 'null\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "cannot tell what the tag ${VERSION} points at" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  name='release: no repository to publish to'
+  repo="$(make_repo '')"
+  repository=''
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  repository='gh-owner/tool'
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'GITHUB_REPOSITORY is not set' || rc=1
+  want_only_calls "${name}" || rc=1
   return "${rc}"
 }
 
@@ -530,7 +618,7 @@ function test_draft_is_incomplete() {
   cp -- "${repo}/.stub/assets.short.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_only_calls "${name}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
   want_no_call "${name}" 'release edit' || rc=1
 
   # Listed, but GitHub has not finished storing it.
@@ -541,7 +629,7 @@ function test_draft_is_incomplete() {
   cp -- "${repo}/.stub/assets.starter.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_only_calls "${name}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
 
   name='release: the draft holds an asset nobody uploaded'
   repo="$(make_repo '')"
@@ -550,7 +638,7 @@ function test_draft_is_incomplete() {
   cp -- "${repo}/.stub/assets.long.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_only_calls "${name}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
 
   # The publish went through and the tag is not where it was asked to be:
   # nothing can undo that, so it is at least a failure.
@@ -672,6 +760,7 @@ function main() {
   test_sign || rc=1
   test_release || rc=1
   test_existing_release || rc=1
+  test_existing_tag || rc=1
   test_draft_is_incomplete || rc=1
   test_bad_dist || rc=1
   test_usage || rc=1

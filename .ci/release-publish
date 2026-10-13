@@ -22,8 +22,9 @@
 #
 #              - pending: print `publish=true` and `version=vX.Y.Z`, in the
 #                syntax of $GITHUB_OUTPUT, when the changelog's newest
-#                version has no local tag and no published release on
-#                GitHub; print `publish=false` otherwise. A draft release
+#                version has no tag, locally or on GitHub, and no
+#                published release on GitHub; print `publish=false`
+#                otherwise. A draft release
 #                does not count: it is what a failed run leaves behind. A
 #                first heading that is not a version is a warning and
 #                `publish=false`, so a hand edit to the changelog does not
@@ -36,19 +37,24 @@
 #                publish <dir> as the release <version>, tagged at <commit>.
 #                <dir> must hold what .ci/build-release and `sign` wrote,
 #                with checksums that verify. A draft of that name is
-#                replaced; a published release of that name is refused.
+#                replaced; a published release of that name is refused, and
+#                so is a tag of that name that exists on GitHub already:
+#                publishing would attach the release to that tag, wherever
+#                it points, and ignore <commit>.
 #
 #              `release` decides everything it can before its first write:
 #              a usage error, a directory that fails its checks, a changelog
-#              with no section for the version and a published release all
-#              leave GitHub as it was.
+#              with no section for the version, a tag that exists and a
+#              published release all leave GitHub as it was.
 # @arg $1 subcommand pending, sign or release
 # @arg $@ the subcommand's options
 # @exitcode 0 done; for pending, the answer was printed
 # @exitcode 1 something went wrong, or the release is refused: the directory
 #             is not a complete, verifying set of release files, the
-#             changelog has no section for the version, a published release
-#             of that name exists, the draft does not list every asset, or
+#             changelog has no section for the version, GITHUB_REPOSITORY
+#             is not set, GitHub cannot be asked, the tag or a published
+#             release of that name exists, the draft does not list every
+#             asset, or
 #             the tag is not at the commit after the publish. Only the last
 #             of those leaves something that cannot be taken back.
 # @exitcode 2 a usage error: an unknown subcommand or argument, a missing
@@ -133,6 +139,41 @@ function changelog_path() {
     fail "no CHANGELOG.md at the top of ${top}"
   fi
   printf '%s\n' "${top}/CHANGELOG.md"
+}
+
+# @description Print the repository on GitHub, owner/name, or exit 1 when
+#              the environment does not name one.
+# @stdout owner/name
+function repository() {
+  if [[ -z "${GITHUB_REPOSITORY:-}" ]]; then
+    fail 'GITHUB_REPOSITORY is not set; it names the repository to publish to, as owner/name'
+  fi
+  printf '%s\n' "${GITHUB_REPOSITORY}"
+}
+
+# @description Print what a tag on GitHub points at, or nothing when GitHub
+#              has no tag of that name. The singular `git/ref` endpoint
+#              matches the one name exactly; `git/refs` would also answer
+#              for every tag the name is a prefix of. A 404 is the answer
+#              "no such tag". Any other failure is not an answer, and is
+#              never taken for "no such tag".
+# @arg $1 repo owner/name
+# @arg $2 version
+# @stdout the object the tag points at, or nothing
+function remote_tag() {
+  local -r repo="$1" version="$2"
+  local answer status=0
+  answer="$(gh api "repos/${repo}/git/ref/tags/${version}" --jq '.object.sha' 2>&1)" || status=$?
+  if ((status != 0)); then
+    if [[ "${answer}" == *'(HTTP 404)'* ]]; then
+      return 0
+    fi
+    fail "cannot tell whether the tag ${version} exists on GitHub: ${answer}"
+  fi
+  if [[ ! "${answer}" =~ ^[0-9a-f]{40}$ ]]; then
+    fail "cannot tell what the tag ${version} points at on GitHub: ${answer}"
+  fi
+  printf '%s\n' "${answer}"
 }
 
 # @description Print what GitHub holds under a release name: `none`, `draft`
@@ -251,13 +292,21 @@ function pending() {
     printf 'publish=false\n'
     return 0
   fi
-  # The checkout may not have fetched a tag that a publish created moments
-  # ago, so GitHub is asked as well. A published release always has its tag.
-  local -r repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}"
-  local state
+  # The checkout may hold no tags at all, or not the one a publish created
+  # moments ago, so GitHub is asked as well. A tag there settles it, with a
+  # release or without: publishing onto a tag that exists attaches the
+  # release to it, wherever it points.
+  local repo tagged state
+  repo="$(repository)" || exit 1
+  tagged="$(remote_tag "${repo}" "${version}")" || exit 1
+  if [[ -n "${tagged}" ]]; then
+    ci::log "the tag ${version} exists on GitHub, at ${tagged}; nothing to publish"
+    printf 'publish=false\n'
+    return 0
+  fi
   state="$(release_state "${repo}" "${version}")" || exit 1
   if [[ "${state}" == 'published' ]]; then
-    ci::log "${version} is published; nothing to publish"
+    ci::log "a release ${version} is published on GitHub; nothing to publish"
     printf 'publish=false\n'
     return 0
   fi
@@ -348,7 +397,8 @@ function release() {
   if [[ ! "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
     usage_error "--sha $(printf '%q' "${sha}") is not a full commit id"
   fi
-  local -r repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}"
+  local repo
+  repo="$(repository)" || exit 1
 
   check_dist "${dist}"
   work="$(mktemp --directory)"
@@ -356,7 +406,17 @@ function release() {
   write_notes "${repo}" "${version}" "${sha}" "${notes}"
 
   # Everything above reads the local machine only. From here GitHub is
-  # asked, and a draft is the only thing deleted: it has no tag, so nothing
+  # asked, and the tag comes first. Publishing a draft creates the tag only
+  # when there is none: GitHub attaches the release to a tag that exists
+  # and ignores the commit the draft targets. The read after the publish
+  # would notice, when nothing can be done about it any more.
+  local existing
+  existing="$(remote_tag "${repo}" "${version}")" || exit 1
+  if [[ -n "${existing}" ]]; then
+    fail "the tag ${version} exists on GitHub, at ${existing}; a release is never published onto a tag that is already there"
+  fi
+
+  # A draft is the only thing deleted: it has no tag, so nothing
   # permanent goes with it. The state is read again after each delete,
   # because draft releases are not unique by name: with a second one left
   # behind, the draft read back and published below could be that one and
@@ -414,8 +474,9 @@ function release() {
   fi
 
   local tagged
-  if ! tagged="$(gh api "repos/${repo}/git/ref/tags/${version}" --jq '.object.sha')"; then
-    fail "the release ${version} is published, but its tag cannot be read; it must point at ${sha}"
+  tagged="$(remote_tag "${repo}" "${version}")" || exit 1
+  if [[ -z "${tagged}" ]]; then
+    fail "the release ${version} is published, but GitHub has no tag ${version}; it must point at ${sha}"
   fi
   if [[ "${tagged}" != "${sha}" ]]; then
     fail "the release ${version} is published and its tag points at ${tagged}, not at ${sha}; the tag cannot be moved, so this needs a person"
