@@ -49,6 +49,13 @@ trap 'printf "\033[0;31m[%s] ERROR: line %s (exit %s): %s\033[0m\n" "${0##*/}" "
 # shellHook exports a GOCACHE under ~/.cache/github-repos-audit/go-build that
 # is named after this devShell's toolchain. No GO* variable is kept, so a
 # GOCACHE from the caller never replaces it.
+#
+# ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN are how a
+# job with `id-token: write` asks GitHub for its OIDC token. cosign's keyless
+# signing in .ci/release-publish exchanges that token for a certificate naming
+# the workflow; without the pair it finds no identity and falls back to a
+# browser login nobody is there to complete. A job without that permission
+# has neither variable set.
 readonly KEEP_VARS=(
   HOME
   TERM
@@ -73,6 +80,8 @@ readonly KEEP_VARS=(
   SMOKE_PRIVATE_REPO
   RUNNER_OS
   RUNNER_TEMP
+  ACTIONS_ID_TOKEN_REQUEST_URL
+  ACTIONS_ID_TOKEN_REQUEST_TOKEN
 )
 
 function main() {

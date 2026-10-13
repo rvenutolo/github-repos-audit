@@ -23,8 +23,11 @@ cyclonedx-gomod
 # .ci/release-version computes the next version and its changelog section
 # with it
 git-cliff
+# .ci/release-publish signs a release's SHA256SUMS with `cosign sign-blob`
+cosign
 # .ci/check-vulns reads govulncheck's JSON report with it; the stub gh of
-# .ci/test-release-pull-request runs the script's own --jq filter with it
+# .ci/test-release-pull-request and of .ci/test-release-publish runs the
+# script's own --jq filter with it
 jq
 # .ci/run-lint-checks (verify) and .ci/run-fixers (write); treefmt drives it too
 shfmt
@@ -66,11 +69,14 @@ deadnix
 renovate-config-validator
 # every script uses git: most derive the repo root via `git rev-parse`;
 # check-account-data runs git grep and git rev-list; .ci/release-version
-# reads tags and merge commits and .ci/release-pull-request resolves HEAD
+# reads tags and merge commits, .ci/release-pull-request resolves HEAD and
+# .ci/release-publish looks for a release's tag
 git
 # internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset;
 # every .ci/*-pull-request script, .ci/release-pull-request included, commits
-# through `gh api` and opens or updates its pull request with `gh pr`
+# through `gh api` and opens or updates its pull request with `gh pr`;
+# .ci/release-publish drafts, checks and publishes a release with
+# `gh release` and reads its tag with `gh api`
 gh
 # the task runner .justfile documents; .ci/run-lint-checks runs `just --fmt`
 # and .ci/check-readme-recipes runs `just --summary`
@@ -85,7 +91,8 @@ nix
 # .ci/run-lint-checks copies the tracked tree for gitleaks with `cp --parents`
 cp
 # .ci/run-lint-checks creates the gitleaks scan directory with it;
-# .ci/release-pull-request stages the changelog and pull request body in one
+# .ci/release-pull-request stages the changelog and pull request body in
+# one, .ci/release-publish the release notes
 mktemp
 # .ci/refresh-pull-request, .ci/fuzz-pull-request and
 # .ci/release-pull-request encode the files they commit for
@@ -96,8 +103,13 @@ xargs
 # .ci/check-coverage, .ci/check-patch-coverage and .ci/check-coverage-drop
 # parse profiles, diffs and baselines with it; POSIX awk only, no gawk-isms
 awk
-# .ci/check-patch-coverage orders its findings by file, then line
+# .ci/check-patch-coverage orders its findings by file, then line;
+# .ci/build-release orders SHA256SUMS with it and .ci/release-publish the
+# file names it compares
 sort
+# .ci/build-release writes SHA256SUMS with it; .ci/release-publish holds the
+# files to that list before it uploads them
+sha256sum
 # .ci/check-patch-coverage drops its sort keys before printing
 cut
 # .ci/check-patch-coverage turns git grep -z's NUL separators into bytes awk
