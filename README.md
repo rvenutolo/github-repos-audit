@@ -360,16 +360,23 @@ cosign verify-blob \
 ```
 
 This proves `SHA256SUMS` was signed by this repository's release workflow
-running on `main`: the identity in the command is that workflow on
-`refs/heads/main`, and the issuer is GitHub's OIDC token service. There is no
-long-lived signing key to steal.
+running on `main`: the certificate identity in the command pins that workflow
+on `refs/heads/main`, so a signature made by any other workflow, or by this
+one on another branch, fails. The issuer is GitHub's OIDC token service.
+There is no long-lived signing key to steal.
 
 ```sh
-gh attestation verify audit-linux-amd64 --repo rvenutolo/github-repos-audit
+gh attestation verify audit-linux-amd64 \
+  --repo rvenutolo/github-repos-audit \
+  --signer-workflow rvenutolo/github-repos-audit/.github/workflows/release.yml \
+  --source-ref refs/heads/main
 ```
 
 This proves which workflow run, on which commit, built the binary (its build
-provenance). Run it for each binary you use.
+provenance). `--signer-workflow` and `--source-ref` pin the same workflow on
+`main` that the certificate identity does: the repository also holds
+attestations for trial builds made from other branches, and without the two
+flags one of those would pass. Run it for each binary you use.
 
 ## Versioning
 
@@ -426,9 +433,12 @@ computed from the Conventional Commit types merged since the last tag
 (breaking is major, `feat` minor, `fix`, `perf` and `revert` patch), or given
 by hand through the workflow's `version` input. Merging that pull request
 makes the workflow build the binaries, sign `SHA256SUMS`, attest each
-binary's provenance and publish the release, which creates the tag. A manual
+binary's provenance and publish the release, which creates the tag on that
+merge commit. Only the workflow run of that commit publishes it, because the
+signature and the attestation name the commit their run started from; if
+that run is cancelled or fails, re-run it from the Actions page. A manual
 run with `dry-run` builds without tagging or releasing; adding `sign` signs
-the dry run's checksums too.
+the dry run's checksums and attests its binaries too.
 
 Coverage is held three ways, all inside `just check`. Each package must stay
 at or above its figure in `.ci/coverage-baseline.txt`. Every Go block a

@@ -221,9 +221,11 @@ function main() {
     fail "HEAD is ${head}, but ${base_branch} is at ${base_sha}; run from a checkout of ${base_branch}'s head"
   fi
 
-  # A version given by hand is judged before anything can end the run
-  # early: one that can never be released is an error to report, not
-  # something to pass over because there happens to be nothing to do.
+  # A version given by hand is judged before the run can end for having
+  # nothing to do: one that can never be released is an error to report,
+  # not something to pass over. Only a stale checkout under --skip-if-stale
+  # ends the run sooner, above: nothing is judged on a checkout the
+  # default branch has left behind.
   # Whether or not HEAD reaches the tag: a tag name is taken once it is
   # used at all, and last-tag only sees the tags HEAD reaches.
   if [[ -n "${explicit}" ]]; then
