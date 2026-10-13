@@ -46,10 +46,9 @@
 # @arg $@ the subcommand's arguments
 # @exitcode 0 success; for greater, a is the higher version
 # @exitcode 1 a runtime failure: not a repository, a shallow clone, no
-#             cliff.toml, an
-#             unreadable file, a first heading that is not a version, a
-#             version with no section; for greater, a is not the higher
-#             version
+#             cliff.toml, an unreadable file, a first heading that is not
+#             a version, a version with no section; for greater, a is not
+#             the higher version
 # @exitcode 2 a usage error: an unknown subcommand, the wrong number of
 #             arguments, or a version that is not vMAJOR.MINOR.PATCH
 

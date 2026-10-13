@@ -1,5 +1,4 @@
 # Changelog
 
-Every release of this tool, newest first. Versions follow the rules in the
-README's Versioning section. Each section is generated from the Conventional
-Commit subjects merged since the release before it.
+Every release of this tool, newest first. Sections list the changes merged
+since the release before them.

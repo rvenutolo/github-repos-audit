@@ -75,9 +75,9 @@ function commit() {
 
 # @description Create a throwaway repository the script can run in: this
 #              repository's cliff.toml and formatter configuration, the
-#              changelog skeleton, one commit, and optionally a tag on it. The three
-#              files are copied in untracked, because the script reads them
-#              from the working tree. Signing is turned off locally, for tags
+#              changelog skeleton, one commit, and optionally a tag on it.
+#              Those files are copied in untracked, because the script reads
+#              them from the working tree. Signing is turned off locally, for tags
 #              as well as commits, because the host may sign both by default
 #              and no key exists here.
 #
