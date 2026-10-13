@@ -46,7 +46,8 @@ on:
         description: >-
           With dry-run, also sign the checksum file and attest the binaries.
           Each such run writes a public transparency-log entry that cannot be
-          removed. Ignored without dry-run.
+          removed. For a trial from a branch: on the default branch a run
+          with dry-run and sign does nothing. Ignored without dry-run.
         type: boolean
         default: false
 
@@ -66,7 +67,9 @@ concurrency:
   # a push to the default branch lands in the release group, as it must.
   #
   # One pending run per group also means a queued push run is dropped when
-  # a newer push arrives. propose does not mind: it works from the default
+  # a newer push arrives, or when somebody starts a run by hand on the
+  # default branch that is not a dry run: that run shares the group and
+  # takes the waiting place like a push does. propose does not mind: it works from the default
   # branch's head, whichever run gets there. publish does: a release is
   # published by the run of its own commit, so a dropped run of that commit
   # leaves the release unpublished, the next run's publish job fails saying
@@ -254,13 +257,15 @@ jobs:
       # version up since, which is what a run started again long after its
       # push can meet.
       #
-      # A run is never failed merely for coming early. Every run that holds
-      # this job is a push to the default branch, all of them are in the
-      # release concurrency group, and the group lets one run at a time
-      # through with cancel-in-progress off. Runs enter the group in the
-      # order of their pushes, so when this step runs, the run of every
-      # earlier push has ended: it tagged its release, failed, or was
-      # dropped while it waited.
+      # Runs in the release concurrency group never overlap: every run
+      # that holds this job is in it, and the group lets one run through
+      # at a time with cancel-in-progress off. So no run asks while
+      # another is half way through a release. GitHub does not promise
+      # that runs go through in the order of their pushes, though. When a
+      # later push's run goes first while the release commit's run still
+      # waits, the later run fails here with the message that says to run
+      # the release commit's run again, and that run then publishes as
+      # usual: one run of the wrong colour, never a wrong release.
       - name: Ask whether a release is waiting
         id: pending
         env:
@@ -271,7 +276,11 @@ jobs:
         if: steps.pending.outputs.publish == 'true'
         env:
           VERSION: ${{ steps.pending.outputs.version }}
-        run: ./.ci/in-devshell ./.ci/build-release --version "${VERSION}" --out dist
+        # The build has no use for the OIDC token request, so it cannot
+        # reach it: only the signing steps are to hold an identity.
+        run: >-
+          env --unset=ACTIONS_ID_TOKEN_REQUEST_URL --unset=ACTIONS_ID_TOKEN_REQUEST_TOKEN
+          ./.ci/in-devshell ./.ci/build-release --version "${VERSION}" --out dist
 
       # Signs, then verifies what it signed against this run's workflow and
       # ref, which the runner names in GITHUB_WORKFLOW_REF: a signature
@@ -353,13 +362,20 @@ jobs:
 
   dry-run-signed:
     name: dry-run-signed
-    # The dry run plus the two steps of a release that need an identity. It
-    # runs from any branch, because the signing is tried from a branch
-    # before the change that needs it is merged. It creates no tag, no
-    # release and no pull request, and has no permission to. What it does
-    # leave behind, for good, is a transparency-log entry for the signature
-    # and one for the attestation, both naming the branch it ran from.
-    if: ${{ inputs.dry-run && inputs.sign }}
+    # The dry run plus the two steps of a release that need an identity,
+    # for trying them from a branch before the change that needs them is
+    # merged. Never on the default branch: files signed and attested there
+    # carry the identity a real release has, so the placeholder build
+    # would pass every check a reader of a release is told to make. It
+    # creates no tag, no release and no pull request, and has no
+    # permission to. What it does leave behind, for good, is a
+    # transparency-log entry for the signature and one for the
+    # attestation, both naming the branch it ran from.
+    if: >-
+      ${{
+        inputs.dry-run && inputs.sign
+        && github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+      }}
     runs-on: ubuntu-latest
     # A cold Nix store plus five cross-compiled binaries and an SBOM, then
     # the signing.
@@ -413,7 +429,11 @@ jobs:
       - uses: $/.github/actions/setup
 
       - name: Build the release assets
-        run: ./.ci/in-devshell ./.ci/build-release --version v0.0.0 --out dist
+        # The build has no use for the OIDC token request, so it cannot
+        # reach it: only the signing steps are to hold an identity.
+        run: >-
+          env --unset=ACTIONS_ID_TOKEN_REQUEST_URL --unset=ACTIONS_ID_TOKEN_REQUEST_TOKEN
+          ./.ci/in-devshell ./.ci/build-release --version v0.0.0 --out dist
 
       - name: Sign the checksum file
         run: ./.ci/in-devshell ./.ci/release-publish sign --dist dist
