@@ -656,6 +656,7 @@ function test_pending_publishes_only_from_the_release_commit() {
   want_status "${name}" 1 || rc=1
   want_same "${name}" 'the output' "${output}" '' || rc=1
   want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
 
   name='pending: the default branch changelog starts with no version'
   printf '# Changelog\n\n## Unreleased\n\n- add widget\n' > "${repo}/.stub/default-changelog"
@@ -663,6 +664,7 @@ function test_pending_publishes_only_from_the_release_commit() {
   want_status "${name}" 1 || rc=1
   want_same "${name}" 'the output' "${output}" '' || rc=1
   want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
 
   # Not knowing is not agreement.
   name='pending: GitHub cannot be asked for the default branch changelog'

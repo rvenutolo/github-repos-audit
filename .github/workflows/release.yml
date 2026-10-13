@@ -70,11 +70,11 @@ concurrency:
   # One pending run per group also means a queued push run is dropped when
   # a newer push arrives, or when somebody starts a run by hand on the
   # default branch that is not a dry run: that run shares the group and
-  # takes the waiting place like a push does. propose does not mind: it works from the default
-  # branch's head, whichever run gets there. publish does: a release is
-  # published by the run of its own commit, so a dropped run of that commit
-  # leaves the release unpublished, the next run's publish job fails saying
-  # so, and the dropped run is run again by hand.
+  # takes the waiting place like a push does. propose does not mind: it
+  # works from the default branch's head, whichever run gets there. publish
+  # does: a release is published by the run of its own commit, so a dropped
+  # run of that commit leaves the release unpublished, the next run's
+  # publish job fails saying so, and the dropped run is run again by hand.
   group: >-
     ${{ github.workflow }}-${{
       !inputs.dry-run
