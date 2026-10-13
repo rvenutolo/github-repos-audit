@@ -71,18 +71,35 @@ function run_case() {
   }
 }
 
-# @description Assert a logged call begins with the given text.
+# @description Assert some logged call of a case begins with the given text.
+# @arg $1 name case directory under ${work}
+# @arg $2 text the prefix a call must start with
 function want_call() {
-  grep --quiet --fixed-strings -- "$2" "${work}/$1/calls.log" || {
-    ci::log "FAIL: $1: no call '$2'"
-    rc=1
-  }
+  local line
+  while IFS= read -r line; do
+    [[ "${line}" == "$2"* ]] && return 0
+  done < "${work}/$1/calls.log"
+  ci::log "FAIL: $1: no call beginning '$2'"
+  rc=1
 }
 
-# @description Assert no logged call contains the given text.
+# @description Assert no logged call of a case contains the given text.
+# @arg $1 name case directory under ${work}
+# @arg $2 text the text no call may contain
 function want_no_call() {
   if grep --quiet --fixed-strings -- "$2" "${work}/$1/calls.log"; then
     ci::log "FAIL: $1: unexpected call '$2'"
+    rc=1
+  fi
+}
+
+# @description Assert no pull request subcommand (view, edit, close, merge,
+#              reopen, ...) names the given pull request number.
+# @arg $1 name   case directory under ${work}
+# @arg $2 number the pull request that must stay untouched
+function want_untouched() {
+  if grep --quiet --extended-regexp -- "^pr [a-z-]+ $2( |\$)" "${work}/$1/calls.log"; then
+    ci::log "FAIL: $1: a pr call named #$2"
     rc=1
   fi
 }
@@ -98,18 +115,17 @@ function test_fork_pull_requests_are_never_adopted() {
 
   run_case fork-only "[${fork},${unknown}]" OPEN
   want_call fork-only 'pr list --repo gh-owner/report --head chore/refresh-audit --state open --limit 1000 '
-  want_no_call fork-only ' 8 '
+  want_untouched fork-only 8
   want_call fork-only 'pr create --repo gh-owner/report'
   want_call fork-only 'pr merge 42 --repo gh-owner/report --merge --auto'
-  want_no_call fork-only 'pr merge 7 '
+  want_untouched fork-only 7
   want_no_call fork-only 'pr merge chore/refresh-audit'
   want_no_call fork-only 'pr reopen'
 
   run_case fork-and-own "[${fork},${own}]" CLOSED
   want_call fork-and-own 'pr reopen 9 --repo gh-owner/report'
   want_call fork-and-own 'pr merge 9 --repo gh-owner/report --merge --auto'
-  want_no_call fork-and-own 'pr reopen 7 '
-  want_no_call fork-and-own 'pr merge 7 '
+  want_untouched fork-and-own 7
   want_no_call fork-and-own 'pr create'
 
   # A pull request the script opens is merged by the number it printed, never
