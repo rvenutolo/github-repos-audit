@@ -25,7 +25,8 @@ cyclonedx-gomod
 git-cliff
 # .ci/release-publish signs a release's SHA256SUMS with `cosign sign-blob`
 cosign
-# .ci/check-vulns reads govulncheck's JSON report with it; the stub gh of
+# .ci/check-vulns reads govulncheck's JSON report with it; .ci/build-release
+# writes the release version into the SBOM with it; the stub gh of
 # .ci/test-release-pull-request and of .ci/test-release-publish runs the
 # script's own --jq filter with it
 jq

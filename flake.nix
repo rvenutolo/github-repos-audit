@@ -138,7 +138,8 @@
             # PATH, because a real signature is a permanent entry in a
             # public transparency log.
             cosign
-            # jq reads govulncheck's JSON report in .ci/check-vulns.
+            # jq reads govulncheck's JSON report in .ci/check-vulns and writes
+            # the release version into the SBOM in .ci/build-release.
             jq
             # formatters (also wired into .treefmt.nix)
             shfmt

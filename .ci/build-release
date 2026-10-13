@@ -12,6 +12,8 @@
 #              The version is stamped with -X main.version, the symbol
 #              `audit --version` prints; -s -w drop the symbol table and DWARF,
 #              which nothing here reads and which would only add bytes.
+#              The SBOM names the same version as the component it
+#              describes.
 #
 #              The output directory must be absent or empty. Refusing a
 #              non-empty one, rather than overwriting, keeps a stale binary
@@ -138,6 +140,24 @@ function main() {
     cyclonedx-gomod mod -json -licenses=false -noserial -notimestamp \
       -output "${out}/audit.cdx.json" "${REPO_DIR}"
   )
+  # cyclonedx-gomod reads the main module's version from a tag on HEAD, and
+  # a release is built before its tag exists, so it leaves the version out
+  # and the SBOM would not say which release it describes. The version is
+  # written in here, before SHA256SUMS is computed over the file. Only an
+  # existing component is given a version: a document without one is not
+  # the shape this step knows, and a component made up here would describe
+  # nothing.
+  local -r sbom="${out}/audit.cdx.json"
+  # shellcheck disable=SC2016 # $version is a jq variable, not shell
+  if ! jq --arg version "${version}" '
+    if (.metadata.component | type) == "object"
+    then .metadata.component.version = $version
+    else error("no metadata.component to give a version")
+    end' "${sbom}" > "${sbom}.tmp"; then
+    printf '%s: cannot record %s in %s\n' "${0##*/}" "${version}" "${sbom}" >&2
+    exit 1
+  fi
+  mv -- "${sbom}.tmp" "${sbom}"
 
   ci::log 'writing SHA256SUMS'
   # Bare file names, so `sha256sum --check` works from inside the directory
