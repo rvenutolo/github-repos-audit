@@ -21,7 +21,7 @@
 # @option --out <dir> directory to write into; created if absent
 # @exitcode 0 every file was built and written
 # @exitcode 1 something went wrong, or --out is not empty
-# @exitcode 2 a usage error: an unknown argument, a missing value or value, or
+# @exitcode 2 a usage error: an unknown argument, a missing option or value, or
 #             a version that is not vMAJOR.MINOR.PATCH
 
 set -Eeuo pipefail
@@ -118,8 +118,8 @@ function main() {
   fi
   mkdir --parents -- "${out}"
   # Absolute, because the builds run from REPO_DIR and --out may be relative
-  # to the caller.
-  out="$(cd -- "${out}" && pwd)"
+  # to the caller. realpath, not `cd && pwd`: CDPATH can make cd land elsewhere.
+  out="$(realpath -- "${out}")"
 
   local target
   for target in "${TARGETS[@]}"; do
@@ -128,7 +128,8 @@ function main() {
 
   ci::log 'writing the SBOM'
   # -noserial and -notimestamp drop the two fields that change on every run,
-  # so the SBOM is a function of go.mod and go.sum alone. -licenses=false:
+  # so the SBOM is a function of go.mod, go.sum and the pinned cyclonedx-gomod
+  # (its name and hash are recorded in metadata.tools). -licenses=false:
   # license detection reads the module cache's files and its output is a
   # guess, which an SBOM consumer should not mistake for an assertion. Test
   # dependencies are excluded by default; they never ship.

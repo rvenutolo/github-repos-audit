@@ -52,8 +52,8 @@ function main() {
 
   local -r dist="${work}/dist"
   local got
-  # Run the build outside an `if`/`||` so errexit stays armed inside it, and
-  # judge the status explicitly.
+  # status_of reports the exit status instead of failing, so a failed build
+  # is judged below and the cases after it still run.
   got="$(status_of 0 --version v9.8.7 --out "${dist}")"
   if [[ "${got}" != 0 ]]; then
     ci::log "FAIL: a valid build exited ${got}, want 0"
@@ -75,8 +75,10 @@ function main() {
     ci::log 'FAIL: SHA256SUMS does not verify'
     rc=1
   fi
-  local lines
-  lines="$(wc --lines < "${dist}/SHA256SUMS")"
+  local lines=0
+  if [[ -f "${dist}/SHA256SUMS" ]]; then
+    lines="$(wc --lines < "${dist}/SHA256SUMS")"
+  fi
   if ((lines != 6)); then
     ci::log "FAIL: SHA256SUMS has ${lines} lines, want 6"
     rc=1
@@ -125,6 +127,10 @@ function main() {
   fi
   if [[ "$(cat "${busy}/marker" 2> /dev/null)" != 'keep me' ]]; then
     ci::log 'FAIL: a refused build disturbed the marker in --out'
+    rc=1
+  fi
+  if [[ "$(ls --almost-all -- "${busy}")" != 'marker' ]]; then
+    ci::log 'FAIL: a refused build added files to --out'
     rc=1
   fi
 
