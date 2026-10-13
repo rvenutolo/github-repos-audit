@@ -30,6 +30,12 @@
 #                the section above its first `## ` heading, or after the
 #                preamble when it has none, one blank line on each side.
 #
+#              top, notes and prepend read a changelog line by line and take
+#              every line that starts with `## ` for a section heading, so
+#              a section body must not hold such a line, inside a fenced
+#              code block included. They expect LF line endings: a CR left
+#              at the end of a heading is not part of a version.
+#
 #              git-cliff (cliff.toml) owns what a commit means: its group and
 #              the bump it calls for. This script owns which commits it sees.
 #              Left to itself git-cliff counts from a tag HEAD does not
