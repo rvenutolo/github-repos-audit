@@ -123,6 +123,10 @@
             # still reports import grouping.
             gofumpt
             govulncheck
+            # cyclonedx-gomod writes the release's SBOM in .ci/build-release;
+            # it reads go.mod and the module cache, so it needs no network
+            # beyond what the Go build already fetched.
+            cyclonedx-gomod
             # jq reads govulncheck's JSON report in .ci/check-vulns.
             jq
             # formatters (also wired into .treefmt.nix)

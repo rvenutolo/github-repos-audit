@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+# @description Cross-compile the release binaries, write a CycloneDX SBOM of
+#              the module and a SHA256SUMS over all of it, into --out.
+#
+#              The binaries are static (CGO_ENABLED=0) and built with
+#              -trimpath and -buildvcs=false, so the bytes depend on the
+#              source, the Go toolchain and the version string alone: not on
+#              the checkout path, the clock or the git state. That is what lets
+#              anyone rebuild a tagged release and compare checksums.
+#              The version is stamped with -X main.version, the symbol
+#              `audit --version` prints; -s -w drop the symbol table and DWARF,
+#              which nothing here reads and which would only add bytes.
+#
+#              The output directory must be absent or empty. Refusing a
+#              non-empty one, rather than overwriting, keeps a stale binary
+#              from an earlier build out of SHA256SUMS and means this script
+#              never deletes anything.
+# @option --version <vX.Y.Z> the release version, exactly vMAJOR.MINOR.PATCH
+# @option --out <dir> directory to write into; created if absent
+# @exitcode 0 every file was built and written
+# @exitcode 1 something went wrong, or --out is not empty
+# @exitcode 2 a usage error: an unknown argument, a missing value or value, or
+#             a version that is not vMAJOR.MINOR.PATCH
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# GOOS/GOARCH pairs the release ships. Fixed here, not discovered, so the
+# asset names the README promises cannot drift with the toolchain's defaults.
+readonly -a TARGETS=(linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64)
+
+# @description Print a usage error and exit 2.
+# @arg $1 message what was wrong
+function usage_error() {
+  printf '%s: %s\n' "${0##*/}" "$1" >&2
+  exit 2
+}
+
+# @description Build one target into the output directory.
+# @arg $1 target GOOS/GOARCH
+# @arg $2 version the version to stamp
+# @arg $3 out the output directory
+function build_target() {
+  local -r target="$1" version="$2" out="$3"
+  local -r goos="${target%/*}" goarch="${target#*/}"
+  local ext=''
+  if [[ "${goos}" == 'windows' ]]; then
+    ext='.exe'
+  fi
+  ci::log "building ${goos}/${goarch}"
+  (
+    cd "${REPO_DIR}"
+    CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+      go build -trimpath -buildvcs=false \
+      -ldflags "-s -w -X main.version=${version}" \
+      -o "${out}/audit-${goos}-${goarch}${ext}" ./cmd/audit
+  )
+}
+
+# @description Build every target, write the SBOM and checksum them all.
+# @arg $@ --version <vX.Y.Z> --out <dir>, both required
+function main() {
+  local version='' out='' have_version=0 have_out=0
+  while (($# > 0)); do
+    case "$1" in
+      --version | --out)
+        # A usage error (exit 2), not the "${2:?...}" form: that form faults
+        # through set -u into an unhandled exit 1, which is indistinguishable
+        # from the runtime-failure path below.
+        if (($# < 2)); then
+          usage_error "$1 needs a value"
+        fi
+        if [[ "$1" == '--version' ]]; then
+          version="$2"
+          have_version=1
+        else
+          out="$2"
+          have_out=1
+        fi
+        shift 2
+        ;;
+      *)
+        usage_error "unknown argument $(printf '%q' "$1")"
+        ;;
+    esac
+  done
+  ((have_version)) || usage_error '--version is required'
+  ((have_out)) || usage_error '--out is required'
+  # No leading zeros and no pre-release suffix: the version names a tag, and
+  # the tag workflow only ever creates plain vMAJOR.MINOR.PATCH ones.
+  if [[ ! "${version}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    usage_error "version $(printf '%q' "${version}") is not vMAJOR.MINOR.PATCH"
+  fi
+  if [[ -z "${out}" ]]; then
+    usage_error '--out must not be empty'
+  fi
+
+  if [[ -e "${out}" ]]; then
+    if [[ ! -d "${out}" ]]; then
+      printf '%s: %s exists and is not a directory\n' "${0##*/}" "${out}" >&2
+      exit 1
+    fi
+    if [[ -n "$(ls --almost-all -- "${out}")" ]]; then
+      printf '%s: %s is not empty; refusing to mix a new build into it\n' "${0##*/}" "${out}" >&2
+      exit 1
+    fi
+  fi
+  mkdir --parents -- "${out}"
+  # Absolute, because the builds run from REPO_DIR and --out may be relative
+  # to the caller.
+  out="$(cd -- "${out}" && pwd)"
+
+  local target
+  for target in "${TARGETS[@]}"; do
+    build_target "${target}" "${version}" "${out}"
+  done
+
+  ci::log 'writing the SBOM'
+  # -noserial and -notimestamp drop the two fields that change on every run,
+  # so the SBOM is a function of go.mod and go.sum alone. -licenses=false:
+  # license detection reads the module cache's files and its output is a
+  # guess, which an SBOM consumer should not mistake for an assertion. Test
+  # dependencies are excluded by default; they never ship.
+  (
+    cd "${REPO_DIR}"
+    cyclonedx-gomod mod -json -licenses=false -noserial -notimestamp \
+      -output "${out}/audit.cdx.json" "${REPO_DIR}"
+  )
+
+  ci::log 'writing SHA256SUMS'
+  # Bare file names, so `sha256sum --check` works from inside the directory
+  # the files are downloaded to. LC_ALL=C pins the order across locales.
+  (cd "${out}" && sha256sum -- audit-* audit.cdx.json | LC_ALL=C sort --key=2 > SHA256SUMS)
+  ci::log "release files are in ${out}"
+}
+
+main "$@"

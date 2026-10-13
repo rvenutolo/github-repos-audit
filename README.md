@@ -318,6 +318,23 @@ Grouped by theme here; the report lists them in the fixed worklist order
   the last push, how many pull requests are open, and how many branches
   exist besides the default branch (`audit.json` records the raw count).
 
+## Running locally
+
+Three ways to get an `audit` binary, from least to most setup:
+
+- **`go install`**, which needs Go:
+  `go install github.com/rvenutolo/github-repos-audit/cmd/audit@latest`.
+- **A prebuilt binary** from the repository's Releases page, which holds one
+  asset per platform named `audit-<os>-<arch>` (`audit-linux-amd64`,
+  `audit-linux-arm64`, `audit-darwin-amd64`, `audit-darwin-arm64`, and
+  `audit-windows-amd64.exe`), a CycloneDX SBOM `audit.cdx.json` and
+  `SHA256SUMS`.
+- **A clone**, which needs only Nix: `./.ci/in-devshell go run ./cmd/audit`.
+
+`audit validate` is offline and needs no token. `audit render` and
+`audit json` read your account from GitHub and need `GITHUB_TOKEN` in the
+environment, or a logged-in `gh` (the token comes from `gh auth token`).
+
 ## Development
 
 Every recipe below runs its tools through `.ci/in-devshell`, a hermetic
@@ -345,6 +362,7 @@ Nix is expected to be installed on the host.
 | `just fuzz`          | fuzz every target briefly; never part of the gate         |
 | `just mutate`        | mutation-test a package; slow, never part of the gate     |
 | `just gremlins-bump` | bump gremlins to its latest release; needs network        |
+| `just build-release` | cross-compile the release binaries, SBOM and checksums    |
 
 Coverage is held three ways, all inside `just check`. Each package must stay
 at or above its figure in `.ci/coverage-baseline.txt`. Every Go block a

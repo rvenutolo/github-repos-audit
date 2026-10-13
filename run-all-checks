@@ -2,7 +2,8 @@
 
 # The full verification gate, verify-only: formatting (nix flake check), the
 # governance lints, the lint suite, module tidiness and sums, the Go build,
-# vet, tests, the coverage baseline, patch coverage and baseline drops,
+# vet, the release build (every cross-compile target, checksums, SBOM), tests,
+# the coverage baseline, patch coverage and baseline drops,
 # govulncheck and the offline config validation. Exit codes aggregate so one
 # run surfaces every failing category. Every caller (just check,
 # .githooks/pre-push, CI) runs this through .ci/in-devshell, so local and CI
@@ -73,6 +74,13 @@ function main() {
   ci::log 'running go build and go vet'
   go build ./... || rc=1
   go vet ./... || rc=1
+
+  ci::log 'building the release binaries'
+  # The test builds every release target twice (the second proves the bytes
+  # are reproducible) and checks the checksums, the SBOM and the stamped
+  # --version, so no separate invocation is needed. It runs after go vet
+  # because it needs a tree that compiles.
+  "${REPO_DIR}/.ci/test-build-release" || rc=1
 
   ci::log 'running go test'
   # -shuffle=on randomises the order within each package, so an accidental

@@ -18,6 +18,8 @@ go
 golangci-lint
 # .ci/check-vulns scans with it; the `vuln` recipe prints its full report
 govulncheck
+# .ci/build-release writes the release's CycloneDX SBOM with it
+cyclonedx-gomod
 # .ci/check-vulns reads govulncheck's JSON report with it
 jq
 # .ci/run-lint-checks (verify) and .ci/run-fixers (write); treefmt drives it too

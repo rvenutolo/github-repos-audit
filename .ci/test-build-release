@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/build-release end to end with the real toolchain:
+#              every cross-compile target is built, so a platform that stops
+#              compiling, a checksum file that does not verify, a binary that
+#              does not report the stamped version and a build that is not
+#              reproducible all fail here, before a release is ever cut. No
+#              stub: a stub toolchain could not prove any of those.
+#
+#              Takes a minute or two, almost all of it the two full builds of
+#              five targets that the reproducibility case needs.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly SCRIPT="${REPO_DIR}/.ci/build-release"
+
+# @description Run build-release with the given arguments and print its exit
+#              status; the script's own output is discarded because a case
+#              judges the status and the files, not the prose.
+# @arg $@ arguments passed to build-release
+function status_of() {
+  local got=0
+  "${SCRIPT}" "$@" > /dev/null 2>&1 || got=$?
+  printf '%s\n' "${got}"
+}
+
+function main() {
+  # work is not local: see the EXIT-trap note in .ci/check-account-data main().
+  local rc=0
+  work="$(mktemp --directory)"
+  trap 'rm -rf -- "${work}"' EXIT
+
+  local -r dist="${work}/dist"
+  local got
+  # Run the build outside an `if`/`||` so errexit stays armed inside it, and
+  # judge the status explicitly.
+  got="$(status_of --version v9.8.7 --out "${dist}")"
+  if [[ "${got}" != 0 ]]; then
+    ci::log "FAIL: a valid build exited ${got}, want 0"
+    rc=1
+  fi
+
+  local listing want
+  listing="$(cd "${dist}" && printf '%s\n' * | LC_ALL=C sort)"
+  want="$(printf '%s\n' audit-darwin-amd64 audit-darwin-arm64 audit-linux-amd64 \
+    audit-linux-arm64 audit-windows-amd64.exe audit.cdx.json SHA256SUMS | LC_ALL=C sort)"
+  if [[ "${listing}" != "${want}" ]]; then
+    ci::log "FAIL: the output directory holds the wrong files: ${listing//$'\n'/ }"
+    rc=1
+  fi
+
+  if ! (cd "${dist}" && sha256sum --check --strict SHA256SUMS > /dev/null 2>&1); then
+    ci::log 'FAIL: SHA256SUMS does not verify'
+    rc=1
+  fi
+  local lines
+  lines="$(wc --lines < "${dist}/SHA256SUMS")"
+  if ((lines != 6)); then
+    ci::log "FAIL: SHA256SUMS has ${lines} lines, want 6"
+    rc=1
+  fi
+
+  local host_os host_arch host_bin printed
+  host_os="$(go env GOOS)"
+  host_arch="$(go env GOARCH)"
+  host_bin="${dist}/audit-${host_os}-${host_arch}"
+  if [[ ! -x "${host_bin}" ]]; then
+    ci::log "FAIL: no runnable binary for the host platform ${host_os}/${host_arch}"
+    rc=1
+  elif ! printed="$("${host_bin}" --version)" || [[ "${printed}" != 'v9.8.7' ]]; then
+    ci::log "FAIL: the host binary printed '${printed:-}' for --version, want v9.8.7"
+    rc=1
+  fi
+
+  if ! jq --exit-status '.bomFormat == "CycloneDX"' "${dist}/audit.cdx.json" > /dev/null; then
+    ci::log 'FAIL: audit.cdx.json is not a CycloneDX document'
+    rc=1
+  fi
+
+  local -r dist2="${work}/dist2"
+  got="$(status_of --version v9.8.7 --out "${dist2}")"
+  if [[ "${got}" != 0 ]]; then
+    ci::log "FAIL: the second build exited ${got}, want 0"
+    rc=1
+  else
+    local binary
+    for binary in "${dist}"/audit-*; do
+      if ! cmp --silent -- "${binary}" "${dist2}/${binary##*/}"; then
+        ci::log "FAIL: ${binary##*/} differs between two builds of the same tree"
+        rc=1
+      fi
+    done
+  fi
+
+  # A non-empty --out is refused, and what is in it is left alone.
+  local -r busy="${work}/busy"
+  mkdir --parents "${busy}"
+  printf 'keep me\n' > "${busy}/marker"
+  got="$(status_of --version v9.8.7 --out "${busy}")"
+  if [[ "${got}" != 1 ]]; then
+    ci::log "FAIL: a non-empty --out: exit ${got}, want 1"
+    rc=1
+  fi
+  if [[ "$(cat "${busy}/marker" 2> /dev/null)" != 'keep me' ]]; then
+    ci::log 'FAIL: a refused build disturbed the marker in --out'
+    rc=1
+  fi
+
+  # Only exact vMAJOR.MINOR.PATCH is a release version; a pre-release or a
+  # missing v would otherwise stamp a binary no tag corresponds to.
+  local bad
+  for bad in '1.0.0' 'v1.0' 'v1.0.0-rc.1' 'v01.0.0' ''; do
+    got="$(status_of --version "${bad}" --out "${work}/never")"
+    if [[ "${got}" != 2 ]]; then
+      ci::log "FAIL: --version '${bad}': exit ${got}, want 2"
+      rc=1
+    fi
+    if [[ -e "${work}/never" ]]; then
+      ci::log "FAIL: --version '${bad}' created the output directory"
+      rc=1
+    fi
+  done
+
+  got="$(status_of --bogus)"
+  if [[ "${got}" != 2 ]]; then
+    ci::log "FAIL: an unknown argument: exit ${got}, want 2"
+    rc=1
+  fi
+  got="$(status_of --version v1.0.0 --out)"
+  if [[ "${got}" != 2 ]]; then
+    ci::log "FAIL: --out with no value: exit ${got}, want 2"
+    rc=1
+  fi
+  got="$(status_of --out "${work}/never")"
+  if [[ "${got}" != 2 ]]; then
+    ci::log "FAIL: a missing --version: exit ${got}, want 2"
+    rc=1
+  fi
+
+  ((rc == 0)) && ci::log 'build-release: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"
