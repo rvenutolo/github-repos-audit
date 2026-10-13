@@ -25,8 +25,9 @@ source "${REPO_DIR}/.ci/lib.sh"
 #              by running the script's own jq filter, the last argument, over
 #              it, so which pull request the script adopts is the script's
 #              doing and not the stub's. `pr view` reports the state in
-#              `pr-state` (default OPEN). `pr create` prints a pull request
-#              URL ending in 42, as the real command does on stdout.
+#              `pr-state` (default OPEN). `pr create` prints the contents of
+#              `create-output` (nothing when absent), as the real command
+#              prints the new pull request's URL on stdout.
 # @arg $1 dir directory to put the stub in
 # @arg $2 log file each call is appended to
 function write_stub() {
@@ -43,7 +44,7 @@ case "\$*" in
   pr\ view*)
     if [[ -f '${dir}/pr-state' ]]; then cat '${dir}/pr-state'; else echo OPEN; fi
     ;;
-  pr\ create*) echo 'https://github.com/gh-owner/report/pull/42' ;;
+  pr\ create*) if [[ -f '${dir}/create-output' ]]; then cat '${dir}/create-output'; fi ;;
   *) : ;;
 esac
 STUB
@@ -62,6 +63,7 @@ function run_case() {
   write_stub "${work}/${name}" "${work}/${name}/calls.log"
   printf '%s\n' "${list}" > "${work}/${name}/pr-list.json"
   printf '%s\n' "${state}" > "${work}/${name}/pr-state"
+  printf '%s\n' 'https://github.com/gh-owner/report/pull/42' > "${work}/${name}/create-output"
   PATH="${work}/${name}:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
     "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/report" > /dev/null 2>&1 || {
     ci::log "FAIL: ${name}: refresh-pull-request exited non-zero"
@@ -112,6 +114,25 @@ function test_fork_pull_requests_are_never_adopted() {
   want_no_call none 'pr merge chore/refresh-audit'
 }
 
+# Output that does not end in a number must stop the run before any merge:
+# an empty argument or a word would make gh pick the pull request itself.
+function test_unusable_create_output_stops_before_merging() {
+  local output name
+  for output in '' 'https://github.com/gh-owner/report/pull/42/files'; do
+    name="create-printed-${output:+files}${output:-nothing}"
+    name="${name//[^a-z-]/}"
+    mkdir --parents "${work}/${name}"
+    write_stub "${work}/${name}" "${work}/${name}/calls.log"
+    printf '%s' "${output}" > "${work}/${name}/create-output"
+    if PATH="${work}/${name}:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+      "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/report" > /dev/null 2>&1; then
+      ci::log "FAIL: ${name}: exited zero"
+      rc=1
+    fi
+    want_no_call "${name}" 'pr merge'
+  done
+}
+
 function main() {
   # work is not local: see the EXIT-trap note in .ci/check-account-data main().
   local rc=0
@@ -122,6 +143,7 @@ function main() {
   printf '# report from --dir\n' > "${work}/report/README.md"
   printf '{"owner":"gh-owner"}\n' > "${work}/report/audit.json"
   write_stub "${work}/bin" "${work}/calls.log"
+  printf '%s\n' 'https://github.com/gh-owner/report/pull/42' > "${work}/bin/create-output"
 
   PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
     "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/report" > /dev/null 2>&1 || {
@@ -166,6 +188,7 @@ function main() {
   fi
 
   test_fork_pull_requests_are_never_adopted
+  test_unusable_create_output_stops_before_merging
 
   ((rc == 0)) && ci::log 'refresh-pull-request: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
