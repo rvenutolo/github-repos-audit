@@ -24,7 +24,8 @@ cyclonedx-gomod
 # with it
 git-cliff
 # .ci/check-vulns reads govulncheck's JSON report with it; the stub gh of
-# .ci/test-release-pull-request runs the script's own --jq filter with it
+# .ci/test-release-pull-request and .ci/test-refresh-pull-request run the
+# script's own --jq filter with it
 jq
 # .ci/run-lint-checks (verify) and .ci/run-fixers (write); treefmt drives it too
 shfmt

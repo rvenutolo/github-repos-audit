@@ -21,10 +21,18 @@ readonly REPO_DIR
 source "${REPO_DIR}/.ci/lib.sh"
 
 # @description Write a gh stand-in that logs each call and answers the reads.
+#              `pr list` answers from `pr-list.json` in the stub's directory
+#              by running the script's own jq filter, the last argument, over
+#              it, so which pull request the script adopts is the script's
+#              doing and not the stub's. `pr view` reports the state in
+#              `pr-state` (default OPEN). `pr create` prints the contents of
+#              `create-output` (nothing when absent), as the real command
+#              prints the new pull request's URL on stdout.
 # @arg $1 dir directory to put the stub in
 # @arg $2 log file each call is appended to
 function write_stub() {
   local -r dir="$1" log="$2"
+  printf '[]\n' > "${dir}/pr-list.json"
   cat > "${dir}/gh" << STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> '${log}'
@@ -32,11 +40,118 @@ case "\$*" in
   'api repos/gh-owner/report --jq .default_branch') echo main ;;
   'api repos/gh-owner/report/git/ref/heads/main --jq .object.sha') echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001 ;;
   'api repos/gh-owner/report/git/ref/heads/chore/refresh-audit') exit 1 ;;
-  pr\ list*) echo '' ;;
+  pr\ list*) jq --raw-output "\${!#}" '${dir}/pr-list.json' ;;
+  pr\ view*)
+    if [[ -f '${dir}/pr-state' ]]; then cat '${dir}/pr-state'; else echo OPEN; fi
+    ;;
+  pr\ create*) if [[ -f '${dir}/create-output' ]]; then cat '${dir}/create-output'; fi ;;
   *) : ;;
 esac
 STUB
   chmod +x "${dir}/gh"
+}
+
+# @description Run the script against a fresh stub whose open pull requests
+#              named chore/refresh-audit are the given list, and leave its
+#              calls in ${work}/<name>/calls.log.
+# @arg $1 name  case directory under ${work}
+# @arg $2 list  the pull requests, as `gh pr list --json` prints them
+# @arg $3 state state `gh pr view` reports for any pull request
+function run_case() {
+  local -r name="$1" list="$2" state="$3"
+  mkdir --parents "${work}/${name}"
+  write_stub "${work}/${name}" "${work}/${name}/calls.log"
+  printf '%s\n' "${list}" > "${work}/${name}/pr-list.json"
+  printf '%s\n' "${state}" > "${work}/${name}/pr-state"
+  printf '%s\n' 'https://github.com/gh-owner/report/pull/42' > "${work}/${name}/create-output"
+  PATH="${work}/${name}:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+    "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/report" > /dev/null 2>&1 || {
+    ci::log "FAIL: ${name}: refresh-pull-request exited non-zero"
+    rc=1
+  }
+}
+
+# @description Assert some logged call of a case begins with the given text.
+# @arg $1 name case directory under ${work}
+# @arg $2 text the prefix a call must start with
+function want_call() {
+  local line
+  while IFS= read -r line; do
+    [[ "${line}" == "$2"* ]] && return 0
+  done < "${work}/$1/calls.log"
+  ci::log "FAIL: $1: no call beginning '$2'"
+  rc=1
+}
+
+# @description Assert no logged call of a case contains the given text.
+# @arg $1 name case directory under ${work}
+# @arg $2 text the text no call may contain
+function want_no_call() {
+  if grep --quiet --fixed-strings -- "$2" "${work}/$1/calls.log"; then
+    ci::log "FAIL: $1: unexpected call '$2'"
+    rc=1
+  fi
+}
+
+# @description Assert no pull request subcommand (view, edit, close, merge,
+#              reopen, ...) names the given pull request number.
+# @arg $1 name   case directory under ${work}
+# @arg $2 number the pull request that must stay untouched
+function want_untouched() {
+  if grep --quiet --extended-regexp -- "^pr [a-z-]+ $2( |\$)" "${work}/$1/calls.log"; then
+    ci::log "FAIL: $1: a pr call named #$2"
+    rc=1
+  fi
+}
+
+# A pull request opened from a fork whose branch is named like ours is a
+# stranger's: the script must neither reopen nor merge it.
+function test_fork_pull_requests_are_never_adopted() {
+  local fork='{"number":7,"isCrossRepository":true}'
+  local own='{"number":9,"isCrossRepository":false}'
+
+  # An entry without the field is not known to be ours.
+  local unknown='{"number":8}'
+
+  run_case fork-only "[${fork},${unknown}]" OPEN
+  want_call fork-only 'pr list --repo gh-owner/report --head chore/refresh-audit --state open --limit 1000 '
+  want_untouched fork-only 8
+  want_call fork-only 'pr create --repo gh-owner/report'
+  want_call fork-only 'pr merge 42 --repo gh-owner/report --merge --auto'
+  want_untouched fork-only 7
+  want_no_call fork-only 'pr merge chore/refresh-audit'
+  want_no_call fork-only 'pr reopen'
+
+  run_case fork-and-own "[${fork},${own}]" CLOSED
+  want_call fork-and-own 'pr reopen 9 --repo gh-owner/report'
+  want_call fork-and-own 'pr merge 9 --repo gh-owner/report --merge --auto'
+  want_untouched fork-and-own 7
+  want_no_call fork-and-own 'pr create'
+
+  # A pull request the script opens is merged by the number it printed, never
+  # by branch name.
+  run_case none '[]' OPEN
+  want_call none 'pr merge 42 --repo gh-owner/report --merge --auto'
+  want_no_call none 'pr merge chore/refresh-audit'
+}
+
+# Output that does not end in a number must stop the run before any merge:
+# an empty argument or a word would make gh pick the pull request itself.
+function test_unusable_create_output_stops_before_merging() {
+  local output name
+  for output in '' 'https://github.com/gh-owner/report/pull/42/files'; do
+    name="create-printed-${output:+files}${output:-nothing}"
+    name="${name//[^a-z-]/}"
+    mkdir --parents "${work}/${name}"
+    write_stub "${work}/${name}" "${work}/${name}/calls.log"
+    printf '%s' "${output}" > "${work}/${name}/create-output"
+    if PATH="${work}/${name}:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+      "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/report" > /dev/null 2>&1; then
+      ci::log "FAIL: ${name}: exited zero"
+      rc=1
+    fi
+    want_no_call "${name}" 'pr merge'
+  done
 }
 
 function main() {
@@ -49,6 +164,7 @@ function main() {
   printf '# report from --dir\n' > "${work}/report/README.md"
   printf '{"owner":"gh-owner"}\n' > "${work}/report/audit.json"
   write_stub "${work}/bin" "${work}/calls.log"
+  printf '%s\n' 'https://github.com/gh-owner/report/pull/42' > "${work}/bin/create-output"
 
   PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
     "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/report" > /dev/null 2>&1 || {
@@ -91,6 +207,9 @@ function main() {
     ci::log "FAIL: --dir with no value: exit ${dir_got}, want 2"
     rc=1
   fi
+
+  test_fork_pull_requests_are_never_adopted
+  test_unusable_create_output_stops_before_merging
 
   ((rc == 0)) && ci::log 'refresh-pull-request: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap
