@@ -66,10 +66,16 @@
 #
 #                A full clone is needed to find the release commit.
 #              - sign --dist <dir>: sign <dir>/SHA256SUMS with cosign's
-#                keyless flow and write the bundle that verifies it to
-#                <dir>/SHA256SUMS.sigstore.json. The signature is recorded
-#                in a public transparency log, for good, so a directory
-#                that holds a bundle already is refused.
+#                keyless flow, write the bundle that verifies it to
+#                <dir>/SHA256SUMS.sigstore.json, and verify the bundle the
+#                way a reader of the release is told to: against the
+#                workflow and ref of this run, which GITHUB_WORKFLOW_REF
+#                names, and GitHub's OIDC issuer. A signature that does
+#                not verify is exit 1, so it is found before the tag
+#                exists. Without GITHUB_WORKFLOW_REF nothing is signed.
+#                The signature is recorded in a public transparency log,
+#                for good, so a directory that holds a bundle already is
+#                refused.
 #              - release --version <vX.Y.Z> --dist <dir> --sha <commit>:
 #                publish <dir> as the release <version>, tagged at <commit>.
 #                <dir> must hold what .ci/build-release and `sign` wrote,
@@ -86,7 +92,9 @@
 # @arg $1 subcommand pending, sign or release
 # @arg $@ the subcommand's options
 # @exitcode 0 done; for pending, the answer was printed
-# @exitcode 1 something went wrong, or the release is refused: `pending`
+# @exitcode 1 something went wrong, or the release is refused: `sign` has
+#             no GITHUB_WORKFLOW_REF or wrote a signature that does not
+#             verify, `pending`
 #             runs in a shallow clone, finds a CHANGELOG.md that differs
 #             from the committed one or that no commit holds, or finds an
 #             unpublished version from a commit other than its release
@@ -134,6 +142,9 @@ readonly -a CHECKSUMMED=(
 )
 readonly SUMS='SHA256SUMS'
 readonly BUNDLE='SHA256SUMS.sigstore.json'
+# Who issues the token a workflow run signs with: part of what a signature
+# is verified against, beside the workflow's own identity.
+readonly OIDC_ISSUER='https://token.actions.githubusercontent.com'
 # Every asset of a release.
 readonly -a ASSETS=("${CHECKSUMMED[@]}" "${SUMS}" "${BUNDLE}")
 
@@ -509,6 +520,11 @@ function pending() {
 #              certificate naming the workflow, so there is no key to keep.
 #              --yes, because nobody is there to confirm that the signature
 #              goes into the public transparency log.
+#
+#              The bundle is then verified with the command the README
+#              gives a reader, for the identity this run has. A signature
+#              nobody can verify is worse than none once the release is
+#              out, and this is the last point before the tag.
 # @arg $@ --dist <dir>
 function sign() {
   local dist=''
@@ -538,12 +554,23 @@ function sign() {
   if [[ -e "${dist}/${BUNDLE}" ]]; then
     fail "${dist} already holds ${BUNDLE}; ${SUMS} is signed, and is not signed twice"
   fi
+  # Asked for before the signature is made, not after: a signature is in
+  # the transparency log the moment it exists, verifiable or not.
+  if [[ -z "${GITHUB_WORKFLOW_REF:-}" ]]; then
+    fail 'GITHUB_WORKFLOW_REF is not set; it names the workflow and ref the signature is verified against, and nothing is signed that cannot be verified'
+  fi
+  local -r identity="https://github.com/${GITHUB_WORKFLOW_REF}"
   ci::log "signing ${dist}/${SUMS}"
   if ! cosign sign-blob --yes --bundle "${dist}/${BUNDLE}" "${dist}/${SUMS}" >&2; then
     fail "cosign could not sign ${dist}/${SUMS}"
   fi
   if [[ ! -s "${dist}/${BUNDLE}" ]]; then
     fail "cosign reported success and wrote no ${dist}/${BUNDLE}"
+  fi
+  ci::log "verifying the signature as ${identity}"
+  if ! cosign verify-blob --bundle "${dist}/${BUNDLE}" --certificate-identity "${identity}" \
+    --certificate-oidc-issuer "${OIDC_ISSUER}" "${dist}/${SUMS}" >&2; then
+    fail "the signature in ${dist}/${BUNDLE} does not verify as ${identity}; nothing is published with it"
   fi
 }
 

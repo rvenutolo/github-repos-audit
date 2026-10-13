@@ -273,6 +273,9 @@ jobs:
           VERSION: ${{ steps.pending.outputs.version }}
         run: ./.ci/in-devshell ./.ci/build-release --version "${VERSION}" --out dist
 
+      # Signs, then verifies what it signed against this run's workflow and
+      # ref, which the runner names in GITHUB_WORKFLOW_REF: a signature
+      # that would fail a reader's check stops the run here, before the tag.
       - name: Sign the checksum file
         if: steps.pending.outputs.publish == 'true'
         run: ./.ci/in-devshell ./.ci/release-publish sign --dist dist

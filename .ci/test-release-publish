@@ -67,6 +67,10 @@ readonly READ_DEFAULT='api repos/gh-owner/tool/contents/CHANGELOG.md --header Ac
 write_create=''
 read_assets=''
 
+# The workflow and ref the run is told it belongs to, as GitHub Actions sets
+# GITHUB_WORKFLOW_REF; a case empties it to run the script without one.
+workflow_ref='gh-owner/tool/.github/workflows/release.yml@refs/heads/main'
+
 # What the last run_script call left behind, for the assertions after it.
 status=0
 last_repo=''
@@ -169,6 +173,8 @@ function write_dist() {
 #                fail
 #              - `cosign-writes-nothing`: present to make cosign succeed
 #                without writing a bundle
+#              - `verify-fails`: present to make cosign reject the
+#                signature it is asked to verify
 #
 #              A write only logs, and leaves a marker: `deleted` after a
 #              delete, which is what makes the next state read say there is
@@ -281,10 +287,20 @@ STUB
   cat > "${dir}/bin/cosign" << STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> '${dir}/cosign.log'
-if [[ "\$1" != 'sign-blob' ]]; then
-  printf 'stub cosign: unexpected call: %s\n' "\$*" >&2
-  exit 1
-fi
+case "\$1" in
+  sign-blob) ;;
+  verify-blob)
+    if [[ -e '${dir}/verify-fails' ]]; then
+      echo 'Error: stub cosign: none of the expected identities matched' >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  *)
+    printf 'stub cosign: unexpected call: %s\n' "\$*" >&2
+    exit 1
+    ;;
+esac
 while ((\$# > 1)); do
   if [[ "\$1" == '--bundle' && ! -e '${dir}/cosign-writes-nothing' ]]; then
     printf 'STUB_BUNDLE\n' > "\$2"
@@ -326,7 +342,7 @@ function run_script() {
   : > "${repo}/.stub/notes.md"
   (
     cd "${repo}"
-    PATH="${repo}/.stub/bin:${PATH}" GITHUB_REPOSITORY="${repository}" \
+    PATH="${repo}/.stub/bin:${PATH}" GITHUB_REPOSITORY="${repository}" GITHUB_WORKFLOW_REF="${workflow_ref}" \
       "${SCRIPT}" "$@" > "${repo}/.stub/stdout" 2> "${repo}/.stub/stderr"
   ) || status=$?
   calls="$(< "${repo}/.stub/calls.log")"
@@ -713,8 +729,13 @@ function test_sign() {
   mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
   run_script "${repo}" sign --dist "${repo}/dist"
   want_status "${name}" 0 || rc=1
-  want_same "${name}" 'the cosign call' "${signed}" \
-    "sign-blob --yes --bundle ${repo}/dist/SHA256SUMS.sigstore.json ${repo}/dist/SHA256SUMS" || rc=1
+  # Signed, then verified as a stranger would verify it: against the
+  # workflow and ref this run belongs to, and GitHub as the issuer.
+  local -r sign_call="sign-blob --yes --bundle ${repo}/dist/SHA256SUMS.sigstore.json ${repo}/dist/SHA256SUMS"
+  local verify_call="verify-blob --bundle ${repo}/dist/SHA256SUMS.sigstore.json"
+  verify_call+=" --certificate-identity https://github.com/${workflow_ref}"
+  verify_call+=" --certificate-oidc-issuer https://token.actions.githubusercontent.com ${repo}/dist/SHA256SUMS"
+  want_same "${name}" 'the cosign calls' "${signed}" "${sign_call}"$'\n'"${verify_call}" || rc=1
   want_same "${name}" 'the bundle' "$(< "${repo}/dist/SHA256SUMS.sigstore.json")" 'STUB_BUNDLE' || rc=1
   want_only_calls "${name}" || rc=1
 
@@ -737,6 +758,33 @@ function test_sign() {
   want_status "${name}" 1 || rc=1
   want_text "${name}" "${errors}" 'cosign reported success and wrote no ' || rc=1
   want_text "${name}" "${signed}" 'sign-blob --yes --bundle ' || rc=1
+
+  # A signature that does not verify must stop the run before the tag: it
+  # is what everybody who downloads the release would be told to check.
+  name='sign: the signature does not verify'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
+  : > "${repo}/.stub/verify-fails"
+  run_script "${repo}" sign --dist "${repo}/dist"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'does not verify' || rc=1
+  want_text "${name}" "${signed}" 'verify-blob --bundle ' || rc=1
+
+  # Without the identity nothing could be verified, so nothing is signed:
+  # a signature is public for good the moment it is made.
+  name='sign: no workflow ref to verify against'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
+  workflow_ref=''
+  run_script "${repo}" sign --dist "${repo}/dist"
+  workflow_ref='gh-owner/tool/.github/workflows/release.yml@refs/heads/main'
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'GITHUB_WORKFLOW_REF is not set' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+  if [[ -e "${repo}/dist/SHA256SUMS.sigstore.json" ]]; then
+    ci::log "FAIL: ${name}: a bundle was written"
+    rc=1
+  fi
 
   # Signed once already: a second signature is a second permanent entry in
   # the transparency log, and a bundle that is there would make a cosign

@@ -56,6 +56,11 @@ trap 'printf "\033[0;31m[%s] ERROR: line %s (exit %s): %s\033[0m\n" "${0##*/}" "
 # the workflow; without the pair it finds no identity and falls back to a
 # browser login nobody is there to complete. A job without that permission
 # has neither variable set.
+#
+# GITHUB_WORKFLOW_REF names the workflow file and the ref a run belongs to.
+# It is the identity in the certificate cosign is issued, so
+# .ci/release-publish verifies the signature it just made against it; the
+# script signs nothing without it.
 readonly KEEP_VARS=(
   HOME
   TERM
@@ -72,6 +77,7 @@ readonly KEEP_VARS=(
   GITHUB_REF_NAME
   GITHUB_SHA
   GITHUB_EVENT_NAME
+  GITHUB_WORKFLOW_REF
   GITHUB_TOKEN
   GH_TOKEN
   GH_REPO

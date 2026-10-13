@@ -24,6 +24,7 @@ cyclonedx-gomod
 # with it
 git-cliff
 # .ci/release-publish signs a release's SHA256SUMS with `cosign sign-blob`
+# and checks the signature with `cosign verify-blob`
 cosign
 # .ci/check-vulns reads govulncheck's JSON report with it;
 # .ci/check-breaking-check-list reads the schema's check list with it;
