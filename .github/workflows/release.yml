@@ -55,12 +55,15 @@ permissions: {}
 concurrency:
   # propose and publish both act on the one release in progress, so every
   # run that may hold either job shares a group and they run one at a time.
-  # A dry run touches no branch, tag or release, so it has its own group:
-  # GitHub keeps one pending run per group, and a dry run sharing the other
-  # would cancel a queued proposal or publish.
+  # Both jobs need the default branch, and propose a run that is not a dry
+  # run, so the release group is exactly those runs. Every other run writes
+  # no branch, tag or release and goes to a group of its own, named after
+  # the dry runs that fill it: GitHub keeps one pending run per group, and
+  # a dry run, or a run started by hand from a side branch, which holds no
+  # job at all, would otherwise cancel a queued proposal or publish.
   #
   # A push has no inputs, so inputs.dry-run is empty there, which is false:
-  # a push lands in the release group, as it must.
+  # a push to the default branch lands in the release group, as it must.
   #
   # One pending run per group also means a queued push run is dropped when
   # a newer push arrives. propose does not mind: it works from the default
@@ -68,7 +71,12 @@ concurrency:
   # published by the run of its own commit, so a dropped run of that commit
   # leaves the release unpublished, the next run's publish job fails saying
   # so, and the dropped run is run again by hand.
-  group: ${{ github.workflow }}-${{ inputs.dry-run && 'dry-run' || 'release' }}
+  group: >-
+    ${{ github.workflow }}-${{
+      !inputs.dry-run
+      && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      && 'release' || 'dry-run'
+    }}
   cancel-in-progress: false
 
 jobs:
