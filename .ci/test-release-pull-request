@@ -101,7 +101,8 @@ function make_repo() {
 #
 #              - `main-sha`: the default branch's head; when the file is
 #                absent the repository's real HEAD is the answer
-#              - `pr-number`: the open release pull request, absent for none
+#              - `pr-list.json`: the open pull requests whose head branch is
+#                named chore/release, as `gh pr list --json` prints them
 #              - `pr-title`: that pull request's title
 #              - `pr-state`: its state after the branch reset, default OPEN
 #              - `branch-exists`: present when chore/release exists
@@ -113,6 +114,7 @@ function write_stub() {
   local -r dir="$1"
   mkdir --parents "${dir}/bin"
   : > "${dir}/calls.log"
+  printf '[]\n' > "${dir}/pr-list.json"
   cat > "${dir}/bin/gh" << STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> '${dir}/calls.log'
@@ -126,10 +128,10 @@ case "\$*" in
     fi
     ;;
   'api repos/gh-owner/report/git/ref/heads/chore/release') [[ -e '${dir}/branch-exists' ]] ;;
-  'pr list --repo gh-owner/report --head chore/release --state open --json number --jq .[0].number // empty')
-    if [[ -f '${dir}/pr-number' ]]; then
-      cat '${dir}/pr-number'
-    fi
+  'pr list --repo gh-owner/report --head chore/release --state open --json number,isCrossRepository --jq '*)
+    # The script's own filter, the last argument, is run over the list, so
+    # which pull request it picks is the script's doing and not the stub's.
+    jq --raw-output "\${!#}" '${dir}/pr-list.json'
     ;;
   'pr view ${PR} --repo gh-owner/report --json title --jq .title') cat '${dir}/pr-title' ;;
   'pr view ${PR} --repo gh-owner/report --json state --jq .state')
@@ -154,7 +156,7 @@ STUB
 # @arg $1 repo
 # @arg $2 title the pull request's title
 function open_pull_request() {
-  printf '%s\n' "${PR}" > "$1/.stub/pr-number"
+  printf '[{"number":%s,"isCrossRepository":false}]\n' "${PR}" > "$1/.stub/pr-list.json"
   printf '%s\n' "$2" > "$1/.stub/pr-title"
   : > "$1/.stub/branch-exists"
 }
@@ -441,6 +443,37 @@ function test_open_version_is_raised() {
   return "${rc}"
 }
 
+# A pull request from a fork whose branch happens to be named chore/release
+# is somebody else's: its title decides nothing and it is never edited.
+function test_fork_pull_request_is_ignored() {
+  local rc=0 repo
+  local name='only a pull request from a fork is open'
+  repo="$(make_repo v1.0.0)"
+  printf '[{"number":99,"isCrossRepository":true}]\n' > "${repo}/.stub/pr-list.json"
+  printf 'chore(release): v99.0.0\n' > "${repo}/.stub/pr-title"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
+  want_call "${name}" 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 ' || rc=1
+  want_no_call "${name}" 'pr edit' || rc=1
+  want_no_call "${name}" 'pr view' || rc=1
+  want_no_call "${name}" 'v99.0.0' || rc=1
+
+  # Listed ahead of this repository's own pull request, it is passed over.
+  name='a pull request from a fork beside our own'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v3.0.0'
+  printf '[{"number":99,"isCrossRepository":true},{"number":%s,"isCrossRepository":false}]\n' "${PR}" > "${repo}/.stub/pr-list.json"
+  commit "${repo}" 'fix: pad columns'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v3.0.0 " || rc=1
+  want_no_call "${name}" ' 99 ' || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
+  return "${rc}"
+}
+
 # Case 6: a version that is not above the last release is refused.
 function test_explicit_version_refused() {
   local rc=0 repo
@@ -582,6 +615,7 @@ function main() {
   test_explicit_version || rc=1
   test_open_version_is_not_lowered || rc=1
   test_open_version_is_raised || rc=1
+  test_fork_pull_request_is_ignored || rc=1
   test_explicit_version_refused || rc=1
   test_usage || rc=1
   test_mid_publish || rc=1
