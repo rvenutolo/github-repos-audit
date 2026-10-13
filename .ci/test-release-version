@@ -1,0 +1,585 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/release-version against throwaway repositories
+#              with the real git and the real git-cliff. No stub: what is
+#              under test is what git-cliff makes of this repository's
+#              cliff.toml, and a stub could only repeat the expectation back.
+#
+#              Every repository is created under one temporary directory with
+#              empty commits, so the only side effects are git objects and
+#              files in that directory.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly SCRIPT="${REPO_DIR}/.ci/release-version"
+
+# work is global, not local to main; see .ci/check-coverage-drop for why.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Create a throwaway repository holding this repository's
+#              cliff.toml and one commit, and print its path. Signing is
+#              turned off locally, for tags as well as commits, because the
+#              host may sign both by default and no key exists here. cliff.toml is copied in untracked: the script
+#              reads it from the working tree.
+# @stdout the repository's absolute path
+function make_repo() {
+  local repo
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  git -C "${repo}" config user.name 'Test Author'
+  git -C "${repo}" config user.email 'test@example.invalid'
+  git -C "${repo}" config commit.gpgsign false
+  git -C "${repo}" config tag.gpgsign false
+  cp -- "${REPO_DIR}/cliff.toml" "${repo}/cliff.toml"
+  commit "${repo}" 'chore: start'
+  printf '%s\n' "${repo}"
+}
+
+# @description Add one empty commit.
+# @arg $1 repo
+# @arg $2 subject
+# @arg $3 footer paragraph (optional)
+function commit() {
+  local -r repo="$1" subject="$2" footer="${3:-}"
+  local -a args=(--message "${subject}")
+  if [[ -n "${footer}" ]]; then
+    args+=(--message "${footer}")
+  fi
+  git -C "${repo}" commit --quiet --allow-empty "${args[@]}"
+}
+
+# @description Create a repository whose only commit carries a tag, the
+#              starting point of every "commits since the release" case.
+# @arg $1 tag
+# @stdout the repository's absolute path
+function make_tagged_repo() {
+  local repo
+  repo="$(make_repo)"
+  git -C "${repo}" tag "$1"
+  printf '%s\n' "${repo}"
+}
+
+# @description Run release-version in a directory and compare its exit status
+#              and, unless the expected output is `-`, its whole stdout. The
+#              script's stderr is shown only when the case fails.
+# @arg $1 case name
+# @arg $2 directory to run in
+# @arg $3 expected exit status
+# @arg $4 expected stdout, or `-` to leave it unchecked
+# @arg $@ arguments passed to release-version
+function check() {
+  local -r name="$1" dir="$2" want_status="$3" want_out="$4"
+  shift 4
+  local out got=0 errors
+  out="$(cd "${dir}" && "${SCRIPT}" "$@" 2> "${work}/stderr")" || got=$?
+  errors="$(< "${work}/stderr")"
+  if [[ "${got}" != "${want_status}" ]]; then
+    ci::log "FAIL: ${name}: exit ${got}, want ${want_status} (stderr: ${errors})"
+    return 1
+  fi
+  if [[ "${want_out}" != '-' && "${out}" != "${want_out}" ]]; then
+    ci::log "FAIL: ${name}: printed '${out}', want '${want_out}' (stderr: ${errors})"
+    return 1
+  fi
+  # A designed non-zero exit is a verdict, not a crash, so the ERR trap must
+  # stay quiet on it.
+  if [[ "${errors}" == *'ERROR: line'* ]]; then
+    ci::log "FAIL: ${name}: the ERR trap fired on a designed return (stderr: ${errors})"
+    return 1
+  fi
+}
+
+# @description Count the lines of a text that contain a fixed string.
+# @arg $1 text
+# @arg $2 fixed string
+# @stdout the count
+function count_lines_with() {
+  local line count=0
+  while IFS= read -r line; do
+    if [[ "${line}" == *"$2"* ]]; then
+      count=$((count + 1))
+    fi
+  done <<< "$1"
+  printf '%s\n' "${count}"
+}
+
+# Case 1: only an exact vMAJOR.MINOR.PATCH is a version.
+function test_validate() {
+  local rc=0 version
+  for version in 'v1.2.3' 'v0.0.0' 'v10.20.30'; do
+    check "validate ${version}" "${work}" 0 '' validate "${version}" || rc=1
+  done
+  for version in '1.2.3' 'v1.2' 'v1.2.3-rc.1' 'v01.2.3' 'vx.y.z' '' 'v1.2.3.4' ' v1.2.3' $'v1.2.3\nv1.2.4'; do
+    check "validate '${version}'" "${work}" 2 '' validate "${version}" || rc=1
+  done
+  return "${rc}"
+}
+
+# Case 2: the highest reachable release tag, in semver order.
+function test_last_tag() {
+  local rc=0 repo
+  repo="$(make_repo)"
+  check 'last-tag with no tags' "${repo}" 0 '' last-tag || rc=1
+
+  git -C "${repo}" tag v1.9.0
+  commit "${repo}" 'fix: a'
+  git -C "${repo}" tag v1.10.0
+  check 'last-tag orders by number, not by text' "${repo}" 0 'v1.10.0' last-tag || rc=1
+
+  commit "${repo}" 'fix: b'
+  git -C "${repo}" tag nightly
+  git -C "${repo}" tag v2.0.0-rc.1
+  git -C "${repo}" tag v3.0
+  check 'last-tag ignores tags that are not releases' "${repo}" 0 'v1.10.0' last-tag || rc=1
+
+  git -C "${repo}" checkout --quiet -b side
+  commit "${repo}" 'fix: c'
+  git -C "${repo}" tag v9.0.0
+  git -C "${repo}" checkout --quiet main
+  check 'last-tag ignores a tag HEAD does not reach' "${repo}" 0 'v1.10.0' last-tag || rc=1
+
+  # An older commit may carry the higher version; the order is by version.
+  repo="$(make_repo)"
+  git -C "${repo}" tag v2.0.0
+  commit "${repo}" 'fix: a'
+  git -C "${repo}" tag v1.9.1
+  check 'last-tag prefers the higher version over the newer tag' "${repo}" 0 'v2.0.0' last-tag || rc=1
+
+  mkdir "${repo}/sub"
+  check 'last-tag from a subdirectory' "${repo}/sub" 0 'v2.0.0' last-tag || rc=1
+
+  mkdir "${work}/not-a-repo"
+  check 'last-tag outside a repository' "${work}/not-a-repo" 1 '' last-tag || rc=1
+  return "${rc}"
+}
+
+# Case 3: strictly greater, by number.
+function test_greater() {
+  local rc=0
+  check 'greater v1.0.0 v0.1.0' "${work}" 0 '' greater v1.0.0 v0.1.0 || rc=1
+  check 'greater v1.0.0 v1.0.0' "${work}" 1 '' greater v1.0.0 v1.0.0 || rc=1
+  check 'greater v1.9.0 v1.10.0' "${work}" 1 '' greater v1.9.0 v1.10.0 || rc=1
+  check 'greater v1.10.0 v1.9.0' "${work}" 0 '' greater v1.10.0 v1.9.0 || rc=1
+  check 'greater v1.0.10 v1.0.9' "${work}" 0 '' greater v1.0.10 v1.0.9 || rc=1
+  check 'greater v10.0.0 v9.99.99' "${work}" 0 '' greater v10.0.0 v9.99.99 || rc=1
+  check 'greater v0.9.9 v1.0.0' "${work}" 1 '' greater v0.9.9 v1.0.0 || rc=1
+  check 'greater with a non-version' "${work}" 2 '' greater v1.0.0 1.0.0 || rc=1
+  return "${rc}"
+}
+
+# Case 4: the bump the commits since the last release call for.
+function test_next() {
+  local rc=0 repo
+
+  repo="$(make_tagged_repo v1.0.0)"
+  check 'next with no commits since the tag' "${repo}" 0 '' next || rc=1
+  commit "${repo}" 'fix: a'
+  check 'next after a fix' "${repo}" 0 'v1.0.1' next || rc=1
+  commit "${repo}" 'feat: b'
+  check 'next after a feature' "${repo}" 0 'v1.1.0' next || rc=1
+  commit "${repo}" 'feat!: c'
+  check 'next after a breaking feature' "${repo}" 0 'v2.0.0' next || rc=1
+
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'fix: a' 'BREAKING CHANGE: x'
+  check 'next after a fix with a breaking footer' "${repo}" 0 'v2.0.0' next || rc=1
+
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'perf: a'
+  check 'next after a performance change' "${repo}" 0 'v1.0.1' next || rc=1
+
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'docs: a'
+  commit "${repo}" 'chore: b'
+  commit "${repo}" 'ci: c'
+  commit "${repo}" 'test: d'
+  commit "${repo}" 'style: e'
+  commit "${repo}" 'build: f'
+  commit "${repo}" 'refactor: g'
+  commit "${repo}" 'chore(release): v1.0.1'
+  commit "${repo}" 'not a conventional subject'
+  check 'next after only types that release nothing' "${repo}" 0 '' next || rc=1
+  # Breaking is breaking whatever the type.
+  commit "${repo}" 'docs!: h'
+  check 'next after a breaking docs commit' "${repo}" 0 'v2.0.0' next || rc=1
+
+  repo="$(make_tagged_repo v0.1.0)"
+  commit "${repo}" 'fix: a'
+  check 'next from 0.x after a fix' "${repo}" 0 'v0.1.1' next || rc=1
+  commit "${repo}" 'feat: b'
+  check 'next from 0.x after a feature' "${repo}" 0 'v0.2.0' next || rc=1
+  commit "${repo}" 'feat!: c'
+  check 'next from 0.x after a breaking feature' "${repo}" 0 'v1.0.0' next || rc=1
+
+  # The base is the tag last-tag names, never one git-cliff picks for itself:
+  # not a higher one HEAD does not reach, not a pre-release, and not a lower
+  # release tagged later.
+  repo="$(make_tagged_repo v1.0.0)"
+  git -C "${repo}" checkout --quiet -b side
+  commit "${repo}" 'feat!: side'
+  git -C "${repo}" tag v5.0.0
+  git -C "${repo}" checkout --quiet main
+  commit "${repo}" 'fix: a'
+  git -C "${repo}" tag v1.0.1-rc.1
+  check 'next ignores an unreachable tag and a pre-release' "${repo}" 0 'v1.0.1' next || rc=1
+  mkdir "${repo}/sub"
+  check 'next from a subdirectory' "${repo}/sub" 0 'v1.0.1' next || rc=1
+
+  repo="$(make_tagged_repo v2.0.0)"
+  commit "${repo}" 'fix: a'
+  git -C "${repo}" tag v1.9.1
+  commit "${repo}" 'fix: b'
+  check 'next counts from the highest version, not the newest tag' "${repo}" 0 'v2.0.1' next || rc=1
+
+  repo="$(make_repo)"
+  check 'next with no tag and nothing to release' "${repo}" 0 '' next || rc=1
+  commit "${repo}" 'feat: a'
+  check 'next with no tag' "${repo}" 0 'v0.1.0' next || rc=1
+
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'fix: a'
+  mv -- "${repo}/cliff.toml" "${work}/cliff.toml.aside"
+  check 'next without a cliff.toml' "${repo}" 1 '' next || rc=1
+  return "${rc}"
+}
+
+# Case 5: what a section holds and in what order.
+function test_section() {
+  local rc=0 repo out want
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  commit "${repo}" 'fix(render): pad columns'
+  commit "${repo}" 'docs: tidy'
+  commit "${repo}" 'chore(release): v1.0.0'
+  commit "${repo}" 'feat!: drop gadget' 'BREAKING CHANGE: remove gadget from repos.toml'
+  commit "${repo}" 'perf: read once'
+  commit "${repo}" 'feat(cli)!: rename flag'
+  commit "${repo}" 'fix: quote names' $'BREAKING CHANGE: names print quoted\nand the old form is gone'
+  commit "${repo}" 'feat: add sprocket'
+
+  out="$(cd "${repo}" && "${SCRIPT}" section v2.0.0 2> "${work}/stderr")" || {
+    ci::log "FAIL: section exited non-zero (stderr: $(< "${work}/stderr"))"
+    return 1
+  }
+  local needle
+  if [[ "${out}" != '## v2.0.0'$'\n'* ]]; then
+    ci::log "FAIL: section does not start with its heading: ${out}"
+    rc=1
+  fi
+  for needle in 'add widget' 'pad columns' 'drop gadget' 'remove gadget from repos.toml' '**render:** pad columns'; do
+    if [[ "${out}" != *"${needle}"* ]]; then
+      ci::log "FAIL: section lacks '${needle}': ${out}"
+      rc=1
+    fi
+  done
+  for needle in 'tidy' 'chore(release)' 'start'; do
+    if [[ "${out}" == *"${needle}"* ]]; then
+      ci::log "FAIL: section contains '${needle}': ${out}"
+      rc=1
+    fi
+  done
+  # Order: cut the text at each group heading in turn; a heading that is
+  # missing or out of order leaves the remainder unchanged.
+  local rest="${out}" after
+  for needle in '### Breaking changes' '### Features' '### Fixes'; do
+    after="${rest#*"${needle}"}"
+    if [[ "${after}" == "${rest}" ]]; then
+      ci::log "FAIL: section lacks '${needle}' after the group before it: ${out}"
+      rc=1
+    fi
+    rest="${after}"
+  done
+
+  # The whole section, so the blank lines, the bold scope, the indented
+  # footer and the once-only listing of a breaking commit are all pinned.
+  want="$(
+    cat << 'EOF'
+## v2.0.0
+
+### Breaking changes
+
+- drop gadget
+
+  remove gadget from repos.toml
+
+- **cli:** rename flag
+- quote names
+
+  names print quoted
+  and the old form is gone
+
+### Features
+
+- add widget
+- add sprocket
+
+### Fixes
+
+- **render:** pad columns
+- read once
+EOF
+  )"
+  if [[ "${out}" != "${want}" ]]; then
+    ci::log "FAIL: section is not the expected text: ${out}"
+    rc=1
+  fi
+
+  check 'section with a non-version' "${repo}" 2 '' section 2.0.0 || rc=1
+
+  # A group with no commits has no heading.
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'fix: a'
+  check 'section with one group' "${repo}" 0 $'## v1.0.1\n\n### Fixes\n\n- a' section v1.0.1 || rc=1
+
+  # Nothing to release still yields the heading the caller asked for.
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'docs: a'
+  check 'section with nothing to release' "${repo}" 0 '## v1.0.1' section v1.0.1 || rc=1
+  return "${rc}"
+}
+
+# Case 6: a merge commit repeats the subject of the commit it merges, with a
+# pull request number appended. It is dropped by its SHA, so the change is
+# listed once and the merge subject never decides the bump.
+function test_merge_commits() {
+  local rc=0 repo out
+  repo="$(make_tagged_repo v1.0.0)"
+  git -C "${repo}" checkout --quiet -b topic
+  commit "${repo}" 'fix: one thing'
+  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" merge --quiet --no-ff --message 'fix: one thing (#7)' topic
+  out="$(cd "${repo}" && "${SCRIPT}" section v1.0.1 2> "${work}/stderr")" || {
+    ci::log "FAIL: section over a merge exited non-zero (stderr: $(< "${work}/stderr"))"
+    return 1
+  }
+  local count
+  count="$(count_lines_with "${out}" 'one thing')"
+  if [[ "${count}" != 1 ]]; then
+    ci::log "FAIL: a merged change is listed ${count} times, want 1: ${out}"
+    rc=1
+  fi
+  if [[ "${out}" == *'(#7)'* ]]; then
+    ci::log "FAIL: the merge commit's subject is in the section: ${out}"
+    rc=1
+  fi
+  check 'next over a merge' "${repo}" 0 'v1.0.1' next || rc=1
+
+  # A breaking change keeps its one entry too: nothing may shield a merge
+  # commit from being dropped because its subject is marked breaking.
+  repo="$(make_tagged_repo v1.0.0)"
+  git -C "${repo}" checkout --quiet -b topic
+  commit "${repo}" 'feat!: drop gadget'
+  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" merge --quiet --no-ff --message 'feat!: drop gadget (#9)' topic
+  check 'section lists a merged breaking change once' "${repo}" 0 $'## v2.0.0\n\n### Breaking changes\n\n- drop gadget' section v2.0.0 || rc=1
+
+  # A merge whose subject claims more than the commits it merges.
+  repo="$(make_tagged_repo v1.0.0)"
+  git -C "${repo}" checkout --quiet -b topic
+  commit "${repo}" 'docs: reword'
+  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" merge --quiet --no-ff --message 'feat!: reword (#8)' topic
+  check 'next ignores a merge subject' "${repo}" 0 '' next || rc=1
+  return "${rc}"
+}
+
+# Case 7: the newest version a changelog names.
+function test_top() {
+  local rc=0
+  local -r file="${work}/top.md"
+  printf '# Changelog\n\nPreamble.\n\n## v1.2.0\n\n- a\n\n## v1.1.0\n\n- b\n' > "${file}"
+  check 'top of two sections' "${work}" 0 'v1.2.0' top "${file}" || rc=1
+  printf '# Changelog\n\n## v1.2.0 - 2026-01-01\n\n- a\n' > "${file}"
+  check 'top ignores what follows the version' "${work}" 0 'v1.2.0' top "${file}" || rc=1
+  check 'top of the skeleton' "${work}" 0 '' top "${REPO_DIR}/CHANGELOG.md" || rc=1
+  printf '# Changelog\n\n## Unreleased\n\n- a\n\n## v1.2.0\n' > "${file}"
+  check 'top with a first heading that is not a version' "${work}" 1 '' top "${file}" || rc=1
+  printf '# Changelog\n\n## v1.2.0-rc.1\n\n## v1.1.0\n' > "${file}"
+  check 'top with a pre-release first' "${work}" 1 '' top "${file}" || rc=1
+  printf '# Changelog\n\n## v1.2\n' > "${file}"
+  check 'top with a short version first' "${work}" 1 '' top "${file}" || rc=1
+  # A deeper heading is not a section heading.
+  printf '# Changelog\n\n### Features\n\n## v1.2.0\n' > "${file}"
+  check 'top skips deeper headings' "${work}" 0 'v1.2.0' top "${file}" || rc=1
+  check 'top of a missing file' "${work}" 1 '' top "${work}/absent.md" || rc=1
+  return "${rc}"
+}
+
+# Case 8: one version's body, without its heading.
+function test_notes() {
+  local rc=0
+  local -r file="${work}/notes.md"
+  printf '# Changelog\n\nPreamble.\n\n## v1.2.0\n\n### Features\n\n- a\n\n\n## v1.1.0 - 2026-01-01\n\n### Fixes\n\n- b\n- c\n\n' > "${file}"
+  check 'notes of the top section' "${work}" 0 $'### Features\n\n- a' notes "${file}" v1.2.0 || rc=1
+  check 'notes of the last section run to the end' "${work}" 0 $'### Fixes\n\n- b\n- c' notes "${file}" v1.1.0 || rc=1
+  check 'notes of an unknown version' "${work}" 1 '' notes "${file}" v9.9.9 || rc=1
+  # v1.1.0 must not answer for v1.1.
+  check 'notes of a version that is only a prefix' "${work}" 2 '' notes "${file}" v1.1 || rc=1
+  check 'notes of a missing file' "${work}" 1 '' notes "${work}/absent.md" v1.2.0 || rc=1
+  printf '## v1.10.0\n\n- ten\n\n## v1.1.0\n\n- one\n' > "${file}"
+  check 'notes do not confuse v1.1.0 with v1.10.0' "${work}" 0 '- one' notes "${file}" v1.1.0 || rc=1
+  return "${rc}"
+}
+
+# Case 9: a new section goes above every older one.
+function test_prepend() {
+  local rc=0
+  local -r section="${work}/section.md" file="${work}/prepend.md" want="${work}/want.md" got="${work}/got.md"
+  printf '## v1.3.0\n\n### Features\n\n- new\n' > "${section}"
+
+  # Into the skeleton: preamble, one blank line, the section.
+  local -r skeleton="${REPO_DIR}/CHANGELOG.md"
+  {
+    cat -- "${skeleton}"
+    printf '\n'
+    cat -- "${section}"
+  } > "${want}"
+  check 'prepend into the skeleton' "${work}" 0 - prepend "${skeleton}" "${section}" || rc=1
+  (cd "${work}" && "${SCRIPT}" prepend "${skeleton}" "${section}" > "${got}" 2> /dev/null) || true
+  if ! cmp --silent -- "${want}" "${got}"; then
+    ci::log "FAIL: prepend into the skeleton: got: $(< "${got}")"
+    rc=1
+  fi
+  check 'top after a prepend into the skeleton' "${work}" 0 'v1.3.0' top "${got}" || rc=1
+  # The result of a prepend is committed as it is, so it must already be
+  # what the formatting gate accepts.
+  cp -- "${REPO_DIR}/.prettierrc.yaml" "${work}/.prettierrc.yaml"
+  cp -- "${got}" "${work}/CHANGELOG.md"
+  if ! (cd "${work}" && prettier --check CHANGELOG.md > /dev/null 2>&1); then
+    ci::log 'FAIL: a prepend into the skeleton is not prettier-clean'
+    rc=1
+  fi
+
+  # Into a file with sections: above the old top, and everything from the
+  # old top on is unchanged byte for byte.
+  local -r old=$'## v1.2.0 - 2026-01-01\n\n### Fixes\n\n- old  \n\n\n## v1.1.0\n\n- older\n'
+  printf '# Changelog\n\nPreamble.\n\n\n%s' "${old}" > "${file}"
+  printf '# Changelog\n\nPreamble.\n\n## v1.3.0\n\n### Features\n\n- new\n\n%s' "${old}" > "${want}"
+  # Blank lines around the section's own text are not carried over.
+  printf '\n\n## v1.3.0\n\n### Features\n\n- new\n\n\n' > "${section}"
+  (cd "${work}" && "${SCRIPT}" prepend "${file}" "${section}" > "${got}" 2> /dev/null) || true
+  if ! cmp --silent -- "${want}" "${got}"; then
+    ci::log "FAIL: prepend above older sections: got: $(< "${got}")"
+    rc=1
+  fi
+  check 'top after a prepend above older sections' "${work}" 0 'v1.3.0' top "${got}" || rc=1
+  check 'notes after a prepend' "${work}" 0 $'### Features\n\n- new' notes "${got}" v1.3.0 || rc=1
+
+  # No preamble at all: the section leads the file.
+  printf '## v1.2.0\n\n- old\n' > "${file}"
+  check 'prepend into a file with no preamble' "${work}" 0 $'## v1.3.0\n\n### Features\n\n- new\n\n## v1.2.0\n\n- old' prepend "${file}" "${section}" || rc=1
+
+  printf '\n\n' > "${section}"
+  check 'prepend of an empty section' "${work}" 1 '' prepend "${file}" "${section}" || rc=1
+  check 'prepend of a missing section file' "${work}" 1 '' prepend "${file}" "${work}/absent.md" || rc=1
+  check 'prepend into a missing changelog' "${work}" 1 '' prepend "${work}/absent.md" "${file}" || rc=1
+  return "${rc}"
+}
+
+# The path a release takes: a generated section, prepended to the skeleton,
+# is read back whole, and the file passes the formatter.
+function test_round_trip() {
+  local rc=0 repo
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  commit "${repo}" 'fix(render): pad columns'
+  commit "${repo}" 'feat!: drop gadget' 'BREAKING CHANGE: remove gadget from repos.toml'
+  local -r dir="${work}/round-trip"
+  mkdir "${dir}"
+  cp -- "${REPO_DIR}/.prettierrc.yaml" "${dir}/.prettierrc.yaml"
+  (
+    cd "${repo}"
+    "${SCRIPT}" section v2.0.0 > "${dir}/section.md"
+    "${SCRIPT}" prepend "${REPO_DIR}/CHANGELOG.md" "${dir}/section.md" > "${dir}/first.md"
+    "${SCRIPT}" section v2.1.0 > "${dir}/section.md"
+    "${SCRIPT}" prepend "${dir}/first.md" "${dir}/section.md" > "${dir}/CHANGELOG.md"
+  ) 2> "${work}/stderr" || {
+    ci::log "FAIL: the round trip exited non-zero (stderr: $(< "${work}/stderr"))"
+    return 1
+  }
+  check 'top after two releases' "${work}" 0 'v2.1.0' top "${dir}/CHANGELOG.md" || rc=1
+  local want
+  want="$(
+    cat << 'EOF'
+### Breaking changes
+
+- drop gadget
+
+  remove gadget from repos.toml
+
+### Features
+
+- add widget
+
+### Fixes
+
+- **render:** pad columns
+EOF
+  )"
+  check 'notes of the older release' "${work}" 0 "${want}" notes "${dir}/CHANGELOG.md" v2.0.0 || rc=1
+  check 'notes of the newer release' "${work}" 0 "${want}" notes "${dir}/CHANGELOG.md" v2.1.0 || rc=1
+  if ! (cd "${dir}" && prettier --check CHANGELOG.md > "${work}/stderr" 2>&1); then
+    ci::log "FAIL: a changelog of generated sections is not prettier-clean: $(< "${work}/stderr")"
+    rc=1
+  fi
+  return "${rc}"
+}
+
+# Case 10: a call that cannot be meant is a usage error.
+function test_usage() {
+  local rc=0
+  check 'no subcommand' "${work}" 2 '' || rc=1
+  check 'an unknown subcommand' "${work}" 2 '' bogus || rc=1
+  check 'validate with no version' "${work}" 2 '' validate || rc=1
+  check 'validate with two versions' "${work}" 2 '' validate v1.0.0 v1.0.1 || rc=1
+  check 'last-tag with an argument' "${work}" 2 '' last-tag v1.0.0 || rc=1
+  check 'greater with one version' "${work}" 2 '' greater v1.0.0 || rc=1
+  check 'greater with three versions' "${work}" 2 '' greater v1.0.0 v1.0.1 v1.0.2 || rc=1
+  check 'next with an argument' "${work}" 2 '' next v1.0.0 || rc=1
+  check 'section with no version' "${work}" 2 '' section || rc=1
+  check 'top with no file' "${work}" 2 '' top || rc=1
+  check 'notes with no version' "${work}" 2 '' notes "${REPO_DIR}/CHANGELOG.md" || rc=1
+  check 'notes with no arguments' "${work}" 2 '' notes || rc=1
+  check 'prepend with one file' "${work}" 2 '' prepend "${REPO_DIR}/CHANGELOG.md" || rc=1
+  return "${rc}"
+}
+
+function main() {
+  local rc=0
+  work="$(mktemp --directory)"
+
+  test_validate || rc=1
+  test_last_tag || rc=1
+  test_greater || rc=1
+  test_next || rc=1
+  test_section || rc=1
+  test_merge_commits || rc=1
+  test_top || rc=1
+  test_notes || rc=1
+  test_prepend || rc=1
+  test_round_trip || rc=1
+  test_usage || rc=1
+
+  ((rc == 0)) && ci::log 'release-version: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

@@ -1,3 +1,7 @@
 config:
   # prettier owns line wrapping; tables and link-heavy lines run long.
   MD013: false
+  # CHANGELOG.md repeats the same group headings under every version. Two
+  # headings with one text are still an error when they share a parent.
+  MD024:
+    siblings_only: true

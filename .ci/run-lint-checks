@@ -159,14 +159,16 @@ function main() {
 
   ci::log 'running typos'
   # Every tracked text file. A bare `typos` skips hidden paths (.ci, .github)
-  # and walks untracked ones.
+  # and walks untracked ones. --force-exclude, because typos checks a file
+  # named on its command line even when _typos.toml excludes it, and every
+  # file here is named.
   local -a text_files=()
   mapfile -d '' -t text_files < <(git -c core.quotePath=false grep -z -I --files-with-matches '')
   if ((${#text_files[@]} == 0)); then
     ci::log 'text_files list is empty - this is a failure, not a clean pass'
     rc=1
   else
-    typos "${text_files[@]}" || rc=1
+    typos --force-exclude "${text_files[@]}" || rc=1
   fi
 
   ci::log 'running merge-conflict marker check'

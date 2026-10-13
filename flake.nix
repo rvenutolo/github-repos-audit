@@ -127,6 +127,10 @@
             # it reads go.mod and the module cache, so it needs no network
             # beyond what the Go build already fetched.
             cyclonedx-gomod
+            # git-cliff turns Conventional Commit subjects into the next
+            # version and its changelog section in .ci/release-version. It
+            # reads the local repository only; nothing is fetched.
+            git-cliff
             # jq reads govulncheck's JSON report in .ci/check-vulns.
             jq
             # formatters (also wired into .treefmt.nix)

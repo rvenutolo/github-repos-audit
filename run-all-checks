@@ -62,6 +62,7 @@ function main() {
   "${REPO_DIR}/.ci/test-check-vulns" || rc=1
   "${REPO_DIR}/.ci/test-check-gocache-keyed" || rc=1
   "${REPO_DIR}/.ci/test-lib" || rc=1
+  "${REPO_DIR}/.ci/test-release-version" || rc=1
   "${REPO_DIR}/.ci/check-doc-rot" || rc=1
 
   ci::log 'running lint checks'
