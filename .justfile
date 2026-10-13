@@ -69,6 +69,10 @@ gremlins-bump:
     # for why the hashes are never edited by hand.
     nix run nixpkgs#nix-update -- --flake --version=stable gremlins
 
+# Cross-compile the release binaries, SBOM and checksums into a directory.
+build-release version out:
+    ./.ci/in-devshell ./.ci/build-release --version {{ version }} --out {{ out }}
+
 # Report vulnerabilities in the code paths this binary reaches.
 vuln:
     # govulncheck's whole report, traces included, and its own exit status:

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"github.com/rvenutolo/github-repos-audit/internal/config"
@@ -95,7 +96,7 @@ func run(
 		fmt.Fprint(stdout, usageText)
 		return nil
 	case "--version", "version":
-		fmt.Fprintln(stdout, version)
+		fmt.Fprintln(stdout, resolveVersion(version, debug.ReadBuildInfo))
 		return nil
 	case "render":
 		return runRender(ctx, args[1:], getenv, stdout, stderr, liveCollector, time.Now)

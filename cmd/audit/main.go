@@ -11,10 +11,12 @@ import (
 	"syscall"
 )
 
-// version is what --version prints. It stays "dev" unless a build passes
-// -ldflags "-X main.version=...", which nothing in this repository does: every
-// invocation is `go run ./cmd/audit`. A release build may override it.
-var version = "dev"
+// version is the version linked into release builds through
+// -ldflags "-X main.version=..." (.ci/build-release). It stays "dev" in every
+// build that does not link one; --version reports it through resolveVersion,
+// which substitutes the module version that `go install module@vX.Y.Z` and a
+// `go build` in a regular clone record.
+var version = unlinkedVersion
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
