@@ -39,7 +39,8 @@
 # @arg $1 subcommand one of the subcommands above
 # @arg $@ the subcommand's arguments
 # @exitcode 0 success; for greater, a is the higher version
-# @exitcode 1 a runtime failure: not a repository, no cliff.toml, an
+# @exitcode 1 a runtime failure: not a repository, a shallow clone, no
+#             cliff.toml, an
 #             unreadable file, a first heading that is not a version, a
 #             version with no section; for greater, a is not the higher
 #             version
@@ -128,12 +129,22 @@ function is_greater() {
 }
 
 # @description Print the top level of the repository the current directory
-#              is in, or exit 1 outside one.
+#              is in, or exit 1 outside one or in a shallow clone. Every
+#              subcommand that reads tags or history starts here. A shallow
+#              clone holds neither the older tags nor the commits between
+#              them and HEAD, and git reports no error for what it does not
+#              have: the answer would be a confident wrong version.
 # @stdout the absolute path
 function repo_top() {
-  local top
+  local top shallow
   if ! top="$(git rev-parse --show-toplevel 2> /dev/null)"; then
     fail 'not inside a git repository'
+  fi
+  if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
+    fail 'cannot tell whether the repository is a shallow clone'
+  fi
+  if [[ "${shallow}" != 'false' ]]; then
+    fail 'this is a shallow clone, so tags and commits a version is computed from are missing; fetch the full history first (git fetch --unshallow --tags)'
   fi
   printf '%s\n' "${top}"
 }

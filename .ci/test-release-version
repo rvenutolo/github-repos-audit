@@ -33,8 +33,9 @@ trap 'rm -rf -- "${work}"' EXIT
 # @description Create a throwaway repository holding this repository's
 #              cliff.toml and one commit, and print its path. Signing is
 #              turned off locally, for tags as well as commits, because the
-#              host may sign both by default and no key exists here. cliff.toml is copied in untracked: the script
-#              reads it from the working tree.
+#              host may sign both by default and no key exists here.
+#              cliff.toml is copied in untracked: the script reads it from
+#              the working tree.
 # @stdout the repository's absolute path
 function make_repo() {
   local repo
@@ -103,6 +104,24 @@ function check() {
   fi
 }
 
+# @description Require the stderr of the last `check` to contain a fixed
+#              string. A failure that says nothing, or names the wrong
+#              cause, leaves the caller of a release script guessing.
+# @arg $1 case name
+# @arg $2 fixed string; empty to require only that something was printed
+function check_stderr() {
+  local errors
+  errors="$(< "${work}/stderr")"
+  if [[ -z "${errors}" ]]; then
+    ci::log "FAIL: $1: nothing on stderr"
+    return 1
+  fi
+  if [[ "${errors}" != *"$2"* ]]; then
+    ci::log "FAIL: $1: stderr lacks '$2' (stderr: ${errors})"
+    return 1
+  fi
+}
+
 # @description Count the lines of a text that contain a fixed string.
 # @arg $1 text
 # @arg $2 fixed string
@@ -125,6 +144,7 @@ function test_validate() {
   done
   for version in '1.2.3' 'v1.2' 'v1.2.3-rc.1' 'v01.2.3' 'vx.y.z' '' 'v1.2.3.4' ' v1.2.3' $'v1.2.3\nv1.2.4'; do
     check "validate '${version}'" "${work}" 2 '' validate "${version}" || rc=1
+    check_stderr "validate '${version}'" 'is not vMAJOR.MINOR.PATCH' || rc=1
   done
   return "${rc}"
 }
@@ -164,6 +184,30 @@ function test_last_tag() {
 
   mkdir "${work}/not-a-repo"
   check 'last-tag outside a repository' "${work}/not-a-repo" 1 '' last-tag || rc=1
+  return "${rc}"
+}
+
+# A shallow clone lacks the tags and commits a version is computed from, and
+# git reports nothing missing, so every subcommand that reads them refuses.
+function test_shallow_clone() {
+  local rc=0 repo
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'fix: a'
+  commit "${repo}" 'fix: b'
+  local -r shallow="${work}/shallow"
+  git clone --quiet --depth 1 "file://${repo}" "${shallow}"
+  cp -- "${REPO_DIR}/cliff.toml" "${shallow}/cliff.toml"
+  check 'last-tag in a shallow clone' "${shallow}" 1 '' last-tag || rc=1
+  check_stderr 'last-tag in a shallow clone' 'shallow clone' || rc=1
+  check 'next in a shallow clone' "${shallow}" 1 '' next || rc=1
+  check_stderr 'next in a shallow clone' 'shallow clone' || rc=1
+  check 'section in a shallow clone' "${shallow}" 1 '' section v1.0.1 || rc=1
+  check_stderr 'section in a shallow clone' 'shallow clone' || rc=1
+  # What does not read history still works there.
+  check 'validate in a shallow clone' "${shallow}" 0 '' validate v1.0.0 || rc=1
+  check 'top in a shallow clone' "${shallow}" 0 '' top "${REPO_DIR}/CHANGELOG.md" || rc=1
+  # The full clone of the same history answers.
+  check 'next in the full repository' "${repo}" 0 'v1.0.1' next || rc=1
   return "${rc}"
 }
 
@@ -564,6 +608,7 @@ function main() {
 
   test_validate || rc=1
   test_last_tag || rc=1
+  test_shallow_clone || rc=1
   test_greater || rc=1
   test_next || rc=1
   test_section || rc=1
