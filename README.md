@@ -210,8 +210,11 @@ type before `audit validate` passes. Type names use lowercase letters, digits,
 `_` and `-`, and a type no repository uses is allowed.
 
 Each `[repos.<name>]` entry declares a `type`, and optionally `published` and
-per-repository `overrides`. Visibility is never declared; it is always read
-live from GitHub.
+per-repository `overrides`. `<name>` is the repository's name alone, without
+the owner, and has to be one GitHub could have: 1 to 100 letters, digits, `.`,
+`_` and `-`, and not `.` or `..`. Anything else is a typo no repository will
+ever match, and `audit validate` rejects it. Visibility is never declared; it
+is always read live from GitHub.
 
 `[identity]` declares your git identity, for the `git_identity` check:
 

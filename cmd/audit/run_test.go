@@ -747,6 +747,29 @@ func TestRunRender_failsWhenNoDeclaredRepositoryExists(t *testing.T) {
 	}
 }
 
+// TestRunValidate_rejectsAKeyThatCannotBeARepositoryName: the offline gate is
+// where a mistyped [repos.<key>] is caught, so it never reaches a report.
+func TestRunValidate_rejectsAKeyThatCannotBeARepositoryName(t *testing.T) {
+	t.Parallel()
+
+	_, configPath := scratchProject(t, scratchConfig+"\n[repos.\"my repo\"]\ntype = \"tools\"\n")
+
+	var stdout, stderr bytes.Buffer
+	err := runValidate([]string{"--config", configPath}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("runValidate() error = nil, want the key refused")
+	}
+	if got := exitCode(err); got != 1 {
+		t.Errorf("exitCode = %d, want 1", got)
+	}
+	if want := `"my repo"`; !strings.Contains(err.Error(), want) {
+		t.Errorf("runValidate() error = %q, want it to name the entry %s", err.Error(), want)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want no all-clear line", stdout.String())
+	}
+}
+
 // TestRunJSON_carriesTheDrift: json prints the snapshot render would write,
 // so it tolerates and records the same disagreement.
 func TestRunJSON_carriesTheDrift(t *testing.T) {

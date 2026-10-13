@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -460,6 +461,107 @@ func TestParse_rejects(t *testing.T) {
 				t.Errorf("Parse() error = %q, want it to contain %q", err.Error(), tc.contains)
 			}
 		})
+	}
+}
+
+// repoEntry writes one [repos.<key>] table of type tools, the key quoted so
+// that any string at all can be a key.
+func repoEntry(key string) string {
+	return fmt.Sprintf("[repos.%q]\ntype = \"tools\"\n\n", key)
+}
+
+// TestParse_rejectsAKeyThatCannotBeARepositoryName: a [repos.<key>] table is
+// a claim that the account has a repository of that name. A key GitHub could
+// never return is a typo, and render would carry it into the report as a
+// stale entry — where an empty one names nothing and one with a newline or a
+// backtick breaks the line it is written on. It is decidable from the file
+// alone, so it is refused here, before any API call.
+func TestParse_rejectsAKeyThatCannotBeARepositoryName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{name: "empty", key: ""},
+		{name: "a space", key: "my repo"},
+		{name: "only a space", key: " "},
+		{name: "a backtick", key: "my`repo"},
+		{name: "a newline", key: "my\nrepo"},
+		{name: "a slash, as in owner/name", key: "gh-owner/alpha"},
+		{name: "a letter outside ASCII", key: "café"},
+		{name: "the current directory", key: "."},
+		{name: "the parent directory", key: ".."},
+		{name: "one character over the limit", key: strings.Repeat("a", 101)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Parse(strings.NewReader(toolsTypes + repoEntry(tc.key)))
+			if err == nil {
+				t.Fatalf("Parse() error = nil, want it to refuse the key %q", tc.key)
+			}
+			if !errors.Is(err, config.ErrInvalid) {
+				t.Errorf("Parse() error = %v, want it to wrap ErrInvalid", err)
+			}
+			// User-facing `audit validate` output. The key is quoted, so an
+			// empty or blank one is visible in the message.
+			for _, want := range []string{"not a possible repository name", strconv.Quote(tc.key)} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Parse() error = %q, want it to contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
+}
+
+// TestParse_acceptsEveryKeyThatCanBeARepositoryName holds the rule to
+// GitHub's own: refusing a name a real repository can have would lock that
+// repository out of the report.
+func TestParse_acceptsEveryKeyThatCanBeARepositoryName(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []string{
+		"a",
+		"mixedCase-flake",
+		"a.b_c-1",
+		".github",
+		"-leading-dash",
+		"...",
+		"0",
+		strings.Repeat("a", 100),
+	} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := config.Parse(strings.NewReader(toolsTypes + repoEntry(key)))
+			if err != nil {
+				t.Fatalf("Parse() error = %v, want nil for the key %q", err, key)
+			}
+			if _, ok := cfg.Repos[key]; !ok {
+				t.Errorf("Parse() dropped the entry %q", key)
+			}
+		})
+	}
+}
+
+// TestParse_reportsEveryImpossibleKeyAtOnce: as with every other problem, one
+// run shows them all.
+func TestParse_reportsEveryImpossibleKeyAtOnce(t *testing.T) {
+	t.Parallel()
+
+	_, err := config.Parse(strings.NewReader(toolsTypes + repoEntry("my repo") + repoEntry("a/b") + repoEntry("alpha")))
+	if err == nil {
+		t.Fatal("Parse() error = nil, want both keys refused")
+	}
+	for _, want := range []string{`"my repo"`, `"a/b"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse() error = %q, want it to contain %s", err.Error(), want)
+		}
+	}
+	if strings.Contains(err.Error(), "alpha") {
+		t.Errorf("Parse() error = %q, want the valid entry alpha left out of it", err.Error())
 	}
 }
 
