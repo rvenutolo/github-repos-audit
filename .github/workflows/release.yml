@@ -8,14 +8,17 @@ name: release
 # input names one. Merging that pull request is the release decision, so
 # nothing here enables auto-merge: a human reads the section and merges it.
 #
-# dry-run builds the release assets exactly as a release would and uploads
+# dry-run builds the release assets with the script a release uses and uploads
 # them as a workflow artifact. It proves the build; nothing is tagged or
 # published by it, which is why the version it builds is a placeholder.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Propose this version (vX.Y.Z) instead of the computed one.
+        description: >-
+          Propose this version (vX.Y.Z) instead of the computed one. Ignored
+          when dry-run is set. A run from a branch other than the default one
+          proposes nothing.
         type: string
         required: false
         default: ""
@@ -27,18 +30,20 @@ on:
 permissions: {}
 
 concurrency:
-  # Two runs must not race on the same release branch.
-  group: ${{ github.workflow }}
+  # Two proposals must not race on the same release branch. A dry run touches
+  # no branch, so it has its own group: GitHub keeps one pending run per
+  # group, and a dry run sharing propose's would cancel a queued proposal.
+  group: ${{ github.workflow }}-${{ inputs.dry-run && 'dry-run' || 'release' }}
   cancel-in-progress: false
 
 jobs:
   propose:
     name: propose
-    # Only the default branch's head may be released. The script also refuses
-    # a checkout that is not that head, but refusing here means a run from a
-    # side branch never starts, so it cannot leave a half-built release
-    # pull request behind.
-    if: ${{ !inputs.dry-run && github.ref_name == github.event.repository.default_branch }}
+    # The script itself refuses a checkout that is not the default branch's
+    # head, before any write. This condition means a run from a side branch
+    # (a tag of the same name included, hence the full ref) spends no setup
+    # time and never puts REFRESH_TOKEN in a job's environment.
+    if: ${{ !inputs.dry-run && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # contents: read is for actions/checkout and nothing else. The pull request
@@ -106,9 +111,6 @@ jobs:
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
-          # results-receiver.actions.githubusercontent.com and the Azure blob
-          # host: actions/upload-artifact sends the artifact there, and the
-          # host name carries a per-region suffix, hence the wildcard.
           allowed-endpoints: >-
             api.github.com:443
             cache.nixos.org:443
@@ -119,12 +121,10 @@ jobs:
             install.determinate.systems:443
             nixos.org:443
             objects.githubusercontent.com:443
-            productionresultssa*.blob.core.windows.net:443
             proxy.golang.org:443
             raw.githubusercontent.com:443
             release-assets.githubusercontent.com:443
             releases.nixos.org:443
-            results-receiver.actions.githubusercontent.com:443
             storage.googleapis.com:443
             sum.golang.org:443
             tarballs.nixos.org:443
