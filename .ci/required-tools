@@ -25,10 +25,12 @@ cyclonedx-gomod
 git-cliff
 # .ci/release-publish signs a release's SHA256SUMS with `cosign sign-blob`
 cosign
-# .ci/check-vulns reads govulncheck's JSON report with it; .ci/build-release
-# writes the release version into the SBOM with it; the stub gh of
-# .ci/test-release-pull-request and of .ci/test-release-publish runs the
-# script's own --jq filter with it
+# .ci/check-vulns reads govulncheck's JSON report with it;
+# .ci/check-breaking-check-list reads the schema's check list with it;
+# .ci/build-release writes the release version into the SBOM with it; the
+# stub gh of .ci/test-release-pull-request and of .ci/test-release-publish
+# runs the script's own --jq filter with it, and .ci/test-release-publish
+# edits the stub's answers with it
 jq
 # .ci/run-lint-checks (verify) and .ci/run-fixers (write); treefmt drives it too
 shfmt
@@ -76,8 +78,9 @@ git
 # internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset;
 # every .ci/*-pull-request script, .ci/release-pull-request included, commits
 # through `gh api` and opens or updates its pull request with `gh pr`;
-# .ci/release-publish drafts, checks and publishes a release with
-# `gh release` and reads its tag with `gh api`
+# .ci/release-publish asks whether a release or its tag exists, drafts,
+# reads back and publishes the release with `gh release`, and reads the tag
+# with `gh api`
 gh
 # the task runner .justfile documents; .ci/run-lint-checks runs `just --fmt`
 # and .ci/check-readme-recipes runs `just --summary`

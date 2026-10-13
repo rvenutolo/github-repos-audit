@@ -22,7 +22,12 @@
 # @option --version <vX.Y.Z> the release version, exactly vMAJOR.MINOR.PATCH
 # @option --out <dir> directory to write into; created if absent
 # @exitcode 0 every file was built and written
-# @exitcode 1 something went wrong, or --out is not empty
+# @exitcode 1 something went wrong, or --out is not empty. A build that
+#             fails part way leaves what it had written in --out, an
+#             unfinished audit.cdx.json.tmp possibly among it. Nothing in
+#             there is a release: SHA256SUMS is written last. The next run
+#             refuses that directory because it is not empty, so a failed
+#             build is started again in a new or emptied one.
 # @exitcode 2 a usage error: an unknown argument, a missing option or value, or
 #             a version that is not vMAJOR.MINOR.PATCH
 
