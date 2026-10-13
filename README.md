@@ -365,6 +365,11 @@ Nix is expected to be installed on the host.
 | `just gremlins-bump` | bump gremlins to its latest release; needs network        |
 | `just build-release` | cross-compile the release binaries, SBOM and checksums    |
 
+A release is proposed by running the `release` workflow by hand. It opens, or
+updates, one pull request titled `chore(release): vX.Y.Z` that changes only
+`CHANGELOG.md`. The version is computed from the Conventional Commit types
+merged since the last tag, unless the workflow is given one.
+
 Coverage is held three ways, all inside `just check`. Each package must stay
 at or above its figure in `.ci/coverage-baseline.txt`. Every Go block a
 change touches (everything since the branch left `origin/main`) must be run
