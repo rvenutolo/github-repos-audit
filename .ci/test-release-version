@@ -30,6 +30,22 @@ readonly SCRIPT="${REPO_DIR}/.ci/release-version"
 work=''
 trap 'rm -rf -- "${work}"' EXIT
 
+# @description Write `${work}/skeleton.md`, a changelog with a preamble and
+#              no release: the file a first release is prepended to. It is
+#              written here and never read from this repository's own
+#              CHANGELOG.md, because that file gains a section with every
+#              release and the cases would then test whatever the last
+#              release left behind.
+# @noargs
+function write_skeleton() {
+  cat > "${work}/skeleton.md" << 'EOF'
+# Changelog
+
+Every release of this tool, newest first. Each section is generated from the
+Conventional Commit subjects merged since the release before it.
+EOF
+}
+
 # @description Create a throwaway repository holding this repository's
 #              cliff.toml and one commit, and print its path. Signing is
 #              turned off locally, for tags as well as commits, because the
@@ -205,7 +221,7 @@ function test_shallow_clone() {
   check_stderr 'section in a shallow clone' 'shallow clone' || rc=1
   # What does not read history still works there.
   check 'validate in a shallow clone' "${shallow}" 0 '' validate v1.0.0 || rc=1
-  check 'top in a shallow clone' "${shallow}" 0 '' top "${REPO_DIR}/CHANGELOG.md" || rc=1
+  check 'top in a shallow clone' "${shallow}" 0 '' top "${work}/skeleton.md" || rc=1
   # The full clone of the same history answers.
   check 'next in the full repository' "${repo}" 0 'v1.0.1' next || rc=1
   return "${rc}"
@@ -494,7 +510,7 @@ EOF
   (
     cd "${repo}"
     "${SCRIPT}" section v2.0.0 > "${dir}/section.md"
-    "${SCRIPT}" prepend "${REPO_DIR}/CHANGELOG.md" "${dir}/section.md" > "${dir}/CHANGELOG.md"
+    "${SCRIPT}" prepend "${work}/skeleton.md" "${dir}/section.md" > "${dir}/CHANGELOG.md"
   ) 2> "${work}/stderr" || {
     ci::log "FAIL: building the angle-bracket changelog exited non-zero (stderr: $(< "${work}/stderr"))"
     return 1
@@ -563,7 +579,7 @@ function test_top() {
   check 'top of two sections' "${work}" 0 'v1.2.0' top "${file}" || rc=1
   printf '# Changelog\n\n## v1.2.0 - 2026-01-01\n\n- a\n' > "${file}"
   check 'top ignores what follows the version' "${work}" 0 'v1.2.0' top "${file}" || rc=1
-  check 'top of the skeleton' "${work}" 0 '' top "${REPO_DIR}/CHANGELOG.md" || rc=1
+  check 'top of the skeleton' "${work}" 0 '' top "${work}/skeleton.md" || rc=1
   printf '# Changelog\n\n## Unreleased\n\n- a\n\n## v1.2.0\n' > "${file}"
   check 'top with a first heading that is not a version' "${work}" 1 '' top "${file}" || rc=1
   printf '# Changelog\n\n## v1.2.0-rc.1\n\n## v1.1.0\n' > "${file}"
@@ -600,7 +616,7 @@ function test_prepend() {
   printf '## v1.3.0\n\n### Features\n\n- new\n' > "${section}"
 
   # Into the skeleton: preamble, one blank line, the section.
-  local -r skeleton="${REPO_DIR}/CHANGELOG.md"
+  local -r skeleton="${work}/skeleton.md"
   {
     cat -- "${skeleton}"
     printf '\n'
@@ -662,7 +678,7 @@ function test_round_trip() {
   (
     cd "${repo}"
     "${SCRIPT}" section v2.0.0 > "${dir}/section.md"
-    "${SCRIPT}" prepend "${REPO_DIR}/CHANGELOG.md" "${dir}/section.md" > "${dir}/first.md"
+    "${SCRIPT}" prepend "${work}/skeleton.md" "${dir}/section.md" > "${dir}/first.md"
     "${SCRIPT}" section v2.1.0 > "${dir}/section.md"
     "${SCRIPT}" prepend "${dir}/first.md" "${dir}/section.md" > "${dir}/CHANGELOG.md"
   ) 2> "${work}/stderr" || {
@@ -710,15 +726,16 @@ function test_usage() {
   check 'next with an argument' "${work}" 2 '' next v1.0.0 || rc=1
   check 'section with no version' "${work}" 2 '' section || rc=1
   check 'top with no file' "${work}" 2 '' top || rc=1
-  check 'notes with no version' "${work}" 2 '' notes "${REPO_DIR}/CHANGELOG.md" || rc=1
+  check 'notes with no version' "${work}" 2 '' notes "${work}/skeleton.md" || rc=1
   check 'notes with no arguments' "${work}" 2 '' notes || rc=1
-  check 'prepend with one file' "${work}" 2 '' prepend "${REPO_DIR}/CHANGELOG.md" || rc=1
+  check 'prepend with one file' "${work}" 2 '' prepend "${work}/skeleton.md" || rc=1
   return "${rc}"
 }
 
 function main() {
   local rc=0
   work="$(mktemp --directory)"
+  write_skeleton
 
   test_validate || rc=1
   test_last_tag || rc=1

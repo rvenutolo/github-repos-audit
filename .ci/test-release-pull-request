@@ -41,6 +41,23 @@ errors=''
 work=''
 trap 'rm -rf -- "${work}"' EXIT
 
+# @description Write `${work}/skeleton.md`, a changelog with a preamble and
+#              no release: what every throwaway repository starts from. It
+#              is written here and never copied from this repository's own
+#              CHANGELOG.md, because that file gains a section with every
+#              release, and its newest version has no tag in a throwaway
+#              repository: the cases would then test whatever the last
+#              release left behind.
+# @noargs
+function write_skeleton() {
+  cat > "${work}/skeleton.md" << 'EOF'
+# Changelog
+
+Every release of this tool, newest first. Each section is generated from the
+Conventional Commit subjects merged since the release before it.
+EOF
+}
+
 # @description Add one empty commit.
 # @arg $1 repo
 # @arg $2 subject
@@ -49,8 +66,8 @@ function commit() {
 }
 
 # @description Create a throwaway repository the script can run in: this
-#              repository's cliff.toml, formatter configuration and changelog
-#              skeleton, one commit, and optionally a tag on it. The three
+#              repository's cliff.toml and formatter configuration, the
+#              changelog skeleton, one commit, and optionally a tag on it. The three
 #              files are copied in untracked, because the script reads them
 #              from the working tree. Signing is turned off locally, for tags
 #              as well as commits, because the host may sign both by default
@@ -70,7 +87,7 @@ function make_repo() {
   git -C "${repo}" config tag.gpgsign false
   cp -- "${REPO_DIR}/cliff.toml" "${repo}/cliff.toml"
   cp -- "${REPO_DIR}/.prettierrc.yaml" "${repo}/.prettierrc.yaml"
-  cp -- "${REPO_DIR}/CHANGELOG.md" "${repo}/CHANGELOG.md"
+  cp -- "${work}/skeleton.md" "${repo}/CHANGELOG.md"
   commit "${repo}" 'chore: start'
   if [[ -n "$1" ]]; then
     git -C "${repo}" tag "$1"
@@ -277,7 +294,7 @@ function test_files_a_new_pull_request() {
   want_text "${name}" "${changelog}" '# Changelog' || rc=1
 
   # The working tree's changelog is the input, never the output.
-  if ! cmp --silent -- "${REPO_DIR}/CHANGELOG.md" "${repo}/CHANGELOG.md"; then
+  if ! cmp --silent -- "${work}/skeleton.md" "${repo}/CHANGELOG.md"; then
     ci::log "FAIL: ${name}: the working tree's CHANGELOG.md was modified"
     rc=1
   fi
@@ -558,6 +575,7 @@ function test_stale_checkout() {
 function main() {
   local rc=0
   work="$(mktemp --directory)"
+  write_skeleton
 
   test_files_a_new_pull_request || rc=1
   test_nothing_to_release || rc=1
