@@ -42,7 +42,7 @@ readonly PACKAGE_FILE='nix/gremlins.nix'
 #              request is already mergeable, which happens if every required
 #              check has reported by the time this runs.
 # @arg $1 repo   owner/name
-# @arg $2 target the pull request to merge
+# @arg $2 target the pull request number to merge
 function enable_auto_merge() {
   local -r repo="$1" target="$2"
 
@@ -126,7 +126,8 @@ function main() {
       }' > '/dev/null'
 
   ci::log 'opening the pull request'
-  gh pr create --repo "${repo}" --base "${base}" --head "${branch}" \
+  local created
+  created="$(gh pr create --repo "${repo}" --base "${base}" --head "${branch}" \
     --title "${headline}" \
     --body "$(
       printf '%s\n' \
@@ -139,9 +140,12 @@ function main() {
         '' \
         'Nothing else in the repository depends on this tool; the gate is' \
         'unaffected by it either way.'
-    )"
+    )")"
 
-  enable_auto_merge "${repo}" "${branch}"
+  # Merge by the number create printed (the last segment of the URL), not by
+  # branch name: gh resolves a branch argument by head branch name alone, so
+  # a fork's pull request from a same-named branch could be the one selected.
+  enable_auto_merge "${repo}" "${created##*/}"
 
   trap - ERR
   return 0
