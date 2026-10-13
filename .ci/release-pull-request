@@ -185,6 +185,20 @@ function main() {
     fail "HEAD is ${head}, but ${base_branch} is at ${base_sha}; run from a checkout of ${base_branch}'s head"
   fi
 
+  # A version given by hand is judged before anything can end the run
+  # early: one that can never be released is an error to report, not
+  # something to pass over because there happens to be nothing to do.
+  # Whether or not HEAD reaches the tag: a tag name is taken once it is
+  # used at all, and last-tag only sees the tags HEAD reaches.
+  if [[ -n "${explicit}" ]]; then
+    if [[ -n "${last}" ]] && ! "${RELEASE_VERSION}" greater "${explicit}" "${last}"; then
+      fail "${explicit} is not above the last release, ${last}"
+    fi
+    if tag_exists "${explicit}"; then
+      fail "the tag ${explicit} already exists"
+    fi
+  fi
+
   # A changelog whose newest version has no tag is a merged release pull
   # request whose release is still being built. Proposing the next one now
   # would put a second untagged version on top of it, and the publisher
@@ -217,9 +231,8 @@ function main() {
 
   local version
   if [[ -n "${explicit}" ]]; then
-    if [[ -n "${last}" ]] && ! "${RELEASE_VERSION}" greater "${explicit}" "${last}"; then
-      fail "${explicit} is not above the last release, ${last}"
-    fi
+    # Given on this run, so it is the newest decision there is: it wins
+    # over the open pull request's version, higher or lower.
     version="${explicit}"
   else
     version="$("${RELEASE_VERSION}" next)" || exit 1
@@ -233,16 +246,16 @@ function main() {
       fi
       version="${existing_version}"
     fi
+    # A version chosen by hand on an earlier run is kept against what the
+    # commits call for: the next push to the default branch must not
+    # quietly take it back. Only a version given on this run replaces it.
+    if [[ -n "${existing_version}" ]] && "${RELEASE_VERSION}" greater "${existing_version}" "${version}"; then
+      ci::log "keeping ${existing_version} from pull request #${existing}, which is above ${version}"
+      version="${existing_version}"
+    fi
   fi
-  # The open pull request's version is never lowered. A version given by
-  # hand is higher than the commits call for, and the next push to the
-  # default branch must not quietly take it back.
-  if [[ -n "${existing_version}" ]] && "${RELEASE_VERSION}" greater "${existing_version}" "${version}"; then
-    ci::log "keeping ${existing_version} from pull request #${existing}, which is above ${version}"
-    version="${existing_version}"
-  fi
-  # Whichever way the version was reached, and whether or not HEAD reaches
-  # the tag: last-tag only sees the tags HEAD reaches.
+  # An explicit version passed this check above; a computed or kept one is
+  # held to it here.
   if tag_exists "${version}"; then
     fail "the tag ${version} already exists"
   fi

@@ -333,6 +333,19 @@ function test_explicit_version() {
   changelog="$(committed_changelog)"
   want_text "${name}" "${changelog}" $'## v3.0.0\n\nNo user-facing changes.' || rc=1
   want_no_text "${name}" "${changelog}" 'tidy' || rc=1
+
+  # A version given on this run is the newer decision: it replaces the one
+  # the open pull request proposes, even a higher one.
+  name='--version below the open pull request'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v3.0.0'
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}" --version v2.0.0
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v2.0.0' || rc=1
+  want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v2.0.0 --body-file " || rc=1
+  want_no_call "${name}" 'v3.0.0' || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
   return "${rc}"
 }
 
@@ -431,6 +444,17 @@ function test_explicit_version_refused() {
   run_script "${repo}" --version v2.0.0
   want_status '--version of a tag HEAD does not reach' 1 || rc=1
   want_no_write '--version of a tag HEAD does not reach' || rc=1
+
+  # A version that can never be released is refused even while another
+  # release is being published, when the run would otherwise do nothing.
+  printf '# Changelog\n\n## v1.1.0\n\n### Features\n\n- add widget\n' > "${repo}/CHANGELOG.md"
+  run_script "${repo}" --version v1.0.0
+  want_status '--version of an existing tag, mid-publish' 1 || rc=1
+  want_no_write '--version of an existing tag, mid-publish' || rc=1
+  run_script "${repo}" --version v0.9.0
+  want_status '--version below the last tag, mid-publish' 1 || rc=1
+  run_script "${repo}" --version v2.0.0
+  want_status '--version of an unreachable tag, mid-publish' 1 || rc=1
   return "${rc}"
 }
 
