@@ -35,11 +35,19 @@
 # @option --version <version> release this vMAJOR.MINOR.PATCH and not the
 #                             version the commits call for, nor the one an
 #                             open release pull request proposes
+# @option --skip-if-stale do nothing, and exit 0, when the checkout is not
+#                         the default branch's head. For a run a push
+#                         starts: a newer push leaves it behind through no
+#                         fault of its own, and has a run of its own that
+#                         proposes the release. Without the option a stale
+#                         checkout is a failure, which is what a run started
+#                         by hand wants to hear.
 # @exitcode 0 the pull request is open and carries the changelog, or there
-#             is nothing to do: nothing to release, or a release is being
-#             published
+#             is nothing to do: nothing to release, a release is being
+#             published, or --skip-if-stale met a stale checkout
 # @exitcode 1 something went wrong, or the release is refused: the checkout
-#             is not the default branch's head, the version is not above
+#             is not the default branch's head and --skip-if-stale was not
+#             given, the version is not above
 #             the last release, or its tag exists. A refusal writes nothing.
 #             A failure after the release branch was reset can leave the
 #             open release pull request closed: GitHub closes it the moment
@@ -159,11 +167,15 @@ function write_section() {
 # @description Decide the version, assemble the changelog, then reset the
 #              release branch onto the default branch, commit the changelog
 #              to it through the API and open or update the pull request.
-# @arg $@ optionally --version <version>
+# @arg $@ optionally --version <version> and --skip-if-stale
 function main() {
-  local explicit=''
+  local explicit='' skip_if_stale=0
   while (($# > 0)); do
     case "$1" in
+      --skip-if-stale)
+        skip_if_stale=1
+        shift
+        ;;
       --version)
         # A plain usage error (exit 2), not the "${2:?...}" form: that form
         # faults through set -u into an unhandled "unbound variable" exit 1,
@@ -202,6 +214,10 @@ function main() {
   # and lands on top of another.
   head="$(git rev-parse HEAD)"
   if [[ "${head}" != "${base_sha}" ]]; then
+    if ((skip_if_stale == 1)); then
+      ci::log "HEAD is ${head}, but ${base_branch} is at ${base_sha}; a newer push supersedes this run, and its own run proposes the release"
+      return 0
+    fi
     fail "HEAD is ${head}, but ${base_branch} is at ${base_sha}; run from a checkout of ${base_branch}'s head"
   fi
 

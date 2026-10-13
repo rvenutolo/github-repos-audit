@@ -731,13 +731,38 @@ function test_first_stable_release() {
 # or not at all.
 function test_stale_checkout() {
   local rc=0 repo
-  local -r name='HEAD is not the default branch head'
+  local name='HEAD is not the default branch head'
   repo="$(make_repo v1.0.0)"
   commit "${repo}" 'feat: add widget'
   printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001\n' > "${repo}/.stub/main-sha"
   run_script "${repo}"
   want_status "${name}" 1 || rc=1
   want_log "${name}" 'HEAD is ' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+
+  # A run started by a push is behind the moment a newer push lands, and
+  # the newer push has a run of its own: nothing is wrong, and nothing is
+  # written.
+  name='HEAD is not the default branch head, --skip-if-stale'
+  run_script "${repo}" --skip-if-stale
+  want_status "${name}" 0 || rc=1
+  want_log "${name}" 'a newer push supersedes this run' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+
+  # The option changes what a stale checkout means and nothing else.
+  name='HEAD is the default branch head, --skip-if-stale'
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}" --skip-if-stale
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
+  want_call "${name}" 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 ' || rc=1
+
+  # A version that can never be released is still refused: it is judged on
+  # a checkout that is current.
+  name='--skip-if-stale with --version of an existing tag'
+  run_script "${repo}" --skip-if-stale --version v1.0.0
+  want_status "${name}" 1 || rc=1
   want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
   return "${rc}"
 }
