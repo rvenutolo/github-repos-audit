@@ -320,7 +320,7 @@ Grouped by theme here; the report lists them in the fixed worklist order
 
 ## Running locally
 
-Three ways to get an `audit` binary, from least to most setup:
+Three ways to get an `audit` binary:
 
 - **`go install`**, which needs Go:
   `go install github.com/rvenutolo/github-repos-audit/cmd/audit@latest`.
@@ -328,7 +328,8 @@ Three ways to get an `audit` binary, from least to most setup:
   carries one binary per platform, named `audit-<os>-<arch>`
   (`audit-linux-amd64`, `audit-linux-arm64`, `audit-darwin-amd64`,
   `audit-darwin-arm64` and `audit-windows-amd64.exe`), a CycloneDX SBOM
-  `audit.cdx.json` and `SHA256SUMS`.
+  `audit.cdx.json` and `SHA256SUMS`. On Linux and macOS, make the download
+  executable first: `chmod +x audit-<os>-<arch>`.
 - **A clone**, which needs only Nix: `./.ci/in-devshell go run ./cmd/audit`.
 
 `audit validate` is offline and needs no token. `audit render` and

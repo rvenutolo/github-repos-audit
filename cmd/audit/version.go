@@ -9,9 +9,11 @@ const unlinkedVersion = "dev"
 // resolveVersion decides what --version prints. A release build links its
 // version in, and that always wins. Without one, `go install module@vX.Y.Z`
 // still records the module version in the binary's build info, so that is
-// used; a build from a checkout records "(devel)" or nothing, which is not a
-// version, and stays "dev". read is debug.ReadBuildInfo, injected so the
-// outcomes are tested without building binaries.
+// used. `go run` and test binaries record "(devel)", which is not a version,
+// and stay "dev". A plain `go build` in a regular clone records a VCS
+// pseudo-version, which is reported as is; in a linked git worktree Go stamps
+// no VCS information, so the build stays "dev". read is debug.ReadBuildInfo,
+// injected so the outcomes are tested without building binaries.
 func resolveVersion(linked string, read func() (*debug.BuildInfo, bool)) string {
 	if linked != unlinkedVersion {
 		return linked

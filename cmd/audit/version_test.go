@@ -23,7 +23,7 @@ func TestResolveVersion(t *testing.T) {
 	}{
 		{"a linked-in version wins over build info", "v1.2.3", info("v9.9.9"), "v1.2.3"},
 		{"go install reports the module version", "dev", info("v1.0.0"), "v1.0.0"},
-		{"a checkout build has no module version", "dev", info("(devel)"), "dev"},
+		{"go run and test binaries record (devel)", "dev", info("(devel)"), "dev"},
 		{"an empty module version is not a version", "dev", info(""), "dev"},
 		{"no build info at all", "dev", none, "dev"},
 	}

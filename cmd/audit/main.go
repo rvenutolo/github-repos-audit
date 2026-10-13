@@ -12,9 +12,10 @@ import (
 )
 
 // version is the version linked into release builds through
-// -ldflags "-X main.version=..." (.ci/build-release). It stays "dev" for every
-// other build, and --version reports it through resolveVersion, which also
-// recognises `go install module@vX.Y.Z` builds.
+// -ldflags "-X main.version=..." (.ci/build-release). It stays "dev" in every
+// build that does not link one; --version reports it through resolveVersion,
+// which substitutes the module version that `go install module@vX.Y.Z` and a
+// `go build` in a regular clone record.
 var version = unlinkedVersion
 
 func main() {
