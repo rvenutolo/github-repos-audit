@@ -67,8 +67,10 @@ func TestRun_version(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(--version) error = %v, want nil", err)
 	}
-	if strings.TrimSpace(stdout) != version {
-		t.Errorf("run(--version) stdout = %q, want %q", strings.TrimSpace(stdout), version)
+	// A test binary records "(devel)" as its module version, which is not a
+	// version, so the unlinked default is what --version reports.
+	if got := strings.TrimSpace(stdout); got != "dev" {
+		t.Errorf("run(--version) stdout = %q, want %q", got, "dev")
 	}
 }
 
