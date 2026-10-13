@@ -53,15 +53,19 @@
 #                still names the version at its top. A version the default
 #                branch has given up, by withdrawing its section or
 #                renaming its heading, is exit 1 from every commit, so
-#                running an old run again cannot bring it back.
+#                running an old run again cannot bring it back for as
+#                long as the default branch does not propose that version
+#                again.
 #
 #                When the release commit's run cannot succeed, because of
 #                a defect in the scripts at that commit for one, the
 #                version has no tag: the tag is the last thing a release
 #                creates. Fix the defect, merge a change that takes the
-#                version's section out of CHANGELOG.md, and propose the
-#                same version again; the merge of that pull request is its
-#                new release commit. Only when the tag exists already is
+#                version's section out of CHANGELOG.md, delete the failed
+#                workflow run of the commit that brought it in (a deleted
+#                run cannot be re-run), and propose the same version
+#                again; the merge of that pull request is its new release
+#                commit. Only when the tag exists already is
 #                the next version the way out, since a tag is never moved
 #                or deleted.
 #
