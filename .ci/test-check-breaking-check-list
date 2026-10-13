@@ -90,6 +90,35 @@ function expect_run() {
   fi
 }
 
+# @description Run the check over base..HEAD with a git that cannot list
+#              the tree of one commit, and compare the exit status and
+#              output. The stand-in is a script first on PATH that fails,
+#              as git does on a repository it cannot read, when asked for
+#              `ls-tree` of that commit, and hands every other call to the
+#              real git unchanged.
+# @arg $1 repo
+# @arg $2 base revision
+# @arg $3 commit whose tree cannot be listed
+# @arg $4 expected exit status
+# @arg $5 substring the output must contain
+# @arg $6 case name
+function expect_with_failing_git() {
+  local -r repo="$1" base="$2" broken="$3" want="$4" needle="$5" name="$6"
+  local real bin
+  real="$(command -v git)"
+  bin="$(mktemp --directory --tmpdir="${work}")"
+  cat > "${bin}/git" << STUB
+#!/usr/bin/env bash
+if [[ " \$* " == *' ls-tree '* && " \$* " == *' ${broken} '* ]]; then
+  echo 'fatal: stub git: cannot read the tree' >&2
+  exit 128
+fi
+exec '${real}' "\$@"
+STUB
+  chmod +x "${bin}/git"
+  PATH="${bin}:${PATH}" expect_run "${repo}" "${want}" "${needle}" "${name}" --range "${base}..HEAD"
+}
+
 # @description Run the check over base..HEAD.
 # @arg $1 repo
 # @arg $2 base revision
@@ -224,6 +253,17 @@ function main() {
   printf '{}\n' > "${repo}/audit.schema.json"
   commit_all "${repo}" 'fix!: empty the schema'
   expect "${repo}" "${base}" 1 'audit.schema.json' 'a schema without the check list' || rc=1
+
+  # git failing is a setup failure at either end of the range, never a
+  # finding: nothing was learnt about the check list.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" 'feat: add gamma'
+  expect_with_failing_git "${repo}" "${base}" "${base}" 2 'git ls-tree failed for the range base' \
+    'git failing on the base schema' || rc=1
+  expect_with_failing_git "${repo}" "${base}" "$(git -C "${repo}" rev-parse HEAD)" 2 \
+    'git ls-tree failed for the range head' 'git failing on the head schema' || rc=1
 
   # --- usage ---
 

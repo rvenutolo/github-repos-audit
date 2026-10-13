@@ -116,15 +116,19 @@ function main() {
   ((rc != 2)) || exit 2
   if ((rc == 0)); then
     after="$(checks_at "${head}" 'the range head')" || rc=$?
+    ((rc != 2)) || exit 2
   fi
   if ((rc != 0)); then
     trap - ERR
     return 1
   fi
 
+  # LC_ALL=C: comm wants its input in the order of the locale it runs in,
+  # and checks_at sorts the names under C. In another locale it would call
+  # the lists unsorted and could pair the names wrong.
   local added removed
-  added="$(comm -13 <(printf '%s\n' "${before}") <(printf '%s\n' "${after}") | sed '/^$/d')"
-  removed="$(comm -23 <(printf '%s\n' "${before}") <(printf '%s\n' "${after}") | sed '/^$/d')"
+  added="$(LC_ALL=C comm -13 <(printf '%s\n' "${before}") <(printf '%s\n' "${after}") | sed '/^$/d')"
+  removed="$(LC_ALL=C comm -23 <(printf '%s\n' "${before}") <(printf '%s\n' "${after}") | sed '/^$/d')"
   if [[ -z "${added}${removed}" ]]; then
     return 0
   fi
