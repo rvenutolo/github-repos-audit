@@ -23,22 +23,39 @@
 #              - pending: print `publish=true`, `version=vX.Y.Z` and
 #                `sha=<commit>`, in the syntax of $GITHUB_OUTPUT, when the
 #                changelog's newest version has no tag, locally or on
-#                GitHub, and no published release on GitHub; print
-#                `publish=false` otherwise. A draft release does not count:
-#                it is what a failed run leaves behind. A first heading
-#                that is not a version is a warning and `publish=false`, so
-#                a hand edit to the changelog does not fail every push.
-#                Reads only.
+#                GitHub, and no published release on GitHub, and HEAD is
+#                that version's release commit; print `publish=false` when
+#                the version is tagged or released. A draft release does
+#                not count: it is what a failed run leaves behind. A first
+#                heading that is not a version is a warning and
+#                `publish=false`, so a hand edit to the changelog does not
+#                fail every push. Reads only.
 #
-#                <commit> is the commit to build and to tag: the newest
-#                commit on HEAD's first-parent history that changed
-#                CHANGELOG.md, which is the merge of the release pull
-#                request. It is not HEAD, because the run that publishes a
-#                release need not be the run of that merge: a run waiting
-#                its turn is dropped when a newer push arrives, and the
-#                newer run, which sees the same untagged version, must
-#                still release what was merged and not the commits pushed
-#                after it. A full clone is needed to name that commit.
+#                The release commit is the oldest commit on HEAD's
+#                first-parent history whose CHANGELOG.md names the version
+#                at its top, counting back from HEAD for as long as it
+#                does: the merge of the release pull request. A later edit
+#                to the changelog under the same version does not move it.
+#                <commit> is that commit, and it is always HEAD.
+#
+#                An unpublished version seen from any other commit is exit
+#                1, with nothing on stdout. A release is published by the
+#                workflow run of its own commit and by no other: the
+#                signature and the provenance attestation record the commit
+#                the run started from, for good, and they are true of the
+#                tag only when that commit is the one tagged. The message
+#                names the release commit; its run, cancelled or failed, is
+#                run again from the Actions page.
+#
+#                When that run cannot succeed, because of a defect in the
+#                scripts at that commit for one, the version is given up:
+#                fix the defect, then merge a change that renames the
+#                changelog's top heading to the next patch version. That
+#                merge is the release commit of the new version. A tag is
+#                never moved or deleted, and none exists for the version
+#                given up.
+#
+#                A full clone is needed to find the release commit.
 #              - sign --dist <dir>: sign <dir>/SHA256SUMS with cosign's
 #                keyless flow and write the bundle that verifies it to
 #                <dir>/SHA256SUMS.sigstore.json. The signature is recorded
@@ -61,8 +78,10 @@
 # @arg $@ the subcommand's options
 # @exitcode 0 done; for pending, the answer was printed
 # @exitcode 1 something went wrong, or the release is refused: `pending`
-#             runs in a shallow clone, or finds a CHANGELOG.md that differs
-#             from the committed one or that no commit holds, the directory
+#             runs in a shallow clone, finds a CHANGELOG.md that differs
+#             from the committed one or that no commit holds, or finds an
+#             unpublished version from a commit other than its release
+#             commit, the directory
 #             is not a complete, verifying set of release files, the
 #             changelog has no section for the version, GITHUB_REPOSITORY
 #             is not set, GitHub cannot be asked, the tag or a published
@@ -173,41 +192,62 @@ function changelog_path() {
 }
 
 # @description Exit 1 in a shallow clone. Its history ends at a commit
-#              that seems to add every file, so the commit that changed the
-#              changelog would be named wrong, with nothing to show for it.
+#              that seems to add every file, so the commit that brought a
+#              version into the changelog would be named wrong, with
+#              nothing to show for it.
 function require_full_clone() {
   local shallow
   if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
     fail 'cannot tell whether the repository is a shallow clone'
   fi
   if [[ "${shallow}" != 'false' ]]; then
-    fail 'this is a shallow clone, so the commit that changed the changelog cannot be named; fetch the full history first (git fetch --unshallow --tags)'
+    fail 'this is a shallow clone, so the commit that brought the version into the changelog cannot be found; fetch the full history first (git fetch --unshallow --tags)'
   fi
 }
 
-# @description Print the commit a release is cut from: the newest commit on
-#              HEAD's first-parent history that changed the changelog.
-#              First-parent, because the default branch's own line of
-#              history is the commits that were pushed to it: the commit a
-#              pull request's branch carried is not one of them, and its
-#              merge is. Exits 1 when the working tree's changelog is not
-#              the committed one, or no commit holds it: the version is read
-#              from the file, and it must be the version that commit gave it.
+# @description Print a version's release commit: going back from HEAD along
+#              its first-parent history, over the commits that changed the
+#              changelog, the last one whose changelog still names the
+#              version at its top. First-parent, because the default
+#              branch's own line of history is the commits that were pushed
+#              to it: the commit a pull request's branch carried is not one
+#              of them, and its merge is. The oldest and not the newest,
+#              because a later correction to the changelog must not move
+#              the release to another commit. Exits 1 when the working
+#              tree's changelog is not the committed one, or no commit
+#              holds it: the version was read from the file, and the walk
+#              starts from what HEAD holds.
 # @arg $1 changelog the changelog's path, at the top of the repository
+# @arg $2 version the version at the top of that changelog
+# @arg $3 scratch a directory to write each commit's changelog into
 # @stdout the commit id
-function changelog_commit() {
-  local -r top="${1%/*}" file="${1##*/}"
+function release_commit() {
+  local -r top="${1%/*}" file="${1##*/}" version="$2" scratch="$3"
   if ! git -C "${top}" diff --quiet HEAD -- "${file}"; then
     fail "${file} is not as it was committed; a release is cut from a commit, not from an edit"
   fi
-  local sha
-  if ! sha="$(git -C "${top}" log --no-show-signature --first-parent --max-count=1 --format='%H' -- "${file}")"; then
+  local commits
+  if ! commits="$(git -C "${top}" log --no-show-signature --first-parent --format='%H' -- "${file}")"; then
     fail "cannot read the history of ${file}"
   fi
-  if [[ -z "${sha}" ]]; then
-    fail "no commit in the history of HEAD holds ${file}; there is no commit to cut a release from"
+  local commit found='' named
+  while IFS= read -r commit; do
+    [[ -n "${commit}" ]] || continue
+    # A commit that removed the file, or left it with a first heading that
+    # is no version, ends the run of commits that name the version.
+    if ! git -C "${top}" show "${commit}:${file}" > "${scratch}/${file}" 2> /dev/null; then
+      break
+    fi
+    named="$("${RELEASE_VERSION}" top "${scratch}/${file}" 2> /dev/null)" || named=''
+    if [[ "${named}" != "${version}" ]]; then
+      break
+    fi
+    found="${commit}"
+  done <<< "${commits}"
+  if [[ -z "${found}" ]]; then
+    fail "no commit in the history of HEAD holds a ${file} that names ${version} at its top; there is no commit to cut the release from"
   fi
-  printf '%s\n' "${sha}"
+  printf '%s\n' "${found}"
 }
 
 # @description Print the repository on GitHub, owner/name, or exit 1 when
@@ -410,8 +450,17 @@ function pending() {
     printf 'publish=false\n'
     return 0
   fi
-  local sha
-  sha="$(changelog_commit "${changelog}")" || exit 1
+  local sha head
+  # Made here and not in release_commit: that runs in a subshell, whose
+  # assignment the EXIT trap would never see.
+  work="$(mktemp --directory)"
+  sha="$(release_commit "${changelog}" "${version}" "${work}")" || exit 1
+  head="$(git rev-parse HEAD)"
+  # Not a release to make from here, and not something to pass over
+  # either: the run that should have published it did not.
+  if [[ "${sha}" != "${head}" ]]; then
+    fail "the release ${version} is not published, and this is not its commit: HEAD is ${head}, the release commit is ${sha}. A release is published by its own commit's run, so that its signature and attestation name the commit that is tagged: re-run the workflow run of that commit from the Actions page"
+  fi
   ci::log "${version} has no tag and no published release (GitHub holds: ${state}); it is to be published from ${sha}"
   printf 'publish=true\nversion=%s\nsha=%s\n' "${version}" "${sha}"
 }

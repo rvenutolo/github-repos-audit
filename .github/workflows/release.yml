@@ -10,12 +10,15 @@ name: release
 # nothing here enables auto-merge: a human reads the section and merges it.
 #
 # publish is what that merge sets off. It runs on every push to the default
-# branch and asks one question of the repository's state: does the newest
-# version in CHANGELOG.md have a tag? When it does not, the job builds the
-# release assets from the commit that put the version there, signs the
-# checksum file, attests the binaries and publishes the release, which
-# creates the tag. Asking the state, and not the push, is what lets a later
-# run finish a release an earlier run did not.
+# branch and asks whether the newest version in CHANGELOG.md has a tag. When
+# it has none and the pushed commit is the one that brought the version in,
+# the merge of the release pull request, the job builds the release assets,
+# signs the checksum file, attests the binaries and publishes the release,
+# which creates the tag on that commit. Only that commit's own run does
+# this: the signature and the attestation record the commit a run started
+# from, so a run of any other commit would vouch for the wrong one. A later
+# push that finds the release still unpublished fails and names the run to
+# run again.
 #
 # dry-run builds the release assets with the script a release uses and uploads
 # them as a workflow artifact. It proves the build; nothing is tagged or
@@ -60,9 +63,11 @@ concurrency:
   # a push lands in the release group, as it must.
   #
   # One pending run per group also means a queued push run is dropped when
-  # a newer push arrives. Neither job depends on being the run of a
-  # particular push: propose works from the default branch's head, and
-  # publish from the state of the changelog and the tags.
+  # a newer push arrives. propose does not mind: it works from the default
+  # branch's head, whichever run gets there. publish does: a release is
+  # published by the run of its own commit, so a dropped run of that commit
+  # leaves the release unpublished, the next run's publish job fails saying
+  # so, and the dropped run is run again by hand.
   group: ${{ github.workflow }}-${{ inputs.dry-run && 'dry-run' || 'release' }}
   cancel-in-progress: false
 
@@ -226,32 +231,31 @@ jobs:
             uploads.github.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The commit a release is cut from is found in the history, and
-          # may lie behind the pushed one.
+          # Whether this commit is the one that brought the version into
+          # the changelog is read from the history.
           fetch-depth: 0
           persist-credentials: false
       - uses: $/.github/actions/setup
 
+      # Three answers. No release is waiting: the steps below are skipped.
+      # One is waiting and this run's commit is its release commit: they
+      # run, and sha is this commit. One is waiting and this is another
+      # commit: the step fails, because the run that should have published
+      # it was dropped from the queue or failed, and somebody has to run it
+      # again.
+      #
+      # A run is never failed merely for coming early. Every run that holds
+      # this job is a push to the default branch, all of them are in the
+      # release concurrency group, and the group lets one run at a time
+      # through with cancel-in-progress off. Runs enter the group in the
+      # order of their pushes, so when this step runs, the run of every
+      # earlier push has ended: it tagged its release, failed, or was
+      # dropped while it waited.
       - name: Ask whether a release is waiting
         id: pending
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./.ci/in-devshell ./.ci/release-publish pending >> "${GITHUB_OUTPUT}"
-
-      # The release is the commit that put its version into the changelog,
-      # which is the merge of the release pull request, and this run need
-      # not be that push's: a run waiting in the concurrency group is
-      # dropped for a newer one, and a failed publish is finished by the
-      # next push. So the work tree is moved to that commit, and everything
-      # below comes from it: the sources that are built, the scripts that
-      # build and publish them, the changelog the notes are read from, and
-      # the commit the tag is put on. The values reach the shell through
-      # env, never through the script text.
-      - name: Check out the commit the release is cut from
-        if: steps.pending.outputs.publish == 'true'
-        env:
-          SHA: ${{ steps.pending.outputs.sha }}
-        run: git checkout --detach "${SHA}"
 
       - name: Build the release assets
         if: steps.pending.outputs.publish == 'true'
@@ -277,6 +281,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.pending.outputs.version }}
+          # This run's own commit; pending answers with no other.
           SHA: ${{ steps.pending.outputs.sha }}
         run: ./.ci/in-devshell ./.ci/release-publish release --version "${VERSION}" --dist dist --sha "${SHA}"
 

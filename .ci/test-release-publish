@@ -527,16 +527,17 @@ function test_pending() {
   return "${rc}"
 }
 
-# The release is cut from the commit that put its section into the
-# changelog, whichever commit the run that publishes it happens to be on:
-# a run can be passed over for a later push, and the later run must still
-# build and tag what the release pull request merged.
-function test_pending_names_the_changelog_commit() {
-  local rc=0 repo merge branch_commit
-  local name='pending: the changelog arrived through a merge commit'
+# A release is published by the run of its own commit and by no other: the
+# signature and the attestation name the commit the run started from, so
+# they are true of the tag only when that commit is the one tagged. The
+# release commit is the first one on the default branch's own line of
+# history whose changelog names the version at its top.
+function test_pending_publishes_only_from_the_release_commit() {
+  local rc=0 repo merge branch_commit later
+  local name='pending: HEAD is the merge that brought the version in'
   repo="$(make_repo '')"
   # The section under test arrives on a branch, as a release pull request
-  # brings it; the default branch starts without it and moves on meanwhile.
+  # brings it; the default branch starts without it.
   printf '# Changelog\n\n## v1.0.0\n\nThe first stable release.\n' > "${repo}/CHANGELOG.md"
   git -C "${repo}" commit --quiet --message 'chore: start over' -- CHANGELOG.md
   git -C "${repo}" switch --quiet --create chore/release
@@ -550,6 +551,7 @@ function test_pending_names_the_changelog_commit() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${merge}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
   # The commit on the pull request's branch is not on the default branch's
   # own line of history; the tag belongs on the merge.
   if [[ "${output}" == *"${branch_commit}"* ]]; then
@@ -557,26 +559,57 @@ function test_pending_names_the_changelog_commit() {
     rc=1
   fi
 
-  # Later pushes that leave the changelog alone do not move the release: a
-  # plain commit, and a merge of a branch that touches another file.
-  name='pending: commits after the changelog commit'
+  # The run of a later push finds the release unpublished. That is a
+  # failure to show, not a release to make: it says which commit's run to
+  # run again, and gives the workflow nothing to act on.
+  name='pending: HEAD is a later commit that leaves the changelog alone'
   commit_file "${repo}" notes.txt 'feat: add gadget'
-  git -C "${repo}" switch --quiet --create feat/side
-  commit_file "${repo}" side.txt 'fix: pad columns'
-  git -C "${repo}" switch --quiet main
-  git -C "${repo}" merge --quiet --no-ff --message 'fix: merge the side' feat/side
-  if [[ "$(git -C "${repo}" rev-parse HEAD)" == "${merge}" ]]; then
-    ci::log "FAIL: ${name}: the fixture did not move HEAD"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the release ${VERSION} is not published" || rc=1
+  want_text "${name}" "${errors}" "${merge}" || rc=1
+  want_text "${name}" "${errors}" 're-run the workflow run of that commit' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+
+  # A later edit to the changelog that leaves the version at its top does
+  # not become the release commit: the tag stays where the version came in.
+  name='pending: HEAD is a later commit that edits the changelog preamble'
+  printf '# Changelog\n\nNewest first.\n\n## %s\n\n- add widget\n\n## v1.0.0\n\nThe first stable release.\n' \
+    "${VERSION}" > "${repo}/CHANGELOG.md"
+  git -C "${repo}" commit --quiet --message 'docs: say the order' -- CHANGELOG.md
+  later="$(git -C "${repo}" rev-parse HEAD)"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the release commit is ${merge}" || rc=1
+  if [[ "${errors}" == *"the release commit is ${later}"* ]]; then
+    ci::log "FAIL: ${name}: the later changelog edit was taken for the release commit"
     rc=1
   fi
+
+  # The merge's own run, started again after those pushes: the checkout is
+  # the merge, and the branch having moved on changes nothing.
+  name='pending: HEAD is the release commit and the branch has moved on'
+  git -C "${repo}" checkout --quiet --detach "${merge}"
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${merge}" || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
 
+  # Once the release is out, a later run has nothing to complain about.
+  name='pending: a later commit after the release is tagged'
+  git -C "${repo}" switch --quiet main
+  git -C "${repo}" tag "${VERSION}" "${merge}"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_only_calls "${name}" || rc=1
+
   # The version is read from the file and the commit from the history; an
   # edit nobody committed would make the two disagree.
   name='pending: a changelog edited and not committed'
+  repo="$(make_repo '')"
   printf '\nA line nobody committed.\n' >> "${repo}/CHANGELOG.md"
   run_script "${repo}" pending
   want_status "${name}" 1 || rc=1
@@ -1094,7 +1127,7 @@ function main() {
   read_assets+='.assets[] | select(.state == "uploaded") | "\(.digest // "sha256:unknown")  \(.name)"'
 
   test_pending || rc=1
-  test_pending_names_the_changelog_commit || rc=1
+  test_pending_publishes_only_from_the_release_commit || rc=1
   test_sign || rc=1
   test_release || rc=1
   test_existing_release || rc=1
