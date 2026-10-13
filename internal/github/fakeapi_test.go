@@ -2,6 +2,7 @@ package github_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -196,7 +197,16 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 		Query     string            `json:"query"`
 		Variables map[string]string `json:"variables"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	// Read whole before it is parsed, so the two ways a body can be bad stay
+	// apart. A read that fails is a client that went away mid-request, which
+	// Collect does to every request in flight once one repository has failed:
+	// there is nobody to answer and nothing wrong with the test. A body that
+	// arrived whole and does not parse is a request the client built wrong.
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		return
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
 		f.t.Errorf("decode graphql request: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
