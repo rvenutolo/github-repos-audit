@@ -32,12 +32,19 @@
 #                `publish=false`, so a hand edit to the changelog does not
 #                fail every push. Reads only.
 #
-#                The release commit is the oldest commit on HEAD's
-#                first-parent history whose CHANGELOG.md names the version
-#                at its top, counting back from HEAD for as long as it
-#                does: the merge of the release pull request. A later edit
-#                to the changelog under the same version does not move it.
-#                <commit> is that commit, and it is always HEAD.
+#                The release commit is the oldest commit on the default
+#                branch's first-parent history whose CHANGELOG.md names the
+#                version at its top, counting back from the branch's head
+#                for as long as it does: the merge of the release pull
+#                request. A later edit to the changelog under the same
+#                version does not move it. <commit> is that commit, and it
+#                is always HEAD.
+#
+#                The head is the one GitHub holds when the question is
+#                asked, not a local ref: the checkout of a run that is run
+#                again is as old as the run. A head the checkout does not
+#                hold is exit 1, since its history cannot be walked; a new
+#                attempt of the run checks out again and holds it.
 #
 #                An unpublished version seen from any other commit is exit
 #                1, with nothing on stdout. A release is published by the
@@ -48,24 +55,23 @@
 #                names the release commit; its run, cancelled or failed, is
 #                run again from the Actions page.
 #
-#                Last, the default branch is asked: `publish=true` is
-#                printed only while the CHANGELOG.md GitHub holds there
-#                still names the version at its top. A version the default
-#                branch has given up, by withdrawing its section or
-#                renaming its heading, is exit 1 from every commit, so
-#                running an old run again cannot bring it back for as
-#                long as the default branch does not propose that version
-#                again.
+#                Walking from the default branch's head is what keeps an
+#                old run from publishing. A version the default branch has
+#                given up, by withdrawing its section or renaming its
+#                heading, is exit 1 from every commit. A version withdrawn
+#                and proposed again has a new release commit, the merge
+#                that proposed it again: the walk back from the head ends
+#                at the withdrawal, so the commit that first brought the
+#                version in is never reached, and its run is refused like
+#                that of any other commit.
 #
 #                When the release commit's run cannot succeed, because of
 #                a defect in the scripts at that commit for one, the
 #                version has no tag: the tag is the last thing a release
 #                creates. Fix the defect, merge a change that takes the
-#                version's section out of CHANGELOG.md, delete the failed
-#                workflow run of the commit that brought it in (a deleted
-#                run cannot be re-run), and propose the same version
-#                again; the merge of that pull request is its new release
-#                commit. Only when the tag exists already is
+#                version's section out of CHANGELOG.md, and propose the
+#                same version again; the merge of that pull request is its
+#                new release commit. Only when the tag exists already is
 #                the next version the way out, since a tag is never moved
 #                or deleted.
 #
@@ -101,7 +107,8 @@
 #             no GITHUB_WORKFLOW_REF or wrote a signature that does not
 #             verify, `pending`
 #             runs in a shallow clone, finds a CHANGELOG.md that differs
-#             from the committed one or that no commit holds, or finds an
+#             from the committed one or that no commit holds, cannot walk
+#             the default branch's history from this checkout, or finds an
 #             unpublished version from a commit other than its release
 #             commit or one the default branch does not propose, the
 #             directory
@@ -231,29 +238,57 @@ function require_full_clone() {
   fi
 }
 
-# @description Print a version's release commit: going back from HEAD along
-#              its first-parent history, over the commits that changed the
-#              changelog, the last one whose changelog still names the
+# @description Exit 1 unless the changelog in the working tree is the one
+#              HEAD holds. The version is read from the file, and a release
+#              is cut from a commit: an edit nobody committed, or a file no
+#              commit holds, would make the two disagree.
+# @arg $1 changelog the changelog's path, at the top of the repository
+function require_committed() {
+  local -r top="${1%/*}" file="${1##*/}"
+  if ! git -C "${top}" cat-file -e "HEAD:${file}" 2> /dev/null; then
+    fail "HEAD holds no ${file}: the one read here is in no commit, so there is no commit to cut the release from"
+  fi
+  if ! git -C "${top}" diff --quiet HEAD -- "${file}"; then
+    fail "${file} is not as it was committed; a release is cut from a commit, not from an edit"
+  fi
+}
+
+# @description Print the version at the top of the changelog a commit holds,
+#              or nothing when it holds none or names no version there.
+# @arg $1 changelog the changelog's path, at the top of the repository
+# @arg $2 commit
+# @arg $3 scratch a directory to write the commit's changelog into
+# @stdout the version, or nothing
+function version_at() {
+  local -r top="${1%/*}" file="${1##*/}" commit="$2" scratch="$3"
+  if ! git -C "${top}" show "${commit}:${file}" > "${scratch}/${file}" 2> /dev/null; then
+    return 0
+  fi
+  # A first heading that is no version names no version.
+  "${RELEASE_VERSION}" top "${scratch}/${file}" 2> /dev/null || true
+}
+
+# @description Print a version's release commit: going back from a commit
+#              along its first-parent history, over the commits that changed
+#              the changelog, the last one whose changelog still names the
 #              version at its top. First-parent, because the default
 #              branch's own line of history is the commits that were pushed
 #              to it: the commit a pull request's branch carried is not one
 #              of them, and its merge is. The oldest and not the newest,
 #              because a later correction to the changelog must not move
-#              the release to another commit. Exits 1 when the working
-#              tree's changelog is not the committed one, or no commit
-#              holds it: the version was read from the file, and the walk
-#              starts from what HEAD holds.
+#              the release to another commit. The walk ends at the first
+#              commit that does not name the version, so a version that
+#              was withdrawn and proposed again is found where it was
+#              proposed again. Exits 1 when no commit names the version.
 # @arg $1 changelog the changelog's path, at the top of the repository
-# @arg $2 version the version at the top of that changelog
+# @arg $2 version
 # @arg $3 scratch a directory to write each commit's changelog into
+# @arg $4 from the commit to go back from
 # @stdout the commit id
 function release_commit() {
-  local -r top="${1%/*}" file="${1##*/}" version="$2" scratch="$3"
-  if ! git -C "${top}" diff --quiet HEAD -- "${file}"; then
-    fail "${file} is not as it was committed; a release is cut from a commit, not from an edit"
-  fi
+  local -r top="${1%/*}" file="${1##*/}" version="$2" scratch="$3" from="$4"
   local commits
-  if ! commits="$(git -C "${top}" log --no-show-signature --first-parent --format='%H' -- "${file}")"; then
+  if ! commits="$(git -C "${top}" log --no-show-signature --first-parent --format='%H' "${from}" -- "${file}")"; then
     fail "cannot read the history of ${file}"
   fi
   local commit found='' named
@@ -261,17 +296,14 @@ function release_commit() {
     [[ -n "${commit}" ]] || continue
     # A commit that removed the file, or left it with a first heading that
     # is no version, ends the run of commits that name the version.
-    if ! git -C "${top}" show "${commit}:${file}" > "${scratch}/${file}" 2> /dev/null; then
-      break
-    fi
-    named="$("${RELEASE_VERSION}" top "${scratch}/${file}" 2> /dev/null)" || named=''
+    named="$(version_at "$1" "${commit}" "${scratch}")"
     if [[ "${named}" != "${version}" ]]; then
       break
     fi
     found="${commit}"
   done <<< "${commits}"
   if [[ -z "${found}" ]]; then
-    fail "no commit in the history of HEAD holds a ${file} that names ${version} at its top; there is no commit to cut the release from"
+    fail "no commit in the history of ${from} holds a ${file} that names ${version} at its top; there is no commit to cut the release from"
   fi
   printf '%s\n' "${found}"
 }
@@ -311,25 +343,24 @@ function remote_tag() {
   printf '%s\n' "${answer}"
 }
 
-# @description Print the version at the top of the changelog on the
-#              default branch, as GitHub holds it now, or nothing when
-#              that changelog names none there. GitHub is asked, and no
-#              local ref is read: the checkout of a run that is run again
-#              is as old as the run. The contents endpoint answers for the
-#              default branch when no ref is given. A read that fails is
-#              exit 1 and never an answer.
+# @description Print the commit the default branch is at, as GitHub holds
+#              it now. GitHub is asked, and no local ref is read: the
+#              checkout of a run that is run again is as old as the run.
+#              The commits endpoint resolves HEAD to the default branch. A
+#              read that fails, or answers with something that is no commit
+#              id, is exit 1 and never an answer.
 # @arg $1 repo owner/name
-# @arg $2 file where to keep the changelog while it is read
-# @stdout the version, or nothing
-function default_branch_version() {
-  local -r repo="$1" file="$2"
+# @stdout the commit id
+function default_branch_head() {
+  local -r repo="$1"
   local answer
-  if ! answer="$(gh api "repos/${repo}/contents/CHANGELOG.md" --header 'Accept: application/vnd.github.raw' 2>&1 > "${file}")"; then
-    fail "cannot read CHANGELOG.md on the default branch of ${repo}: ${answer}"
+  if ! answer="$(gh api "repos/${repo}/commits/HEAD" --jq '.sha' 2>&1)"; then
+    fail "cannot read the head of the default branch of ${repo}: ${answer}"
   fi
-  # A first heading that is no version names no version; release-version
-  # says which heading it was, on stderr.
-  "${RELEASE_VERSION}" top "${file}" || true
+  if [[ ! "${answer}" =~ ^[0-9a-f]{40}$ ]]; then
+    fail "cannot read the head of the default branch of ${repo}: GitHub answered ${answer:-nothing}"
+  fi
+  printf '%s\n' "${answer}"
 }
 
 # @description Print what GitHub holds under a release name: `none`, `draft`
@@ -500,23 +531,31 @@ function pending() {
     printf 'publish=false\n'
     return 0
   fi
-  local sha head
-  # Made here and not in release_commit: that runs in a subshell, whose
-  # assignment the EXIT trap would never see.
+  require_committed "${changelog}"
+  # A run can be run again long after its push, so the release commit is
+  # looked for from where the default branch is now, not from this
+  # checkout: what this run would publish must still be what the default
+  # branch proposes, from the commit it proposes it from.
+  local default_head
+  default_head="$(default_branch_head "${repo}")" || exit 1
+  if ! git cat-file -e "${default_head}^{commit}" 2> /dev/null; then
+    fail "the default branch is at ${default_head}, and ${default_head} is not in this checkout: the branch moved on after the checkout was made, so its history cannot be walked from here. Run this workflow run again; a new attempt checks out again"
+  fi
+  # Made here and not in the functions that write to it: they run in
+  # subshells, whose assignment the EXIT trap would never see.
   work="$(mktemp --directory)"
-  sha="$(release_commit "${changelog}" "${version}" "${work}")" || exit 1
+  local proposed
+  proposed="$(version_at "${changelog}" "${default_head}" "${work}")"
+  if [[ "${proposed}" != "${version}" ]]; then
+    fail "the default branch no longer proposes ${version}: at ${default_head}, its CHANGELOG.md names ${proposed:-no version} at its top. The version was given up there, and this run does not publish it"
+  fi
+  local sha head
+  sha="$(release_commit "${changelog}" "${version}" "${work}" "${default_head}")" || exit 1
   head="$(git rev-parse HEAD)"
   # Not a release to make from here, and not something to pass over
   # either: the run that should have published it did not.
   if [[ "${sha}" != "${head}" ]]; then
     fail "the release ${version} is not published, and this is not its commit: HEAD is ${head}, the release commit is ${sha}. A release is published by its own commit's run, so that its signature and attestation name the commit that is tagged: re-run the workflow run of that commit from the Actions page"
-  fi
-  # A run can be run again long after its push. What it would publish must
-  # still be what the default branch proposes.
-  local proposed
-  proposed="$(default_branch_version "${repo}" "${work}/default-CHANGELOG.md")" || exit 1
-  if [[ "${proposed}" != "${version}" ]]; then
-    fail "the default branch no longer proposes ${version}: its CHANGELOG.md names ${proposed:-no version} at its top. The version was given up there, and this run does not publish it"
   fi
   ci::log "${version} has no tag and no published release (GitHub holds: ${state}); it is to be published from ${sha}"
   printf 'publish=true\nversion=%s\nsha=%s\n' "${version}" "${sha}"

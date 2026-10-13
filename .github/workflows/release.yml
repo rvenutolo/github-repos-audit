@@ -255,8 +255,15 @@ jobs:
       # commit: the step fails, because the run that should have published
       # it was dropped from the queue or failed, and somebody has to run it
       # again. It fails as well when the default branch has given the
-      # version up since, which is what a run started again long after its
+      # version up since, or has withdrawn it and proposed it again from
+      # another commit, which is what a run started again long after its
       # push can meet.
+      #
+      # The release commit is looked for from the default branch's head as
+      # GitHub holds it when this step runs. A push that lands between this
+      # job's checkout and this step puts that head outside the checkout,
+      # and the step fails saying so: running the run again checks out
+      # again and publishes.
       #
       # Runs in the release concurrency group never overlap: every run
       # that holds this job is in it, and the group lets one run through
