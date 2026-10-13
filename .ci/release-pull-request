@@ -7,13 +7,18 @@
 #              Merging that pull request is what publishes the release; this
 #              script never merges it.
 #
-#              Run from a full-history checkout of the default branch's head.
-#              The version, the section and the changelog come from
-#              .ci/release-version; cliff.toml, CHANGELOG.md, .prettierrc.yaml
-#              and the optional .ci/release-notes-1.0.0.md are read from the
-#              repository the current directory is in. The working tree is
-#              only read: the new changelog is assembled in a temporary
-#              directory and sent through the API.
+#              Run from a clean, full-history checkout of the default
+#              branch's head. The version, the section and the changelog come
+#              from .ci/release-version; cliff.toml, CHANGELOG.md,
+#              .prettierrc.yaml and the optional .ci/release-notes-1.0.0.md
+#              are read from the repository the current directory is in. It
+#              is the working tree's CHANGELOG.md that is read, not the
+#              committed one, and HEAD is the only thing checked against the
+#              default branch: an uncommitted edit to that file would be
+#              committed to the release branch along with the new section,
+#              so the tree must be clean. The working tree is only read: the
+#              new changelog is assembled in a temporary directory and sent
+#              through the API.
 #
 #              The commit goes through the GraphQL createCommitOnBranch
 #              mutation and not `git push`, because the protect-main ruleset
@@ -24,15 +29,23 @@
 #              and the write, the mutation fails and clobbers nothing.
 #
 #              Everything is decided before the first write. A run that has
-#              nothing to do, or refuses, leaves GitHub as it found it.
+#              nothing to do, or refuses, leaves GitHub as it found it. The
+#              writes themselves are several calls and not one transaction;
+#              see exit code 1.
 # @option --version <version> release this vMAJOR.MINOR.PATCH and not the
-#                             version the commits call for
+#                             version the commits call for, nor the one an
+#                             open release pull request proposes
 # @exitcode 0 the pull request is open and carries the changelog, or there
 #             is nothing to do: nothing to release, or a release is being
 #             published
 # @exitcode 1 something went wrong, or the release is refused: the checkout
 #             is not the default branch's head, the version is not above
-#             the last release, or its tag exists
+#             the last release, or its tag exists. A refusal writes nothing.
+#             A failure after the release branch was reset can leave the
+#             open release pull request closed: GitHub closes it the moment
+#             its branch equals the default branch, and only the commit that
+#             follows lets it be reopened. The next run finds no open pull
+#             request and opens a new one.
 # @exitcode 2 a usage error: an unknown argument, --version with no value,
 #             or a version that is not vMAJOR.MINOR.PATCH
 
@@ -251,8 +264,10 @@ function main() {
     version="$("${RELEASE_VERSION}" next)" || exit 1
     if [[ -z "${version}" ]]; then
       # Nothing since the last release calls for a version. An open pull
-      # request is refreshed all the same: its version was given by hand,
-      # and its changelog must still sit on the current base to merge.
+      # request, whose version was given by hand, is refreshed all the
+      # same: the default branch requires a pull request to be up to date
+      # with it before it merges, so one left behind on an older base could
+      # not be merged.
       if [[ -z "${existing_version}" ]]; then
         ci::log 'nothing to release'
         return 0
