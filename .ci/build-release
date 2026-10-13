@@ -5,9 +5,10 @@
 #
 #              The binaries are static (CGO_ENABLED=0) and built with
 #              -trimpath and -buildvcs=false, so the bytes depend on the
-#              source, the Go toolchain and the version string alone: not on
-#              the checkout path, the clock or the git state. That is what lets
-#              anyone rebuild a tagged release and compare checksums.
+#              source, the Go toolchain and the version string, not on the
+#              clock or the git state; -trimpath also strips the checkout
+#              path from the binary. That is what lets anyone rebuild a
+#              tagged release and compare checksums.
 #              The version is stamped with -X main.version, the symbol
 #              `audit --version` prints; -s -w drop the symbol table and DWARF,
 #              which nothing here reads and which would only add bytes.

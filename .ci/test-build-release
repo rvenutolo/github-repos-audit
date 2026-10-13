@@ -28,12 +28,19 @@ source "${REPO_DIR}/.ci/lib.sh"
 readonly SCRIPT="${REPO_DIR}/.ci/build-release"
 
 # @description Run build-release with the given arguments and print its exit
-#              status; the script's own output is discarded because a case
-#              judges the status and the files, not the prose.
+#              status. The script's own output is kept and, when the status is
+#              not the one the caller expects, replayed to stderr so the gate
+#              log says why; a passing case stays quiet.
+# @arg $1 want the exit status the caller expects
 # @arg $@ arguments passed to build-release
 function status_of() {
-  local got=0
-  "${SCRIPT}" "$@" > /dev/null 2>&1 || got=$?
+  local -r want="$1"
+  shift
+  local got=0 output
+  output="$("${SCRIPT}" "$@" 2>&1)" || got=$?
+  if [[ "${got}" != "${want}" ]]; then
+    printf '%s\n' "${output}" >&2
+  fi
   printf '%s\n' "${got}"
 }
 
@@ -47,14 +54,16 @@ function main() {
   local got
   # Run the build outside an `if`/`||` so errexit stays armed inside it, and
   # judge the status explicitly.
-  got="$(status_of --version v9.8.7 --out "${dist}")"
+  got="$(status_of 0 --version v9.8.7 --out "${dist}")"
   if [[ "${got}" != 0 ]]; then
     ci::log "FAIL: a valid build exited ${got}, want 0"
     rc=1
   fi
 
   local listing want
-  listing="$(cd "${dist}" && printf '%s\n' * | LC_ALL=C sort)"
+  # Guarded: with no dist (the build failed above) the remaining cases must
+  # still run and report, not abort the script through errexit.
+  listing="$( (cd "${dist}" && printf '%s\n' * | LC_ALL=C sort) 2> /dev/null || printf '(no output directory)')"
   want="$(printf '%s\n' audit-darwin-amd64 audit-darwin-arm64 audit-linux-amd64 \
     audit-linux-arm64 audit-windows-amd64.exe audit.cdx.json SHA256SUMS | LC_ALL=C sort)"
   if [[ "${listing}" != "${want}" ]]; then
@@ -91,7 +100,7 @@ function main() {
   fi
 
   local -r dist2="${work}/dist2"
-  got="$(status_of --version v9.8.7 --out "${dist2}")"
+  got="$(status_of 0 --version v9.8.7 --out "${dist2}")"
   if [[ "${got}" != 0 ]]; then
     ci::log "FAIL: the second build exited ${got}, want 0"
     rc=1
@@ -109,7 +118,7 @@ function main() {
   local -r busy="${work}/busy"
   mkdir --parents "${busy}"
   printf 'keep me\n' > "${busy}/marker"
-  got="$(status_of --version v9.8.7 --out "${busy}")"
+  got="$(status_of 1 --version v9.8.7 --out "${busy}")"
   if [[ "${got}" != 1 ]]; then
     ci::log "FAIL: a non-empty --out: exit ${got}, want 1"
     rc=1
@@ -123,7 +132,7 @@ function main() {
   # missing v would otherwise stamp a binary no tag corresponds to.
   local bad
   for bad in '1.0.0' 'v1.0' 'v1.0.0-rc.1' 'v01.0.0' ''; do
-    got="$(status_of --version "${bad}" --out "${work}/never")"
+    got="$(status_of 2 --version "${bad}" --out "${work}/never")"
     if [[ "${got}" != 2 ]]; then
       ci::log "FAIL: --version '${bad}': exit ${got}, want 2"
       rc=1
@@ -134,19 +143,23 @@ function main() {
     fi
   done
 
-  got="$(status_of --bogus)"
+  got="$(status_of 2 --bogus)"
   if [[ "${got}" != 2 ]]; then
     ci::log "FAIL: an unknown argument: exit ${got}, want 2"
     rc=1
   fi
-  got="$(status_of --version v1.0.0 --out)"
+  got="$(status_of 2 --version v1.0.0 --out)"
   if [[ "${got}" != 2 ]]; then
     ci::log "FAIL: --out with no value: exit ${got}, want 2"
     rc=1
   fi
-  got="$(status_of --out "${work}/never")"
+  got="$(status_of 2 --out "${work}/never")"
   if [[ "${got}" != 2 ]]; then
     ci::log "FAIL: a missing --version: exit ${got}, want 2"
+    rc=1
+  fi
+  if [[ -e "${work}/never" ]]; then
+    ci::log 'FAIL: a missing --version created the output directory'
     rc=1
   fi
 
