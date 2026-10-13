@@ -20,15 +20,25 @@
 #
 #              Subcommands:
 #
-#              - pending: print `publish=true` and `version=vX.Y.Z`, in the
-#                syntax of $GITHUB_OUTPUT, when the changelog's newest
-#                version has no tag, locally or on GitHub, and no
-#                published release on GitHub; print `publish=false`
-#                otherwise. A draft release
-#                does not count: it is what a failed run leaves behind. A
-#                first heading that is not a version is a warning and
-#                `publish=false`, so a hand edit to the changelog does not
-#                fail every push. Reads only.
+#              - pending: print `publish=true`, `version=vX.Y.Z` and
+#                `sha=<commit>`, in the syntax of $GITHUB_OUTPUT, when the
+#                changelog's newest version has no tag, locally or on
+#                GitHub, and no published release on GitHub; print
+#                `publish=false` otherwise. A draft release does not count:
+#                it is what a failed run leaves behind. A first heading
+#                that is not a version is a warning and `publish=false`, so
+#                a hand edit to the changelog does not fail every push.
+#                Reads only.
+#
+#                <commit> is the commit to build and to tag: the newest
+#                commit on HEAD's first-parent history that changed
+#                CHANGELOG.md, which is the merge of the release pull
+#                request. It is not HEAD, because the run that publishes a
+#                release need not be the run of that merge: a run waiting
+#                its turn is dropped when a newer push arrives, and the
+#                newer run, which sees the same untagged version, must
+#                still release what was merged and not the commits pushed
+#                after it. A full clone is needed to name that commit.
 #              - sign --dist <dir>: sign <dir>/SHA256SUMS with cosign's
 #                keyless flow and write the bundle that verifies it to
 #                <dir>/SHA256SUMS.sigstore.json. The signature is recorded
@@ -50,7 +60,9 @@
 # @arg $1 subcommand pending, sign or release
 # @arg $@ the subcommand's options
 # @exitcode 0 done; for pending, the answer was printed
-# @exitcode 1 something went wrong, or the release is refused: the directory
+# @exitcode 1 something went wrong, or the release is refused: `pending`
+#             runs in a shallow clone, or finds a CHANGELOG.md that differs
+#             from the committed one or that no commit holds, the directory
 #             is not a complete, verifying set of release files, the
 #             changelog has no section for the version, GITHUB_REPOSITORY
 #             is not set, GitHub cannot be asked, the tag or a published
@@ -158,6 +170,44 @@ function changelog_path() {
     fail "no CHANGELOG.md at the top of ${top}"
   fi
   printf '%s\n' "${top}/CHANGELOG.md"
+}
+
+# @description Exit 1 in a shallow clone. Its history ends at a commit
+#              that seems to add every file, so the commit that changed the
+#              changelog would be named wrong, with nothing to show for it.
+function require_full_clone() {
+  local shallow
+  if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
+    fail 'cannot tell whether the repository is a shallow clone'
+  fi
+  if [[ "${shallow}" != 'false' ]]; then
+    fail 'this is a shallow clone, so the commit that changed the changelog cannot be named; fetch the full history first (git fetch --unshallow --tags)'
+  fi
+}
+
+# @description Print the commit a release is cut from: the newest commit on
+#              HEAD's first-parent history that changed the changelog.
+#              First-parent, because the default branch's own line of
+#              history is the commits that were pushed to it: the commit a
+#              pull request's branch carried is not one of them, and its
+#              merge is. Exits 1 when the working tree's changelog is not
+#              the committed one, or no commit holds it: the version is read
+#              from the file, and it must be the version that commit gave it.
+# @arg $1 changelog the changelog's path, at the top of the repository
+# @stdout the commit id
+function changelog_commit() {
+  local -r top="${1%/*}" file="${1##*/}"
+  if ! git -C "${top}" diff --quiet HEAD -- "${file}"; then
+    fail "${file} is not as it was committed; a release is cut from a commit, not from an edit"
+  fi
+  local sha
+  if ! sha="$(git -C "${top}" log --no-show-signature --first-parent --max-count=1 --format='%H' -- "${file}")"; then
+    fail "cannot read the history of ${file}"
+  fi
+  if [[ -z "${sha}" ]]; then
+    fail "no commit in the history of HEAD holds ${file}; there is no commit to cut a release from"
+  fi
+  printf '%s\n' "${sha}"
 }
 
 # @description Print the repository on GitHub, owner/name, or exit 1 when
@@ -316,13 +366,16 @@ function write_notes() {
 # @description Say whether the changelog's newest version is waiting to be
 #              published.
 # @arg $@ none
-# @stdout publish=true and version=<version>, or publish=false
+# @stdout publish=true, version=<version> and sha=<commit>, or publish=false
 function pending() {
   if (($# > 0)); then
     usage_error "pending takes no argument, got $(printf '%q' "$1")"
   fi
   local changelog version
   changelog="$(changelog_path)" || exit 1
+  # Before any answer, not only before a release: a checkout that cannot
+  # name the commit is found on the first push, not on the day of a release.
+  require_full_clone
   # release-version names the heading it could not read, on stderr.
   if ! version="$("${RELEASE_VERSION}" top "${changelog}")"; then
     ci::log "WARNING: ${changelog} does not say which version is newest; nothing is published until its first section heading is a version"
@@ -357,8 +410,10 @@ function pending() {
     printf 'publish=false\n'
     return 0
   fi
-  ci::log "${version} has no tag and no published release (GitHub holds: ${state}); it is to be published"
-  printf 'publish=true\nversion=%s\n' "${version}"
+  local sha
+  sha="$(changelog_commit "${changelog}")" || exit 1
+  ci::log "${version} has no tag and no published release (GitHub holds: ${state}); it is to be published from ${sha}"
+  printf 'publish=true\nversion=%s\nsha=%s\n' "${version}" "${sha}"
 }
 
 # @description Sign the checksum file. One signature covers the release:

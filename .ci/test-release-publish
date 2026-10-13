@@ -80,9 +80,10 @@ trap 'rm -rf -- "${work}"' EXIT
 
 # @description Create a throwaway repository the script can run in: a
 #              changelog whose newest section is the version under test, one
-#              commit, and optionally a tag on it. Signing is turned off
-#              locally, for tags as well as commits, because the host may
-#              sign both by default and no key exists here.
+#              commit that holds it, and optionally a tag on that commit.
+#              Signing is turned off locally, for tags as well as commits,
+#              because the host may sign both by default and no key exists
+#              here.
 #
 #              Beside the changelog sit `dist/`, the release files, and
 #              `.stub/`, the stand-ins, their logs and gh's answers.
@@ -111,7 +112,8 @@ Every release of this tool, newest first.
 
 The first stable release.
 EOF
-  git -C "${repo}" commit --quiet --allow-empty --message 'chore: start'
+  git -C "${repo}" add -- CHANGELOG.md
+  git -C "${repo}" commit --quiet --message 'chore: start'
   if [[ -n "$1" ]]; then
     git -C "${repo}" tag "$1"
   fi
@@ -404,6 +406,16 @@ function line_of() {
   printf '0\n'
 }
 
+# @description Add one commit that changes a file other than the changelog.
+# @arg $1 repo
+# @arg $2 file the file to write, relative to the repository
+# @arg $3 subject
+function commit_file() {
+  printf '%s\n' "$3" > "$1/$2"
+  git -C "$1" add -- "$2"
+  git -C "$1" commit --quiet --message "$3"
+}
+
 # @description Print the notes the last run gave the release.
 # @stdout the notes, or nothing when no release was created
 function release_notes() {
@@ -413,12 +425,13 @@ function release_notes() {
 # Case 1. pending says whether the changelog's newest version still has to
 # be published, and only ever reads.
 function test_pending() {
-  local rc=0 repo
+  local rc=0 repo head
   local name='pending: an untagged version with no release'
   repo="$(make_repo '')"
+  head="$(git -C "${repo}" rev-parse HEAD)"
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
-  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}" || rc=1
+  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${head}" || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
 
   # A draft is a publish that stopped half way: the next run replaces it.
@@ -426,7 +439,7 @@ function test_pending() {
   printf 'draft\n' > "${repo}/.stub/release-state"
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
-  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}" || rc=1
+  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${head}" || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
 
   # The tag is fetched after the release is published, so a published
@@ -510,6 +523,90 @@ function test_pending() {
   run_script "${repo}" pending --bogus
   want_status "${name}" 2 || rc=1
   want_text "${name}" "${errors}" 'pending takes no argument' || rc=1
+  want_only_calls "${name}" || rc=1
+  return "${rc}"
+}
+
+# The release is cut from the commit that put its section into the
+# changelog, whichever commit the run that publishes it happens to be on:
+# a run can be passed over for a later push, and the later run must still
+# build and tag what the release pull request merged.
+function test_pending_names_the_changelog_commit() {
+  local rc=0 repo merge branch_commit
+  local name='pending: the changelog arrived through a merge commit'
+  repo="$(make_repo '')"
+  # The section under test arrives on a branch, as a release pull request
+  # brings it; the default branch starts without it and moves on meanwhile.
+  printf '# Changelog\n\n## v1.0.0\n\nThe first stable release.\n' > "${repo}/CHANGELOG.md"
+  git -C "${repo}" commit --quiet --message 'chore: start over' -- CHANGELOG.md
+  git -C "${repo}" switch --quiet --create chore/release
+  printf '# Changelog\n\n## %s\n\n- add widget\n\n## v1.0.0\n\nThe first stable release.\n' "${VERSION}" \
+    > "${repo}/CHANGELOG.md"
+  git -C "${repo}" commit --quiet --message "chore(release): ${VERSION}" -- CHANGELOG.md
+  branch_commit="$(git -C "${repo}" rev-parse HEAD)"
+  git -C "${repo}" switch --quiet main
+  git -C "${repo}" merge --quiet --no-ff --message 'chore(release): merge' chore/release
+  merge="$(git -C "${repo}" rev-parse HEAD)"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${merge}" || rc=1
+  # The commit on the pull request's branch is not on the default branch's
+  # own line of history; the tag belongs on the merge.
+  if [[ "${output}" == *"${branch_commit}"* ]]; then
+    ci::log "FAIL: ${name}: the output names the branch's commit, ${branch_commit}"
+    rc=1
+  fi
+
+  # Later pushes that leave the changelog alone do not move the release: a
+  # plain commit, and a merge of a branch that touches another file.
+  name='pending: commits after the changelog commit'
+  commit_file "${repo}" notes.txt 'feat: add gadget'
+  git -C "${repo}" switch --quiet --create feat/side
+  commit_file "${repo}" side.txt 'fix: pad columns'
+  git -C "${repo}" switch --quiet main
+  git -C "${repo}" merge --quiet --no-ff --message 'fix: merge the side' feat/side
+  if [[ "$(git -C "${repo}" rev-parse HEAD)" == "${merge}" ]]; then
+    ci::log "FAIL: ${name}: the fixture did not move HEAD"
+    rc=1
+  fi
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${merge}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+
+  # The version is read from the file and the commit from the history; an
+  # edit nobody committed would make the two disagree.
+  name='pending: a changelog edited and not committed'
+  printf '\nA line nobody committed.\n' >> "${repo}/CHANGELOG.md"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'CHANGELOG.md is not as it was committed' || rc=1
+
+  name='pending: a changelog no commit holds'
+  repo="$(make_repo '')"
+  # A history of its own, with the file in the working tree only.
+  git -C "${repo}" switch --quiet --orphan untracked
+  git -C "${repo}" show main:CHANGELOG.md > "${repo}/CHANGELOG.md"
+  git -C "${repo}" commit --quiet --allow-empty --message 'chore: start'
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'no commit' || rc=1
+
+  # A shallow clone ends at a commit that seems to add every file, so the
+  # commit the history names would be the wrong one.
+  name='pending: a shallow clone'
+  repo="$(make_repo '')"
+  commit_file "${repo}" notes.txt 'feat: add gadget'
+  local -r shallow="${work}/shallow"
+  git clone --quiet --depth 1 "file://${repo}" "${shallow}"
+  write_dist "${shallow}/dist"
+  write_stubs "${shallow}/.stub"
+  run_script "${shallow}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'shallow clone' || rc=1
   want_only_calls "${name}" || rc=1
   return "${rc}"
 }
@@ -997,6 +1094,7 @@ function main() {
   read_assets+='.assets[] | select(.state == "uploaded") | "\(.digest // "sha256:unknown")  \(.name)"'
 
   test_pending || rc=1
+  test_pending_names_the_changelog_commit || rc=1
   test_sign || rc=1
   test_release || rc=1
   test_existing_release || rc=1
