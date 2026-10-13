@@ -93,7 +93,12 @@ function test_fork_pull_requests_are_never_adopted() {
   local fork='{"number":7,"isCrossRepository":true}'
   local own='{"number":9,"isCrossRepository":false}'
 
-  run_case fork-only "[${fork}]" OPEN
+  # An entry without the field is not known to be ours.
+  local unknown='{"number":8}'
+
+  run_case fork-only "[${fork},${unknown}]" OPEN
+  want_call fork-only 'pr list --repo gh-owner/report --head chore/refresh-audit --state open --limit 1000 '
+  want_no_call fork-only ' 8 '
   want_call fork-only 'pr create --repo gh-owner/report'
   want_call fork-only 'pr merge 42 --repo gh-owner/report --merge --auto'
   want_no_call fork-only 'pr merge 7 '

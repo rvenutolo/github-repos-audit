@@ -110,9 +110,13 @@ function main() {
   # Only a pull request from this repository's own branch counts. --head
   # matches by branch name alone, and anyone may open a pull request from a
   # fork whose branch is named the same; adopting it would reopen and queue
-  # a merge of code this script did not write.
-  existing="$(gh pr list --repo "${repo}" --head "${BRANCH}" --state open --json number,isCrossRepository \
-    --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')"
+  # a merge of code this script did not write. The filter runs after gh's
+  # result limit, so the limit is raised well past what fork pull requests
+  # could fill, and it keeps only an explicit false, so a missing field
+  # adopts nothing.
+  existing="$(gh pr list --repo "${repo}" --head "${BRANCH}" --state open --limit 1000 \
+    --json number,isCrossRepository \
+    --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
 
   # Recreate the branch from the current base rather than reusing the last run's,
   # so the diff is always against current main and a red refresh pull request
