@@ -155,6 +155,13 @@ function write_dist() {
 #              - `tag-miss-status`: present to make those misses failed
 #                reads and not 404s
 #
+#              - `draft-sticks`: present to keep the state read answering
+#                with a draft after every delete
+#              - `delete-fails`, `create-fails`: present to make that write
+#                fail
+#              - `cosign-writes-nothing`: present to make cosign succeed
+#                without writing a bundle
+#
 #              A write only logs, and leaves a marker: `deleted` after a
 #              delete, which is what makes the next state read say there is
 #              no release, `notes.md`, a copy of the notes file, after a
@@ -179,7 +186,7 @@ function write_stubs() {
 printf '%s\n' "\$*" >> '${dir}/calls.log'
 case "\$*" in
   '${READ_STATE}')
-    if [[ -e '${dir}/deleted' || ! -e '${dir}/release-state' ]]; then
+    if [[ ! -e '${dir}/release-state' || (-e '${dir}/deleted' && ! -e '${dir}/draft-sticks') ]]; then
       echo 'release not found' >&2
       exit 1
     fi
@@ -192,8 +199,18 @@ case "\$*" in
         ;;
     esac
     ;;
-  '${WRITE_DELETE}') : > '${dir}/deleted' ;;
+  '${WRITE_DELETE}')
+    if [[ -e '${dir}/delete-fails' ]]; then
+      echo 'gh: Bad Gateway (HTTP 502)' >&2
+      exit 1
+    fi
+    : > '${dir}/deleted'
+    ;;
   'release create ${VERSION} --repo gh-owner/tool --draft '*)
+    if [[ -e '${dir}/create-fails' ]]; then
+      echo 'gh: Bad Gateway (HTTP 502)' >&2
+      exit 1
+    fi
     # The notes are a file, gone once the script exits; keep what it held.
     while ((\$# > 1)); do
       if [[ "\$1" == '--notes-file' ]]; then
@@ -251,7 +268,7 @@ if [[ "\$1" != 'sign-blob' ]]; then
   exit 1
 fi
 while ((\$# > 1)); do
-  if [[ "\$1" == '--bundle' ]]; then
+  if [[ "\$1" == '--bundle' && ! -e '${dir}/cosign-writes-nothing' ]]; then
     printf 'STUB_BUNDLE\n' > "\$2"
   fi
   shift
@@ -419,6 +436,7 @@ function test_pending() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" "a release ${VERSION} is published on GitHub" || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
 
   # Not knowing is not "nothing to publish": the run fails and says nothing.
@@ -465,6 +483,7 @@ function test_pending() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" "${VERSION} is tagged" || rc=1
   want_only_calls "${name}" || rc=1
 
   name='pending: a changelog with no release'
@@ -473,6 +492,7 @@ function test_pending() {
   run_script "${repo}" pending
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" 'the changelog holds no release' || rc=1
   want_only_calls "${name}" || rc=1
 
   # A first heading that is not a version is somebody's edit to look at,
@@ -483,11 +503,13 @@ function test_pending() {
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
   want_text "${name}" "${errors}" 'Unreleased' || rc=1
+  want_text "${name}" "${errors}" 'WARNING: ' || rc=1
   want_only_calls "${name}" || rc=1
 
   name='pending: an argument'
   run_script "${repo}" pending --bogus
   want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'pending takes no argument' || rc=1
   want_only_calls "${name}" || rc=1
   return "${rc}"
 }
@@ -510,8 +532,20 @@ function test_sign() {
   mv -- "${repo}/dist/SHA256SUMS" "${repo}/.stub/SHA256SUMS.aside"
   run_script "${repo}" sign --dist "${repo}/dist"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'has no SHA256SUMS; nothing to sign' || rc=1
   want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
   want_same "${name}" 'the bundle' "$(< "${repo}/dist/SHA256SUMS.sigstore.json")" 'INERT_BUNDLE' || rc=1
+
+  # A cosign that says it signed and left no bundle has signed nothing
+  # anyone can verify.
+  name='sign: cosign succeeds and writes no bundle'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
+  : > "${repo}/.stub/cosign-writes-nothing"
+  run_script "${repo}" sign --dist "${repo}/dist"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'cosign reported success and wrote no ' || rc=1
+  want_text "${name}" "${signed}" 'sign-blob --yes --bundle ' || rc=1
 
   # Signed once already: a second signature is a second permanent entry in
   # the transparency log, and a bundle that is there would make a cosign
@@ -527,6 +561,19 @@ function test_sign() {
   name='sign: no --dist'
   run_script "${repo}" sign
   want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--dist is required' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+
+  name='sign: --dist with no value'
+  run_script "${repo}" sign --dist
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--dist needs a value' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+
+  name='sign: an unknown argument'
+  run_script "${repo}" sign --bogus
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'unknown argument --bogus' || rc=1
   want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
   return "${rc}"
 }
@@ -595,6 +642,7 @@ function test_existing_release() {
   printf 'published\n' > "${repo}/.stub/release-state"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "the release ${VERSION} is published; a published release is never replaced" || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
   want_no_call "${name}" 'release delete' || rc=1
   want_no_call "${name}" 'release create' || rc=1
@@ -605,7 +653,40 @@ function test_existing_release() {
   printf 'unreachable\n' > "${repo}/.stub/release-state"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "cannot tell whether a release ${VERSION} exists" || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+
+  # GitHub goes on answering with a draft, whatever is deleted: the run
+  # ends, and never uploads beside a draft it could not get rid of.
+  name='release: a draft is still there after every delete'
+  repo="$(make_repo '')"
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  : > "${repo}/.stub/draft-sticks"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "a draft release ${VERSION} is still there after 5 deletes" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" \
+    "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" "${WRITE_DELETE}" \
+    "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" || rc=1
+
+  name='release: the draft cannot be deleted'
+  repo="$(make_repo '')"
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  : > "${repo}/.stub/delete-fails"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "could not delete the draft release ${VERSION}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${WRITE_DELETE}" || rc=1
+
+  # No draft, or half of one: either way nothing is published, so no tag.
+  name='release: the draft cannot be created'
+  repo="$(make_repo '')"
+  : > "${repo}/.stub/create-fails"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "could not create the draft release ${VERSION}; no tag was created" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" || rc=1
+  want_no_call "${name}" 'release edit' || rc=1
   return "${rc}"
 }
 
@@ -660,6 +741,7 @@ function test_draft_is_incomplete() {
   cp -- "${repo}/.stub/assets.short.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" '  audit.cdx.json. In the draft and not on disk: nothing.' || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
   want_no_call "${name}" 'release edit' || rc=1
 
@@ -671,6 +753,7 @@ function test_draft_is_incomplete() {
   cp -- "${repo}/.stub/assets.starter.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" '  SHA256SUMS. In the draft and not on disk: nothing.' || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
 
   name='release: the draft holds an asset nobody uploaded'
@@ -680,6 +763,7 @@ function test_draft_is_incomplete() {
   cp -- "${repo}/.stub/assets.long.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'Not in the draft: nothing. In the draft and not on disk: sha256:00  stray.' || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
 
   # The right name over the wrong bytes: an upload that was cut short.
@@ -714,6 +798,14 @@ function test_draft_is_incomplete() {
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
   want_text "${name}" "${errors}" 'sha256:unknown  audit.cdx.json' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+
+  name='release: the draft cannot be read back'
+  repo="$(make_repo '')"
+  printf 'not json\n' > "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "could not read the draft release ${VERSION} back" || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
 
   # The publish went through and the tag is not where it was asked to be:
@@ -776,6 +868,8 @@ function test_bad_dist() {
   printf 'something else\n' >> "${repo}/dist/audit-linux-arm64"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'the files in dist do not match SHA256SUMS: ' || rc=1
+  want_text "${name}" "${errors}" 'audit-linux-arm64: FAILED' || rc=1
   want_only_calls "${name}" || rc=1
 
   name='release: a dist with no signature bundle'
@@ -783,6 +877,7 @@ function test_bad_dist() {
   mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'dist has no SHA256SUMS.sigstore.json' || rc=1
   want_only_calls "${name}" || rc=1
 
   # `sha256sum --check` passes on a list that names fewer files than the
@@ -792,12 +887,14 @@ function test_bad_dist() {
   (cd "${repo}/dist" && sha256sum -- audit-linux-amd64 audit.cdx.json > SHA256SUMS)
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'dist/SHA256SUMS lists audit-linux-amd64, audit.cdx.json; it must list exactly ' || rc=1
   want_only_calls "${name}" || rc=1
 
   name='release: a dist that does not exist'
   repo="$(make_repo '')"
   run_script "${repo}" release --version "${VERSION}" --dist no-such-dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'no-such-dist is not a directory' || rc=1
   want_only_calls "${name}" || rc=1
 
   # Nothing to say about the release is found out before the old draft goes.
@@ -807,6 +904,7 @@ function test_bad_dist() {
   printf '# Changelog\n\n## v1.0.0\n\nThe first stable release.\n' > "${repo}/CHANGELOG.md"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "CHANGELOG.md has no section for ${VERSION}" || rc=1
   want_only_calls "${name}" || rc=1
   return "${rc}"
 }
@@ -815,39 +913,67 @@ function test_bad_dist() {
 function test_usage() {
   local rc=0 repo version
   repo="$(make_repo '')"
-  for version in '1.1.0' 'v1.1' 'v1.1.0-rc.1' 'v01.1.0' ''; do
+  for version in '1.1.0' 'v1.1' 'v1.1.0-rc.1' 'v01.1.0'; do
     run_script "${repo}" release --version "${version}" --dist dist --sha "${SHA}"
     want_status "release --version '${version}'" 2 || rc=1
+    want_text "release --version '${version}'" "${errors}" "${version} is not vMAJOR.MINOR.PATCH" || rc=1
     want_only_calls "release --version '${version}'" || rc=1
   done
   # A branch name would let the tag land wherever the branch is by then.
   local sha
-  for sha in 'main' 'aaaaaaa' "${SHA^^}" ''; do
+  for sha in 'main' 'aaaaaaa' "${SHA^^}"; do
     run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${sha}"
     want_status "release --sha '${sha}'" 2 || rc=1
+    want_text "release --sha '${sha}'" "${errors}" "--sha ${sha} is not a full commit id" || rc=1
     want_only_calls "release --sha '${sha}'" || rc=1
   done
+  # An option left out and an option given nothing are the same mistake.
+  local name
+  name='release without --sha'
   run_script "${repo}" release --version "${VERSION}" --dist dist
-  want_status 'release without --sha' 2 || rc=1
-  want_only_calls 'release without --sha' || rc=1
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--sha is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release with an empty --sha'
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha ''
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--sha is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release without --dist'
   run_script "${repo}" release --version "${VERSION}" --sha "${SHA}"
-  want_status 'release without --dist' 2 || rc=1
-  want_only_calls 'release without --dist' || rc=1
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--dist is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release without --version'
   run_script "${repo}" release --dist dist --sha "${SHA}"
-  want_status 'release without --version' 2 || rc=1
-  want_only_calls 'release without --version' || rc=1
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--version is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release with an empty --version'
+  run_script "${repo}" release --version '' --dist dist --sha "${SHA}"
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--version is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release --sha with no value'
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha
-  want_status 'release --sha with no value' 2 || rc=1
-  want_only_calls 'release --sha with no value' || rc=1
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--sha needs a value' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release with an unknown argument'
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}" --bogus
-  want_status 'release with an unknown argument' 2 || rc=1
-  want_only_calls 'release with an unknown argument' || rc=1
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'unknown argument --bogus' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='an unknown subcommand'
   run_script "${repo}" publish
-  want_status 'an unknown subcommand' 2 || rc=1
-  want_only_calls 'an unknown subcommand' || rc=1
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'unknown subcommand publish' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='no subcommand'
   run_script "${repo}"
-  want_status 'no subcommand' 2 || rc=1
-  want_only_calls 'no subcommand' || rc=1
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'a subcommand is required' || rc=1
+  want_only_calls "${name}" || rc=1
   if [[ -n "${signed}" ]]; then
     ci::log "FAIL: a malformed call reached cosign: ${signed}"
     rc=1
