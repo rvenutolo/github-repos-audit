@@ -29,9 +29,9 @@ cosign
 # .ci/check-vulns reads govulncheck's JSON report with it;
 # .ci/check-breaking-check-list reads the schema's check list with it;
 # .ci/build-release writes the release version into the SBOM with it; the
-# stub gh of .ci/test-release-pull-request and of .ci/test-release-publish
-# runs the script's own --jq filter with it, and .ci/test-release-publish
-# edits the stub's answers with it
+# stub gh of .ci/test-release-pull-request, .ci/test-refresh-pull-request and
+# .ci/test-release-publish runs the script's own --jq filter with it, and
+# .ci/test-release-publish edits the stub's answers with it
 jq
 # .ci/run-lint-checks (verify) and .ci/run-fixers (write); treefmt drives it too
 shfmt

@@ -54,6 +54,7 @@ function main() {
   "${REPO_DIR}/.ci/check-uses-sha-pinned" || rc=1
   "${REPO_DIR}/.ci/check-readme-recipes" || rc=1
   "${REPO_DIR}/.ci/test-refresh-pull-request" || rc=1
+  "${REPO_DIR}/.ci/test-gremlins-pull-request" || rc=1
   "${REPO_DIR}/.ci/test-check-account-data" || rc=1
   "${REPO_DIR}/.ci/test-check-patch-coverage" || rc=1
   "${REPO_DIR}/.ci/test-check-coverage-drop" || rc=1
