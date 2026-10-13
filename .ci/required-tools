@@ -23,9 +23,15 @@ cyclonedx-gomod
 # .ci/release-version computes the next version and its changelog section
 # with it
 git-cliff
-# .ci/check-vulns reads govulncheck's JSON report with it; the stub gh of
-# .ci/test-release-pull-request and .ci/test-refresh-pull-request run the
-# script's own --jq filter with it
+# .ci/release-publish signs a release's SHA256SUMS with `cosign sign-blob`
+# and checks the signature with `cosign verify-blob`
+cosign
+# .ci/check-vulns reads govulncheck's JSON report with it;
+# .ci/check-breaking-check-list reads the schema's check list with it;
+# .ci/build-release writes the release version into the SBOM with it; the
+# stub gh of .ci/test-release-pull-request, .ci/test-refresh-pull-request and
+# .ci/test-release-publish runs the script's own --jq filter with it, and
+# .ci/test-release-publish edits the stub's answers with it
 jq
 # .ci/run-lint-checks (verify) and .ci/run-fixers (write); treefmt drives it too
 shfmt
@@ -67,11 +73,15 @@ deadnix
 renovate-config-validator
 # every script uses git: most derive the repo root via `git rev-parse`;
 # check-account-data runs git grep and git rev-list; .ci/release-version
-# reads tags and merge commits and .ci/release-pull-request resolves HEAD
+# reads tags and merge commits, .ci/release-pull-request resolves HEAD and
+# .ci/release-publish looks for a release's tag and its release commit
 git
 # internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset;
 # every .ci/*-pull-request script, .ci/release-pull-request included, commits
-# through `gh api` and opens or updates its pull request with `gh pr`
+# through `gh api` and opens or updates its pull request with `gh pr`;
+# .ci/release-publish asks whether a release or its tag exists, drafts,
+# reads back and publishes the release with `gh release`, and reads the tag
+# and the default branch's changelog with `gh api`
 gh
 # the task runner .justfile documents; .ci/run-lint-checks runs `just --fmt`
 # and .ci/check-readme-recipes runs `just --summary`
@@ -86,7 +96,8 @@ nix
 # .ci/run-lint-checks copies the tracked tree for gitleaks with `cp --parents`
 cp
 # .ci/run-lint-checks creates the gitleaks scan directory with it;
-# .ci/release-pull-request stages the changelog and pull request body in one
+# .ci/release-pull-request stages the changelog and pull request body in
+# one, .ci/release-publish the release notes
 mktemp
 # .ci/refresh-pull-request, .ci/fuzz-pull-request and
 # .ci/release-pull-request encode the files they commit for
@@ -97,8 +108,16 @@ xargs
 # .ci/check-coverage, .ci/check-patch-coverage and .ci/check-coverage-drop
 # parse profiles, diffs and baselines with it; POSIX awk only, no gawk-isms
 awk
-# .ci/check-patch-coverage orders its findings by file, then line
+# .ci/check-patch-coverage orders its findings by file, then line;
+# .ci/build-release orders SHA256SUMS with it and .ci/release-publish the
+# file names it compares
 sort
+# .ci/release-publish waits with it between two reads of the tag a publish
+# created
+sleep
+# .ci/build-release writes SHA256SUMS with it; .ci/release-publish holds the
+# files to that list before it uploads them
+sha256sum
 # .ci/check-patch-coverage drops its sort keys before printing
 cut
 # .ci/check-patch-coverage turns git grep -z's NUL separators into bytes awk
@@ -106,7 +125,8 @@ cut
 tr
 # .ci/check-account-data matches its patterns with `grep --extended-regexp`
 # and `grep --fixed-strings`; .ci/check-patch-coverage's test greps its own
-# findings. GNU long options, so gnugrep, not a BSD grep.
+# findings, and .ci/test-release-publish the README for the heading the
+# release notes link to. GNU long options, so gnugrep, not a BSD grep.
 grep
 # .ci/check-account-data strips allowed occurrences with `sed --regexp-extended`
 # and escapes names for the pattern file; .ci/gremlins-pull-request reads the

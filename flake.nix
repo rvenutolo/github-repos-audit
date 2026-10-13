@@ -131,7 +131,15 @@
             # version and its changelog section in .ci/release-version. It
             # reads the local repository only; nothing is fetched.
             git-cliff
-            # jq reads govulncheck's JSON report in .ci/check-vulns.
+            # cosign signs a release's SHA256SUMS in .ci/release-publish,
+            # keyless: the certificate names the release workflow, so there
+            # is no signing key to store or rotate. Only the release job
+            # runs it; every test of that script puts a stand-in first on
+            # PATH, because a real signature is a permanent entry in a
+            # public transparency log.
+            cosign
+            # jq reads govulncheck's JSON report in .ci/check-vulns and writes
+            # the release version into the SBOM in .ci/build-release.
             jq
             # formatters (also wired into .treefmt.nix)
             shfmt

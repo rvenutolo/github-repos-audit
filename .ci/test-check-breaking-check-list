@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/check-breaking-check-list against throwaway
+#              repositories holding small hand-written schema files. The
+#              check names and commit messages are inert fixtures.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly CHECK="${REPO_DIR}/.ci/check-breaking-check-list"
+
+# work is global, not local to main; see .ci/check-breaking-check-list for why.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Write audit.schema.json listing the given check names in a
+#              type's required array, in the order given.
+# @arg $1 repo
+# @arg $@ check names, from $2 on
+function write_schema() {
+  local -r repo="$1"
+  shift
+  local name list=''
+  for name in "$@"; do
+    list+="${list:+,}\"${name}\""
+  done
+  printf '{"%s":{"type":{"required":[%s]}}}\n' "\$defs" "${list}" > "${repo}/audit.schema.json"
+}
+
+# @description Create a throwaway repository whose first commit holds a
+#              schema listing alpha and beta, and print its path.
+function new_repo() {
+  local repo
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  git -C "${repo}" config user.name 'Marker'
+  git -C "${repo}" config user.email 'marker@example.invalid'
+  git -C "${repo}" config commit.gpgsign false
+  write_schema "${repo}" alpha beta
+  git -C "${repo}" add -- audit.schema.json
+  git -C "${repo}" commit --quiet --no-verify --message 'chore: start'
+  printf '%s\n' "${repo}"
+}
+
+# @description Stage everything and commit with the given message.
+# @arg $1 repo
+# @arg $2 message, paragraphs and all
+function commit_all() {
+  git -C "$1" add --all
+  git -C "$1" commit --quiet --no-verify --allow-empty --message "$2"
+}
+
+# @description Run the check with the given arguments and compare the exit
+#              status and output.
+# @arg $1 repo
+# @arg $2 expected exit status
+# @arg $3 substring the output must contain, or '' for none
+# @arg $4 case name
+# @arg $@ the check's own arguments, from $5 on
+function expect_run() {
+  local -r repo="$1" want="$2" needle="$3" name="$4"
+  shift 4
+  local out got=0
+  out="$(cd "${repo}" && "${CHECK}" "$@" 2>&1)" || got=$?
+  if [[ "${got}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: exit ${got}, want ${want}"
+    printf '%s\n' "${out}" >&2
+    return 1
+  fi
+  if [[ -n "${needle}" && "${out}" != *"${needle}"* ]]; then
+    ci::log "FAIL: ${name}: output lacks: ${needle}"
+    printf '%s\n' "${out}" >&2
+    return 1
+  fi
+  if [[ "${out}" == *'ERROR:'* ]]; then
+    ci::log "FAIL: ${name}: the ERR trap fired on a designed return"
+    return 1
+  fi
+}
+
+# @description Run the check over base..HEAD with a git that cannot list
+#              the tree of one commit, and compare the exit status and
+#              output. The stand-in is a script first on PATH that fails,
+#              as git does on a repository it cannot read, when asked for
+#              `ls-tree` of that commit, and hands every other call to the
+#              real git unchanged.
+# @arg $1 repo
+# @arg $2 base revision
+# @arg $3 commit whose tree cannot be listed
+# @arg $4 expected exit status
+# @arg $5 substring the output must contain
+# @arg $6 case name
+function expect_with_failing_git() {
+  local -r repo="$1" base="$2" broken="$3" want="$4" needle="$5" name="$6"
+  local real bin
+  real="$(command -v git)"
+  bin="$(mktemp --directory --tmpdir="${work}")"
+  cat > "${bin}/git" << STUB
+#!/usr/bin/env bash
+if [[ " \$* " == *' ls-tree '* && " \$* " == *' ${broken} '* ]]; then
+  echo 'fatal: stub git: cannot read the tree' >&2
+  exit 128
+fi
+exec '${real}' "\$@"
+STUB
+  chmod +x "${bin}/git"
+  PATH="${bin}:${PATH}" expect_run "${repo}" "${want}" "${needle}" "${name}" --range "${base}..HEAD"
+}
+
+# @description Run the check over base..HEAD.
+# @arg $1 repo
+# @arg $2 base revision
+# @arg $3 expected exit status
+# @arg $4 substring the output must contain, or '' for none
+# @arg $5 case name
+function expect() {
+  expect_run "$1" "$3" "$4" "$5" --range "$2..HEAD"
+}
+
+function main() {
+  work="$(mktemp --directory)"
+  local repo base rc=0
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  commit_all "${repo}" 'feat: something unrelated'
+  expect "${repo}" "${base}" 0 '' 'an unchanged list' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" 'feat: add gamma'
+  expect "${repo}" "${base}" 1 'gamma' 'a check added by a plain feat' || rc=1
+  expect "${repo}" "${base}" 1 'feat!:' 'the message names the marker' || rc=1
+  expect "${repo}" "${base}" 1 'must list every check' 'the message says why' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" 'feat!: add gamma'
+  expect "${repo}" "${base}" 0 '' 'a check added by feat!' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" 'feat(schema)!: add gamma'
+  expect "${repo}" "${base}" 0 '' 'a check added by a scoped feat!' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" "$(printf 'feat: add gamma\n\nBody.\n\nBREAKING CHANGE: gamma is now required')"
+  expect "${repo}" "${base}" 0 '' 'a check added with a BREAKING CHANGE footer' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" "$(printf 'feat: add gamma\n\nBREAKING-CHANGE: gamma is now required')"
+  expect "${repo}" "${base}" 0 '' 'a check added with a BREAKING-CHANGE footer' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" "$(printf 'feat: add gamma\n\nthis is not a BREAKING CHANGE: footer\nnor a bang! in: the subject')"
+  expect "${repo}" "${base}" 1 'gamma' 'a marker that is not at a line start' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha
+  commit_all "${repo}" 'refactor: drop beta'
+  expect "${repo}" "${base}" 1 'beta' 'a check removed without a marker' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha
+  commit_all "${repo}" 'refactor!: drop beta'
+  expect "${repo}" "${base}" 0 '' 'a check removed with a marker' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" beta alpha
+  commit_all "${repo}" 'refactor: reorder the schema'
+  expect "${repo}" "${base}" 0 '' 'a schema only reordered' || rc=1
+
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  commit_all "${repo}" 'fix!: something elsewhere'
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" 'feat: add gamma'
+  expect "${repo}" "${base}" 0 '' 'a breaking commit elsewhere in the range' || rc=1
+
+  # A merge commit's own message counts too.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  git -C "${repo}" switch --quiet --create side
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" 'feat: add gamma'
+  git -C "${repo}" switch --quiet main
+  commit_all "${repo}" 'chore: move on'
+  git -C "${repo}" merge --quiet --no-ff --message 'fix!: merge the side' side
+  expect "${repo}" "${base}" 0 '' 'a breaking marker on a merge commit' || rc=1
+
+  # A base without the schema is the empty set, so adding the file adds
+  # every check.
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  git -C "${repo}" config user.name 'Marker'
+  git -C "${repo}" config user.email 'marker@example.invalid'
+  git -C "${repo}" config commit.gpgsign false
+  commit_all "${repo}" 'chore: start'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta
+  commit_all "${repo}" 'feat: add the schema'
+  expect "${repo}" "${base}" 1 'alpha' 'a base without the schema' || rc=1
+
+  # A head without the schema is the empty set too.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  git -C "${repo}" rm --quiet -- audit.schema.json
+  git -C "${repo}" commit --quiet --no-verify --message 'refactor: drop the schema'
+  expect "${repo}" "${base}" 1 'beta' 'a head without the schema' || rc=1
+
+  # An unparsable schema at either end is a finding, never a pass.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  printf '{ not json\n' > "${repo}/audit.schema.json"
+  commit_all "${repo}" 'fix!: mangle the schema'
+  expect "${repo}" "${base}" 1 'audit.schema.json' 'an unparsable head schema' || rc=1
+
+  repo="$(new_repo)"
+  printf '{ not json\n' > "${repo}/audit.schema.json"
+  commit_all "${repo}" 'chore: mangle the schema'
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta
+  commit_all "${repo}" 'fix!: repair the schema'
+  expect "${repo}" "${base}" 1 'audit.schema.json' 'an unparsable base schema' || rc=1
+
+  # Valid JSON without the check list is unparsable for this purpose.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  printf '{}\n' > "${repo}/audit.schema.json"
+  commit_all "${repo}" 'fix!: empty the schema'
+  expect "${repo}" "${base}" 1 'audit.schema.json' 'a schema without the check list' || rc=1
+
+  # git failing is a setup failure at either end of the range, never a
+  # finding: nothing was learnt about the check list.
+  repo="$(new_repo)"
+  base="$(git -C "${repo}" rev-parse HEAD)"
+  write_schema "${repo}" alpha beta gamma
+  commit_all "${repo}" 'feat: add gamma'
+  expect_with_failing_git "${repo}" "${base}" "${base}" 2 'git ls-tree failed for the range base' \
+    'git failing on the base schema' || rc=1
+  expect_with_failing_git "${repo}" "${base}" "$(git -C "${repo}" rev-parse HEAD)" 2 \
+    'git ls-tree failed for the range head' 'git failing on the head schema' || rc=1
+
+  # --- usage ---
+
+  repo="$(new_repo)"
+  expect_run "${repo}" 2 'usage:' 'missing --range' || rc=1
+  expect_run "${repo}" 2 'usage:' '--range given no value' --range || rc=1
+  expect_run "${repo}" 2 'usage:' 'an unknown option' --range HEAD..HEAD --verbose || rc=1
+  expect_run "${repo}" 2 'usage:' 'a range without ..' --range HEAD || rc=1
+  expect "${repo}" 'no-such-ref' 2 'does not resolve' 'a range that does not resolve' || rc=1
+
+  ((rc == 0)) && ci::log 'check-breaking-check-list: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

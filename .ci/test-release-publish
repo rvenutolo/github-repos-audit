@@ -1,0 +1,1263 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/release-publish inside throwaway repositories,
+#              with the real git and sha256sum and stand-ins for gh,
+#              cosign and sleep. Each stand-in records every argument list
+#              it is handed; gh answers the script's reads from files the
+#              case writes, cosign writes an inert marker where the bundle
+#              goes, and sleep returns at once, so the waits between two tag
+#              reads are counted and never waited. No call reaches GitHub or a transparency log, and the
+#              only side effects are files under one temporary directory.
+#
+#              The gh stand-in knows the exact argument list of every read
+#              and the leading words of every write; any other call fails,
+#              so a call the script grows is a failing case here, not a
+#              silent blank. Most cases compare the whole call log with the
+#              calls the run is entitled to: that is how "the tag comes last"
+#              and "a refusal writes nothing" are held.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly SCRIPT="${REPO_DIR}/.ci/release-publish"
+
+readonly VERSION='v1.1.0'
+# The commit the release is cut from. Nothing resolves it: the script hands
+# it to gh and compares it with what gh answers.
+readonly SHA='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001'
+
+# The files a release is made of, in the order the script uploads them.
+readonly -a ASSETS=(
+  audit-linux-amd64
+  audit-linux-arm64
+  audit-darwin-amd64
+  audit-darwin-arm64
+  audit-windows-amd64.exe
+  audit.cdx.json
+  SHA256SUMS
+  SHA256SUMS.sigstore.json
+)
+
+# The repository the script is told to publish to; a case empties it to run
+# the script without one.
+repository='gh-owner/tool'
+
+# Every gh call the script may make, as the stub logs it. NOTES stands for
+# the notes file's path, which is the script's own temporary file; run_script
+# puts the word in its place.
+readonly READ_STATE="release view ${VERSION} --repo gh-owner/tool --json isDraft --jq .isDraft"
+readonly WRITE_DELETE="release delete ${VERSION} --repo gh-owner/tool --yes"
+readonly WRITE_EDIT="release edit ${VERSION} --repo gh-owner/tool --draft=false"
+readonly READ_TAG="api repos/gh-owner/tool/git/ref/tags/${VERSION} --jq .object.sha"
+# The default branch's changelog as GitHub holds it, raw.
+readonly READ_DEFAULT='api repos/gh-owner/tool/contents/CHANGELOG.md --header Accept: application/vnd.github.raw'
+# Set by main, once the assets' paths are known.
+write_create=''
+read_assets=''
+
+# The workflow and ref the run is told it belongs to, as GitHub Actions sets
+# GITHUB_WORKFLOW_REF; a case empties it to run the script without one.
+workflow_ref='gh-owner/tool/.github/workflows/release.yml@refs/heads/main'
+
+# What the last run_script call left behind, for the assertions after it.
+status=0
+last_repo=''
+calls=''
+signed=''
+slept=''
+output=''
+errors=''
+
+# work is global, not local to main; see .ci/check-coverage-drop for why.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Create a throwaway repository the script can run in: a
+#              changelog whose newest section is the version under test, one
+#              commit that holds it, and optionally a tag on that commit.
+#              Signing is turned off locally, for tags as well as commits,
+#              because the host may sign both by default and no key exists
+#              here.
+#
+#              Beside the changelog sit `dist/`, the release files, and
+#              `.stub/`, the stand-ins, their logs and gh's answers.
+# @arg $1 tag the tag the commit carries, or empty for none
+# @stdout the repository's absolute path
+function make_repo() {
+  local repo
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  git -C "${repo}" config user.name 'Test Author'
+  git -C "${repo}" config user.email 'test@example.invalid'
+  git -C "${repo}" config commit.gpgsign false
+  git -C "${repo}" config tag.gpgsign false
+  cat > "${repo}/CHANGELOG.md" << EOF
+# Changelog
+
+Every release of this tool, newest first.
+
+## ${VERSION}
+
+### Features
+
+- add widget
+
+## v1.0.0
+
+The first stable release.
+EOF
+  git -C "${repo}" add -- CHANGELOG.md
+  git -C "${repo}" commit --quiet --message 'chore: start'
+  if [[ -n "$1" ]]; then
+    git -C "${repo}" tag "$1"
+  fi
+  write_dist "${repo}/dist"
+  write_stubs "${repo}/.stub"
+  printf '%s\n' "${repo}"
+}
+
+# @description Write a release directory as .ci/build-release and the sign
+#              step leave it: five binaries and an SBOM made of one line of
+#              text each, a real SHA256SUMS over those six, and an inert
+#              marker for the signature bundle.
+# @arg $1 dir
+function write_dist() {
+  local -r dir="$1"
+  mkdir --parents "${dir}"
+  local name
+  for name in "${ASSETS[@]:0:6}"; do
+    printf 'contents of %s\n' "${name}" > "${dir}/${name}"
+  done
+  (cd "${dir}" && sha256sum -- audit-* audit.cdx.json | LC_ALL=C sort --key=2 > SHA256SUMS)
+  printf 'INERT_BUNDLE\n' > "${dir}/SHA256SUMS.sigstore.json"
+}
+
+# @description Write the gh and cosign stand-ins. gh logs each call and
+#              answers the reads from files in its own directory:
+#
+#              - `release-state`: `draft` or `published` when a release of
+#                that name exists, absent when there is none, anything else
+#                for a GitHub that cannot be asked
+#              - `assets.json`: what `--json assets` prints for the draft;
+#                starts as all eight assets, uploaded, each with the digest
+#                of the file in the dist beside the directory
+#              - `remote-tag`: what a tag of that name points at before
+#                anything is published; absent when there is no such tag,
+#                `unreachable` for a GitHub that cannot be asked
+#              - `default-changelog`: the changelog on the default branch;
+#                absent, the answer is the changelog in the working tree,
+#                as when the checkout is the default branch's head;
+#                `unreachable` for a GitHub that cannot be asked
+#              - `tag-sha`: the commit the tag points at once the release is
+#                published; absent when publishing creates no tag
+#              - `tag-misses`: how many reads after the publish go by before
+#                the tag shows; absent for none
+#              - `tag-miss-status`: present to make those misses failed
+#                reads and not 404s
+#
+#              - `draft-sticks`: present to keep the state read answering
+#                with a draft after every delete
+#              - `delete-fails`, `create-fails`: present to make that write
+#                fail
+#              - `cosign-writes-nothing`: present to make cosign succeed
+#                without writing a bundle
+#              - `verify-fails`: present to make cosign reject the
+#                signature it is asked to verify
+#
+#              A write only logs, and leaves a marker: `deleted` after a
+#              delete, which is what makes the next state read say there is
+#              no release, `notes.md`, a copy of the notes file, after a
+#              create, and `published` after the edit that publishes, which
+#              is what makes the tag read answer with `tag-sha`. cosign logs its arguments and writes a marker at the
+#              bundle path. Nothing here runs a command with an effect
+#              outside the directory or the dist beside it.
+# @arg $1 dir directory to put the stand-ins and their files in
+function write_stubs() {
+  local -r dir="$1"
+  mkdir --parents "${dir}/bin"
+  : > "${dir}/calls.log"
+  : > "${dir}/cosign.log"
+  local name digest assets=''
+  for name in "${ASSETS[@]}"; do
+    digest="$(sha256sum < "${dir}/../dist/${name}")"
+    assets+="${assets:+,}{\"name\":\"${name}\",\"state\":\"uploaded\",\"digest\":\"sha256:${digest%% *}\"}"
+  done
+  printf '{"assets":[%s]}\n' "${assets}" > "${dir}/assets.json"
+  cat > "${dir}/bin/gh" << STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '${dir}/calls.log'
+case "\$*" in
+  '${READ_STATE}')
+    if [[ ! -e '${dir}/release-state' || (-e '${dir}/deleted' && ! -e '${dir}/draft-sticks') ]]; then
+      echo 'release not found' >&2
+      exit 1
+    fi
+    case "\$(< '${dir}/release-state')" in
+      draft) echo true ;;
+      published) echo false ;;
+      *)
+        echo 'HTTP 502: Bad Gateway' >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  '${READ_DEFAULT}')
+    if [[ ! -e '${dir}/default-changelog' ]]; then
+      cat '${dir}/../CHANGELOG.md'
+    elif [[ "\$(< '${dir}/default-changelog')" == 'unreachable' ]]; then
+      echo 'gh: Bad Gateway (HTTP 502)' >&2
+      exit 1
+    else
+      cat '${dir}/default-changelog'
+    fi
+    ;;
+  '${WRITE_DELETE}')
+    if [[ -e '${dir}/delete-fails' ]]; then
+      echo 'gh: Bad Gateway (HTTP 502)' >&2
+      exit 1
+    fi
+    : > '${dir}/deleted'
+    ;;
+  'release create ${VERSION} --repo gh-owner/tool --draft '*)
+    if [[ -e '${dir}/create-fails' ]]; then
+      echo 'gh: Bad Gateway (HTTP 502)' >&2
+      exit 1
+    fi
+    # The notes are a file, gone once the script exits; keep what it held.
+    while ((\$# > 1)); do
+      if [[ "\$1" == '--notes-file' ]]; then
+        cat -- "\$2" > '${dir}/notes.md'
+      fi
+      shift
+    done
+    ;;
+  'release view ${VERSION} --repo gh-owner/tool --json assets --jq '*)
+    # The script's own filter, the last argument, is run over the answer,
+    # so which assets it counts is the script's doing and not the stub's.
+    jq --raw-output "\${!#}" '${dir}/assets.json'
+    ;;
+  '${WRITE_EDIT}') : > '${dir}/published' ;;
+  '${READ_TAG}')
+    if [[ -e '${dir}/remote-tag' ]]; then
+      if [[ "\$(< '${dir}/remote-tag')" == 'unreachable' ]]; then
+        echo 'gh: Bad Gateway (HTTP 502)' >&2
+        exit 1
+      fi
+      cat '${dir}/remote-tag'
+      exit 0
+    fi
+    misses=0
+    if [[ -e '${dir}/published' ]]; then
+      echo read >> '${dir}/tag-reads'
+      if [[ -e '${dir}/tag-misses' ]]; then
+        misses="\$(< '${dir}/tag-misses')"
+      fi
+    fi
+    if [[ -e '${dir}/published' && -e '${dir}/tag-sha' ]] \\
+      && ((\$(wc --lines < '${dir}/tag-reads') > misses)); then
+      cat '${dir}/tag-sha'
+    elif [[ -e '${dir}/published' && -e '${dir}/tag-miss-status' ]]; then
+      echo 'gh: Bad Gateway (HTTP 502)' >&2
+      exit 1
+    else
+      # As gh answers a 404: the body on stdout, the status on stderr.
+      echo '{"message":"Not Found","status":"404"}'
+      echo 'gh: Not Found (HTTP 404)' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    printf 'stub gh: unexpected call: %s\n' "\$*" >&2
+    exit 1
+    ;;
+esac
+STUB
+  cat > "${dir}/bin/cosign" << STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '${dir}/cosign.log'
+case "\$1" in
+  sign-blob) ;;
+  verify-blob)
+    if [[ -e '${dir}/verify-fails' ]]; then
+      echo 'Error: stub cosign: none of the expected identities matched' >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  *)
+    printf 'stub cosign: unexpected call: %s\n' "\$*" >&2
+    exit 1
+    ;;
+esac
+while ((\$# > 1)); do
+  if [[ "\$1" == '--bundle' && ! -e '${dir}/cosign-writes-nothing' ]]; then
+    printf 'STUB_BUNDLE\n' > "\$2"
+  fi
+  shift
+done
+STUB
+  cat > "${dir}/bin/sleep" << STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '${dir}/sleep.log'
+STUB
+  : > "${dir}/sleep.log"
+  chmod +x "${dir}/bin/gh" "${dir}/bin/cosign" "${dir}/bin/sleep"
+}
+
+# @description Run the script in a repository with the stand-ins first on
+#              PATH, and leave its exit status, both call logs, its stdout
+#              and its stderr behind. Both stand-ins are on PATH for every
+#              run, whatever the subcommand: a case must never reach the
+#              real gh or the real cosign.
+# @arg $1 repo
+# @arg $@ arguments passed to the script
+# @set status int the script's exit status
+# @set last_repo string the repository, for release_notes
+# @set calls string every gh call it made, one argument list per line, with
+#                   the notes file's path replaced by NOTES
+# @set signed string every cosign call it made
+# @set slept string every wait it asked for, one per line, in seconds
+# @set output string its stdout
+# @set errors string its stderr
+function run_script() {
+  local -r repo="$1"
+  shift
+  status=0
+  last_repo="${repo}"
+  : > "${repo}/.stub/calls.log"
+  : > "${repo}/.stub/cosign.log"
+  : > "${repo}/.stub/sleep.log"
+  : > "${repo}/.stub/notes.md"
+  (
+    cd "${repo}"
+    PATH="${repo}/.stub/bin:${PATH}" GITHUB_REPOSITORY="${repository}" GITHUB_WORKFLOW_REF="${workflow_ref}" \
+      "${SCRIPT}" "$@" > "${repo}/.stub/stdout" 2> "${repo}/.stub/stderr"
+  ) || status=$?
+  calls="$(< "${repo}/.stub/calls.log")"
+  signed="$(< "${repo}/.stub/cosign.log")"
+  slept="$(< "${repo}/.stub/sleep.log")"
+  output="$(< "${repo}/.stub/stdout")"
+  errors="$(< "${repo}/.stub/stderr")"
+  if [[ "${calls}" =~ --notes-file\ ([^ ]+) ]]; then
+    calls="${calls//"${BASH_REMATCH[1]}"/NOTES}"
+  fi
+}
+
+# @description Fail unless the last run exited as expected. A designed
+#              non-zero exit is a verdict, not a crash, so the ERR trap must
+#              have stayed quiet on it.
+# @arg $1 case name
+# @arg $2 expected exit status
+function want_status() {
+  if [[ "${status}" != "$2" ]]; then
+    ci::log "FAIL: $1: exit ${status}, want $2 (stderr: ${errors})"
+    return 1
+  fi
+  if [[ "${errors}" == *'ERROR: line'* ]]; then
+    ci::log "FAIL: $1: the ERR trap fired on a designed return (stderr: ${errors})"
+    return 1
+  fi
+}
+
+# @description Fail unless the last run made exactly these gh calls, in this
+#              order. This is how "wrote nothing" and "in this order" are
+#              asserted: the whole log is compared with the calls the run is
+#              entitled to, so a write of a kind nobody thought to look for
+#              fails too.
+# @arg $1 case name
+# @arg $@ the expected calls; none when gh must not be called at all
+function want_only_calls() {
+  local -r name="$1"
+  shift
+  # IFS starts with a newline, so "$*" is one call per line, as the log is.
+  local -r want="$*"
+  if [[ "${calls}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: gh calls were: ${calls:-(none)}; want exactly: ${want:-(none)}"
+    return 1
+  fi
+}
+
+# @description Fail when the call log contains a fixed string.
+# @arg $1 case name
+# @arg $2 fixed string
+function want_no_call() {
+  if [[ "${calls}" == *"$2"* ]]; then
+    ci::log "FAIL: $1: a gh call contains '$2' (calls: ${calls})"
+    return 1
+  fi
+}
+
+# @description Fail unless a text is exactly another.
+# @arg $1 case name
+# @arg $2 what the text is, for the message
+# @arg $3 text
+# @arg $4 the expected text
+function want_same() {
+  if [[ "$3" != "$4" ]]; then
+    ci::log "FAIL: $1: $2 is '$3', want '$4' (stderr: ${errors})"
+    return 1
+  fi
+}
+
+# @description Fail unless a text contains a fixed string.
+# @arg $1 case name
+# @arg $2 text
+# @arg $3 fixed string
+function want_text() {
+  if [[ "$2" != *"$3"* ]]; then
+    ci::log "FAIL: $1: '$3' is missing from: $2"
+    return 1
+  fi
+}
+
+# @description Print the number of the first line of the call log that starts
+#              with a fixed string, or 0 when no line does.
+# @arg $1 fixed string
+# @stdout the line number
+function line_of() {
+  local line number=0
+  while IFS= read -r line; do
+    number=$((number + 1))
+    if [[ "${line}" == "$1"* ]]; then
+      printf '%s\n' "${number}"
+      return 0
+    fi
+  done <<< "${calls}"
+  printf '0\n'
+}
+
+# @description Add one commit that changes a file other than the changelog.
+# @arg $1 repo
+# @arg $2 file the file to write, relative to the repository
+# @arg $3 subject
+function commit_file() {
+  printf '%s\n' "$3" > "$1/$2"
+  git -C "$1" add -- "$2"
+  git -C "$1" commit --quiet --message "$3"
+}
+
+# @description Print the notes the last run gave the release.
+# @stdout the notes, or nothing when no release was created
+function release_notes() {
+  cat -- "${last_repo}/.stub/notes.md"
+}
+
+# Case 1. pending says whether the changelog's newest version still has to
+# be published, and only ever reads.
+function test_pending() {
+  local rc=0 repo head
+  local name='pending: an untagged version with no release'
+  repo="$(make_repo '')"
+  head="$(git -C "${repo}" rev-parse HEAD)"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${head}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+
+  # A draft is a publish that stopped half way: the next run replaces it.
+  name='pending: an untagged version with a draft release'
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${head}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+
+  # The tag is fetched after the release is published, so a published
+  # release can be all there is to see.
+  name='pending: a published release whose tag is missing locally'
+  printf 'published\n' > "${repo}/.stub/release-state"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" "a release ${VERSION} is published on GitHub" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+
+  # Not knowing is not "nothing to publish": the run fails and says nothing.
+  name='pending: GitHub cannot be asked about the release'
+  printf 'unreachable\n' > "${repo}/.stub/release-state"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "cannot tell whether a release ${VERSION} exists" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+
+  # A checkout need not hold the tags. One that exists on GitHub with no
+  # release is still a name that is taken: publishing would attach the
+  # release to it, wherever it points.
+  name='pending: the tag exists on GitHub only, with no release'
+  repo="$(make_repo '')"
+  printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" "the tag ${VERSION} exists on GitHub" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  name='pending: GitHub cannot be asked about the tag'
+  printf 'unreachable\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "cannot tell whether the tag ${VERSION} exists" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  name='pending: no repository to ask about'
+  repo="$(make_repo '')"
+  repository=''
+  run_script "${repo}" pending
+  repository='gh-owner/tool'
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'GITHUB_REPOSITORY is not set' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  name='pending: the tag exists'
+  repo="$(make_repo "${VERSION}")"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" "${VERSION} is tagged" || rc=1
+  want_only_calls "${name}" || rc=1
+
+  name='pending: a changelog with no release'
+  repo="$(make_repo '')"
+  printf '# Changelog\n\nEvery release of this tool, newest first.\n' > "${repo}/CHANGELOG.md"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" 'the changelog holds no release' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  # A first heading that is not a version is somebody's edit to look at,
+  # not a reason to fail every push to the default branch.
+  name='pending: a first heading that is not a version'
+  printf '# Changelog\n\n## Unreleased\n\n- add widget\n' > "${repo}/CHANGELOG.md"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_text "${name}" "${errors}" 'Unreleased' || rc=1
+  want_text "${name}" "${errors}" 'WARNING: ' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  name='pending: an argument'
+  run_script "${repo}" pending --bogus
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'pending takes no argument' || rc=1
+  want_only_calls "${name}" || rc=1
+  return "${rc}"
+}
+
+# A release is published by the run of its own commit and by no other: the
+# signature and the attestation name the commit the run started from, so
+# they are true of the tag only when that commit is the one tagged. The
+# release commit is the first one on the default branch's own line of
+# history whose changelog names the version at its top.
+function test_pending_publishes_only_from_the_release_commit() {
+  local rc=0 repo merge branch_commit later
+  local name='pending: HEAD is the merge that brought the version in'
+  repo="$(make_repo '')"
+  # The section under test arrives on a branch, as a release pull request
+  # brings it; the default branch starts without it.
+  printf '# Changelog\n\n## v1.0.0\n\nThe first stable release.\n' > "${repo}/CHANGELOG.md"
+  git -C "${repo}" commit --quiet --message 'chore: start over' -- CHANGELOG.md
+  git -C "${repo}" switch --quiet --create chore/release
+  printf '# Changelog\n\n## %s\n\n- add widget\n\n## v1.0.0\n\nThe first stable release.\n' "${VERSION}" \
+    > "${repo}/CHANGELOG.md"
+  git -C "${repo}" commit --quiet --message "chore(release): ${VERSION}" -- CHANGELOG.md
+  branch_commit="$(git -C "${repo}" rev-parse HEAD)"
+  git -C "${repo}" switch --quiet main
+  git -C "${repo}" merge --quiet --no-ff --message 'chore(release): merge' chore/release
+  merge="$(git -C "${repo}" rev-parse HEAD)"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${merge}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+  # The commit on the pull request's branch is not on the default branch's
+  # own line of history; the tag belongs on the merge.
+  if [[ "${output}" == *"${branch_commit}"* ]]; then
+    ci::log "FAIL: ${name}: the output names the branch's commit, ${branch_commit}"
+    rc=1
+  fi
+
+  # The run of a later push finds the release unpublished. That is a
+  # failure to show, not a release to make: it says which commit's run to
+  # run again, and gives the workflow nothing to act on.
+  name='pending: HEAD is a later commit that leaves the changelog alone'
+  commit_file "${repo}" notes.txt 'feat: add gadget'
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the release ${VERSION} is not published" || rc=1
+  want_text "${name}" "${errors}" "${merge}" || rc=1
+  want_text "${name}" "${errors}" 're-run the workflow run of that commit' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+
+  # A later edit to the changelog that leaves the version at its top does
+  # not become the release commit: the tag stays where the version came in.
+  name='pending: HEAD is a later commit that edits the changelog preamble'
+  printf '# Changelog\n\nNewest first.\n\n## %s\n\n- add widget\n\n## v1.0.0\n\nThe first stable release.\n' \
+    "${VERSION}" > "${repo}/CHANGELOG.md"
+  git -C "${repo}" commit --quiet --message 'docs: say the order' -- CHANGELOG.md
+  later="$(git -C "${repo}" rev-parse HEAD)"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the release commit is ${merge}" || rc=1
+  if [[ "${errors}" == *"the release commit is ${later}"* ]]; then
+    ci::log "FAIL: ${name}: the later changelog edit was taken for the release commit"
+    rc=1
+  fi
+
+  # The merge's own run, started again after those pushes: the checkout is
+  # the merge, and the branch having moved on changes nothing.
+  name='pending: HEAD is the release commit and the branch has moved on'
+  git -C "${repo}" checkout --quiet --detach "${merge}"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" $'publish=true\nversion='"${VERSION}"$'\nsha='"${merge}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+
+  # The merge's run started again after the default branch gave the
+  # version up: its section is withdrawn there, or the heading renamed.
+  # The checkout still names the version, and must not publish it.
+  name='pending: the default branch names another version'
+  printf '# Changelog\n\n## v1.1.1\n\n- add widget\n\n## v1.0.0\n\nThe first stable release.\n' \
+    > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+  want_text "${name}" "${errors}" 'v1.1.1' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+
+  name='pending: the default branch withdrew the version'
+  printf '# Changelog\n\n## v1.0.0\n\nThe first stable release.\n' > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+
+  name='pending: the default branch changelog holds no release'
+  printf '# Changelog\n\nEvery release of this tool, newest first.\n' > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+
+  name='pending: the default branch changelog starts with no version'
+  printf '# Changelog\n\n## Unreleased\n\n- add widget\n' > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" "the default branch no longer proposes ${VERSION}" || rc=1
+
+  # Not knowing is not agreement.
+  name='pending: GitHub cannot be asked for the default branch changelog'
+  printf 'unreachable\n' > "${repo}/.stub/default-changelog"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'cannot read CHANGELOG.md on the default branch' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${READ_DEFAULT}" || rc=1
+  mv -- "${repo}/.stub/default-changelog" "${repo}/.stub/default-changelog.aside"
+
+  # Once the release is out, a later run has nothing to complain about.
+  name='pending: a later commit after the release is tagged'
+  git -C "${repo}" switch --quiet main
+  git -C "${repo}" tag "${VERSION}" "${merge}"
+  run_script "${repo}" pending
+  want_status "${name}" 0 || rc=1
+  want_same "${name}" 'the output' "${output}" 'publish=false' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  # The version is read from the file and the commit from the history; an
+  # edit nobody committed would make the two disagree.
+  name='pending: a changelog edited and not committed'
+  repo="$(make_repo '')"
+  printf '\nA line nobody committed.\n' >> "${repo}/CHANGELOG.md"
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'CHANGELOG.md is not as it was committed' || rc=1
+
+  name='pending: a changelog no commit holds'
+  repo="$(make_repo '')"
+  # A history of its own, with the file in the working tree only.
+  git -C "${repo}" switch --quiet --orphan untracked
+  git -C "${repo}" show main:CHANGELOG.md > "${repo}/CHANGELOG.md"
+  git -C "${repo}" commit --quiet --allow-empty --message 'chore: start'
+  run_script "${repo}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'no commit' || rc=1
+
+  # A shallow clone ends at a commit that seems to add every file, so the
+  # commit the history names would be the wrong one.
+  name='pending: a shallow clone'
+  repo="$(make_repo '')"
+  commit_file "${repo}" notes.txt 'feat: add gadget'
+  local -r shallow="${work}/shallow"
+  git clone --quiet --depth 1 "file://${repo}" "${shallow}"
+  write_dist "${shallow}/dist"
+  write_stubs "${shallow}/.stub"
+  run_script "${shallow}" pending
+  want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the output' "${output}" '' || rc=1
+  want_text "${name}" "${errors}" 'shallow clone' || rc=1
+  want_only_calls "${name}" || rc=1
+  return "${rc}"
+}
+
+# Case 2. sign hands the checksum file to cosign and nothing else.
+function test_sign() {
+  local rc=0 repo
+  local name='sign: a built dist'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
+  run_script "${repo}" sign --dist "${repo}/dist"
+  want_status "${name}" 0 || rc=1
+  # Signed, then verified as a stranger would verify it: against the
+  # workflow and ref this run belongs to, and GitHub as the issuer.
+  local -r sign_call="sign-blob --yes --bundle ${repo}/dist/SHA256SUMS.sigstore.json ${repo}/dist/SHA256SUMS"
+  local verify_call="verify-blob --bundle ${repo}/dist/SHA256SUMS.sigstore.json"
+  verify_call+=" --certificate-identity https://github.com/${workflow_ref}"
+  verify_call+=" --certificate-oidc-issuer https://token.actions.githubusercontent.com ${repo}/dist/SHA256SUMS"
+  want_same "${name}" 'the cosign calls' "${signed}" "${sign_call}"$'\n'"${verify_call}" || rc=1
+  want_same "${name}" 'the bundle' "$(< "${repo}/dist/SHA256SUMS.sigstore.json")" 'STUB_BUNDLE' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  name='sign: a dist with no SHA256SUMS'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS" "${repo}/.stub/SHA256SUMS.aside"
+  run_script "${repo}" sign --dist "${repo}/dist"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'has no SHA256SUMS; nothing to sign' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+  want_same "${name}" 'the bundle' "$(< "${repo}/dist/SHA256SUMS.sigstore.json")" 'INERT_BUNDLE' || rc=1
+
+  # A cosign that says it signed and left no bundle has signed nothing
+  # anyone can verify.
+  name='sign: cosign succeeds and writes no bundle'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
+  : > "${repo}/.stub/cosign-writes-nothing"
+  run_script "${repo}" sign --dist "${repo}/dist"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'cosign reported success and wrote no ' || rc=1
+  want_text "${name}" "${signed}" 'sign-blob --yes --bundle ' || rc=1
+
+  # A signature that does not verify must stop the run before the tag: it
+  # is what everybody who downloads the release would be told to check.
+  name='sign: the signature does not verify'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
+  : > "${repo}/.stub/verify-fails"
+  run_script "${repo}" sign --dist "${repo}/dist"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'does not verify' || rc=1
+  want_text "${name}" "${signed}" 'verify-blob --bundle ' || rc=1
+
+  # Without the identity nothing could be verified, so nothing is signed:
+  # a signature is public for good the moment it is made.
+  name='sign: no workflow ref to verify against'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
+  workflow_ref=''
+  run_script "${repo}" sign --dist "${repo}/dist"
+  workflow_ref='gh-owner/tool/.github/workflows/release.yml@refs/heads/main'
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'GITHUB_WORKFLOW_REF is not set' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+  if [[ -e "${repo}/dist/SHA256SUMS.sigstore.json" ]]; then
+    ci::log "FAIL: ${name}: a bundle was written"
+    rc=1
+  fi
+
+  # Signed once already: a second signature is a second permanent entry in
+  # the transparency log, and a bundle that is there would make a cosign
+  # that wrote nothing look like one that did.
+  name='sign: a dist that holds a bundle'
+  repo="$(make_repo '')"
+  run_script "${repo}" sign --dist "${repo}/dist"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'already holds SHA256SUMS.sigstore.json' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+  want_same "${name}" 'the bundle' "$(< "${repo}/dist/SHA256SUMS.sigstore.json")" 'INERT_BUNDLE' || rc=1
+
+  name='sign: no --dist'
+  run_script "${repo}" sign
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--dist is required' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+
+  name='sign: --dist with no value'
+  run_script "${repo}" sign --dist
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--dist needs a value' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+
+  name='sign: an unknown argument'
+  run_script "${repo}" sign --bogus
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'unknown argument --bogus' || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+  return "${rc}"
+}
+
+# Case 3. The happy path: a draft with every asset, the asset check, and
+# only then the publish that creates the tag.
+function test_release() {
+  local rc=0 repo notes
+  local -r name='release: no release of that name yet'
+  repo="$(make_repo '')"
+  printf '%s\n' "${SHA}" > "${repo}/.stub/tag-sha"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 0 || rc=1
+  # write_create holds --draft, --target and all eight paths.
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" '' || rc=1
+
+  # The ordering invariant, said once more on its own: the draft, then the
+  # look at its assets, then the publish. Publishing is what creates the tag.
+  local create view edit
+  create="$(line_of "release create ${VERSION} ")"
+  view="$(line_of "release view ${VERSION} --repo gh-owner/tool --json assets ")"
+  edit="$(line_of "release edit ${VERSION} ")"
+  if ((create == 0 || view == 0 || edit == 0 || create >= view || view >= edit)); then
+    ci::log "FAIL: ${name}: create, view, edit are on lines ${create}, ${view}, ${edit} of the call log; want them all, in that order"
+    rc=1
+  fi
+
+  notes="$(release_notes)"
+  want_text "${name}" "${notes}" $'### Features\n\n- add widget\n\n' || rc=1
+  want_text "${name}" "${notes}" 'Pin the reusable workflows' || rc=1
+  want_text "${name}" "${notes}" $'```yaml\nuses: gh-owner/tool/.github/workflows/audit.yml@'"${SHA} # ${VERSION}"$'\n```' || rc=1
+  # The README at the tag, whose heading the anchor must match.
+  want_text "${name}" "${notes}" \
+    "See [Verifying a release](https://github.com/gh-owner/tool/blob/${VERSION}/README.md#verifying-a-release) in the README." || rc=1
+  if ! grep --quiet --line-regexp --fixed-strings '## Verifying a release' "${REPO_DIR}/README.md"; then
+    ci::log "FAIL: ${name}: README.md has no heading 'Verifying a release' for the notes to link to"
+    rc=1
+  fi
+  # The section's own heading is the release's title, and the section below
+  # belongs to another release.
+  if [[ "${notes}" == *"## ${VERSION}"* || "${notes}" == *'The first stable release.'* ]]; then
+    ci::log "FAIL: ${name}: the notes hold more than the section's body: ${notes}"
+    rc=1
+  fi
+  return "${rc}"
+}
+
+# Case 4. A draft is replaced; a published release is never touched.
+function test_existing_release() {
+  local rc=0 repo
+  local name='release: a draft of that name exists'
+  repo="$(make_repo '')"
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  printf '%s\n' "${SHA}" > "${repo}/.stub/tag-sha"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 0 || rc=1
+  # The state is read again after the delete: drafts are not unique by
+  # name, and the one published must be the one just uploaded.
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" \
+    "${write_create}" "${read_assets}" "${WRITE_EDIT}" "${READ_TAG}" || rc=1
+  local delete create
+  delete="$(line_of "release delete ${VERSION} ")"
+  create="$(line_of "release create ${VERSION} ")"
+  if ((delete == 0 || create == 0 || delete >= create)); then
+    ci::log "FAIL: ${name}: delete and create are on lines ${delete} and ${create} of the call log; want delete first"
+    rc=1
+  fi
+
+  name='release: a published release of that name exists'
+  repo="$(make_repo '')"
+  printf 'published\n' > "${repo}/.stub/release-state"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "the release ${VERSION} is published; a published release is never replaced" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+  want_no_call "${name}" 'release delete' || rc=1
+  want_no_call "${name}" 'release create' || rc=1
+  want_no_call "${name}" 'release edit' || rc=1
+
+  name='release: GitHub cannot be asked about the release'
+  repo="$(make_repo '')"
+  printf 'unreachable\n' > "${repo}/.stub/release-state"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "cannot tell whether a release ${VERSION} exists" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" || rc=1
+
+  # GitHub goes on answering with a draft, whatever is deleted: the run
+  # ends, and never uploads beside a draft it could not get rid of.
+  name='release: a draft is still there after every delete'
+  repo="$(make_repo '')"
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  : > "${repo}/.stub/draft-sticks"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "a draft release ${VERSION} is still there after 5 deletes" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" \
+    "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" "${WRITE_DELETE}" \
+    "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" "${WRITE_DELETE}" "${READ_STATE}" || rc=1
+
+  name='release: the draft cannot be deleted'
+  repo="$(make_repo '')"
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  : > "${repo}/.stub/delete-fails"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "could not delete the draft release ${VERSION}" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${WRITE_DELETE}" || rc=1
+
+  # No draft, or half of one: either way nothing is published, so no tag.
+  name='release: the draft cannot be created'
+  repo="$(make_repo '')"
+  : > "${repo}/.stub/create-fails"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "could not create the draft release ${VERSION}; no tag was created" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" || rc=1
+  want_no_call "${name}" 'release edit' || rc=1
+  return "${rc}"
+}
+
+# A tag that exists on GitHub is never published onto: GitHub would attach
+# the release to it and ignore the commit asked for. It is found out before
+# the first write, the delete of an old draft included.
+function test_existing_tag() {
+  local rc=0 repo
+  local name='release: the tag exists on GitHub with no release'
+  repo="$(make_repo '')"
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "the tag ${VERSION} exists on GitHub, at bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  name='release: GitHub cannot be asked about the tag'
+  printf 'unreachable\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "cannot tell whether the tag ${VERSION} exists" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  # An answer that is no commit id is not "no tag" either.
+  name='release: the tag read answers with something else'
+  printf 'null\n' > "${repo}/.stub/remote-tag"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "cannot tell what the tag ${VERSION} points at" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" || rc=1
+
+  name='release: no repository to publish to'
+  repo="$(make_repo '')"
+  repository=''
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  repository='gh-owner/tool'
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'GITHUB_REPOSITORY is not set' || rc=1
+  want_only_calls "${name}" || rc=1
+  return "${rc}"
+}
+
+# Case 5. A draft that does not hold every asset is never published, so no
+# tag is created for it.
+function test_draft_is_incomplete() {
+  local rc=0 repo
+  local name='release: the draft lacks an asset'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets |= map(select(.name != "audit.cdx.json"))' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.short.json"
+  cp -- "${repo}/.stub/assets.short.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" '  audit.cdx.json. In the draft and not on disk: nothing.' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+  want_no_call "${name}" 'release edit' || rc=1
+
+  # Listed, but GitHub has not finished storing it.
+  name='release: an asset of the draft is not uploaded'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets |= map(if .name == "SHA256SUMS" then .state = "starter" else . end)' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.starter.json"
+  cp -- "${repo}/.stub/assets.starter.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" '  SHA256SUMS. In the draft and not on disk: nothing.' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+
+  name='release: the draft holds an asset nobody uploaded'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets += [{"name":"stray","state":"uploaded","digest":"sha256:00"}]' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.long.json"
+  cp -- "${repo}/.stub/assets.long.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'Not in the draft: nothing. In the draft and not on disk: sha256:00  stray.' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+
+  # The right name over the wrong bytes: an upload that was cut short.
+  name='release: an asset of the draft has another digest'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets |= map(if .name == "audit-linux-arm64" then .digest = "sha256:0000" else . end)' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.wrong.json"
+  cp -- "${repo}/.stub/assets.wrong.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'sha256:0000  audit-linux-arm64' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+  want_no_call "${name}" 'release edit' || rc=1
+
+  # Not knowing what GitHub stored is not the same as it being right.
+  name='release: an asset of the draft has no digest'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets |= map(if .name == "SHA256SUMS" then .digest = null else . end)' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.null.json"
+  cp -- "${repo}/.stub/assets.null.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'sha256:unknown  SHA256SUMS' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+  want_no_call "${name}" 'release edit' || rc=1
+
+  name='release: an asset of the draft lacks the digest field'
+  repo="$(make_repo '')"
+  jq --compact-output '.assets |= map(if .name == "audit.cdx.json" then del(.digest) else . end)' \
+    "${repo}/.stub/assets.json" > "${repo}/.stub/assets.bare.json"
+  cp -- "${repo}/.stub/assets.bare.json" "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'sha256:unknown  audit.cdx.json' || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+
+  name='release: the draft cannot be read back'
+  repo="$(make_repo '')"
+  printf 'not json\n' > "${repo}/.stub/assets.json"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "could not read the draft release ${VERSION} back" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
+
+  # The publish went through and the tag is not where it was asked to be:
+  # nothing can undo that, so it is at least a failure.
+  name='release: the tag points at another commit'
+  repo="$(make_repo '')"
+  printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002\n' > "${repo}/.stub/tag-sha"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'its tag points at bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002' || rc=1
+  # An answer, so it is not asked for again.
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" '' || rc=1
+  return "${rc}"
+}
+
+# The tag a publish creates is not always readable at once. The read is
+# tried again a bounded number of times, with a wait between two reads.
+function test_tag_read_is_retried() {
+  local rc=0 repo
+  local name='release: the tag shows on the third read'
+  repo="$(make_repo '')"
+  printf '%s\n' "${SHA}" > "${repo}/.stub/tag-sha"
+  printf '2\n' > "${repo}/.stub/tag-misses"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 0 || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" \
+    "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" $'2\n2' || rc=1
+
+  # A read that fails outright is tried again too: the release is out.
+  name='release: the tag read fails twice, then answers'
+  repo="$(make_repo '')"
+  printf '%s\n' "${SHA}" > "${repo}/.stub/tag-sha"
+  printf '2\n' > "${repo}/.stub/tag-misses"
+  : > "${repo}/.stub/tag-miss-status"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 0 || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" \
+    "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" $'2\n2' || rc=1
+
+  name='release: the tag never shows after the publish'
+  repo="$(make_repo '')"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "GitHub shows no tag ${VERSION} after 5 reads" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" \
+    "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" $'2\n2\n2\n2' || rc=1
+  return "${rc}"
+}
+
+# Case 6. A dist that is not what was built and signed is refused before
+# GitHub is asked anything.
+function test_bad_dist() {
+  local rc=0 repo
+  local name='release: a file altered after SHA256SUMS was written'
+  repo="$(make_repo '')"
+  printf 'something else\n' >> "${repo}/dist/audit-linux-arm64"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'the files in dist do not match SHA256SUMS: ' || rc=1
+  want_text "${name}" "${errors}" 'audit-linux-arm64: FAILED' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  name='release: a dist with no signature bundle'
+  repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'dist has no SHA256SUMS.sigstore.json' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  # `sha256sum --check` passes on a list that names fewer files than the
+  # release has, so the list itself is held to the six it must cover.
+  name='release: a SHA256SUMS that leaves a file out'
+  repo="$(make_repo '')"
+  (cd "${repo}/dist" && sha256sum -- audit-linux-amd64 audit.cdx.json > SHA256SUMS)
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'dist/SHA256SUMS lists audit-linux-amd64, audit.cdx.json; it must list exactly ' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  name='release: a dist that does not exist'
+  repo="$(make_repo '')"
+  run_script "${repo}" release --version "${VERSION}" --dist no-such-dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'no-such-dist is not a directory' || rc=1
+  want_only_calls "${name}" || rc=1
+
+  # Nothing to say about the release is found out before the old draft goes.
+  name='release: a changelog with no section for the version'
+  repo="$(make_repo '')"
+  printf 'draft\n' > "${repo}/.stub/release-state"
+  printf '# Changelog\n\n## v1.0.0\n\nThe first stable release.\n' > "${repo}/CHANGELOG.md"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "CHANGELOG.md has no section for ${VERSION}" || rc=1
+  want_only_calls "${name}" || rc=1
+  return "${rc}"
+}
+
+# Case 7. A malformed call is refused before anything is asked of GitHub.
+function test_usage() {
+  local rc=0 repo version
+  repo="$(make_repo '')"
+  for version in '1.1.0' 'v1.1' 'v1.1.0-rc.1' 'v01.1.0'; do
+    run_script "${repo}" release --version "${version}" --dist dist --sha "${SHA}"
+    want_status "release --version '${version}'" 2 || rc=1
+    want_text "release --version '${version}'" "${errors}" "${version} is not vMAJOR.MINOR.PATCH" || rc=1
+    want_only_calls "release --version '${version}'" || rc=1
+  done
+  # A branch name would let the tag land wherever the branch is by then.
+  local sha
+  for sha in 'main' 'aaaaaaa' "${SHA^^}"; do
+    run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${sha}"
+    want_status "release --sha '${sha}'" 2 || rc=1
+    want_text "release --sha '${sha}'" "${errors}" "--sha ${sha} is not a full commit id" || rc=1
+    want_only_calls "release --sha '${sha}'" || rc=1
+  done
+  # An option left out and an option given nothing are the same mistake.
+  local name
+  name='release without --sha'
+  run_script "${repo}" release --version "${VERSION}" --dist dist
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--sha is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release with an empty --sha'
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha ''
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--sha is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release without --dist'
+  run_script "${repo}" release --version "${VERSION}" --sha "${SHA}"
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--dist is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release without --version'
+  run_script "${repo}" release --dist dist --sha "${SHA}"
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--version is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release with an empty --version'
+  run_script "${repo}" release --version '' --dist dist --sha "${SHA}"
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--version is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release --sha with no value'
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" '--sha needs a value' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='release with an unknown argument'
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}" --bogus
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'unknown argument --bogus' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='an unknown subcommand'
+  run_script "${repo}" publish
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'unknown subcommand publish' || rc=1
+  want_only_calls "${name}" || rc=1
+  name='no subcommand'
+  run_script "${repo}"
+  want_status "${name}" 2 || rc=1
+  want_text "${name}" "${errors}" 'a subcommand is required' || rc=1
+  want_only_calls "${name}" || rc=1
+  if [[ -n "${signed}" ]]; then
+    ci::log "FAIL: a malformed call reached cosign: ${signed}"
+    rc=1
+  fi
+  return "${rc}"
+}
+
+function main() {
+  local rc=0
+  work="$(mktemp --directory)"
+
+  # Relative, as the cases pass --dist: gh is handed the paths as given.
+  local name paths=''
+  for name in "${ASSETS[@]}"; do
+    paths+=" dist/${name}"
+  done
+  write_create="release create ${VERSION} --repo gh-owner/tool --draft --target ${SHA} --title ${VERSION} --notes-file NOTES${paths}"
+  # The script's filter, spelled out again: what it asks of GitHub is part
+  # of what is held here.
+  read_assets="release view ${VERSION} --repo gh-owner/tool --json assets --jq "
+  read_assets+='.assets[] | select(.state == "uploaded") | "\(.digest // "sha256:unknown")  \(.name)"'
+
+  test_pending || rc=1
+  test_pending_publishes_only_from_the_release_commit || rc=1
+  test_sign || rc=1
+  test_release || rc=1
+  test_existing_release || rc=1
+  test_existing_tag || rc=1
+  test_draft_is_incomplete || rc=1
+  test_tag_read_is_retried || rc=1
+  test_bad_dist || rc=1
+  test_usage || rc=1
+
+  ((rc == 0)) && ci::log 'release-publish: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

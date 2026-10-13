@@ -58,6 +58,7 @@ function main() {
   "${REPO_DIR}/.ci/test-check-account-data" || rc=1
   "${REPO_DIR}/.ci/test-check-patch-coverage" || rc=1
   "${REPO_DIR}/.ci/test-check-coverage-drop" || rc=1
+  "${REPO_DIR}/.ci/test-check-breaking-check-list" || rc=1
   "${REPO_DIR}/.ci/test-check-doc-rot" || rc=1
   "${REPO_DIR}/.ci/test-check-uses-sha-pinned" || rc=1
   "${REPO_DIR}/.ci/test-check-vulns" || rc=1
@@ -65,6 +66,7 @@ function main() {
   "${REPO_DIR}/.ci/test-lib" || rc=1
   "${REPO_DIR}/.ci/test-release-version" || rc=1
   "${REPO_DIR}/.ci/test-release-pull-request" || rc=1
+  "${REPO_DIR}/.ci/test-release-publish" || rc=1
   "${REPO_DIR}/.ci/check-doc-rot" || rc=1
 
   ci::log 'running lint checks'
@@ -119,6 +121,7 @@ function main() {
   else
     "${REPO_DIR}/.ci/check-patch-coverage" --base "${base}" --profile "${REPO_DIR}/coverage.out" || rc=1
     "${REPO_DIR}/.ci/check-coverage-drop" --range "${base}..HEAD" || rc=1
+    "${REPO_DIR}/.ci/check-breaking-check-list" --range "${base}..HEAD" || rc=1
   fi
 
   ci::log 'running govulncheck'

@@ -37,7 +37,7 @@ readonly PR='7'
 # and nothing else.
 readonly READ_BRANCH='api repos/gh-owner/report --jq .default_branch'
 readonly READ_HEAD='api repos/gh-owner/report/git/ref/heads/main --jq .object.sha'
-readonly READ_PULLS='pr list --repo gh-owner/report --head chore/release --state open --json number,isCrossRepository --jq [.[] | select(.isCrossRepository | not)][0].number // empty'
+readonly READ_PULLS='pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq [.[] | select(.isCrossRepository == false)][0].number // empty'
 
 # What the last run_script call left behind, for the assertions after it.
 status=0
@@ -137,7 +137,7 @@ case "\$*" in
     fi
     ;;
   'api repos/gh-owner/report/git/ref/heads/chore/release') [[ -e '${dir}/branch-exists' ]] ;;
-  'pr list --repo gh-owner/report --head chore/release --state open --json number,isCrossRepository --jq '*)
+  'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq '*)
     # The script's own filter, the last argument, is run over the list, so
     # which pull request it picks is the script's doing and not the stub's.
     jq --raw-output "\${!#}" '${dir}/pr-list.json'
@@ -598,6 +598,18 @@ function test_fork_pull_request_is_ignored() {
   want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v3.0.0 " || rc=1
   want_no_call "${name}" ' 99 ' || rc=1
   want_no_call "${name}" 'pr create' || rc=1
+
+  # An answer that does not say where a pull request comes from is not
+  # taken to mean "from here".
+  name='a pull request whose origin is not stated'
+  repo="$(make_repo v1.0.0)"
+  printf '[{"number":98}]\n' > "${repo}/.stub/pr-list.json"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 ' || rc=1
+  want_no_call "${name}" 'pr view' || rc=1
+  want_no_call "${name}" 'pr edit' || rc=1
   return "${rc}"
 }
 
@@ -671,6 +683,17 @@ function test_mid_publish() {
   want_log "${name}" 'release v1.1.0 is being published' || rc=1
   want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
 
+  # A version whose release could not be made, and which has no tag, is
+  # given up by taking its section out of the changelog. The same version
+  # can then be proposed again, by hand or as what the commits call for.
+  cp -- "${work}/skeleton.md" "${repo}/CHANGELOG.md"
+  run_script "${repo}" --version v1.1.0
+  want_status 'a withdrawn version proposed again by hand' 0 || rc=1
+  want_call 'a withdrawn version proposed again by hand' '--field headline=chore(release): v1.1.0' || rc=1
+  run_script "${repo}"
+  want_status 'a withdrawn version proposed again' 0 || rc=1
+  want_call 'a withdrawn version proposed again' '--field headline=chore(release): v1.1.0' || rc=1
+
   # A first heading that is not a version is a failure, and nothing is
   # written over it.
   printf '# Changelog\n\n## Unreleased\n\n- add widget\n' > "${repo}/CHANGELOG.md"
@@ -731,13 +754,38 @@ function test_first_stable_release() {
 # or not at all.
 function test_stale_checkout() {
   local rc=0 repo
-  local -r name='HEAD is not the default branch head'
+  local name='HEAD is not the default branch head'
   repo="$(make_repo v1.0.0)"
   commit "${repo}" 'feat: add widget'
   printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001\n' > "${repo}/.stub/main-sha"
   run_script "${repo}"
   want_status "${name}" 1 || rc=1
   want_log "${name}" 'HEAD is ' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+
+  # A run started by a push is behind the moment a newer push lands, and
+  # the newer push has a run of its own: nothing is wrong, and nothing is
+  # written.
+  name='HEAD is not the default branch head, --skip-if-stale'
+  run_script "${repo}" --skip-if-stale
+  want_status "${name}" 0 || rc=1
+  want_log "${name}" 'a newer push supersedes this run' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+
+  # The option changes what a stale checkout means and nothing else.
+  name='HEAD is the default branch head, --skip-if-stale'
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}" --skip-if-stale
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
+  want_call "${name}" 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 ' || rc=1
+
+  # A version that can never be released is still refused: it is judged on
+  # a checkout that is current.
+  name='--skip-if-stale with --version of an existing tag'
+  run_script "${repo}" --skip-if-stale --version v1.0.0
+  want_status "${name}" 1 || rc=1
   want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
   return "${rc}"
 }

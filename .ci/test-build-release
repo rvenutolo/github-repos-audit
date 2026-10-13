@@ -100,6 +100,15 @@ function main() {
     ci::log 'FAIL: audit.cdx.json is not a CycloneDX document'
     rc=1
   fi
+  # An SBOM that does not name the release it describes cannot be matched
+  # to one once it is downloaded.
+  local sbom_version
+  sbom_version="$(jq --raw-output '.metadata.component.version // "(none)"' "${dist}/audit.cdx.json" 2> /dev/null)" \
+    || sbom_version='(unreadable)'
+  if [[ "${sbom_version}" != 'v9.8.7' ]]; then
+    ci::log "FAIL: the SBOM's metadata.component.version is ${sbom_version}, want v9.8.7"
+    rc=1
+  fi
 
   local -r dist2="${work}/dist2"
   got="$(status_of 0 --version v9.8.7 --out "${dist2}")"
@@ -107,10 +116,12 @@ function main() {
     ci::log "FAIL: the second build exited ${got}, want 0"
     rc=1
   else
-    local binary
-    for binary in "${dist}"/audit-*; do
-      if ! cmp --silent -- "${binary}" "${dist2}/${binary##*/}"; then
-        ci::log "FAIL: ${binary##*/} differs between two builds of the same tree"
+    # The SBOM and the checksum file as well as the binaries: a release is
+    # rebuilt and compared as a whole.
+    local built
+    for built in "${dist}"/audit-* "${dist}/audit.cdx.json" "${dist}/SHA256SUMS"; do
+      if ! cmp --silent -- "${built}" "${dist2}/${built##*/}"; then
+        ci::log "FAIL: ${built##*/} differs between two builds of the same tree"
         rc=1
       fi
     done
