@@ -281,16 +281,36 @@ func TestClient_unexpectedStatusQuotesTheBody(t *testing.T) {
 	}
 }
 
+// failingTransport is a transport on which every request fails before any
+// answer exists, which is what a refused or reset connection looks like to the
+// client.
+type failingTransport struct{ err error }
+
+func (f failingTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, f.err }
+
 // TestClient_transportFailureIsAnError covers the path where Do itself fails,
-// which is distinct from a non-2xx status.
+// which is distinct from a non-2xx status. The failure comes from a stub
+// transport rather than from a server that was closed: these tests run in
+// parallel, each on a port the kernel picked, so a port one test lets go of is
+// soon another test's server, and a request sent to it is counted there.
 func TestClient_transportFailureIsAnError(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	server.Close() // nothing is listening now, so the connection is refused
+	errRefused := errors.New("connection refused")
+	client, err := github.New(github.Options{
+		Owner:      testOwner,
+		Token:      theToken,
+		BaseURL:    "http://api.invalid",
+		HTTPClient: &http.Client{Transport: failingTransport{err: errRefused}},
+		Logger:     discardLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	github.DisableRetryWaits(client)
 
-	if _, err := newTestClient(t, server.URL).Discover(t.Context()); err == nil {
-		t.Fatal("Discover succeeded against a closed server")
+	if _, err := client.Discover(t.Context()); !errors.Is(err, errRefused) {
+		t.Fatalf("Discover error = %v, want the transport's error", err)
 	}
 }
 
