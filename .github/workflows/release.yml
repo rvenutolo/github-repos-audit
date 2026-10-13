@@ -1,0 +1,146 @@
+name: release
+
+# Propose a release, or prove that the release assets still build.
+#
+# propose keeps one pull request open, titled chore(release): vX.Y.Z, that
+# changes CHANGELOG.md and nothing else. The version is computed from the
+# Conventional Commit types merged since the last tag, unless the version
+# input names one. Merging that pull request is the release decision, so
+# nothing here enables auto-merge: a human reads the section and merges it.
+#
+# dry-run builds the release assets with the script a release uses and uploads
+# them as a workflow artifact. It proves the build; nothing is tagged or
+# published by it, which is why the version it builds is a placeholder.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Propose this version (vX.Y.Z) instead of the computed one. Ignored
+          when dry-run is set. A run from a branch other than the default one
+          proposes nothing.
+        type: string
+        required: false
+        default: ""
+      dry-run:
+        description: Build the release assets as a workflow artifact; no pull request.
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  # Two proposals must not race on the same release branch. A dry run touches
+  # no branch, so it has its own group: GitHub keeps one pending run per
+  # group, and a dry run sharing propose's would cancel a queued proposal.
+  group: ${{ github.workflow }}-${{ inputs.dry-run && 'dry-run' || 'release' }}
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    name: propose
+    # The script itself refuses a checkout that is not the default branch's
+    # head, before any write. This condition means a run from a side branch
+    # (a tag of the same name included, hence the full ref) spends no setup
+    # time and never puts REFRESH_TOKEN in a job's environment.
+    if: ${{ !inputs.dry-run && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # contents: read is for actions/checkout and nothing else. The pull request
+    # is opened with REFRESH_TOKEN for the same reason the refresh does
+    # (audit.yml): a pull request opened with the built-in token triggers no
+    # checks, so it could never satisfy the required ones and could not merge.
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The next version is computed from the tags and the history since
+          # the last one, so the clone must be complete.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      - name: Open or update the release pull request
+        env:
+          # REFRESH_TOKEN reaches this repository alone, with Contents and Pull
+          # requests write and nothing else.
+          GH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # The input reaches the script as an argument built here, in the
+          # runner's shell: .ci/in-devshell drops every variable it does not
+          # list, and interpolating the input into the script text would let
+          # it run as code.
+          VERSION: ${{ inputs.version }}
+        run: |
+          args=()
+          if [[ -n "${VERSION}" ]]; then
+            args+=(--version "${VERSION}")
+          fi
+          ./.ci/in-devshell ./.ci/release-pull-request "${args[@]}"
+
+  dry-run:
+    name: dry-run
+    if: ${{ inputs.dry-run }}
+    runs-on: ubuntu-latest
+    # A cold Nix store plus five cross-compiled binaries and an SBOM.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            cache.nixos.org:443
+            channels.nixos.org:443
+            codeload.github.com:443
+            github.com:443
+            hosted-compute-*.githubapp.com:443
+            install.determinate.systems:443
+            nixos.org:443
+            objects.githubusercontent.com:443
+            proxy.golang.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.nixos.org:443
+            storage.googleapis.com:443
+            sum.golang.org:443
+            tarballs.nixos.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+
+      - name: Build the release assets
+        run: ./.ci/in-devshell ./.ci/build-release --version v0.0.0 --out dist
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: dist
+          # An empty upload would pass while proving nothing.
+          if-no-files-found: error
+          # The assets are for a look, not for keeping.
+          retention-days: 7

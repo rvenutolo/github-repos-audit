@@ -39,7 +39,9 @@ function main() {
   ci::log 'running typos --write-changes'
   local -a text_files=()
   mapfile -d '' -t text_files < <(git -c core.quotePath=false grep -z -I --files-with-matches '')
-  typos --write-changes "${text_files[@]}" || rc=1
+  # --force-exclude for the reason .ci/run-lint-checks gives; here it also
+  # keeps the fixer from rewriting a file _typos.toml says to leave alone.
+  typos --write-changes --force-exclude "${text_files[@]}" || rc=1
 
   if ((rc != 0)); then
     ci::log 'a fixer failed or left something it could not fix; see above'

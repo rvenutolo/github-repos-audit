@@ -24,6 +24,9 @@
 #              directly above it.
 #              Fixtures under testdata/, JSON, lockfiles and LICENSE are
 #              skipped: they are data, not prose about this repository.
+#              CHANGELOG.md at the top level is skipped too: a changelog is
+#              a record of past states by definition, and its entries are
+#              commit subjects, pull request numbers included.
 # @noargs
 # @exitcode 0 nothing found
 # @exitcode 1 at least one finding, or no prose files to scan
@@ -52,7 +55,7 @@ function prose_files() {
   local file
   while IFS= read -r -d '' file; do
     case "${file}" in
-      */testdata/* | *.json | go.sum | flake.lock | LICENSE) continue ;;
+      */testdata/* | *.json | go.sum | flake.lock | LICENSE | CHANGELOG.md) continue ;;
     esac
     case "${file}" in
       *.md) printf '%s\tmd\n' "${file}" ;;

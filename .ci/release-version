@@ -1,0 +1,462 @@
+#!/usr/bin/env bash
+
+# @description Read-only helpers a release is computed from: which version
+#              comes next, what its changelog section says, and how to read
+#              and extend CHANGELOG.md. Every subcommand prints to stdout and
+#              changes nothing; the caller decides what to write where.
+#
+#              The git subcommands (last-tag, next, section) work on the
+#              repository the current directory is in and read cliff.toml
+#              from its top level. The rest touch only their arguments.
+#
+#              Subcommands:
+#
+#              - validate <version>: succeed when the version is exactly
+#                vMAJOR.MINOR.PATCH with no leading zeros.
+#              - last-tag: print the highest such tag HEAD reaches, in
+#                version order; print nothing when there is none.
+#              - greater <a> <b>: succeed when a is the higher version.
+#              - next: print the version the commits since last-tag call
+#                for; print nothing when none of them is released.
+#              - section <version>: print the changelog section for those
+#                commits under the heading `## <version>`. With nothing to
+#                release the heading is all there is.
+#              - top <changelog>: print the version in the file's first
+#                `## ` heading; print nothing when it has no such heading.
+#              - notes <changelog> <version>: print the body of that
+#                version's section, without the heading or the blank lines
+#                around it.
+#              - prepend <changelog> <section-file>: print the changelog with
+#                the section above its first `## ` heading, or after the
+#                preamble when it has none, one blank line on each side.
+#
+#              top, notes and prepend read a changelog line by line and take
+#              every line that starts with `## ` for a section heading, so
+#              a section body must not hold such a line, inside a fenced
+#              code block included. They expect LF line endings: a CR left
+#              at the end of a heading is not part of a version.
+#
+#              git-cliff (cliff.toml) owns what a commit means: its group and
+#              the bump it calls for. This script owns which commits it sees.
+#              Left to itself git-cliff counts from a tag HEAD does not
+#              reach, and lists a merge commit beside the commit it merges,
+#              so it is given the range since last-tag, told to ignore every
+#              other release tag, and told to skip each merge commit by SHA.
+# @arg $1 subcommand one of the subcommands above
+# @arg $@ the subcommand's arguments
+# @exitcode 0 success; for greater, a is the higher version
+# @exitcode 1 a runtime failure: not a repository, a shallow clone, no
+#             cliff.toml, an unreadable file, a first heading that is not
+#             a version, a version with no section; for greater, a is not
+#             the higher version
+# @exitcode 2 a usage error: an unknown subcommand, the wrong number of
+#             arguments, or a version that is not vMAJOR.MINOR.PATCH
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# From beside this script, not from the repository it is run in: its tests
+# run it inside throwaway repositories, which carry no .ci/lib.sh of their
+# own. lib.sh's helpers read REPO_DIR, which only the git subcommands need
+# and only they resolve.
+# shellcheck source=.ci/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+
+# No leading zeros and no pre-release suffix: a release is a plain
+# vMAJOR.MINOR.PATCH tag, and v01.0.0 would be a second name for v1.0.0.
+readonly VERSION_PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+
+# The same version at the start of a `## ` heading. Whatever follows it must
+# be set off by a blank, so `## v1.2.0 - a date` names v1.2.0 and
+# `## v1.2.0-rc.1` names nothing.
+readonly HEADING_PATTERN='^## (v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))([[:blank:]].*)?$'
+
+# @description Print a usage error and exit 2.
+# @arg $1 message what was wrong
+function usage_error() {
+  printf '%s: %s\n' "${0##*/}" "$1" >&2
+  exit 2
+}
+
+# @description Print a runtime failure and exit 1. Inside a command
+#              substitution that ends only the substitution, so every
+#              `$(...)` around a function that can fail is followed by
+#              `|| exit 1`: the message is already printed, and the status
+#              must not reach the ERR trap as if it were a crash.
+# @arg $1 message what went wrong
+function fail() {
+  printf '%s: %s\n' "${0##*/}" "$1" >&2
+  exit 1
+}
+
+# @description Exit 2 unless the subcommand got the number of arguments it
+#              takes.
+# @arg $1 subcommand, with its argument names, for the message
+# @arg $2 the number it takes
+# @arg $3 the number it got
+function need_args() {
+  if (($3 != $2)); then
+    usage_error "usage: ${0##*/} $1"
+  fi
+}
+
+# @description Exit 2 unless the text is a release version.
+# @arg $1 version
+function need_version() {
+  if [[ ! "$1" =~ ${VERSION_PATTERN} ]]; then
+    usage_error "$(printf '%q' "$1") is not vMAJOR.MINOR.PATCH"
+  fi
+}
+
+# @description Compare two release versions number by number. Comparing the
+#              text would put v1.9.0 above v1.10.0.
+# @arg $1 a
+# @arg $2 b
+# @exitcode 0 a is the higher version
+# @exitcode 1 a is equal to or lower than b
+function is_greater() {
+  local -a a b
+  IFS='.' read -r -a a <<< "${1#v}"
+  IFS='.' read -r -a b <<< "${2#v}"
+  local i
+  for i in 0 1 2; do
+    if ((a[i] > b[i])); then
+      return 0
+    fi
+    if ((a[i] < b[i])); then
+      return 1
+    fi
+  done
+  return 1
+}
+
+# @description Print the top level of the repository the current directory
+#              is in, or exit 1 outside one or in a shallow clone. Every
+#              subcommand that reads tags or history starts here. A shallow
+#              clone holds neither the older tags nor the commits between
+#              them and HEAD, and git reports no error for what it does not
+#              have: the answer would be a confident wrong version.
+# @stdout the absolute path
+function repo_top() {
+  local top shallow
+  if ! top="$(git rev-parse --show-toplevel 2> /dev/null)"; then
+    fail 'not inside a git repository'
+  fi
+  if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
+    fail 'cannot tell whether the repository is a shallow clone'
+  fi
+  if [[ "${shallow}" != 'false' ]]; then
+    fail 'this is a shallow clone, so tags and commits a version is computed from are missing; fetch the full history first (git fetch --unshallow --tags)'
+  fi
+  printf '%s\n' "${top}"
+}
+
+# @description Print every release tag HEAD reaches, one per line, in no
+#              particular order.
+# @stdout one tag per line
+function reachable_release_tags() {
+  local tags tag
+  if ! tags="$(git tag --list --merged HEAD 2> /dev/null)"; then
+    fail 'cannot list the tags HEAD reaches; the repository has no commit'
+  fi
+  while IFS= read -r tag; do
+    if [[ "${tag}" =~ ${VERSION_PATTERN} ]]; then
+      printf '%s\n' "${tag}"
+    fi
+  done <<< "${tags}"
+}
+
+# @description Print the highest release tag HEAD reaches, or nothing.
+# @stdout the tag, or nothing
+function last_tag() {
+  local tags tag best=''
+  tags="$(reachable_release_tags)" || exit 1
+  while IFS= read -r tag; do
+    if [[ -z "${tag}" ]]; then
+      continue
+    fi
+    if [[ -z "${best}" ]] || is_greater "${tag}" "${best}"; then
+      best="${tag}"
+    fi
+  done <<< "${tags}"
+  if [[ -n "${best}" ]]; then
+    printf '%s\n' "${best}"
+  fi
+}
+
+# @description Run git-cliff over the commits since a tag and print what it
+#              prints. git-cliff logs its progress to stderr on every run;
+#              that is kept back and shown only when it fails.
+# @arg $1 top the repository's top level
+# @arg $2 last the tag to count from, or empty to take the whole history
+# @arg $@ further git-cliff options
+# @stdout git-cliff's stdout
+function cliff() {
+  local -r top="$1" last="$2"
+  shift 2
+  local -r config="${top}/cliff.toml"
+  if [[ ! -f "${config}" ]]; then
+    fail "no cliff.toml at the top of ${top}"
+  fi
+
+  # --repository, so a call from a subdirectory still reads the whole
+  # history: without it git-cliff keeps only commits touching the current
+  # directory. --offline, because a GITHUB_TOKEN in the environment must not
+  # turn a local computation into API calls.
+  local -a args=(--config "${config}" --repository "${top}" --offline)
+
+  # Every release tag but the one to count from is hidden. git-cliff takes
+  # the base version from the newest tag it knows, reachable or not, so a
+  # tag on another branch or a lower version tagged later would otherwise
+  # be what the bump starts from.
+  local all_tags tag ignore=''
+  all_tags="$(git tag --list)"
+  while IFS= read -r tag; do
+    if [[ "${tag}" =~ ${VERSION_PATTERN} && "${tag}" != "${last}" ]]; then
+      ignore+="${ignore:+|}${tag//./\\.}"
+    fi
+  done <<< "${all_tags}"
+  if [[ -n "${ignore}" ]]; then
+    args+=(--ignore-tags "^(${ignore})\$")
+  fi
+
+  # A merge commit's subject is the pull request's title, which repeats the
+  # subject of the commit it merges. Its text cannot tell the two apart
+  # reliably; its parent count can.
+  local range='HEAD' merges sha
+  if [[ -n "${last}" ]]; then
+    range="${last}..HEAD"
+  fi
+  merges="$(git rev-list --merges "${range}")"
+  while IFS= read -r sha; do
+    if [[ -n "${sha}" ]]; then
+      args+=(--skip-commit "${sha}")
+    fi
+  done <<< "${merges}"
+
+  args+=("$@")
+  if [[ -n "${last}" ]]; then
+    args+=(-- "${range}")
+  fi
+
+  local errors status=0
+  # stderr is captured and stdout passes through file descriptor 3.
+  { errors="$(git-cliff "${args[@]}" 2>&1 1>&3 3>&-)" || status=$?; } 3>&1
+  if ((status != 0)); then
+    printf '%s\n' "${errors}" >&2
+    fail "git-cliff exited ${status}"
+  fi
+}
+
+# @description Print the changelog section for the commits since a tag.
+# @arg $1 top the repository's top level
+# @arg $2 last the tag to count from, or empty
+# @arg $3 version the version the heading names
+# @stdout the section, starting with `## <version>`
+function section_since() {
+  # --strip all, so a header or footer added to cliff.toml cannot leak into
+  # a section that is spliced into the middle of a file.
+  cliff "$1" "$2" --tag "$3" --strip all
+}
+
+# @description Print the version the commits since last-tag call for.
+#              git-cliff answers "no bump" with the current version, and with
+#              the initial version when there is no tag whether or not any
+#              commit is released, so "is there anything to release" is
+#              asked of the section instead: it is exactly the commits
+#              git-cliff kept, and each is a list item.
+# @stdout the next version, or nothing
+function next_version() {
+  local top last section version
+  top="$(repo_top)" || exit 1
+  last="$(last_tag)" || exit 1
+  # Any version does for the heading; only the entries are looked at.
+  section="$(section_since "${top}" "${last}" 'v0.0.0')" || exit 1
+  if [[ "${section}" != *$'\n- '* ]]; then
+    return 0
+  fi
+  version="$(cliff "${top}" "${last}" --bumped-version)" || exit 1
+  if [[ ! "${version}" =~ ${VERSION_PATTERN} ]]; then
+    fail "git-cliff computed $(printf '%q' "${version}"), which is not vMAJOR.MINOR.PATCH"
+  fi
+  if [[ -n "${last}" ]] && ! is_greater "${version}" "${last}"; then
+    fail "git-cliff computed ${version}, which is not above ${last}"
+  fi
+  printf '%s\n' "${version}"
+}
+
+# @description Read a file into the array `lines`, one element per line, or
+#              exit 1 when it cannot be read.
+# @arg $1 file
+# @set lines array the file's lines
+function read_lines() {
+  if [[ ! -f "$1" || ! -r "$1" ]]; then
+    fail "cannot read $(printf '%q' "$1")"
+  fi
+  mapfile -t lines < "$1"
+}
+
+# @description Print the version in a changelog's first `## ` heading.
+# @arg $1 file
+# @stdout the version, or nothing when the file has no `## ` heading
+function top_version() {
+  local -a lines=()
+  read_lines "$1"
+  local line
+  for line in "${lines[@]}"; do
+    if [[ "${line}" == '## '* ]]; then
+      if [[ "${line}" =~ ${HEADING_PATTERN} ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
+        return 0
+      fi
+      fail "the first section heading of $1 is not a version: ${line}"
+    fi
+  done
+}
+
+# @description Print the body of one version's section.
+# @arg $1 file
+# @arg $2 version
+# @stdout the section's lines, without the heading and without the blank
+#         lines at either end
+function section_notes() {
+  local -r file="$1" version="$2"
+  local -a lines=() body=()
+  read_lines "${file}"
+  local line found=0
+  for line in "${lines[@]}"; do
+    if [[ "${line}" == '## '* ]]; then
+      if ((found)); then
+        break
+      fi
+      if [[ "${line}" =~ ${HEADING_PATTERN} && "${BASH_REMATCH[1]}" == "${version}" ]]; then
+        found=1
+      fi
+    elif ((found)); then
+      body+=("${line}")
+    fi
+  done
+  if ((found == 0)); then
+    fail "${file} has no section for ${version}"
+  fi
+  print_trimmed "${body[@]}"
+}
+
+# @description Print lines without the blank ones at either end.
+# @arg $@ lines
+# @stdout the lines between the first and the last non-blank one
+function print_trimmed() {
+  local -a kept=("$@")
+  local first=0 last=$((${#kept[@]} - 1))
+  while ((first <= last)) && [[ -z "${kept[first]//[[:space:]]/}" ]]; do
+    first=$((first + 1))
+  done
+  while ((last >= first)) && [[ -z "${kept[last]//[[:space:]]/}" ]]; do
+    last=$((last - 1))
+  done
+  local i
+  for ((i = first; i <= last; i++)); do
+    printf '%s\n' "${kept[i]}"
+  done
+}
+
+# @description Print a changelog with a section inserted above its first
+#              `## ` heading. Everything from that heading on is printed as
+#              it is; the blank lines between the preamble, the section and
+#              the older sections are normalised to one.
+# @arg $1 file the changelog
+# @arg $2 section_file the section to insert
+# @stdout the new changelog
+function prepend_section() {
+  local -a lines=()
+  read_lines "$1"
+  local -a changelog=("${lines[@]}")
+  read_lines "$2"
+  local section
+  section="$(print_trimmed "${lines[@]}")"
+  if [[ -z "${section}" ]]; then
+    fail "$2 holds no section"
+  fi
+
+  local at="${#changelog[@]}" i
+  for i in "${!changelog[@]}"; do
+    if [[ "${changelog[i]}" == '## '* ]]; then
+      at="${i}"
+      break
+    fi
+  done
+
+  local preamble
+  preamble="$(print_trimmed "${changelog[@]:0:at}")"
+  if [[ -n "${preamble}" ]]; then
+    printf '%s\n\n' "${preamble}"
+  fi
+  printf '%s\n' "${section}"
+  if ((at < ${#changelog[@]})); then
+    printf '\n'
+    printf '%s\n' "${changelog[@]:at}"
+  fi
+}
+
+# @description Dispatch one subcommand.
+# @arg $@ the subcommand and its arguments
+function main() {
+  if (($# == 0)); then
+    usage_error 'a subcommand is required: validate, last-tag, greater, next, section, top, notes or prepend'
+  fi
+  local -r subcommand="$1"
+  shift
+  case "${subcommand}" in
+    validate)
+      need_args 'validate <version>' 1 "$#"
+      need_version "$1"
+      ;;
+    last-tag)
+      need_args 'last-tag' 0 "$#"
+      repo_top > /dev/null
+      last_tag
+      ;;
+    greater)
+      need_args 'greater <a> <b>' 2 "$#"
+      need_version "$1"
+      need_version "$2"
+      # A verdict, not a crash: `exit`, so the ERR trap stays quiet.
+      if ! is_greater "$1" "$2"; then
+        exit 1
+      fi
+      ;;
+    next)
+      need_args 'next' 0 "$#"
+      next_version
+      ;;
+    section)
+      need_args 'section <version>' 1 "$#"
+      need_version "$1"
+      local top last
+      top="$(repo_top)" || exit 1
+      last="$(last_tag)" || exit 1
+      section_since "${top}" "${last}" "$1"
+      ;;
+    top)
+      need_args 'top <changelog-file>' 1 "$#"
+      top_version "$1"
+      ;;
+    notes)
+      need_args 'notes <changelog-file> <version>' 2 "$#"
+      need_version "$2"
+      section_notes "$1" "$2"
+      ;;
+    prepend)
+      need_args 'prepend <changelog-file> <section-file>' 2 "$#"
+      prepend_section "$1" "$2"
+      ;;
+    *)
+      usage_error "unknown subcommand $(printf '%q' "${subcommand}")"
+      ;;
+  esac
+}
+
+main "$@"

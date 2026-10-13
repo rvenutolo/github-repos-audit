@@ -1,0 +1,138 @@
+# git-cliff configuration for this repository's releases. .ci/release-version
+# is the only caller: it asks for the next version and for one version's
+# changelog section, and passes the tag to count from and the merge commits to
+# drop on the command line, so nothing here decides either.
+
+[changelog]
+# A section is spliced into CHANGELOG.md beneath that file's own preamble, so
+# git-cliff contributes neither a header nor a footer.
+header = ""
+footer = ""
+# A heading, then the groups that have commits, in a fixed order: breaking
+# changes, features, fixes, reverts. A revert is listed because it changes
+# what the release does as surely as the commit it undoes; its entry is the
+# subject it reverts, type included, which is what says what went away.
+#
+# No date: the tag and the GitHub release carry it, and a date here would
+# differ between the day the section is drafted and the day it ships.
+#
+# A breaking commit is listed under "Breaking changes" only, whatever its
+# type, so each change appears once. Its BREAKING CHANGE footer is printed as
+# an indented paragraph of the same list item; git-cliff reports the subject
+# itself as the description when a commit is marked with `!` alone, and
+# repeating the subject would say nothing.
+#
+# A commit in neither group and not breaking is not printed at all: that is
+# how every other type is left out. See commit_parsers for why the template
+# does it and not a parser.
+#
+# trim is off and the template places every newline itself, because trim
+# strips the indentation the footer paragraph needs. The blank lines are the
+# ones prettier keeps (one after an item that has a paragraph, none between
+# plain items), so a generated section passes the formatting gate as it is.
+trim = false
+#
+# A subject is text, not markup, and a merged subject cannot be reworded, so
+# the `text` macro makes it literal where Markdown would not: `<owner>` reads
+# as an HTML tag, which disappears when rendered and which markdownlint
+# rejects, so each `<` gets a backslash. Inside a code span it is already
+# literal and a backslash would be printed, so the text is split on backticks
+# and only the parts outside a pair are escaped; with an odd number of
+# backticks there are no reliable pairs and every part is.
+body = """
+{%- macro text(value) -%}
+{%- set parts = value | trim | split(pat="`") -%}
+{%- set count = parts | length -%}
+{%- for part in parts -%}
+{%- if not loop.first %}`{% endif -%}
+{%- if count is odd and loop.index0 is odd %}{{ part }}{% else %}{{ part | replace(from="<", to="\\<") }}{% endif -%}
+{%- endfor -%}
+{%- endmacro text -%}
+{%- macro entry(commit) -%}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ self::text(value=commit.message) }}
+{% endmacro entry -%}
+{%- set breaking = commits | filter(attribute="breaking", value=true) -%}
+{%- set plain = commits | filter(attribute="breaking", value=false) -%}
+{%- set features = plain | filter(attribute="group", value="Features") -%}
+{%- set fixes = plain | filter(attribute="group", value="Fixes") -%}
+{%- set reverts = plain | filter(attribute="group", value="Reverts") -%}
+## {{ version }}
+{% if breaking | length > 0 %}
+### Breaking changes
+
+{% set_global after_note = false -%}
+{% for commit in breaking -%}
+{% if after_note %}
+{% endif -%}
+{{ self::entry(commit=commit) -}}
+{% if commit.breaking_description and commit.breaking_description != commit.message %}
+  {{ self::text(value=commit.breaking_description) | replace(from="\n", to="\n  ") }}
+{% set_global after_note = true -%}
+{% else -%}
+{% set_global after_note = false -%}
+{% endif -%}
+{% endfor -%}
+{% endif -%}
+{% if features | length > 0 %}
+### Features
+
+{% for commit in features -%}
+{{ self::entry(commit=commit) -}}
+{% endfor -%}
+{% endif -%}
+{% if fixes | length > 0 %}
+### Fixes
+
+{% for commit in fixes -%}
+{{ self::entry(commit=commit) -}}
+{% endfor -%}
+{% endif -%}
+{% if reverts | length > 0 %}
+### Reverts
+
+{% for commit in reverts -%}
+{{ self::entry(commit=commit) -}}
+{% endfor -%}
+{% endif -%}
+"""
+
+[git]
+conventional_commits = true
+# A subject that is not a Conventional Commit is left out, not an error: a
+# merge commit written by hand must not be able to block a release.
+filter_unconventional = true
+require_conventional = false
+split_commits = false
+# First match wins. Each pattern ends at the end of the type (a scope, a
+# `!` or the colon), so `fixture:` is not a fix and `feature:` is not a
+# feat. The commit that records a release is the only one a
+# parser drops. Every other type (docs, chore, ci, ...) is kept without a
+# group and the template prints only the groups below, plus whatever is
+# breaking. A catch-all `skip` would look simpler and is wrong twice over:
+# it drops `docs!:`, a breaking change, with no major bump and no entry; and
+# protect_breaking_commits, the option that prevents that, also shields a
+# breaking commit from --skip-commit, so a merge commit titled `feat!: ...`
+# would be listed beside the commit it merges.
+commit_parsers = [
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^feat(\\(|!|:)", group = "Features" },
+  { message = "^(fix|perf)(\\(|!|:)", group = "Fixes" },
+  { message = "^revert(\\(|!|:)", group = "Reverts" },
+]
+protect_breaking_commits = false
+filter_commits = false
+# Plain vMAJOR.MINOR.PATCH only, anchored: a pre-release or a moving tag such
+# as `nightly` is never a release to count from.
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+topo_order = false
+sort_commits = "oldest"
+
+[bump]
+# Breaking is always a major bump and a feature always a minor one, below
+# 1.0.0 too: the version rules make no exception for 0.x. Anything else that
+# is listed, a revert included, is a patch; that is git-cliff's own rule for
+# a commit that is neither.
+features_always_bump_minor = true
+breaking_always_bump_major = true
+# The version the first release gets when no tag exists.
+initial_tag = "v0.1.0"

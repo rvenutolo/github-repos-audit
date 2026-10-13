@@ -133,6 +133,34 @@ function main() {
   add_file "${repo}" notes.md 'clean'
   expect "${repo}" 0 'testdata and json are skipped' || rc=1
 
+  # The changelog at the top level records past states by design; the same
+  # text anywhere else is still a finding, and so is a changelog deeper in
+  # the tree, which no release writes.
+  local -r past=$'## v1.2.0\n\n- the collector previously read forks (#12)'
+  repo="$(new_repo)"
+  add_file "${repo}" CHANGELOG.md "${past}"
+  add_file "${repo}" notes.md 'clean'
+  expect "${repo}" 0 'the top-level changelog is skipped' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" CHANGELOG.md "${past}"
+  add_file "${repo}" README.md "${past}"
+  expect "${repo}" 1 'changelog text in the readme' 'README.md:3 [history-phrasing]' || rc=1
+  local changelog_out
+  changelog_out="$(cd "${repo}" && "${CHECK}" 2>&1)" || true
+  if [[ "${changelog_out}" == *'CHANGELOG.md'* ]]; then
+    ci::log "FAIL: the top-level changelog is reported beside the readme (output: ${changelog_out})"
+    rc=1
+  fi
+
+  repo="$(new_repo)"
+  add_file "${repo}" docs/CHANGELOG.md "${past}"
+  expect "${repo}" 1 'a changelog below the top level' 'docs/CHANGELOG.md:3 [history-phrasing]' || rc=1
+
+  repo="$(new_repo)"
+  add_file "${repo}" CHANGELOG.md "${past}"
+  expect "${repo}" 1 'a repository holding only a changelog' 'no prose files' || rc=1
+
   repo="$(new_repo)"
   add_file "${repo}" notes.md 'See internal/rules/check.go:42 for the list.'
   expect "${repo}" 1 'a file:line reference' 'notes.md:1 [drift-value]' || rc=1

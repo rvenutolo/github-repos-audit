@@ -1,0 +1,772 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/release-pull-request inside throwaway
+#              repositories, with the real git, git-cliff and prettier and a
+#              stub gh. The stub records every argument list it is handed and
+#              answers the script's reads from files the case writes, so no
+#              call reaches GitHub and the only side effects are files under
+#              one temporary directory.
+#
+#              The stub knows the exact argument list of every read and the
+#              leading words of every write; any other call fails, so a read
+#              the script grows is a failing case here, not a silent blank.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly SCRIPT="${REPO_DIR}/.ci/release-pull-request"
+readonly RELEASE_VERSION="${REPO_DIR}/.ci/release-version"
+
+# The number the stub gives the open release pull request.
+readonly PR='7'
+
+# The reads the script makes before it decides anything, as the stub logs
+# them. A run that stops early must have made exactly some prefix of these
+# and nothing else.
+readonly READ_BRANCH='api repos/gh-owner/report --jq .default_branch'
+readonly READ_HEAD='api repos/gh-owner/report/git/ref/heads/main --jq .object.sha'
+readonly READ_PULLS='pr list --repo gh-owner/report --head chore/release --state open --json number,isCrossRepository --jq [.[] | select(.isCrossRepository | not)][0].number // empty'
+
+# What the last run_script call left behind, for the assertions after it.
+status=0
+last_repo=''
+calls=''
+errors=''
+
+# work is global, not local to main; see .ci/check-coverage-drop for why.
+work=''
+trap 'rm -rf -- "${work}"' EXIT
+
+# @description Write `${work}/skeleton.md`, a changelog with a preamble and
+#              no release: what every throwaway repository starts from. It
+#              is written here and never copied from this repository's own
+#              CHANGELOG.md, because that file gains a section with every
+#              release, and its newest version has no tag in a throwaway
+#              repository: the cases would then test whatever the last
+#              release left behind.
+# @noargs
+function write_skeleton() {
+  cat > "${work}/skeleton.md" << 'EOF'
+# Changelog
+
+Every release of this tool, newest first. Each section is generated from the
+Conventional Commit subjects merged since the release before it.
+EOF
+}
+
+# @description Add one empty commit.
+# @arg $1 repo
+# @arg $2 subject
+function commit() {
+  git -C "$1" commit --quiet --allow-empty --message "$2"
+}
+
+# @description Create a throwaway repository the script can run in: this
+#              repository's cliff.toml and formatter configuration, the
+#              changelog skeleton, one commit, and optionally a tag on it.
+#              Those files are copied in untracked, because the script reads
+#              them from the working tree. Signing is turned off locally, for tags
+#              as well as commits, because the host may sign both by default
+#              and no key exists here.
+#
+#              Beside the files sits `.stub/`, which holds the stub gh, its
+#              call log and the answers it gives; see write_stub.
+# @arg $1 tag the tag the first commit carries, or empty for none
+# @stdout the repository's absolute path
+function make_repo() {
+  local repo
+  repo="$(mktemp --directory --tmpdir="${work}")"
+  git -C "${repo}" init --quiet --initial-branch=main
+  git -C "${repo}" config user.name 'Test Author'
+  git -C "${repo}" config user.email 'test@example.invalid'
+  git -C "${repo}" config commit.gpgsign false
+  git -C "${repo}" config tag.gpgsign false
+  cp -- "${REPO_DIR}/cliff.toml" "${repo}/cliff.toml"
+  cp -- "${REPO_DIR}/.prettierrc.yaml" "${repo}/.prettierrc.yaml"
+  cp -- "${work}/skeleton.md" "${repo}/CHANGELOG.md"
+  commit "${repo}" 'chore: start'
+  if [[ -n "$1" ]]; then
+    git -C "${repo}" tag "$1"
+  fi
+  write_stub "${repo}/.stub"
+  printf '%s\n' "${repo}"
+}
+
+# @description Write a gh stand-in that logs each call and answers the reads
+#              from files in its own directory:
+#
+#              - `main-sha`: the default branch's head; when the file is
+#                absent the repository's real HEAD is the answer
+#              - `pr-list.json`: the open pull requests whose head branch is
+#                named chore/release, as `gh pr list --json` prints them
+#              - `pr-title`: that pull request's title
+#              - `pr-state`: its state after the branch reset, default OPEN
+#              - `branch-exists`: present when chore/release exists
+#
+#              A write only logs, and copies the files it was pointed at
+#              (the changelog, the pull request's body) into the directory.
+#              Nothing here runs a command with an effect outside it.
+# @arg $1 dir directory to put the stub and its files in
+function write_stub() {
+  local -r dir="$1"
+  mkdir --parents "${dir}/bin"
+  : > "${dir}/calls.log"
+  printf '[]\n' > "${dir}/pr-list.json"
+  cat > "${dir}/bin/gh" << STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '${dir}/calls.log'
+case "\$*" in
+  'api repos/gh-owner/report --jq .default_branch') echo main ;;
+  'api repos/gh-owner/report/git/ref/heads/main --jq .object.sha')
+    if [[ -f '${dir}/main-sha' ]]; then
+      cat '${dir}/main-sha'
+    else
+      git rev-parse HEAD
+    fi
+    ;;
+  'api repos/gh-owner/report/git/ref/heads/chore/release') [[ -e '${dir}/branch-exists' ]] ;;
+  'pr list --repo gh-owner/report --head chore/release --state open --json number,isCrossRepository --jq '*)
+    # The script's own filter, the last argument, is run over the list, so
+    # which pull request it picks is the script's doing and not the stub's.
+    jq --raw-output "\${!#}" '${dir}/pr-list.json'
+    ;;
+  'pr view ${PR} --repo gh-owner/report --json title --jq .title') cat '${dir}/pr-title' ;;
+  'pr view ${PR} --repo gh-owner/report --json state --jq .state')
+    if [[ -f '${dir}/pr-state' ]]; then
+      cat '${dir}/pr-state'
+    else
+      echo OPEN
+    fi
+    ;;
+  'api --method PATCH '* | 'api --method POST '*) : ;;
+  'api graphql '*)
+    # The changelog is handed over as a file to read, as gh's own
+    # \`--field name=@file\` takes it; keep what the file held.
+    for arg in "\$@"; do
+      if [[ "\${arg}" == 'changelog=@'* ]]; then
+        cat -- "\${arg#changelog=@}" > '${dir}/changelog.b64'
+      fi
+    done
+    ;;
+  'pr reopen '*) : ;;
+  'pr edit '* | 'pr create '*)
+    # The body is a file too, gone once the script exits.
+    cat -- "\${!#}" > '${dir}/body.md'
+    ;;
+  *)
+    printf 'stub gh: unexpected call: %s\n' "\$*" >&2
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "${dir}/bin/gh"
+}
+
+# @description Tell a repository's stub that a release pull request is open.
+# @arg $1 repo
+# @arg $2 title the pull request's title
+function open_pull_request() {
+  printf '[{"number":%s,"isCrossRepository":false}]\n' "${PR}" > "$1/.stub/pr-list.json"
+  printf '%s\n' "$2" > "$1/.stub/pr-title"
+  : > "$1/.stub/branch-exists"
+}
+
+# @description Run the script in a repository with the stub gh first on PATH,
+#              and leave its exit status, the stub's call log and its stderr
+#              in `status`, `calls` and `errors`.
+# @arg $1 repo
+# @arg $@ arguments passed to the script
+# @set status int the script's exit status
+# @set last_repo string the repository, for committed_changelog
+# @set calls string every gh call it made, one argument list per entry
+# @set errors string its stderr
+function run_script() {
+  local -r repo="$1"
+  shift
+  status=0
+  last_repo="${repo}"
+  : > "${repo}/.stub/calls.log"
+  : > "${repo}/.stub/changelog.b64"
+  : > "${repo}/.stub/body.md"
+  (
+    cd "${repo}"
+    PATH="${repo}/.stub/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+      "${SCRIPT}" "$@" > /dev/null 2> "${repo}/.stub/stderr"
+  ) || status=$?
+  calls="$(< "${repo}/.stub/calls.log")"
+  errors="$(< "${repo}/.stub/stderr")"
+}
+
+# @description Fail unless the last run exited as expected. A designed
+#              non-zero exit is a verdict, not a crash, so the ERR trap must
+#              have stayed quiet on it.
+# @arg $1 case name
+# @arg $2 expected exit status
+function want_status() {
+  if [[ "${status}" != "$2" ]]; then
+    ci::log "FAIL: $1: exit ${status}, want $2 (stderr: ${errors})"
+    return 1
+  fi
+  if [[ "${errors}" == *'ERROR: line'* ]]; then
+    ci::log "FAIL: $1: the ERR trap fired on a designed return (stderr: ${errors})"
+    return 1
+  fi
+}
+
+# @description Fail unless the call log contains a fixed string.
+# @arg $1 case name
+# @arg $2 fixed string
+function want_call() {
+  if [[ "${calls}" != *"$2"* ]]; then
+    ci::log "FAIL: $1: no gh call contains '$2' (calls: ${calls}) (stderr: ${errors})"
+    return 1
+  fi
+}
+
+# @description Fail when the call log contains a fixed string.
+# @arg $1 case name
+# @arg $2 fixed string
+function want_no_call() {
+  if [[ "${calls}" == *"$2"* ]]; then
+    ci::log "FAIL: $1: a gh call contains '$2' (calls: ${calls})"
+    return 1
+  fi
+}
+
+# @description Fail unless the last run made exactly these calls, in this
+#              order. This is how "wrote nothing" is asserted: the whole log
+#              is compared with the reads the run is entitled to, so a write
+#              of a kind nobody thought to look for fails too.
+# @arg $1 case name
+# @arg $@ the expected calls; none when gh must not be called at all
+function want_only_calls() {
+  local -r name="$1"
+  shift
+  # IFS starts with a newline, so "$*" is one call per line, as the log is.
+  local -r want="$*"
+  if [[ "${calls}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: gh calls were: ${calls:-(none)}; want exactly: ${want:-(none)}"
+    return 1
+  fi
+}
+
+# @description Fail unless the last run's log output contains a fixed
+#              string. An exit status alone does not say which early return
+#              produced it.
+# @arg $1 case name
+# @arg $2 fixed string
+function want_log() {
+  if [[ "${errors}" != *"$2"* ]]; then
+    ci::log "FAIL: $1: the script did not say '$2' (stderr: ${errors})"
+    return 1
+  fi
+}
+
+# @description Print the changelog the last run committed: the base64 file
+#              its graphql call named in the `changelog=@` field, decoded.
+# @stdout the changelog, or nothing when no commit was made
+function committed_changelog() {
+  base64 --decode < "${last_repo}/.stub/changelog.b64"
+}
+
+# @description Print the body the last run gave the pull request.
+# @stdout the body, or nothing when no pull request was opened or edited
+function pull_request_body() {
+  cat -- "${last_repo}/.stub/body.md"
+}
+
+# @description Fail unless a text contains a fixed string.
+# @arg $1 case name
+# @arg $2 text
+# @arg $3 fixed string
+function want_text() {
+  if [[ "$2" != *"$3"* ]]; then
+    ci::log "FAIL: $1: '$3' is missing from: $2"
+    return 1
+  fi
+}
+
+# @description Fail when a text contains a fixed string.
+# @arg $1 case name
+# @arg $2 text
+# @arg $3 fixed string
+function want_no_text() {
+  if [[ "$2" == *"$3"* ]]; then
+    ci::log "FAIL: $1: '$3' is in: $2"
+    return 1
+  fi
+}
+
+# A feature since the release files a new pull request
+# for the next minor version, and never merges it.
+function test_files_a_new_pull_request() {
+  local rc=0 repo changelog
+  local -r name='a feature since the tag'
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  # prettier rewrites this emphasis, so the committed text is not the
+  # generated text.
+  commit "${repo}" 'fix: pad *every* column'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
+  want_call "${name}" "--field oid=$(git -C "${repo}" rev-parse HEAD)" || rc=1
+  want_call "${name}" '--field branch=chore/release' || rc=1
+  # No branch yet, so it is created, at the base.
+  want_call "${name}" "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/release --field sha=$(git -C "${repo}" rev-parse HEAD)" || rc=1
+  want_no_call "${name}" '--method PATCH' || rc=1
+  want_call "${name}" 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 --body-file ' || rc=1
+  want_no_call "${name}" 'pr edit' || rc=1
+  # Merging is the release decision; the script never makes it.
+  want_no_call "${name}" 'pr merge' || rc=1
+  want_no_call "${name}" '--auto' || rc=1
+
+  changelog="$(committed_changelog)"
+  printf '%s\n' "${changelog}" > "${work}/CHANGELOG.md"
+  local top
+  top="$("${RELEASE_VERSION}" top "${work}/CHANGELOG.md" 2> /dev/null)" || top='(unreadable)'
+  if [[ "${top}" != 'v1.1.0' ]]; then
+    ci::log "FAIL: ${name}: the committed changelog's top is '${top}', want v1.1.0: ${changelog}"
+    rc=1
+  fi
+  want_text "${name}" "${changelog}" '- add widget' || rc=1
+  want_text "${name}" "${changelog}" '# Changelog' || rc=1
+  # The changelog travels as a file, never as one argument: an argument has
+  # a size limit, and it would be hit after the branch was already reset.
+  want_call "${name}" '--field changelog=@' || rc=1
+
+  # The body is the section as committed, then what merging does.
+  local body section
+  body="$(pull_request_body)"
+  section="$("${RELEASE_VERSION}" notes "${work}/CHANGELOG.md" v1.1.0 2> /dev/null)" || section='(unreadable)'
+  want_text "${name}" "${body}" $'## v1.1.0\n\n'"${section}"$'\n\nMerging this pull request publishes v1.1.0: ' || rc=1
+  want_text "${name}" "${body}" '- pad _every_ column' || rc=1
+  want_text "${name}" "${changelog}" '- pad _every_ column' || rc=1
+
+  # The working tree's changelog is the input, never the output.
+  if ! cmp --silent -- "${work}/skeleton.md" "${repo}/CHANGELOG.md"; then
+    ci::log "FAIL: ${name}: the working tree's CHANGELOG.md was modified"
+    rc=1
+  fi
+
+  # What is committed is what the formatting gate accepts.
+  if ! prettier --config "${REPO_DIR}/.prettierrc.yaml" --check "${work}/CHANGELOG.md" > "${work}/prettier.log" 2>&1; then
+    ci::log "FAIL: ${name}: the committed changelog is not prettier-clean: $(< "${work}/prettier.log")"
+    rc=1
+  fi
+
+  # The commit lands on a branch commitlint judges.
+  if ! printf 'chore(release): v1.1.0\n' | commitlint --config "${REPO_DIR}/.commitlintrc.yml" > "${work}/commitlint.log" 2>&1; then
+    ci::log "FAIL: commitlint rejects the release headline: $(< "${work}/commitlint.log")"
+    rc=1
+  fi
+  return "${rc}"
+}
+
+# A release branch left behind by a closed or merged pull request is moved,
+# not created, and a new pull request is opened on it.
+function test_branch_without_pull_request() {
+  local rc=0 repo sha
+  local -r name='the branch exists with no open pull request'
+  repo="$(make_repo v1.0.0)"
+  : > "${repo}/.stub/branch-exists"
+  commit "${repo}" 'feat: add widget'
+  sha="$(git -C "${repo}" rev-parse HEAD)"
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  local -r reset="api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=${sha} --field force=true"
+  want_call "${name}" "${reset}" || rc=1
+  want_no_call "${name}" '--method POST' || rc=1
+  want_no_call "${name}" 'pr edit' || rc=1
+  want_no_call "${name}" 'pr reopen' || rc=1
+  # In that order: the reset, the commit, then the pull request.
+  local rest="${calls#*"${reset}"}"
+  rest="${rest#*'api graphql '}"
+  if [[ "${rest}" != *'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 '* ]]; then
+    ci::log "FAIL: ${name}: no pull request was created after the reset and the commit (calls: ${calls})"
+    rc=1
+  fi
+  return "${rc}"
+}
+
+# A commit subject is text. Whatever a shell or a Markdown renderer would
+# make of it, it reaches the changelog and the pull request as it was
+# written, and it cannot pass for a heading.
+function test_subject_is_literal_text() {
+  local rc=0 repo changelog body top
+  local -r name='a subject full of metacharacters'
+  repo="$(make_repo v1.0.0)"
+  # shellcheck disable=SC2016 # the point: nothing in the subject expands
+  commit "${repo}" 'feat: say "hi" to `x`, $(echo PAYLOAD_RAN), $HOME and <!-- x -->'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
+  changelog="$(committed_changelog)"
+  body="$(pull_request_body)"
+  local text needle
+  for text in "${changelog}" "${body}"; do
+    # shellcheck disable=SC2016 # literal on purpose, as above
+    for needle in 'say "hi" to `x`, $(echo PAYLOAD_RAN), $HOME and ' '!-- x -->'; do
+      want_text "${name}" "${text}" "${needle}" || rc=1
+    done
+    # Escaped, so it is shown and does not open a comment that hides what
+    # follows it.
+    want_no_text "${name}" "${text}" ' <!--' || rc=1
+    want_text "${name}" "${text}" '\<!-- x -->' || rc=1
+    # shellcheck disable=SC2016 # literal on purpose, as above
+    want_no_text "${name}" "${text//'$(echo PAYLOAD_RAN)'/}" 'PAYLOAD_RAN' || rc=1
+  done
+  printf '%s\n' "${changelog}" > "${work}/CHANGELOG.md"
+  top="$("${RELEASE_VERSION}" top "${work}/CHANGELOG.md" 2> /dev/null)" || top='(unreadable)'
+  if [[ "${top}" != 'v1.1.0' ]]; then
+    ci::log "FAIL: ${name}: the committed changelog's top is '${top}', want v1.1.0: ${changelog}"
+    rc=1
+  fi
+  if ! prettier --config "${REPO_DIR}/.prettierrc.yaml" --check "${work}/CHANGELOG.md" > "${work}/prettier.log" 2>&1; then
+    ci::log "FAIL: ${name}: the committed changelog is not prettier-clean: $(< "${work}/prettier.log")"
+    rc=1
+  fi
+  return "${rc}"
+}
+
+# Nothing releasable and no pull request is nothing to do.
+function test_nothing_to_release() {
+  local rc=0 repo
+  local -r name='only docs since the tag'
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'docs: tidy'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_log "${name}" 'nothing to release' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" "${READ_PULLS}" || rc=1
+  return "${rc}"
+}
+
+# A version given by hand is the version.
+function test_explicit_version() {
+  local rc=0 repo changelog
+  local name='--version v3.0.0'
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}" --version v3.0.0
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v3.0.0' || rc=1
+  want_call "${name}" '--title chore(release): v3.0.0' || rc=1
+  changelog="$(committed_changelog)"
+  want_text "${name}" "${changelog}" '## v3.0.0' || rc=1
+  want_text "${name}" "${changelog}" '- add widget' || rc=1
+
+  # A version given over commits that release nothing still gets a section
+  # with something in it.
+  name='--version over non-bumping commits'
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'docs: tidy'
+  run_script "${repo}" --version v3.0.0
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v3.0.0' || rc=1
+  changelog="$(committed_changelog)"
+  want_text "${name}" "${changelog}" $'## v3.0.0\n\nNo user-facing changes.' || rc=1
+  want_no_text "${name}" "${changelog}" 'tidy' || rc=1
+
+  # A version given on this run is the newer decision: it replaces the one
+  # the open pull request proposes, even a higher one.
+  name='--version below the open pull request'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v3.0.0'
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}" --version v2.0.0
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v2.0.0' || rc=1
+  want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v2.0.0 --body-file " || rc=1
+  want_no_call "${name}" 'v3.0.0' || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
+  return "${rc}"
+}
+
+# A push while a manually versioned pull request is open: the open
+# pull request's version is not lowered, and the pull request is kept.
+function test_open_version_is_not_lowered() {
+  local rc=0 repo changelog
+  local name='a fix while v3.0.0 is open'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v3.0.0'
+  commit "${repo}" 'fix: pad columns'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v3.0.0' || rc=1
+  want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v3.0.0 --body-file " || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
+  want_no_call "${name}" 'pr reopen' || rc=1
+  # The branch exists, so it is moved onto the base, not created.
+  want_call "${name}" "api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=$(git -C "${repo}" rev-parse HEAD) --field force=true" || rc=1
+  want_no_call "${name}" '--method POST' || rc=1
+  changelog="$(committed_changelog)"
+  want_text "${name}" "${changelog}" '## v3.0.0' || rc=1
+  want_text "${name}" "${changelog}" '- pad columns' || rc=1
+
+  # Only non-bumping commits since: the pull request is still moved onto the
+  # new base, under the version it has.
+  name='docs while v3.0.0 is open'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v3.0.0'
+  commit "${repo}" 'docs: tidy'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v3.0.0' || rc=1
+  want_call "${name}" "pr edit ${PR} " || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
+
+  # Resetting the branch closes the pull request; it is reopened, not
+  # replaced.
+  name='a pull request the reset closed'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v3.0.0'
+  printf 'CLOSED\n' > "${repo}/.stub/pr-state"
+  commit "${repo}" 'fix: pad columns'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" "pr reopen ${PR} --repo gh-owner/report" || rc=1
+  want_call "${name}" "pr edit ${PR} " || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
+  return "${rc}"
+}
+
+# The open pull request's version is raised when the commits call
+# for more.
+function test_open_version_is_raised() {
+  local rc=0 repo
+  local name='a feature while v1.0.1 is open'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v1.0.1'
+  commit "${repo}" 'fix: pad columns'
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
+  want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v1.1.0 --body-file " || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
+
+  # A title that names no version holds nothing to keep.
+  name='an open pull request with another title'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v9.0'
+  commit "${repo}" 'fix: pad columns'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.0.1' || rc=1
+  want_call "${name}" "pr edit ${PR} " || rc=1
+  return "${rc}"
+}
+
+# A pull request from a fork whose branch happens to be named chore/release
+# is somebody else's: its title decides nothing and it is never edited.
+function test_fork_pull_request_is_ignored() {
+  local rc=0 repo
+  local name='only a pull request from a fork is open'
+  repo="$(make_repo v1.0.0)"
+  printf '[{"number":99,"isCrossRepository":true}]\n' > "${repo}/.stub/pr-list.json"
+  printf 'chore(release): v99.0.0\n' > "${repo}/.stub/pr-title"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
+  want_call "${name}" 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 ' || rc=1
+  want_no_call "${name}" 'pr edit' || rc=1
+  want_no_call "${name}" 'pr view' || rc=1
+  want_no_call "${name}" 'v99.0.0' || rc=1
+
+  # Listed ahead of this repository's own pull request, it is passed over.
+  name='a pull request from a fork beside our own'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v3.0.0'
+  printf '[{"number":99,"isCrossRepository":true},{"number":%s,"isCrossRepository":false}]\n' "${PR}" > "${repo}/.stub/pr-list.json"
+  commit "${repo}" 'fix: pad columns'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v3.0.0 " || rc=1
+  want_no_call "${name}" ' 99 ' || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
+  return "${rc}"
+}
+
+# A version that is not above the last release is refused.
+function test_explicit_version_refused() {
+  local rc=0 repo
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}" --version v1.0.0
+  want_status '--version of an existing tag' 1 || rc=1
+  want_only_calls '--version of an existing tag' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+  run_script "${repo}" --version v0.9.0
+  want_status '--version below the last tag' 1 || rc=1
+  want_only_calls '--version below the last tag' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+
+  # Above the last release HEAD reaches, yet already a tag elsewhere.
+  git -C "${repo}" switch --quiet --create side
+  commit "${repo}" 'feat!: side'
+  git -C "${repo}" tag v2.0.0
+  git -C "${repo}" switch --quiet main
+  run_script "${repo}" --version v2.0.0
+  want_status '--version of a tag HEAD does not reach' 1 || rc=1
+  want_only_calls '--version of a tag HEAD does not reach' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+
+  # A version that can never be released is refused even while another
+  # release is being published, when the run would otherwise do nothing.
+  printf '# Changelog\n\n## v1.1.0\n\n### Features\n\n- add widget\n' > "${repo}/CHANGELOG.md"
+  run_script "${repo}" --version v1.0.0
+  want_status '--version of an existing tag, mid-publish' 1 || rc=1
+  want_only_calls '--version of an existing tag, mid-publish' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+  run_script "${repo}" --version v0.9.0
+  want_status '--version below the last tag, mid-publish' 1 || rc=1
+  want_only_calls '--version below the last tag, mid-publish' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+  run_script "${repo}" --version v2.0.0
+  want_status '--version of an unreachable tag, mid-publish' 1 || rc=1
+  want_only_calls '--version of an unreachable tag, mid-publish' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+  return "${rc}"
+}
+
+# A version that is not vMAJOR.MINOR.PATCH is refused before
+# anything is asked of GitHub, as is every other malformed call.
+function test_usage() {
+  local rc=0 repo version
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  for version in '1.1.0' 'v1.1' 'v1.1.0-rc.1' ''; do
+    run_script "${repo}" --version "${version}"
+    want_status "--version '${version}'" 2 || rc=1
+    want_only_calls "--version '${version}'" || rc=1
+  done
+  run_script "${repo}" --version
+  want_status '--version with no value' 2 || rc=1
+  want_only_calls '--version with no value' || rc=1
+  run_script "${repo}" --bogus
+  want_status 'an unknown argument' 2 || rc=1
+  want_only_calls 'an unknown argument' || rc=1
+  return "${rc}"
+}
+
+# Between the merge of a release pull request and its tag, the next
+# release is not proposed.
+function test_mid_publish() {
+  local rc=0 repo
+  local -r name='a release being published'
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  printf '# Changelog\n\n## v1.1.0\n\n### Features\n\n- add widget\n' > "${repo}/CHANGELOG.md"
+  commit "${repo}" 'fix: pad columns'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_log "${name}" 'release v1.1.0 is being published' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+
+  # A first heading that is not a version is a failure, and nothing is
+  # written over it.
+  printf '# Changelog\n\n## Unreleased\n\n- add widget\n' > "${repo}/CHANGELOG.md"
+  run_script "${repo}"
+  want_status 'a malformed first heading' 1 || rc=1
+  want_only_calls 'a malformed first heading' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+  return "${rc}"
+}
+
+# The first stable release carries its hand-written notes, not the
+# commit list.
+function test_first_stable_release() {
+  local rc=0 repo changelog
+  local -r name='v1.0.0 with hand-written notes'
+  repo="$(make_repo v0.1.0)"
+  commit "${repo}" 'feat: add widget'
+  commit "${repo}" 'fix: pad columns'
+  mkdir "${repo}/.ci"
+  cp -- "${REPO_DIR}/.ci/release-notes-1.0.0.md" "${repo}/.ci/release-notes-1.0.0.md"
+  run_script "${repo}" --version v1.0.0
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.0.0' || rc=1
+  changelog="$(committed_changelog)"
+  want_text "${name}" "${changelog}" $'## v1.0.0\n\nThe first stable release.' || rc=1
+  want_text "${name}" "${changelog}" '### Release artifacts' || rc=1
+  want_no_text "${name}" "${changelog}" 'add widget' || rc=1
+  want_no_text "${name}" "${changelog}" 'pad columns' || rc=1
+  # The notes file's lint directive is about that file, not the changelog.
+  want_no_text "${name}" "${changelog}" 'markdownlint' || rc=1
+  printf '%s\n' "${changelog}" > "${work}/CHANGELOG.md"
+  if ! prettier --config "${REPO_DIR}/.prettierrc.yaml" --check "${work}/CHANGELOG.md" > "${work}/prettier.log" 2>&1; then
+    ci::log "FAIL: ${name}: the committed changelog is not prettier-clean: $(< "${work}/prettier.log")"
+    rc=1
+  fi
+
+  # A notes file with nothing in it still leaves a section with a body.
+  repo="$(make_repo v0.1.0)"
+  commit "${repo}" 'feat: add widget'
+  mkdir "${repo}/.ci"
+  printf '\n<!-- markdownlint-disable-file MD041 -->\n' > "${repo}/.ci/release-notes-1.0.0.md"
+  run_script "${repo}" --version v1.0.0
+  want_status 'v1.0.0 with empty notes' 0 || rc=1
+  changelog="$(committed_changelog)"
+  want_text 'v1.0.0 with empty notes' "${changelog}" $'## v1.0.0\n\nNo user-facing changes.' || rc=1
+  want_no_text 'v1.0.0 with empty notes' "${changelog}" 'markdownlint' || rc=1
+
+  # Without the notes file v1.0.0 is a release like any other.
+  repo="$(make_repo v0.1.0)"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}" --version v1.0.0
+  want_status 'v1.0.0 without notes' 0 || rc=1
+  changelog="$(committed_changelog)"
+  want_text 'v1.0.0 without notes' "${changelog}" '- add widget' || rc=1
+  return "${rc}"
+}
+
+# The changelog is generated from the commit it is committed onto,
+# or not at all.
+function test_stale_checkout() {
+  local rc=0 repo
+  local -r name='HEAD is not the default branch head'
+  repo="$(make_repo v1.0.0)"
+  commit "${repo}" 'feat: add widget'
+  printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001\n' > "${repo}/.stub/main-sha"
+  run_script "${repo}"
+  want_status "${name}" 1 || rc=1
+  want_log "${name}" 'HEAD is ' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
+  return "${rc}"
+}
+
+function main() {
+  local rc=0
+  work="$(mktemp --directory)"
+  write_skeleton
+
+  test_files_a_new_pull_request || rc=1
+  test_branch_without_pull_request || rc=1
+  test_subject_is_literal_text || rc=1
+  test_nothing_to_release || rc=1
+  test_explicit_version || rc=1
+  test_open_version_is_not_lowered || rc=1
+  test_open_version_is_raised || rc=1
+  test_fork_pull_request_is_ignored || rc=1
+  test_explicit_version_refused || rc=1
+  test_usage || rc=1
+  test_mid_publish || rc=1
+  test_first_stable_release || rc=1
+  test_stale_checkout || rc=1
+
+  ((rc == 0)) && ci::log 'release-pull-request: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"
