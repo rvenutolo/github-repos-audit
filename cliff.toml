@@ -27,9 +27,25 @@ footer = ""
 # ones prettier keeps (one after an item that has a paragraph, none between
 # plain items), so a generated section passes the formatting gate as it is.
 trim = false
+#
+# A subject is text, not markup, and a merged subject cannot be reworded, so
+# the `text` macro makes it literal where Markdown would not: `<owner>` reads
+# as an HTML tag, which disappears when rendered and which markdownlint
+# rejects, so each `<` gets a backslash. Inside a code span it is already
+# literal and a backslash would be printed, so the text is split on backticks
+# and only the parts outside a pair are escaped; with an odd number of
+# backticks there are no reliable pairs and every part is.
 body = """
+{%- macro text(value) -%}
+{%- set parts = value | trim | split(pat="`") -%}
+{%- set count = parts | length -%}
+{%- for part in parts -%}
+{%- if not loop.first %}`{% endif -%}
+{%- if count is odd and loop.index0 is odd %}{{ part }}{% else %}{{ part | replace(from="<", to="\\<") }}{% endif -%}
+{%- endfor -%}
+{%- endmacro text -%}
 {%- macro entry(commit) -%}
-- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | trim }}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ self::text(value=commit.message) }}
 {% endmacro entry -%}
 {%- set breaking = commits | filter(attribute="breaking", value=true) -%}
 {%- set plain = commits | filter(attribute="breaking", value=false) -%}
@@ -45,7 +61,7 @@ body = """
 {% endif -%}
 {{ self::entry(commit=commit) -}}
 {% if commit.breaking_description and commit.breaking_description != commit.message %}
-  {{ commit.breaking_description | trim | replace(from="\n", to="\n  ") }}
+  {{ self::text(value=commit.breaking_description) | replace(from="\n", to="\n  ") }}
 {% set_global after_note = true -%}
 {% else -%}
 {% set_global after_note = false -%}
@@ -75,7 +91,9 @@ conventional_commits = true
 filter_unconventional = true
 require_conventional = false
 split_commits = false
-# First match wins. The commit that records a release is the only one a
+# First match wins. Each pattern ends at the end of the type (a scope, a
+# `!` or the colon), so `fixture:` is not a fix and `feature:` is not a
+# feat. The commit that records a release is the only one a
 # parser drops. Every other type (docs, chore, ci, ...) is kept without a
 # group and the template prints only the groups below, plus whatever is
 # breaking. A catch-all `skip` would look simpler and is wrong twice over:
@@ -85,8 +103,8 @@ split_commits = false
 # would be listed beside the commit it merges.
 commit_parsers = [
   { message = "^chore\\(release\\)", skip = true },
-  { message = "^feat", group = "Features" },
-  { message = "^(fix|perf)", group = "Fixes" },
+  { message = "^feat(\\(|!|:)", group = "Features" },
+  { message = "^(fix|perf)(\\(|!|:)", group = "Fixes" },
 ]
 protect_breaking_commits = false
 filter_commits = false

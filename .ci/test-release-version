@@ -396,6 +396,91 @@ EOF
   return "${rc}"
 }
 
+# A type is matched whole. One that only starts with a listed type is some
+# other type: not listed, and no reason to release.
+function test_exact_types() {
+  local rc=0 repo
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'fixture: not a fix'
+  commit "${repo}" 'feature: not a feat'
+  commit "${repo}" 'performance: not a perf'
+  check 'next after types that only start like listed ones' "${repo}" 0 '' next || rc=1
+  check 'section after types that only start like listed ones' "${repo}" 0 '## v1.0.1' section v1.0.1 || rc=1
+  # Beside a real fix they add no entry and do not raise the bump.
+  commit "${repo}" 'fix: real'
+  check 'next is a patch beside a lookalike feature' "${repo}" 0 'v1.0.1' next || rc=1
+  check 'section lists only the real fix' "${repo}" 0 $'## v1.0.1\n\n### Fixes\n\n- real' section v1.0.1 || rc=1
+  # Every spelling of a listed type still matches: scoped, breaking, both.
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'feat(cli): a'
+  commit "${repo}" 'perf(render): b'
+  commit "${repo}" 'fix: c'
+  check 'section lists scoped types' "${repo}" 0 $'## v1.1.0\n\n### Features\n\n- **cli:** a\n\n### Fixes\n\n- **render:** b\n- c' section v1.1.0 || rc=1
+  return "${rc}"
+}
+
+# A subject is text, not markup. `<owner>` left as it is reads as an HTML tag:
+# it disappears when rendered and markdownlint rejects it, and a merged
+# subject cannot be reworded. Inside a code span it is already literal.
+function test_angle_brackets() {
+  local rc=0 repo
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'feat: accept <owner>/<repo> arguments'
+  # The backticks are Markdown code spans in a commit subject, meant
+  # literally; nothing is to be expanded.
+  # shellcheck disable=SC2016
+  commit "${repo}" 'fix: keep `<name>` and `a < b` in code spans, escape <tag>'
+  commit "${repo}" 'fix: one stray ` leaves <nothing> raw'
+  commit "${repo}" 'feat!: take <path>' $'BREAKING CHANGE: pass <dir> instead of <file>\nand quote `<dir>` if it has spaces'
+  local want
+  want="$(
+    cat << 'EOF'
+## v2.0.0
+
+### Breaking changes
+
+- take \<path>
+
+  pass \<dir> instead of \<file>
+  and quote `<dir>` if it has spaces
+
+### Features
+
+- accept \<owner>/\<repo> arguments
+
+### Fixes
+
+- keep `<name>` and `a < b` in code spans, escape \<tag>
+- one stray ` leaves \<nothing> raw
+EOF
+  )"
+  check 'section escapes angle brackets outside code spans' "${repo}" 0 "${want}" section v2.0.0 || rc=1
+
+  # The same section, in a changelog, under this repository's own lint
+  # configuration.
+  local -r dir="${work}/angle-brackets"
+  mkdir "${dir}"
+  cp -- "${REPO_DIR}/.prettierrc.yaml" "${dir}/.prettierrc.yaml"
+  cp -- "${REPO_DIR}/.markdownlint-cli2.yaml" "${dir}/.markdownlint-cli2.yaml"
+  (
+    cd "${repo}"
+    "${SCRIPT}" section v2.0.0 > "${dir}/section.md"
+    "${SCRIPT}" prepend "${REPO_DIR}/CHANGELOG.md" "${dir}/section.md" > "${dir}/CHANGELOG.md"
+  ) 2> "${work}/stderr" || {
+    ci::log "FAIL: building the angle-bracket changelog exited non-zero (stderr: $(< "${work}/stderr"))"
+    return 1
+  }
+  if ! (cd "${dir}" && markdownlint-cli2 CHANGELOG.md > "${work}/stderr" 2>&1); then
+    ci::log "FAIL: a subject with angle brackets fails markdownlint: $(< "${work}/stderr")"
+    rc=1
+  fi
+  if ! (cd "${dir}" && prettier --check CHANGELOG.md > "${work}/stderr" 2>&1); then
+    ci::log "FAIL: a subject with angle brackets is not prettier-clean: $(< "${work}/stderr")"
+    rc=1
+  fi
+  return "${rc}"
+}
+
 # Case 6: a merge commit repeats the subject of the commit it merges, with a
 # pull request number appended. It is dropped by its SHA, so the change is
 # listed once and the merge subject never decides the bump.
@@ -612,6 +697,8 @@ function main() {
   test_greater || rc=1
   test_next || rc=1
   test_section || rc=1
+  test_exact_types || rc=1
+  test_angle_brackets || rc=1
   test_merge_commits || rc=1
   test_top || rc=1
   test_notes || rc=1
