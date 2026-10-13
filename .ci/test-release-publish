@@ -497,6 +497,7 @@ function test_sign() {
   local rc=0 repo
   local name='sign: a built dist'
   repo="$(make_repo '')"
+  mv -- "${repo}/dist/SHA256SUMS.sigstore.json" "${repo}/.stub/bundle.aside"
   run_script "${repo}" sign --dist "${repo}/dist"
   want_status "${name}" 0 || rc=1
   want_same "${name}" 'the cosign call' "${signed}" \
@@ -509,6 +510,17 @@ function test_sign() {
   mv -- "${repo}/dist/SHA256SUMS" "${repo}/.stub/SHA256SUMS.aside"
   run_script "${repo}" sign --dist "${repo}/dist"
   want_status "${name}" 1 || rc=1
+  want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
+  want_same "${name}" 'the bundle' "$(< "${repo}/dist/SHA256SUMS.sigstore.json")" 'INERT_BUNDLE' || rc=1
+
+  # Signed once already: a second signature is a second permanent entry in
+  # the transparency log, and a bundle that is there would make a cosign
+  # that wrote nothing look like one that did.
+  name='sign: a dist that holds a bundle'
+  repo="$(make_repo '')"
+  run_script "${repo}" sign --dist "${repo}/dist"
+  want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" 'already holds SHA256SUMS.sigstore.json' || rc=1
   want_same "${name}" 'the cosign log' "${signed}" '' || rc=1
   want_same "${name}" 'the bundle' "$(< "${repo}/dist/SHA256SUMS.sigstore.json")" 'INERT_BUNDLE' || rc=1
 

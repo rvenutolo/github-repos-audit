@@ -32,7 +32,8 @@
 #              - sign --dist <dir>: sign <dir>/SHA256SUMS with cosign's
 #                keyless flow and write the bundle that verifies it to
 #                <dir>/SHA256SUMS.sigstore.json. The signature is recorded
-#                in a public transparency log, for good.
+#                in a public transparency log, for good, so a directory
+#                that holds a bundle already is refused.
 #              - release --version <vX.Y.Z> --dist <dir> --sha <commit>:
 #                publish <dir> as the release <version>, tagged at <commit>.
 #                <dir> must hold what .ci/build-release and `sign` wrote,
@@ -388,6 +389,12 @@ function sign() {
   fi
   if [[ ! -f "${dist}/${SUMS}" ]]; then
     fail "${dist} has no ${SUMS}; nothing to sign"
+  fi
+  # Signed once is signed: a second run would add a second entry to the
+  # transparency log, for good. And the check below, that cosign wrote a
+  # bundle, means nothing while an older bundle sits in its place.
+  if [[ -e "${dist}/${BUNDLE}" ]]; then
+    fail "${dist} already holds ${BUNDLE}; ${SUMS} is signed, and is not signed twice"
   fi
   ci::log "signing ${dist}/${SUMS}"
   if ! cosign sign-blob --yes --bundle "${dist}/${BUNDLE}" "${dist}/${SUMS}" >&2; then
