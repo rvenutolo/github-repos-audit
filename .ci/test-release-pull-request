@@ -34,6 +34,7 @@ readonly PR='7'
 
 # What the last run_script call left behind, for the assertions after it.
 status=0
+last_repo=''
 calls=''
 errors=''
 
@@ -107,8 +108,9 @@ function make_repo() {
 #              - `pr-state`: its state after the branch reset, default OPEN
 #              - `branch-exists`: present when chore/release exists
 #
-#              A write only logs. Nothing here runs a command with an effect
-#              outside the directory.
+#              A write only logs, and copies the files it was pointed at
+#              (the changelog, the pull request's body) into the directory.
+#              Nothing here runs a command with an effect outside it.
 # @arg $1 dir directory to put the stub and its files in
 function write_stub() {
   local -r dir="$1"
@@ -141,8 +143,21 @@ case "\$*" in
       echo OPEN
     fi
     ;;
-  'api --method PATCH '* | 'api --method POST '* | 'api graphql '*) : ;;
-  'pr reopen '* | 'pr edit '* | 'pr create '*) : ;;
+  'api --method PATCH '* | 'api --method POST '*) : ;;
+  'api graphql '*)
+    # The changelog is handed over as a file to read, as gh's own
+    # \`--field name=@file\` takes it; keep what the file held.
+    for arg in "\$@"; do
+      if [[ "\${arg}" == 'changelog=@'* ]]; then
+        cat -- "\${arg#changelog=@}" > '${dir}/changelog.b64'
+      fi
+    done
+    ;;
+  'pr reopen '*) : ;;
+  'pr edit '* | 'pr create '*)
+    # The body is a file too, gone once the script exits.
+    cat -- "\${!#}" > '${dir}/body.md'
+    ;;
   *)
     printf 'stub gh: unexpected call: %s\n' "\$*" >&2
     exit 1
@@ -167,13 +182,17 @@ function open_pull_request() {
 # @arg $1 repo
 # @arg $@ arguments passed to the script
 # @set status int the script's exit status
+# @set last_repo string the repository, for committed_changelog
 # @set calls string every gh call it made, one argument list per entry
 # @set errors string its stderr
 function run_script() {
   local -r repo="$1"
   shift
   status=0
+  last_repo="${repo}"
   : > "${repo}/.stub/calls.log"
+  : > "${repo}/.stub/changelog.b64"
+  : > "${repo}/.stub/body.md"
   (
     cd "${repo}"
     PATH="${repo}/.stub/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
@@ -229,16 +248,17 @@ function want_no_write() {
   return "${rc}"
 }
 
-# @description Print the changelog the last run committed: the base64
-#              `changelog=` field of the logged graphql call, decoded.
+# @description Print the changelog the last run committed: the base64 file
+#              its graphql call named in the `changelog=@` field, decoded.
 # @stdout the changelog, or nothing when no commit was made
 function committed_changelog() {
-  if [[ "${calls}" != *'changelog='* ]]; then
-    return 0
-  fi
-  local field="${calls#*changelog=}"
-  field="${field%% *}"
-  base64 --decode <<< "${field}"
+  base64 --decode < "${last_repo}/.stub/changelog.b64"
+}
+
+# @description Print the body the last run gave the pull request.
+# @stdout the body, or nothing when no pull request was opened or edited
+function pull_request_body() {
+  cat -- "${last_repo}/.stub/body.md"
 }
 
 # @description Fail unless a text contains a fixed string.
@@ -270,6 +290,9 @@ function test_files_a_new_pull_request() {
   local -r name='a feature since the tag'
   repo="$(make_repo v1.0.0)"
   commit "${repo}" 'feat: add widget'
+  # prettier rewrites this emphasis, so the committed text is not the
+  # generated text.
+  commit "${repo}" 'fix: pad *every* column'
   run_script "${repo}"
   want_status "${name}" 0 || rc=1
   want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
@@ -294,6 +317,17 @@ function test_files_a_new_pull_request() {
   fi
   want_text "${name}" "${changelog}" '- add widget' || rc=1
   want_text "${name}" "${changelog}" '# Changelog' || rc=1
+  # The changelog travels as a file, never as one argument: an argument has
+  # a size limit, and it would be hit after the branch was already reset.
+  want_call "${name}" '--field changelog=@' || rc=1
+
+  # The body is the section as committed, then what merging does.
+  local body section
+  body="$(pull_request_body)"
+  section="$("${RELEASE_VERSION}" notes "${work}/CHANGELOG.md" v1.1.0 2> /dev/null)" || section='(unreadable)'
+  want_text "${name}" "${body}" $'## v1.1.0\n\n'"${section}"$'\n\nMerging this pull request publishes v1.1.0: ' || rc=1
+  want_text "${name}" "${body}" '- pad _every_ column' || rc=1
+  want_text "${name}" "${changelog}" '- pad _every_ column' || rc=1
 
   # The working tree's changelog is the input, never the output.
   if ! cmp --silent -- "${work}/skeleton.md" "${repo}/CHANGELOG.md"; then
@@ -580,6 +614,17 @@ function test_first_stable_release() {
     ci::log "FAIL: ${name}: the committed changelog is not prettier-clean: $(< "${work}/prettier.log")"
     rc=1
   fi
+
+  # A notes file with nothing in it still leaves a section with a body.
+  repo="$(make_repo v0.1.0)"
+  commit "${repo}" 'feat: add widget'
+  mkdir "${repo}/.ci"
+  printf '\n<!-- markdownlint-disable-file MD041 -->\n' > "${repo}/.ci/release-notes-1.0.0.md"
+  run_script "${repo}" --version v1.0.0
+  want_status 'v1.0.0 with empty notes' 0 || rc=1
+  changelog="$(committed_changelog)"
+  want_text 'v1.0.0 with empty notes' "${changelog}" $'## v1.0.0\n\nNo user-facing changes.' || rc=1
+  want_no_text 'v1.0.0 with empty notes' "${changelog}" 'markdownlint' || rc=1
 
   # Without the notes file v1.0.0 is a release like any other.
   repo="$(make_repo v0.1.0)"

@@ -59,6 +59,11 @@ readonly TITLE_PREFIX='chore(release): '
 readonly FIRST_STABLE='v1.0.0'
 readonly FIRST_STABLE_NOTES='.ci/release-notes-1.0.0.md'
 
+# What a section says when it has nothing to list. A section is never left
+# empty: a heading directly above the next heading reads as a mistake in
+# the file.
+readonly EMPTY_SECTION='No user-facing changes.'
+
 # work is global so the EXIT trap can still read it once main has returned.
 work=''
 trap 'rm -rf -- "${work}"' EXIT
@@ -122,16 +127,18 @@ function write_section() {
     while [[ "${notes}" == *$'\n\n' ]]; do
       notes="${notes%$'\n'}"
     done
+    if [[ -z "${notes//[[:space:]]/}" ]]; then
+      notes="${EMPTY_SECTION}"$'\n'
+    fi
     printf '## %s\n\n%s' "${version}" "${notes}" > "${file}"
     return 0
   fi
   local section
   section="$("${RELEASE_VERSION}" section "${version}")" || exit 1
   # A version given by hand over commits that release nothing has a heading
-  # and no entries. A section is never left empty: a heading directly above
-  # the next heading reads as a mistake in the file.
+  # and no entries.
   if [[ "${section}" != *$'\n'* ]]; then
-    section+=$'\n\nNo user-facing changes.'
+    section+=$'\n\n'"${EMPTY_SECTION}"
   fi
   printf '%s\n' "${section}" > "${file}"
 }
@@ -269,6 +276,7 @@ function main() {
 
   work="$(mktemp --directory)"
   local -r section="${work}/section.md" new="${work}/CHANGELOG.md" body="${work}/body.md"
+  local -r encoded="${work}/CHANGELOG.md.base64"
   write_section "${top}" "${version}" "${section}"
   "${RELEASE_VERSION}" prepend "${changelog}" "${section}" > "${new}" || exit 1
   # A generated section is formatter-clean only for ordinary subjects, and
@@ -283,10 +291,18 @@ function main() {
   if [[ "${written}" != "${version}" ]]; then
     fail "the assembled changelog's first section is ${written:-missing}, not ${version}"
   fi
+  # The body shows the section as it is committed, after the formatter, so
+  # what is reviewed in the pull request is what the release notes say.
+  local notes
+  notes="$("${RELEASE_VERSION}" notes "${new}" "${version}")" || exit 1
   {
-    cat -- "${section}"
+    printf '## %s\n\n%s\n' "${version}" "${notes}"
     printf '\nMerging this pull request publishes %s: the release workflow builds, signs and attests the binaries, then creates the tag.\n' "${version}"
   } > "${body}"
+  # The mutation reads the changelog from this file. As an argument it
+  # would be one string holding the whole file, and a single argument has a
+  # size limit; hitting it at the commit would be after the branch reset.
+  base64 --wrap=0 < "${new}" > "${encoded}"
   local -r title="${TITLE_PREFIX}${version}"
 
   # Everything above only reads. Everything below writes.
@@ -310,7 +326,7 @@ function main() {
     --field "repo=${repo}" \
     --field "branch=${BRANCH}" \
     --field "oid=${base_sha}" \
-    --field "changelog=$(base64 --wrap=0 < "${new}")" \
+    --field "changelog=@${encoded}" \
     --field "headline=${title}" \
     --raw-field 'query=
       mutation($repo: String!, $branch: String!, $oid: GitObjectID!, $changelog: Base64String!, $headline: String!) {
