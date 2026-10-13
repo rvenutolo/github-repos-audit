@@ -703,53 +703,6 @@ function test_mid_publish() {
   return "${rc}"
 }
 
-# The first stable release carries its hand-written notes, not the
-# commit list.
-function test_first_stable_release() {
-  local rc=0 repo changelog
-  local -r name='v1.0.0 with hand-written notes'
-  repo="$(make_repo v0.1.0)"
-  commit "${repo}" 'feat: add widget'
-  commit "${repo}" 'fix: pad columns'
-  mkdir "${repo}/.ci"
-  cp -- "${REPO_DIR}/.ci/release-notes-1.0.0.md" "${repo}/.ci/release-notes-1.0.0.md"
-  run_script "${repo}" --version v1.0.0
-  want_status "${name}" 0 || rc=1
-  want_call "${name}" '--field headline=chore(release): v1.0.0' || rc=1
-  changelog="$(committed_changelog)"
-  want_text "${name}" "${changelog}" $'## v1.0.0\n\nThe first stable release.' || rc=1
-  want_text "${name}" "${changelog}" '### Release artifacts' || rc=1
-  want_no_text "${name}" "${changelog}" 'add widget' || rc=1
-  want_no_text "${name}" "${changelog}" 'pad columns' || rc=1
-  # The notes file's lint directive is about that file, not the changelog.
-  want_no_text "${name}" "${changelog}" 'markdownlint' || rc=1
-  printf '%s\n' "${changelog}" > "${work}/CHANGELOG.md"
-  if ! prettier --config "${REPO_DIR}/.prettierrc.yaml" --check "${work}/CHANGELOG.md" > "${work}/prettier.log" 2>&1; then
-    ci::log "FAIL: ${name}: the committed changelog is not prettier-clean: $(< "${work}/prettier.log")"
-    rc=1
-  fi
-
-  # A notes file with nothing in it still leaves a section with a body.
-  repo="$(make_repo v0.1.0)"
-  commit "${repo}" 'feat: add widget'
-  mkdir "${repo}/.ci"
-  printf '\n<!-- markdownlint-disable-file MD041 -->\n' > "${repo}/.ci/release-notes-1.0.0.md"
-  run_script "${repo}" --version v1.0.0
-  want_status 'v1.0.0 with empty notes' 0 || rc=1
-  changelog="$(committed_changelog)"
-  want_text 'v1.0.0 with empty notes' "${changelog}" $'## v1.0.0\n\nNo user-facing changes.' || rc=1
-  want_no_text 'v1.0.0 with empty notes' "${changelog}" 'markdownlint' || rc=1
-
-  # Without the notes file v1.0.0 is a release like any other.
-  repo="$(make_repo v0.1.0)"
-  commit "${repo}" 'feat: add widget'
-  run_script "${repo}" --version v1.0.0
-  want_status 'v1.0.0 without notes' 0 || rc=1
-  changelog="$(committed_changelog)"
-  want_text 'v1.0.0 without notes' "${changelog}" '- add widget' || rc=1
-  return "${rc}"
-}
-
 # The changelog is generated from the commit it is committed onto,
 # or not at all.
 function test_stale_checkout() {
@@ -806,7 +759,6 @@ function main() {
   test_explicit_version_refused || rc=1
   test_usage || rc=1
   test_mid_publish || rc=1
-  test_first_stable_release || rc=1
   test_stale_checkout || rc=1
 
   ((rc == 0)) && ci::log 'release-pull-request: every case passed'

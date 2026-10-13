@@ -9,16 +9,15 @@
 #
 #              Run from a clean, full-history checkout of the default
 #              branch's head. The version, the section and the changelog come
-#              from .ci/release-version; cliff.toml, CHANGELOG.md,
-#              .prettierrc.yaml and the optional .ci/release-notes-1.0.0.md
-#              are read from the repository the current directory is in. It
-#              is the working tree's CHANGELOG.md that is read, not the
-#              committed one, and HEAD is the only thing checked against the
-#              default branch: an uncommitted edit to that file would be
-#              committed to the release branch along with the new section,
-#              so the tree must be clean. The working tree is only read: the
-#              new changelog is assembled in a temporary directory and sent
-#              through the API.
+#              from .ci/release-version; cliff.toml, CHANGELOG.md and
+#              .prettierrc.yaml are read from the repository the current
+#              directory is in. It is the working tree's CHANGELOG.md that
+#              is read, not the committed one, and HEAD is the only thing
+#              checked against the default branch: an uncommitted edit to
+#              that file would be committed to the release branch along
+#              with the new section, so the tree must be clean. The working
+#              tree is only read: the new changelog is assembled in a
+#              temporary directory and sent through the API.
 #
 #              The commit goes through the GraphQL createCommitOnBranch
 #              mutation and not `git push`, because the protect-main ruleset
@@ -75,11 +74,6 @@ source "${SCRIPT_DIR}/lib.sh"
 readonly BRANCH='chore/release'
 readonly TITLE_PREFIX='chore(release): '
 
-# The first stable release is described by hand: its section says what the
-# tool is, where every later one lists what changed.
-readonly FIRST_STABLE='v1.0.0'
-readonly FIRST_STABLE_NOTES='.ci/release-notes-1.0.0.md'
-
 # What a section says when it has nothing to list. A section is never left
 # empty: a heading directly above the next heading reads as a mistake in
 # the file.
@@ -128,32 +122,10 @@ function title_version() {
 }
 
 # @description Write the changelog section for a version.
-# @arg $1 top the repository's top level
-# @arg $2 version
-# @arg $3 file where to write the section
+# @arg $1 version
+# @arg $2 file where to write the section
 function write_section() {
-  local -r top="$1" version="$2" file="$3"
-  if [[ "${version}" == "${FIRST_STABLE}" && -f "${top}/${FIRST_STABLE_NOTES}" ]]; then
-    # The notes file is a body with no heading of its own, so it carries a
-    # markdownlint directive saying so. The directive is about that file:
-    # copied along, it would switch the same rule off for all of
-    # CHANGELOG.md. The blank lines left around it are dropped as well.
-    local line notes=''
-    while IFS= read -r line || [[ -n "${line}" ]]; do
-      if [[ "${line}" == '<!-- markdownlint-'*' -->' ]]; then
-        continue
-      fi
-      notes+="${line}"$'\n'
-    done < "${top}/${FIRST_STABLE_NOTES}"
-    while [[ "${notes}" == *$'\n\n' ]]; do
-      notes="${notes%$'\n'}"
-    done
-    if [[ -z "${notes//[[:space:]]/}" ]]; then
-      notes="${EMPTY_SECTION}"$'\n'
-    fi
-    printf '## %s\n\n%s' "${version}" "${notes}" > "${file}"
-    return 0
-  fi
+  local -r version="$1" file="$2"
   local section
   section="$("${RELEASE_VERSION}" section "${version}")" || exit 1
   # A version given by hand over commits that release nothing has a heading
@@ -316,7 +288,7 @@ function main() {
   work="$(mktemp --directory)"
   local -r section="${work}/section.md" new="${work}/CHANGELOG.md" body="${work}/body.md"
   local -r encoded="${work}/CHANGELOG.md.base64"
-  write_section "${top}" "${version}" "${section}"
+  write_section "${version}" "${section}"
   "${RELEASE_VERSION}" prepend "${changelog}" "${section}" > "${new}" || exit 1
   # A generated section is formatter-clean only for ordinary subjects, and
   # the formatting gate judges the committed file, so the file is formatted
