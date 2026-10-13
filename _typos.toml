@@ -12,4 +12,4 @@
 # ordinary typo in prose the maintainers wrote themselves, not a false
 # positive worth suppressing.
 [files]
-extend-exclude = ["flake.lock", "testdata/**", "/CHANGELOG.md"]
+extend-exclude = ["flake.lock", "**/testdata/**", "/CHANGELOG.md"]

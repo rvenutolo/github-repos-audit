@@ -2,7 +2,7 @@
   "Exclude": [
     "^flake\\.lock$",
     "^go\\.sum$",
-    "^testdata/",
+    "(^|/)testdata/",
     "\\.go$",
     "\\.nix$",
     "\\.md$",
