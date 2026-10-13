@@ -2,6 +2,8 @@ package github_test
 
 import (
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -734,6 +736,50 @@ func TestClient_Collect_abortsOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "automated-security-fixes") {
 		t.Errorf("error does not name the endpoint that failed: %v", err)
+	}
+}
+
+// TestFakeAPI_abandonedGraphQLRequest holds the fake to what an abandoned
+// request means: a client that goes away before its body is whole has not sent
+// a bad request, so the fake does not fail the test over it. Collect abandons
+// every request in flight once one repository has failed, and how much of a
+// body is on the wire by then is the scheduler's choice, so a fake that failed
+// here would fail the tests of the abort paths now and then.
+func TestFakeAPI_abandonedGraphQLRequest(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", strings.TrimPrefix(api.url(), "http://"))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	// The length promises more than is sent, which is what the server sees of
+	// a request cut off between two writes.
+	const cutShort = "POST /graphql HTTP/1.1\r\nHost: fake\r\nContent-Type: application/json\r\n" +
+		"Content-Length: 4096\r\n\r\n" + `{"query":"query {`
+	if _, err := io.WriteString(conn, cutShort); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	// The client goes away only once the handler has the request: a
+	// connection closed before that never reaches the handler at all, and the
+	// test would pass without asking it anything.
+	deadline := time.After(10 * time.Second)
+	for api.callsTo("/graphql") == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("the fake never saw the request")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Closing the server waits for the handler, so whatever it reported is
+	// reported before the test ends.
+	api.close()
+	if got := len(api.graphQLVariables()); got != 0 {
+		t.Errorf("the fake recorded %d queries from a request that never arrived whole, want 0", got)
 	}
 }
 
