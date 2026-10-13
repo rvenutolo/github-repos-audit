@@ -152,7 +152,7 @@ function count_lines_with() {
   printf '%s\n' "${count}"
 }
 
-# Case 1: only an exact vMAJOR.MINOR.PATCH is a version.
+# Only an exact vMAJOR.MINOR.PATCH is a version.
 function test_validate() {
   local rc=0 version
   for version in 'v1.2.3' 'v0.0.0' 'v10.20.30'; do
@@ -165,7 +165,7 @@ function test_validate() {
   return "${rc}"
 }
 
-# Case 2: the highest reachable release tag, in semver order.
+# The highest reachable release tag, in semver order.
 function test_last_tag() {
   local rc=0 repo
   repo="$(make_repo)"
@@ -182,10 +182,10 @@ function test_last_tag() {
   git -C "${repo}" tag v3.0
   check 'last-tag ignores tags that are not releases' "${repo}" 0 'v1.10.0' last-tag || rc=1
 
-  git -C "${repo}" checkout --quiet -b side
+  git -C "${repo}" switch --quiet --create side
   commit "${repo}" 'fix: c'
   git -C "${repo}" tag v9.0.0
-  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" switch --quiet main
   check 'last-tag ignores a tag HEAD does not reach' "${repo}" 0 'v1.10.0' last-tag || rc=1
 
   # An older commit may carry the higher version; the order is by version.
@@ -227,7 +227,7 @@ function test_shallow_clone() {
   return "${rc}"
 }
 
-# Case 3: strictly greater, by number.
+# Strictly greater, by number.
 function test_greater() {
   local rc=0
   check 'greater v1.0.0 v0.1.0' "${work}" 0 '' greater v1.0.0 v0.1.0 || rc=1
@@ -241,7 +241,7 @@ function test_greater() {
   return "${rc}"
 }
 
-# Case 4: the bump the commits since the last release call for.
+# The bump the commits since the last release call for.
 function test_next() {
   local rc=0 repo
 
@@ -289,10 +289,10 @@ function test_next() {
   # not a higher one HEAD does not reach, not a pre-release, and not a lower
   # release tagged later.
   repo="$(make_tagged_repo v1.0.0)"
-  git -C "${repo}" checkout --quiet -b side
+  git -C "${repo}" switch --quiet --create side
   commit "${repo}" 'feat!: side'
   git -C "${repo}" tag v5.0.0
-  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" switch --quiet main
   commit "${repo}" 'fix: a'
   git -C "${repo}" tag v1.0.1-rc.1
   check 'next ignores an unreachable tag and a pre-release' "${repo}" 0 'v1.0.1' next || rc=1
@@ -317,7 +317,7 @@ function test_next() {
   return "${rc}"
 }
 
-# Case 5: what a section holds and in what order.
+# What a section holds and in what order.
 function test_section() {
   local rc=0 repo out want
   repo="$(make_tagged_repo v1.0.0)"
@@ -526,15 +526,15 @@ EOF
   return "${rc}"
 }
 
-# Case 6: a merge commit repeats the subject of the commit it merges, with a
+# A merge commit repeats the subject of the commit it merges, with a
 # pull request number appended. It is dropped by its SHA, so the change is
 # listed once and the merge subject never decides the bump.
 function test_merge_commits() {
   local rc=0 repo out
   repo="$(make_tagged_repo v1.0.0)"
-  git -C "${repo}" checkout --quiet -b topic
+  git -C "${repo}" switch --quiet --create topic
   commit "${repo}" 'fix: one thing'
-  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" switch --quiet main
   git -C "${repo}" merge --quiet --no-ff --message 'fix: one thing (#7)' topic
   out="$(cd "${repo}" && "${SCRIPT}" section v1.0.1 2> "${work}/stderr")" || {
     ci::log "FAIL: section over a merge exited non-zero (stderr: $(< "${work}/stderr"))"
@@ -555,23 +555,23 @@ function test_merge_commits() {
   # A breaking change keeps its one entry too: nothing may shield a merge
   # commit from being dropped because its subject is marked breaking.
   repo="$(make_tagged_repo v1.0.0)"
-  git -C "${repo}" checkout --quiet -b topic
+  git -C "${repo}" switch --quiet --create topic
   commit "${repo}" 'feat!: drop gadget'
-  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" switch --quiet main
   git -C "${repo}" merge --quiet --no-ff --message 'feat!: drop gadget (#9)' topic
   check 'section lists a merged breaking change once' "${repo}" 0 $'## v2.0.0\n\n### Breaking changes\n\n- drop gadget' section v2.0.0 || rc=1
 
   # A merge whose subject claims more than the commits it merges.
   repo="$(make_tagged_repo v1.0.0)"
-  git -C "${repo}" checkout --quiet -b topic
+  git -C "${repo}" switch --quiet --create topic
   commit "${repo}" 'docs: reword'
-  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" switch --quiet main
   git -C "${repo}" merge --quiet --no-ff --message 'feat!: reword (#8)' topic
   check 'next ignores a merge subject' "${repo}" 0 '' next || rc=1
   return "${rc}"
 }
 
-# Case 7: the newest version a changelog names.
+# The newest version a changelog names.
 function test_top() {
   local rc=0
   local -r file="${work}/top.md"
@@ -593,7 +593,7 @@ function test_top() {
   return "${rc}"
 }
 
-# Case 8: one version's body, without its heading.
+# One version's body, without its heading.
 function test_notes() {
   local rc=0
   local -r file="${work}/notes.md"
@@ -609,7 +609,7 @@ function test_notes() {
   return "${rc}"
 }
 
-# Case 9: a new section goes above every older one.
+# A new section goes above every older one.
 function test_prepend() {
   local rc=0
   local -r section="${work}/section.md" file="${work}/prepend.md" want="${work}/want.md" got="${work}/got.md"
@@ -713,7 +713,7 @@ EOF
   return "${rc}"
 }
 
-# Case 10: a call that cannot be meant is a usage error.
+# A call that cannot be meant is a usage error.
 function test_usage() {
   local rc=0
   check 'no subcommand' "${work}" 2 '' || rc=1

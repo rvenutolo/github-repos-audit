@@ -32,6 +32,13 @@ readonly RELEASE_VERSION="${REPO_DIR}/.ci/release-version"
 # The number the stub gives the open release pull request.
 readonly PR='7'
 
+# The reads the script makes before it decides anything, as the stub logs
+# them. A run that stops early must have made exactly some prefix of these
+# and nothing else.
+readonly READ_BRANCH='api repos/gh-owner/report --jq .default_branch'
+readonly READ_HEAD='api repos/gh-owner/report/git/ref/heads/main --jq .object.sha'
+readonly READ_PULLS='pr list --repo gh-owner/report --head chore/release --state open --json number,isCrossRepository --jq [.[] | select(.isCrossRepository | not)][0].number // empty'
+
 # What the last run_script call left behind, for the assertions after it.
 status=0
 last_repo=''
@@ -238,14 +245,33 @@ function want_no_call() {
   fi
 }
 
-# @description Fail when the last run made any call that changes GitHub.
+# @description Fail unless the last run made exactly these calls, in this
+#              order. This is how "wrote nothing" is asserted: the whole log
+#              is compared with the reads the run is entitled to, so a write
+#              of a kind nobody thought to look for fails too.
 # @arg $1 case name
-function want_no_write() {
-  local rc=0 needle
-  for needle in '--method POST' '--method PATCH' 'graphql' 'pr create' 'pr edit' 'pr reopen' 'pr merge'; do
-    want_no_call "$1" "${needle}" || rc=1
-  done
-  return "${rc}"
+# @arg $@ the expected calls; none when gh must not be called at all
+function want_only_calls() {
+  local -r name="$1"
+  shift
+  # IFS starts with a newline, so "$*" is one call per line, as the log is.
+  local -r want="$*"
+  if [[ "${calls}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: gh calls were: ${calls:-(none)}; want exactly: ${want:-(none)}"
+    return 1
+  fi
+}
+
+# @description Fail unless the last run's log output contains a fixed
+#              string. An exit status alone does not say which early return
+#              produced it.
+# @arg $1 case name
+# @arg $2 fixed string
+function want_log() {
+  if [[ "${errors}" != *"$2"* ]]; then
+    ci::log "FAIL: $1: the script did not say '$2' (stderr: ${errors})"
+    return 1
+  fi
 }
 
 # @description Print the changelog the last run committed: the base64 file
@@ -283,7 +309,7 @@ function want_no_text() {
   fi
 }
 
-# Cases 1, 11 and 12: a feature since the release files a new pull request
+# A feature since the release files a new pull request
 # for the next minor version, and never merges it.
 function test_files_a_new_pull_request() {
   local rc=0 repo changelog
@@ -335,13 +361,13 @@ function test_files_a_new_pull_request() {
     rc=1
   fi
 
-  # Case 11: what is committed is what the formatting gate accepts.
+  # What is committed is what the formatting gate accepts.
   if ! prettier --config "${REPO_DIR}/.prettierrc.yaml" --check "${work}/CHANGELOG.md" > "${work}/prettier.log" 2>&1; then
     ci::log "FAIL: ${name}: the committed changelog is not prettier-clean: $(< "${work}/prettier.log")"
     rc=1
   fi
 
-  # Case 12: the commit lands on a branch commitlint judges.
+  # The commit lands on a branch commitlint judges.
   if ! printf 'chore(release): v1.1.0\n' | commitlint --config "${REPO_DIR}/.commitlintrc.yml" > "${work}/commitlint.log" 2>&1; then
     ci::log "FAIL: commitlint rejects the release headline: $(< "${work}/commitlint.log")"
     rc=1
@@ -349,7 +375,73 @@ function test_files_a_new_pull_request() {
   return "${rc}"
 }
 
-# Case 2: nothing releasable and no pull request is nothing to do.
+# A release branch left behind by a closed or merged pull request is moved,
+# not created, and a new pull request is opened on it.
+function test_branch_without_pull_request() {
+  local rc=0 repo sha
+  local -r name='the branch exists with no open pull request'
+  repo="$(make_repo v1.0.0)"
+  : > "${repo}/.stub/branch-exists"
+  commit "${repo}" 'feat: add widget'
+  sha="$(git -C "${repo}" rev-parse HEAD)"
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  local -r reset="api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=${sha} --field force=true"
+  want_call "${name}" "${reset}" || rc=1
+  want_no_call "${name}" '--method POST' || rc=1
+  want_no_call "${name}" 'pr edit' || rc=1
+  want_no_call "${name}" 'pr reopen' || rc=1
+  # In that order: the reset, the commit, then the pull request.
+  local rest="${calls#*"${reset}"}"
+  rest="${rest#*'api graphql '}"
+  if [[ "${rest}" != *'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 '* ]]; then
+    ci::log "FAIL: ${name}: no pull request was created after the reset and the commit (calls: ${calls})"
+    rc=1
+  fi
+  return "${rc}"
+}
+
+# A commit subject is text. Whatever a shell or a Markdown renderer would
+# make of it, it reaches the changelog and the pull request as it was
+# written, and it cannot pass for a heading.
+function test_subject_is_literal_text() {
+  local rc=0 repo changelog body top
+  local -r name='a subject full of metacharacters'
+  repo="$(make_repo v1.0.0)"
+  # shellcheck disable=SC2016 # the point: nothing in the subject expands
+  commit "${repo}" 'feat: say "hi" to `x`, $(echo PAYLOAD_RAN), $HOME and <!-- x -->'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
+  changelog="$(committed_changelog)"
+  body="$(pull_request_body)"
+  local text needle
+  for text in "${changelog}" "${body}"; do
+    # shellcheck disable=SC2016 # literal on purpose, as above
+    for needle in 'say "hi" to `x`, $(echo PAYLOAD_RAN), $HOME and ' '!-- x -->'; do
+      want_text "${name}" "${text}" "${needle}" || rc=1
+    done
+    # Escaped, so it is shown and does not open a comment that hides what
+    # follows it.
+    want_no_text "${name}" "${text}" ' <!--' || rc=1
+    want_text "${name}" "${text}" '\<!-- x -->' || rc=1
+    # shellcheck disable=SC2016 # literal on purpose, as above
+    want_no_text "${name}" "${text//'$(echo PAYLOAD_RAN)'/}" 'PAYLOAD_RAN' || rc=1
+  done
+  printf '%s\n' "${changelog}" > "${work}/CHANGELOG.md"
+  top="$("${RELEASE_VERSION}" top "${work}/CHANGELOG.md" 2> /dev/null)" || top='(unreadable)'
+  if [[ "${top}" != 'v1.1.0' ]]; then
+    ci::log "FAIL: ${name}: the committed changelog's top is '${top}', want v1.1.0: ${changelog}"
+    rc=1
+  fi
+  if ! prettier --config "${REPO_DIR}/.prettierrc.yaml" --check "${work}/CHANGELOG.md" > "${work}/prettier.log" 2>&1; then
+    ci::log "FAIL: ${name}: the committed changelog is not prettier-clean: $(< "${work}/prettier.log")"
+    rc=1
+  fi
+  return "${rc}"
+}
+
+# Nothing releasable and no pull request is nothing to do.
 function test_nothing_to_release() {
   local rc=0 repo
   local -r name='only docs since the tag'
@@ -357,11 +449,12 @@ function test_nothing_to_release() {
   commit "${repo}" 'docs: tidy'
   run_script "${repo}"
   want_status "${name}" 0 || rc=1
-  want_no_write "${name}" || rc=1
+  want_log "${name}" 'nothing to release' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" "${READ_PULLS}" || rc=1
   return "${rc}"
 }
 
-# Case 3: a version given by hand is the version.
+# A version given by hand is the version.
 function test_explicit_version() {
   local rc=0 repo changelog
   local name='--version v3.0.0'
@@ -402,7 +495,7 @@ function test_explicit_version() {
   return "${rc}"
 }
 
-# Case 4 (a push while a manually versioned pull request is open): the open
+# A push while a manually versioned pull request is open: the open
 # pull request's version is not lowered, and the pull request is kept.
 function test_open_version_is_not_lowered() {
   local rc=0 repo changelog
@@ -450,7 +543,7 @@ function test_open_version_is_not_lowered() {
   return "${rc}"
 }
 
-# Case 5: the open pull request's version is raised when the commits call
+# The open pull request's version is raised when the commits call
 # for more.
 function test_open_version_is_raised() {
   local rc=0 repo
@@ -508,41 +601,43 @@ function test_fork_pull_request_is_ignored() {
   return "${rc}"
 }
 
-# Case 6: a version that is not above the last release is refused.
+# A version that is not above the last release is refused.
 function test_explicit_version_refused() {
   local rc=0 repo
   repo="$(make_repo v1.0.0)"
   commit "${repo}" 'feat: add widget'
   run_script "${repo}" --version v1.0.0
   want_status '--version of an existing tag' 1 || rc=1
-  want_no_write '--version of an existing tag' || rc=1
+  want_only_calls '--version of an existing tag' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
   run_script "${repo}" --version v0.9.0
   want_status '--version below the last tag' 1 || rc=1
-  want_no_write '--version below the last tag' || rc=1
+  want_only_calls '--version below the last tag' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
 
   # Above the last release HEAD reaches, yet already a tag elsewhere.
-  git -C "${repo}" checkout --quiet -b side
+  git -C "${repo}" switch --quiet --create side
   commit "${repo}" 'feat!: side'
   git -C "${repo}" tag v2.0.0
-  git -C "${repo}" checkout --quiet main
+  git -C "${repo}" switch --quiet main
   run_script "${repo}" --version v2.0.0
   want_status '--version of a tag HEAD does not reach' 1 || rc=1
-  want_no_write '--version of a tag HEAD does not reach' || rc=1
+  want_only_calls '--version of a tag HEAD does not reach' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
 
   # A version that can never be released is refused even while another
   # release is being published, when the run would otherwise do nothing.
   printf '# Changelog\n\n## v1.1.0\n\n### Features\n\n- add widget\n' > "${repo}/CHANGELOG.md"
   run_script "${repo}" --version v1.0.0
   want_status '--version of an existing tag, mid-publish' 1 || rc=1
-  want_no_write '--version of an existing tag, mid-publish' || rc=1
+  want_only_calls '--version of an existing tag, mid-publish' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
   run_script "${repo}" --version v0.9.0
   want_status '--version below the last tag, mid-publish' 1 || rc=1
+  want_only_calls '--version below the last tag, mid-publish' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
   run_script "${repo}" --version v2.0.0
   want_status '--version of an unreachable tag, mid-publish' 1 || rc=1
+  want_only_calls '--version of an unreachable tag, mid-publish' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
   return "${rc}"
 }
 
-# Case 7: a version that is not vMAJOR.MINOR.PATCH is refused before
+# A version that is not vMAJOR.MINOR.PATCH is refused before
 # anything is asked of GitHub, as is every other malformed call.
 function test_usage() {
   local rc=0 repo version
@@ -551,23 +646,18 @@ function test_usage() {
   for version in '1.1.0' 'v1.1' 'v1.1.0-rc.1' ''; do
     run_script "${repo}" --version "${version}"
     want_status "--version '${version}'" 2 || rc=1
-    if [[ -n "${calls}" ]]; then
-      ci::log "FAIL: --version '${version}': gh was called: ${calls}"
-      rc=1
-    fi
+    want_only_calls "--version '${version}'" || rc=1
   done
   run_script "${repo}" --version
   want_status '--version with no value' 2 || rc=1
+  want_only_calls '--version with no value' || rc=1
   run_script "${repo}" --bogus
   want_status 'an unknown argument' 2 || rc=1
-  if [[ -n "${calls}" ]]; then
-    ci::log "FAIL: an unknown argument: gh was called: ${calls}"
-    rc=1
-  fi
+  want_only_calls 'an unknown argument' || rc=1
   return "${rc}"
 }
 
-# Case 8: between the merge of a release pull request and its tag, the next
+# Between the merge of a release pull request and its tag, the next
 # release is not proposed.
 function test_mid_publish() {
   local rc=0 repo
@@ -578,18 +668,19 @@ function test_mid_publish() {
   commit "${repo}" 'fix: pad columns'
   run_script "${repo}"
   want_status "${name}" 0 || rc=1
-  want_no_write "${name}" || rc=1
+  want_log "${name}" 'release v1.1.0 is being published' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
 
   # A first heading that is not a version is a failure, and nothing is
   # written over it.
   printf '# Changelog\n\n## Unreleased\n\n- add widget\n' > "${repo}/CHANGELOG.md"
   run_script "${repo}"
   want_status 'a malformed first heading' 1 || rc=1
-  want_no_write 'a malformed first heading' || rc=1
+  want_only_calls 'a malformed first heading' "${READ_BRANCH}" "${READ_HEAD}" || rc=1
   return "${rc}"
 }
 
-# Case 9: the first stable release carries its hand-written notes, not the
+# The first stable release carries its hand-written notes, not the
 # commit list.
 function test_first_stable_release() {
   local rc=0 repo changelog
@@ -636,7 +727,7 @@ function test_first_stable_release() {
   return "${rc}"
 }
 
-# Case 10: the changelog is generated from the commit it is committed onto,
+# The changelog is generated from the commit it is committed onto,
 # or not at all.
 function test_stale_checkout() {
   local rc=0 repo
@@ -646,7 +737,8 @@ function test_stale_checkout() {
   printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001\n' > "${repo}/.stub/main-sha"
   run_script "${repo}"
   want_status "${name}" 1 || rc=1
-  want_no_write "${name}" || rc=1
+  want_log "${name}" 'HEAD is ' || rc=1
+  want_only_calls "${name}" "${READ_BRANCH}" "${READ_HEAD}" || rc=1
   return "${rc}"
 }
 
@@ -656,6 +748,8 @@ function main() {
   write_skeleton
 
   test_files_a_new_pull_request || rc=1
+  test_branch_without_pull_request || rc=1
+  test_subject_is_literal_text || rc=1
   test_nothing_to_release || rc=1
   test_explicit_version || rc=1
   test_open_version_is_not_lowered || rc=1
