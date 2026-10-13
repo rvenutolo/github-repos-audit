@@ -9,9 +9,10 @@
 #              before it is a draft release, which has no tag and can be
 #              deleted: the files are uploaded to the draft, the draft is
 #              read back and every asset held to the SHA-256 of the local
-#              file it was uploaded from, and only then is it published. Publishing is what creates the tag, at the
-#              commit the draft targets. A run that fails before that leaves
-#              at most a draft, which the next run replaces.
+#              file it was uploaded from, and only then is it published.
+#              Publishing is what creates the tag, at the commit the draft
+#              targets. A run that fails before that leaves at most a
+#              draft, which the next run replaces.
 #
 #              Run from a checkout of the commit being released; CHANGELOG.md
 #              is read from the top of the repository the current directory
@@ -441,7 +442,10 @@ function write_notes() {
     printf 'A caller pins the reusable workflows to the commit of this release, with the version in a comment:\n\n'
     # shellcheck disable=SC2016 # the backticks are a Markdown fence
     printf '```yaml\nuses: %s/.github/workflows/audit.yml@%s # %s\n```\n\n' "${repo}" "${sha}" "${version}"
-    printf 'See Verifying a release in the README.\n'
+    # The README as it is at the tag: the commands there are the ones that
+    # go with these files, whatever the default branch says by then.
+    printf 'See [Verifying a release](https://github.com/%s/blob/%s/README.md#verifying-a-release) in the README.\n' \
+      "${repo}" "${version}"
   } > "${file}"
 }
 

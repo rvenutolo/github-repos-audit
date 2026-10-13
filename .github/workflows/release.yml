@@ -3,7 +3,8 @@ name: release
 # Propose a release, publish one, or prove that the release assets still
 # build.
 #
-# propose keeps one pull request open, titled chore(release): vX.Y.Z, that
+# propose holds one pull request open whenever something releasable has
+# merged since the last release, titled chore(release): vX.Y.Z, that
 # changes CHANGELOG.md and nothing else. The version is computed from the
 # Conventional Commit types merged since the last tag, unless the version
 # input names one. Merging that pull request is the release decision, so

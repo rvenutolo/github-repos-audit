@@ -125,7 +125,8 @@ cut
 tr
 # .ci/check-account-data matches its patterns with `grep --extended-regexp`
 # and `grep --fixed-strings`; .ci/check-patch-coverage's test greps its own
-# findings. GNU long options, so gnugrep, not a BSD grep.
+# findings, and .ci/test-release-publish the README for the heading the
+# release notes link to. GNU long options, so gnugrep, not a BSD grep.
 grep
 # .ci/check-account-data strips allowed occurrences with `sed --regexp-extended`
 # and escapes names for the pattern file; .ci/gremlins-pull-request reads the

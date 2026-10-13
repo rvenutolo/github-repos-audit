@@ -75,8 +75,8 @@ of the interface:
    you set it in the caller instead, where the name is unambiguous.
 
    The SHA in each `uses:` line below is a placeholder, not a real commit.
-   The real line, with the right SHA and version comment, is at the end of
-   the latest release's notes on the Releases page.
+   The commit SHA and the version comment to pin are in the latest release's
+   notes on the Releases page.
 
    ```yaml
    # .github/workflows/audit.yml — daily report refresh. When something
@@ -328,7 +328,8 @@ Three ways to get an `audit` binary:
   carries one binary per platform, named `audit-<os>-<arch>`
   (`audit-linux-amd64`, `audit-linux-arm64`, `audit-darwin-amd64`,
   `audit-darwin-arm64` and `audit-windows-amd64.exe`), a CycloneDX SBOM
-  `audit.cdx.json` and `SHA256SUMS`. On Linux and macOS, make the download
+  `audit.cdx.json`, the checksum list `SHA256SUMS` and its signature
+  `SHA256SUMS.sigstore.json`. On Linux and macOS, make the download
   executable first: `chmod +x audit-<os>-<arch>`.
 - **A clone**, which needs only Nix: `./.ci/in-devshell go run ./cmd/audit`.
 
@@ -338,7 +339,7 @@ environment, or a logged-in `gh` (the token comes from `gh auth token`).
 
 ## Verifying a release
 
-Download the release's files from its page on the Releases page, or with
+Download the release's files from the Releases page, or with
 `gh release download <tag> --repo rvenutolo/github-repos-audit`, into one
 directory, and run the commands there. `audit.cdx.json` is the CycloneDX
 SBOM (software bill of materials) for the binaries.
@@ -348,8 +349,10 @@ sha256sum --check --ignore-missing SHA256SUMS
 ```
 
 This ties each downloaded file to the checksum list, so a corrupted or
-swapped file fails. The list is only as trustworthy as its signature, which
-the next command checks.
+swapped file fails. Stock macOS has no `sha256sum`; there, with every file
+of the release downloaded, run `shasum --algorithm 256 --check SHA256SUMS`.
+The list is only as trustworthy as its signature, which the next command
+checks.
 
 ```sh
 cosign verify-blob \
@@ -363,7 +366,8 @@ This proves `SHA256SUMS` was signed by this repository's release workflow
 running on `main`: the certificate identity in the command pins that workflow
 on `refs/heads/main`, so a signature made by any other workflow, or by this
 one on another branch, fails. The issuer is GitHub's OIDC token service.
-There is no long-lived signing key to steal.
+There is no long-lived signing key to steal. The bundle is written by
+cosign 3, and the command is for cosign 3.
 
 ```sh
 gh attestation verify audit-linux-amd64 \
@@ -393,9 +397,10 @@ A **major** release makes an incompatible change to any of these. Every new
 check is one, because a type in `repos.toml` that omits a check is a
 configuration error, so every consumer's `repos.toml` must change. The gate
 enforces this: it fails when the check list in `audit.schema.json` changes
-without a breaking-change marker on some commit in the change. A **minor** release is
-additive and a **patch** release is a fix. On a major bump, read the release
-notes; for a new check, add its key to every type and regenerate `audit.json`.
+without a breaking-change marker on some commit in the change. A **minor**
+release is additive and a **patch** release is a fix. On a major bump, read
+the release notes; for a new check, add its key to every type and regenerate
+`audit.json`.
 
 ## Development
 
@@ -427,8 +432,9 @@ Nix is expected to be installed on the host.
 | `just build-release` | cross-compile the release binaries, SBOM and checksums    |
 
 A release is proposed by `.github/workflows/release.yml`, which runs on every
-push to `main`. It keeps one pull request open, titled
-`chore(release): vX.Y.Z`, that changes only `CHANGELOG.md`. The version is
+push to `main`. Whenever something releasable has merged since the last
+release, it holds one pull request open, titled `chore(release): vX.Y.Z`,
+that changes only `CHANGELOG.md`. The version is
 computed from the Conventional Commit types merged since the last tag
 (breaking is major, `feat` minor, `fix`, `perf` and `revert` patch), or given
 by hand through the workflow's `version` input. Merging that pull request
@@ -437,8 +443,9 @@ binary's provenance and publish the release, which creates the tag on that
 merge commit. Only the workflow run of that commit publishes it, because the
 signature and the attestation name the commit their run started from; if
 that run is cancelled or fails, re-run it from the Actions page. A manual
-run with `dry-run` builds without tagging or releasing; adding `sign` signs
-the dry run's checksums and attests its binaries too.
+run with `dry-run` builds without tagging or releasing. Adding `sign` signs
+the dry run's checksums and attests its binaries too, for a trial from a
+branch other than `main`; on `main` such a run does nothing.
 
 Coverage is held three ways, all inside `just check`. Each package must stay
 at or above its figure in `.ci/coverage-baseline.txt`. Every Go block a

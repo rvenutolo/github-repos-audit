@@ -845,7 +845,13 @@ function test_release() {
   want_text "${name}" "${notes}" $'### Features\n\n- add widget\n\n' || rc=1
   want_text "${name}" "${notes}" 'Pin the reusable workflows' || rc=1
   want_text "${name}" "${notes}" $'```yaml\nuses: gh-owner/tool/.github/workflows/audit.yml@'"${SHA} # ${VERSION}"$'\n```' || rc=1
-  want_text "${name}" "${notes}" 'See Verifying a release in the README.' || rc=1
+  # The README at the tag, whose heading the anchor must match.
+  want_text "${name}" "${notes}" \
+    "See [Verifying a release](https://github.com/gh-owner/tool/blob/${VERSION}/README.md#verifying-a-release) in the README." || rc=1
+  if ! grep --quiet --line-regexp --fixed-strings '## Verifying a release' "${REPO_DIR}/README.md"; then
+    ci::log "FAIL: ${name}: README.md has no heading 'Verifying a release' for the notes to link to"
+    rc=1
+  fi
   # The section's own heading is the release's title, and the section below
   # belongs to another release.
   if [[ "${notes}" == *"## ${VERSION}"* || "${notes}" == *'The first stable release.'* ]]; then
