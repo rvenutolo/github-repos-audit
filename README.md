@@ -74,9 +74,9 @@ of the interface:
    would collide with whatever else in your repository shares that name, and
    you set it in the caller instead, where the name is unambiguous.
 
-   The SHA in each `uses:` line below is a placeholder, not a real commit:
-   there is no release yet, so replace it with the SHA of a released tag once
-   one exists.
+   The SHA in each `uses:` line below is a placeholder, not a real commit.
+   The real line, with the right SHA and version comment, is at the end of
+   the latest release's notes on the Releases page.
 
    ```yaml
    # .github/workflows/audit.yml — daily report refresh. When something
@@ -94,7 +94,7 @@ of the interface:
      group: ${{ github.workflow }}
    jobs:
      refresh:
-       uses: rvenutolo/github-repos-audit/.github/workflows/audit.yml@0123456789abcdef0123456789abcdef01234567 # v0.1.0
+       uses: rvenutolo/github-repos-audit/.github/workflows/audit.yml@0123456789abcdef0123456789abcdef01234567 # vX.Y.Z
        permissions:
          contents: read
        secrets:
@@ -114,7 +114,7 @@ of the interface:
      cancel-in-progress: true
    jobs:
      validate:
-       uses: rvenutolo/github-repos-audit/.github/workflows/validate.yml@0123456789abcdef0123456789abcdef01234567 # v0.1.0
+       uses: rvenutolo/github-repos-audit/.github/workflows/validate.yml@0123456789abcdef0123456789abcdef01234567 # vX.Y.Z
        permissions:
          contents: read
    ```
@@ -130,7 +130,7 @@ of the interface:
      workflow_dispatch: {}
    jobs:
      smoke:
-       uses: rvenutolo/github-repos-audit/.github/workflows/smoke.yml@0123456789abcdef0123456789abcdef01234567 # v0.1.0
+       uses: rvenutolo/github-repos-audit/.github/workflows/smoke.yml@0123456789abcdef0123456789abcdef01234567 # vX.Y.Z
        permissions:
          contents: read
        with:
@@ -336,6 +336,60 @@ Three ways to get an `audit` binary:
 `audit json` read your account from GitHub and need `GITHUB_TOKEN` in the
 environment, or a logged-in `gh` (the token comes from `gh auth token`).
 
+## Verifying a release
+
+Download the release's files from its page on the Releases page, or with
+`gh release download <tag> --repo rvenutolo/github-repos-audit`, into one
+directory, and run the commands there. `audit.cdx.json` is the CycloneDX
+SBOM (software bill of materials) for the binaries.
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+This ties each downloaded file to the checksum list, so a corrupted or
+swapped file fails. The list is only as trustworthy as its signature, which
+the next command checks.
+
+```sh
+cosign verify-blob \
+  --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity https://github.com/rvenutolo/github-repos-audit/.github/workflows/release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+```
+
+This proves `SHA256SUMS` was signed by this repository's release workflow
+running on `main`: the identity in the command is that workflow on
+`refs/heads/main`, and the issuer is GitHub's OIDC token service. There is no
+long-lived signing key to steal.
+
+```sh
+gh attestation verify audit-linux-amd64 --repo rvenutolo/github-repos-audit
+```
+
+This proves which workflow run, on which commit, built the binary (its build
+provenance). Run it for each binary you use.
+
+## Versioning
+
+Releases follow [semantic versioning](https://semver.org/). The public
+interface a version number speaks for is:
+
+- the keys and values of `repos.toml`,
+- the keys of `audit.json`,
+- the exit codes,
+- the commands and flags of `audit`,
+- the inputs and secrets of the reusable workflows.
+
+A **major** release makes an incompatible change to any of these. Every new
+check is one, because a type in `repos.toml` that omits a check is a
+configuration error, so every consumer's `repos.toml` must change. The gate
+enforces this: it fails when the check list in `audit.schema.json` changes
+without a breaking-change marker on some commit in the change. A **minor** release is
+additive and a **patch** release is a fix. On a major bump, read the release
+notes; for a new check, add its key to every type and regenerate `audit.json`.
+
 ## Development
 
 Every recipe below runs its tools through `.ci/in-devshell`, a hermetic
@@ -365,10 +419,16 @@ Nix is expected to be installed on the host.
 | `just gremlins-bump` | bump gremlins to its latest release; needs network        |
 | `just build-release` | cross-compile the release binaries, SBOM and checksums    |
 
-A release is proposed by running the `release` workflow by hand. It opens, or
-updates, one pull request titled `chore(release): vX.Y.Z` that changes only
-`CHANGELOG.md`. The version is computed from the Conventional Commit types
-merged since the last tag, unless the workflow is given one.
+A release is proposed by `.github/workflows/release.yml`, which runs on every
+push to `main`. It keeps one pull request open, titled
+`chore(release): vX.Y.Z`, that changes only `CHANGELOG.md`. The version is
+computed from the Conventional Commit types merged since the last tag
+(breaking is major, `feat` minor, `fix`, `perf` and `revert` patch), or given
+by hand through the workflow's `version` input. Merging that pull request
+makes the workflow build the binaries, sign `SHA256SUMS`, attest each
+binary's provenance and publish the release, which creates the tag. A manual
+run with `dry-run` builds without tagging or releasing; adding `sign` signs
+the dry run's checksums too.
 
 Coverage is held three ways, all inside `just check`. Each package must stay
 at or above its figure in `.ci/coverage-baseline.txt`. Every Go block a
