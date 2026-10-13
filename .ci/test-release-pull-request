@@ -37,7 +37,7 @@ readonly PR='7'
 # and nothing else.
 readonly READ_BRANCH='api repos/gh-owner/report --jq .default_branch'
 readonly READ_HEAD='api repos/gh-owner/report/git/ref/heads/main --jq .object.sha'
-readonly READ_PULLS='pr list --repo gh-owner/report --head chore/release --state open --json number,isCrossRepository --jq [.[] | select(.isCrossRepository | not)][0].number // empty'
+readonly READ_PULLS='pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq [.[] | select(.isCrossRepository == false)][0].number // empty'
 
 # What the last run_script call left behind, for the assertions after it.
 status=0
@@ -137,7 +137,7 @@ case "\$*" in
     fi
     ;;
   'api repos/gh-owner/report/git/ref/heads/chore/release') [[ -e '${dir}/branch-exists' ]] ;;
-  'pr list --repo gh-owner/report --head chore/release --state open --json number,isCrossRepository --jq '*)
+  'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq '*)
     # The script's own filter, the last argument, is run over the list, so
     # which pull request it picks is the script's doing and not the stub's.
     jq --raw-output "\${!#}" '${dir}/pr-list.json'
@@ -598,6 +598,18 @@ function test_fork_pull_request_is_ignored() {
   want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v3.0.0 " || rc=1
   want_no_call "${name}" ' 99 ' || rc=1
   want_no_call "${name}" 'pr create' || rc=1
+
+  # An answer that does not say where a pull request comes from is not
+  # taken to mean "from here".
+  name='a pull request whose origin is not stated'
+  repo="$(make_repo v1.0.0)"
+  printf '[{"number":98}]\n' > "${repo}/.stub/pr-list.json"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 ' || rc=1
+  want_no_call "${name}" 'pr view' || rc=1
+  want_no_call "${name}" 'pr edit' || rc=1
   return "${rc}"
 }
 
