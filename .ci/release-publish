@@ -54,9 +54,11 @@
 #             changelog has no section for the version, GITHUB_REPOSITORY
 #             is not set, GitHub cannot be asked, the tag or a published
 #             release of that name exists, the draft does not hold exactly
-#             the files as they are on disk, or
-#             the tag is not at the commit after the publish. Only the last
-#             of those leaves something that cannot be taken back.
+#             the files as they are on disk, or the tag is not at the
+#             commit after the publish. The tag is read a few times, a
+#             couple of seconds apart, because a tag just created is not
+#             always visible at once. Only that last failure leaves
+#             something that cannot be taken back.
 # @exitcode 2 a usage error: an unknown subcommand or argument, a missing
 #             option or value, a version that is not vMAJOR.MINOR.PATCH, or
 #             a --sha that is not a full commit id
@@ -104,6 +106,15 @@ readonly ASSET_FILTER='.assets[] | select(.state == "uploaded") | "\(.digest // 
 # expected number; the bound only keeps a GitHub that goes on answering
 # "draft" from holding the run forever.
 readonly MAX_DRAFTS=5
+
+# How often the tag is read after the publish, and how many seconds lie
+# between two reads. GitHub answers a read that follows a write from
+# wherever the request lands, so the tag a publish just created can be
+# missing for a moment; failing a good release over that would leave a
+# published release behind a red run. A handful of reads a couple of
+# seconds apart outlasts that moment and still ends.
+readonly TAG_READS=5
+readonly TAG_WAIT_SECONDS=2
 
 # work is global so the EXIT trap can still read it once main has returned.
 work=''
@@ -511,11 +522,24 @@ function release() {
     fail "could not publish the draft release ${version}; check whether the tag ${version} exists before running this again"
   fi
 
-  local tagged
-  tagged="$(remote_tag "${repo}" "${version}")" || exit 1
+  # Read until the tag is there. A read that fails outright has said why
+  # on stderr and is tried again like a missing tag: the release is
+  # published either way, and only an answer settles anything.
+  local tagged='' attempt
+  for ((attempt = 1; attempt <= TAG_READS; attempt++)); do
+    if ((attempt > 1)); then
+      sleep "${TAG_WAIT_SECONDS}"
+    fi
+    tagged="$(remote_tag "${repo}" "${version}")" || tagged=''
+    if [[ -n "${tagged}" ]]; then
+      break
+    fi
+    ci::log "the tag ${version} cannot be read yet (read ${attempt} of ${TAG_READS})"
+  done
   if [[ -z "${tagged}" ]]; then
-    fail "the release ${version} is published, but GitHub has no tag ${version}; it must point at ${sha}"
+    fail "the release ${version} is published, but GitHub shows no tag ${version} after ${TAG_READS} reads; it must point at ${sha}"
   fi
+  # A tag at another commit is an answer, and waiting does not change it.
   if [[ "${tagged}" != "${sha}" ]]; then
     fail "the release ${version} is published and its tag points at ${tagged}, not at ${sha}; the tag cannot be moved, so this needs a person"
   fi

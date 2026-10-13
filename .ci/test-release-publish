@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
 # @description Exercise .ci/release-publish inside throwaway repositories,
-#              with the real git and sha256sum and stand-ins for gh and
-#              cosign. Both stand-ins record every argument list they are
-#              handed; gh answers the script's reads from files the case
-#              writes, and cosign writes an inert marker where the bundle
-#              goes. No call reaches GitHub or a transparency log, and the
+#              with the real git and sha256sum and stand-ins for gh,
+#              cosign and sleep. Each stand-in records every argument list
+#              it is handed; gh answers the script's reads from files the
+#              case writes, cosign writes an inert marker where the bundle
+#              goes, and sleep returns at once, so the waits between two tag
+#              reads are counted and never waited. No call reaches GitHub or a transparency log, and the
 #              only side effects are files under one temporary directory.
 #
 #              The gh stand-in knows the exact argument list of every read
@@ -69,6 +70,7 @@ status=0
 last_repo=''
 calls=''
 signed=''
+slept=''
 output=''
 errors=''
 
@@ -148,6 +150,10 @@ function write_dist() {
 #                `unreachable` for a GitHub that cannot be asked
 #              - `tag-sha`: the commit the tag points at once the release is
 #                published; absent when publishing creates no tag
+#              - `tag-misses`: how many reads after the publish go by before
+#                the tag shows; absent for none
+#              - `tag-miss-status`: present to make those misses failed
+#                reads and not 404s
 #
 #              A write only logs, and leaves a marker: `deleted` after a
 #              delete, which is what makes the next state read say there is
@@ -209,8 +215,21 @@ case "\$*" in
         exit 1
       fi
       cat '${dir}/remote-tag'
-    elif [[ -e '${dir}/published' && -e '${dir}/tag-sha' ]]; then
+      exit 0
+    fi
+    misses=0
+    if [[ -e '${dir}/published' ]]; then
+      echo read >> '${dir}/tag-reads'
+      if [[ -e '${dir}/tag-misses' ]]; then
+        misses="\$(< '${dir}/tag-misses')"
+      fi
+    fi
+    if [[ -e '${dir}/published' && -e '${dir}/tag-sha' ]] \\
+      && ((\$(wc --lines < '${dir}/tag-reads') > misses)); then
       cat '${dir}/tag-sha'
+    elif [[ -e '${dir}/published' && -e '${dir}/tag-miss-status' ]]; then
+      echo 'gh: Bad Gateway (HTTP 502)' >&2
+      exit 1
     else
       # As gh answers a 404: the body on stdout, the status on stderr.
       echo '{"message":"Not Found","status":"404"}'
@@ -238,7 +257,12 @@ while ((\$# > 1)); do
   shift
 done
 STUB
-  chmod +x "${dir}/bin/gh" "${dir}/bin/cosign"
+  cat > "${dir}/bin/sleep" << STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '${dir}/sleep.log'
+STUB
+  : > "${dir}/sleep.log"
+  chmod +x "${dir}/bin/gh" "${dir}/bin/cosign" "${dir}/bin/sleep"
 }
 
 # @description Run the script in a repository with the stand-ins first on
@@ -253,6 +277,7 @@ STUB
 # @set calls string every gh call it made, one argument list per line, with
 #                   the notes file's path replaced by NOTES
 # @set signed string every cosign call it made
+# @set slept string every wait it asked for, one per line, in seconds
 # @set output string its stdout
 # @set errors string its stderr
 function run_script() {
@@ -262,6 +287,7 @@ function run_script() {
   last_repo="${repo}"
   : > "${repo}/.stub/calls.log"
   : > "${repo}/.stub/cosign.log"
+  : > "${repo}/.stub/sleep.log"
   : > "${repo}/.stub/notes.md"
   (
     cd "${repo}"
@@ -270,6 +296,7 @@ function run_script() {
   ) || status=$?
   calls="$(< "${repo}/.stub/calls.log")"
   signed="$(< "${repo}/.stub/cosign.log")"
+  slept="$(< "${repo}/.stub/sleep.log")"
   output="$(< "${repo}/.stub/stdout")"
   errors="$(< "${repo}/.stub/stderr")"
   if [[ "${calls}" =~ --notes-file\ ([^ ]+) ]]; then
@@ -503,6 +530,7 @@ function test_release() {
   want_status "${name}" 0 || rc=1
   # write_create holds --draft, --target and all eight paths.
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" '' || rc=1
 
   # The ordering invariant, said once more on its own: the draft, then the
   # look at its assets, then the publish. Publishing is what creates the tag.
@@ -683,12 +711,47 @@ function test_draft_is_incomplete() {
   printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002\n' > "${repo}/.stub/tag-sha"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_text "${name}" "${errors}" 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002' || rc=1
+  want_text "${name}" "${errors}" 'its tag points at bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002' || rc=1
+  # An answer, so it is not asked for again.
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" '' || rc=1
+  return "${rc}"
+}
 
-  name='release: the tag does not exist after the publish'
+# The tag a publish creates is not always readable at once. The read is
+# tried again a bounded number of times, with a wait between two reads.
+function test_tag_read_is_retried() {
+  local rc=0 repo
+  local name='release: the tag shows on the third read'
+  repo="$(make_repo '')"
+  printf '%s\n' "${SHA}" > "${repo}/.stub/tag-sha"
+  printf '2\n' > "${repo}/.stub/tag-misses"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 0 || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" \
+    "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" $'2\n2' || rc=1
+
+  # A read that fails outright is tried again too: the release is out.
+  name='release: the tag read fails twice, then answers'
+  repo="$(make_repo '')"
+  printf '%s\n' "${SHA}" > "${repo}/.stub/tag-sha"
+  printf '2\n' > "${repo}/.stub/tag-misses"
+  : > "${repo}/.stub/tag-miss-status"
+  run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
+  want_status "${name}" 0 || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" \
+    "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" $'2\n2' || rc=1
+
+  name='release: the tag never shows after the publish'
   repo="$(make_repo '')"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
+  want_text "${name}" "${errors}" "GitHub shows no tag ${VERSION} after 5 reads" || rc=1
+  want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" "${WRITE_EDIT}" \
+    "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" "${READ_TAG}" || rc=1
+  want_same "${name}" 'the waits' "${slept}" $'2\n2\n2\n2' || rc=1
   return "${rc}"
 }
 
@@ -801,6 +864,7 @@ function main() {
   test_existing_release || rc=1
   test_existing_tag || rc=1
   test_draft_is_incomplete || rc=1
+  test_tag_read_is_retried || rc=1
   test_bad_dist || rc=1
   test_usage || rc=1
 

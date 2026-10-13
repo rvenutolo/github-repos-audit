@@ -108,6 +108,9 @@ awk
 # .ci/build-release orders SHA256SUMS with it and .ci/release-publish the
 # file names it compares
 sort
+# .ci/release-publish waits with it between two reads of the tag a publish
+# created
+sleep
 # .ci/build-release writes SHA256SUMS with it; .ci/release-publish holds the
 # files to that list before it uploads them
 sha256sum
