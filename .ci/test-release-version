@@ -419,6 +419,35 @@ function test_exact_types() {
   return "${rc}"
 }
 
+# A revert changes what the release does as surely as the commit it undoes,
+# so it is listed, in a group of its own after the others, and is a reason to
+# release a patch.
+function test_reverts() {
+  local rc=0 repo
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'revert: feat: add widget'
+  check 'next after a revert' "${repo}" 0 'v1.0.1' next || rc=1
+  check 'section lists a revert' "${repo}" 0 $'## v1.0.1\n\n### Reverts\n\n- feat: add widget' section v1.0.1 || rc=1
+
+  commit "${repo}" 'fix: a'
+  commit "${repo}" 'revert(cli): fix: b'
+  commit "${repo}" 'feat: c'
+  commit "${repo}" 'reverting: not a revert'
+  check 'next after a revert and a feature' "${repo}" 0 'v1.1.0' next || rc=1
+  check 'section lists reverts last' "${repo}" 0 \
+    $'## v1.1.0\n\n### Features\n\n- c\n\n### Fixes\n\n- a\n\n### Reverts\n\n- feat: add widget\n- **cli:** fix: b' \
+    section v1.1.0 || rc=1
+
+  # A revert marked breaking is breaking, and listed once.
+  repo="$(make_tagged_repo v1.0.0)"
+  commit "${repo}" 'revert!: feat: add widget' 'BREAKING CHANGE: the widget is gone again'
+  check 'next after a breaking revert' "${repo}" 0 'v2.0.0' next || rc=1
+  check 'section lists a breaking revert as breaking' "${repo}" 0 \
+    $'## v2.0.0\n\n### Breaking changes\n\n- feat: add widget\n\n  the widget is gone again' \
+    section v2.0.0 || rc=1
+  return "${rc}"
+}
+
 # A subject is text, not markup. `<owner>` left as it is reads as an HTML tag:
 # it disappears when rendered and markdownlint rejects it, and a merged
 # subject cannot be reworded. Inside a code span it is already literal.
@@ -698,6 +727,7 @@ function main() {
   test_next || rc=1
   test_section || rc=1
   test_exact_types || rc=1
+  test_reverts || rc=1
   test_angle_brackets || rc=1
   test_merge_commits || rc=1
   test_top || rc=1

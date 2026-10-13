@@ -8,9 +8,13 @@
 # git-cliff contributes neither a header nor a footer.
 header = ""
 footer = ""
-# A heading, then up to three groups in a fixed order. No date: the tag and
-# the GitHub release carry it, and a date here would differ between the day
-# the section is drafted and the day it ships.
+# A heading, then the groups that have commits, in a fixed order: breaking
+# changes, features, fixes, reverts. A revert is listed because it changes
+# what the release does as surely as the commit it undoes; its entry is the
+# subject it reverts, type included, which is what says what went away.
+#
+# No date: the tag and the GitHub release carry it, and a date here would
+# differ between the day the section is drafted and the day it ships.
 #
 # A breaking commit is listed under "Breaking changes" only, whatever its
 # type, so each change appears once. Its BREAKING CHANGE footer is printed as
@@ -51,6 +55,7 @@ body = """
 {%- set plain = commits | filter(attribute="breaking", value=false) -%}
 {%- set features = plain | filter(attribute="group", value="Features") -%}
 {%- set fixes = plain | filter(attribute="group", value="Fixes") -%}
+{%- set reverts = plain | filter(attribute="group", value="Reverts") -%}
 ## {{ version }}
 {% if breaking | length > 0 %}
 ### Breaking changes
@@ -82,6 +87,13 @@ body = """
 {{ self::entry(commit=commit) -}}
 {% endfor -%}
 {% endif -%}
+{% if reverts | length > 0 %}
+### Reverts
+
+{% for commit in reverts -%}
+{{ self::entry(commit=commit) -}}
+{% endfor -%}
+{% endif -%}
 """
 
 [git]
@@ -105,6 +117,7 @@ commit_parsers = [
   { message = "^chore\\(release\\)", skip = true },
   { message = "^feat(\\(|!|:)", group = "Features" },
   { message = "^(fix|perf)(\\(|!|:)", group = "Fixes" },
+  { message = "^revert(\\(|!|:)", group = "Reverts" },
 ]
 protect_breaking_commits = false
 filter_commits = false
@@ -116,7 +129,9 @@ sort_commits = "oldest"
 
 [bump]
 # Breaking is always a major bump and a feature always a minor one, below
-# 1.0.0 too: the version rules make no exception for 0.x.
+# 1.0.0 too: the version rules make no exception for 0.x. Anything else that
+# is listed, a revert included, is a patch; that is git-cliff's own rule for
+# a commit that is neither.
 features_always_bump_minor = true
 breaking_always_bump_major = true
 # The version the first release gets when no tag exists.
