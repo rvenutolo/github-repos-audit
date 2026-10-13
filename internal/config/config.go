@@ -11,6 +11,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -28,6 +29,7 @@ var ErrInvalid = errors.New("invalid repos.toml")
 // Repo is one entry of repos.toml, with its overrides resolved to checks.
 type Repo struct {
 	// Name is the repository's name on GitHub, which is the TOML table key.
+	// It is always a name GitHub could have; see possibleRepoName.
 	Name string
 	// Type decides which checks apply.
 	Type rules.Type
@@ -182,11 +184,34 @@ func identityProblems(raw fileShape) (audit.IdentityStandard, []error) {
 	return std, rules.IdentityProblems(std)
 }
 
+// repoNameShape is the characters and length GitHub allows a repository name.
+var repoNameShape = regexp.MustCompile(`\A[A-Za-z0-9._-]{1,100}\z`)
+
+// possibleRepoName reports whether GitHub could have a repository of this
+// name. A [repos.<key>] table claims the account has one, and a key that
+// cannot be a name is a typo no account will ever match: render would carry
+// it into the report as a stale entry, where an empty key names nothing and
+// one holding a newline or a backtick breaks the line it is written on. The
+// rule is GitHub's own and no stricter, since refusing a name a repository
+// can have would lock that repository out of the report. "." and ".." are
+// the two names the character set allows and GitHub reserves.
+func possibleRepoName(name string) bool {
+	return repoNameShape.MatchString(name) && name != "." && name != ".."
+}
+
 // validate turns one raw entry into a Repo, returning every problem it found
 // rather than only the first, so one run of `audit validate` reports the whole
 // file.
 func validate(name string, e entryShape, types rules.Types) (Repo, []error) {
 	repo := Repo{Name: name, Published: e.Published}
+	// Nothing else about the entry is reported under a name that cannot be
+	// one: every other message leads with the name unquoted, and this is the
+	// name that may be empty or hold a newline.
+	if !possibleRepoName(name) {
+		return repo, []error{fmt.Errorf(
+			"%q: not a possible repository name (want 1 to 100 of letters, digits, \".\", \"_\" and \"-\", and not \".\" or \"..\")",
+			name)}
+	}
 	var problems []error
 
 	switch _, known := types[e.Type]; {
