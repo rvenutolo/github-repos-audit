@@ -201,7 +201,7 @@ func runRender(
 	}
 
 	report, err := rules.Evaluate(snap)
-	if err != nil {
+	if err != nil { // coverage-exempt: unreachable while prepare validates everything Evaluate rejects
 		return err
 	}
 	block, err := render.Block(report, now)

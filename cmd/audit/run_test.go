@@ -945,6 +945,124 @@ func TestRunRender_reportsAFailureToBuildTheClient(t *testing.T) {
 	}
 }
 
+// TestCollectorAt_reportsAFailedOwnerLookup: a token the API refuses names no
+// account, and a client built without one would audit nobody's repositories.
+func TestCollectorAt_reportsAFailedOwnerLookup(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	env := func(key string) string {
+		if key == "GITHUB_TOKEN" {
+			return "ghp_notarealtoken"
+		}
+		return ""
+	}
+
+	c, err := collectorAt(t.Context(), server.URL, env, slog.New(slog.DiscardHandler))
+	if err == nil {
+		t.Fatalf("collectorAt() = %v, want the owner lookup's error", c)
+	}
+}
+
+// ownerlessCollector is a collector that read an account but cannot say whose.
+type ownerlessCollector struct{ *fakeCollector }
+
+func (ownerlessCollector) Owner() string { return "" }
+
+// TestRunRender_refusesAReportWithoutAnOwner: every link in the report is
+// built from the owner, so a report without one is not written at all.
+func TestRunRender_refusesAReportWithoutAnOwner(t *testing.T) {
+	t.Parallel()
+
+	dir, configPath := scratchProject(t, scratchConfig)
+	readmePath := filepath.Join(dir, "README.md")
+	before, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	fake := &fakeCollector{
+		names: []string{"alpha", "bravo"},
+		repos: []audit.Repo{scratchRepo("alpha"), scratchRepo("bravo")},
+	}
+	ownerless := func(context.Context, func(string) string, *slog.Logger) (collector, error) {
+		return ownerlessCollector{fake}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
+		noEnv, &stdout, &stderr, ownerless, fixedClock); err == nil {
+		t.Fatal("runRender() error = nil, want it to refuse a report with no owner")
+	}
+	after, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("runRender() rewrote README.md although it failed")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "audit.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stat audit.json: %v, want it not to exist after a failed render", err)
+	}
+}
+
+// unencodableClock is an instant JSON cannot carry: RFC 3339 stops at year 9999.
+func unencodableClock() time.Time { return time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) }
+
+// TestRunRender_reportsASnapshotItCannotEncode: the README and audit.json are
+// one reading, so a snapshot that cannot be written leaves the README alone.
+func TestRunRender_reportsASnapshotItCannotEncode(t *testing.T) {
+	t.Parallel()
+
+	dir, configPath := scratchProject(t, scratchConfig)
+	readmePath := filepath.Join(dir, "README.md")
+	before, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	fake := &fakeCollector{
+		names: []string{"alpha", "bravo"},
+		repos: []audit.Repo{scratchRepo("alpha"), scratchRepo("bravo")},
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
+		noEnv, &stdout, &stderr, fakeFactory(fake), unencodableClock); err == nil {
+		t.Fatal("runRender() error = nil, want the encoding error")
+	}
+	after, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("runRender() rewrote README.md although the snapshot could not be encoded")
+	}
+}
+
+// TestRunJSON_reportsASnapshotItCannotEncode: half a document on stdout would
+// be read as a snapshot, so a failed encoding prints nothing.
+func TestRunJSON_reportsASnapshotItCannotEncode(t *testing.T) {
+	t.Parallel()
+
+	_, configPath := scratchProject(t, scratchConfig)
+	fake := &fakeCollector{
+		names: []string{"alpha", "bravo"},
+		repos: []audit.Repo{scratchRepo("alpha"), scratchRepo("bravo")},
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := runJSON(t.Context(), []string{"--config", configPath},
+		noEnv, &stdout, &stderr, fakeFactory(fake), unencodableClock); err == nil {
+		t.Fatal("runJSON() error = nil, want the encoding error")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("runJSON() printed %d bytes although the snapshot could not be encoded", stdout.Len())
+	}
+}
+
 func TestRunRender_reportsAMissingReadme(t *testing.T) {
 	t.Parallel()
 
