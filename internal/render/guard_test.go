@@ -9,7 +9,7 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/render"
 )
 
-// artefacts renders both committed files for a snapshot, the way `audit
+// artefacts renders both committed files for a snapshot, the way `github-repos-audit
 // render` does.
 func artefacts(t *testing.T, snap *audit.Snapshot, now time.Time) (readme string, data []byte) {
 	t.Helper()

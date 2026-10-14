@@ -12,7 +12,7 @@
 # gofumpt, nixfmt and taplo are absent because of that second escape (rule 2);
 # see .ci/check-devshell-provides for why.
 
-# run-all-checks: go build, go vet, go test, `go run ./cmd/audit validate`
+# run-all-checks: go build, go vet, go test, `go run ./cmd/github-repos-audit validate`
 go
 # invoked by .ci/run-lint-checks
 golangci-lint

@@ -1,4 +1,4 @@
-# A deliberately INVALID example. The gate asserts `audit validate` rejects it,
+# A deliberately INVALID example. The gate asserts `github-repos-audit validate` rejects it,
 # so the failure path is proved rather than assumed: a validator that accepted
 # everything would pass a gate that only ever fed it a good file.
 #
@@ -225,7 +225,7 @@ overrides = { secret_scanning = "not_required" }
 [repos.config-files]
 type = "environment"
 # DELIBERATELY WRONG: the environment type already expects a README, so this
-# override says nothing and `audit validate` must refuse it.
+# override says nothing and `github-repos-audit validate` must refuse it.
 overrides = { readme = "required" }
 
 [repos.mixedCase-flake]

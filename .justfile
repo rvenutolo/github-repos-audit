@@ -95,7 +95,7 @@ format-check:
 
 # Check examples/repos.toml alone. Offline, no token.
 validate:
-    ./.ci/in-devshell go run ./cmd/audit validate --config examples/repos.toml
+    ./.ci/in-devshell go run ./cmd/github-repos-audit validate --config examples/repos.toml
 
 # Point core.hooksPath at .githooks (the devShell does this on entry too).
 hooks:

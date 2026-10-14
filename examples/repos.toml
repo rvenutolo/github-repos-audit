@@ -2,7 +2,7 @@
 # repository and replace the [repos.*] tables below with your own
 # repositories. The file and the account are meant to name the same ones:
 # every repository the account has gets an entry here, and every entry here
-# names a repository the account has. `audit render` reports any difference
+# names a repository the account has. `github-repos-audit render` reports any difference
 # under Configuration drift and audits the rest.
 #
 # [types.<name>] a category of repository and what it is expected to have.

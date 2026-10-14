@@ -17,10 +17,10 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
 )
 
-const usageText = `audit — report what each repository on this account is missing.
+const usageText = `github-repos-audit — report what each repository on this account is missing.
 
 Usage:
-  audit <command> [flags]
+  github-repos-audit <command> [flags]
 
 Commands:
   render     read GitHub, then rewrite README.md and audit.json
@@ -114,7 +114,7 @@ func run(
 // output writer keeps a parse failure a returned error rather than a call to
 // os.Exit inside the flag package.
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {
-	fs := flag.NewFlagSet("audit "+name, flag.ContinueOnError)
+	fs := flag.NewFlagSet("github-repos-audit "+name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	return fs
 }
@@ -201,7 +201,7 @@ func runRender(
 	}
 
 	report, err := rules.Evaluate(snap)
-	if err != nil {
+	if err != nil { // coverage-exempt: unreachable while prepare validates everything Evaluate rejects
 		return err
 	}
 	block, err := render.Block(report, now)

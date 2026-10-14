@@ -10,7 +10,7 @@
 #              path from the binary. That is what lets anyone rebuild a
 #              tagged release and compare checksums.
 #              The version is stamped with -X main.version, the symbol
-#              `audit --version` prints; -s -w drop the symbol table and DWARF,
+#              `github-repos-audit --version` prints; -s -w drop the symbol table and DWARF,
 #              which nothing here reads and which would only add bytes.
 #              The SBOM names the same version as the component it
 #              describes.
@@ -24,7 +24,7 @@
 # @exitcode 0 every file was built and written
 # @exitcode 1 something went wrong, or --out is not empty. A build that
 #             fails part way leaves what it had written in --out, an
-#             unfinished audit.cdx.json.tmp possibly among it. Nothing in
+#             unfinished github-repos-audit.cdx.json.tmp possibly among it. Nothing in
 #             there is a release: SHA256SUMS is written last. The next run
 #             refuses that directory because it is not empty, so a failed
 #             build is started again in a new or emptied one.
@@ -71,7 +71,7 @@ function build_target() {
     CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
       go build -trimpath -buildvcs=false \
       -ldflags "-s -w -X main.version=${version}" \
-      -o "${out}/audit-${goos}-${goarch}${ext}" ./cmd/audit
+      -o "${out}/github-repos-audit-${goos}-${goarch}${ext}" ./cmd/github-repos-audit
   )
 }
 
@@ -143,7 +143,7 @@ function main() {
   (
     cd "${REPO_DIR}"
     cyclonedx-gomod mod -json -licenses=false -noserial -notimestamp \
-      -output "${out}/audit.cdx.json" "${REPO_DIR}"
+      -output "${out}/github-repos-audit.cdx.json" "${REPO_DIR}"
   )
   # cyclonedx-gomod reads the main module's version from a tag on HEAD, and
   # a release is built before its tag exists, so it leaves the version out
@@ -152,7 +152,7 @@ function main() {
   # existing component is given a version: a document without one is not
   # the shape this step knows, and a component made up here would describe
   # nothing.
-  local -r sbom="${out}/audit.cdx.json"
+  local -r sbom="${out}/github-repos-audit.cdx.json"
   # shellcheck disable=SC2016 # $version is a jq variable, not shell
   if ! jq --arg version "${version}" '
     if (.metadata.component | type) == "object"
@@ -167,7 +167,7 @@ function main() {
   ci::log 'writing SHA256SUMS'
   # Bare file names, so `sha256sum --check` works from inside the directory
   # the files are downloaded to. LC_ALL=C pins the order across locales.
-  (cd "${out}" && sha256sum -- audit-* audit.cdx.json | LC_ALL=C sort --key=2 > SHA256SUMS)
+  (cd "${out}" && sha256sum -- github-repos-audit-* github-repos-audit.cdx.json | LC_ALL=C sort --key=2 > SHA256SUMS)
   ci::log "release files are in ${out}"
 }
 

@@ -1,4 +1,4 @@
-// Command audit reads every active repository on the account and reports what
+// Command github-repos-audit reads every active repository on the account and reports what
 // each one is missing.
 package main
 
@@ -18,12 +18,12 @@ import (
 // `go build` in a regular clone record.
 var version = unlinkedVersion
 
-func main() {
+func main() { // coverage-exempt: the process entry point; it only hands the os globals to run, which is tested directly
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop) // first signal cancels ctx; a second one kills the process
 	err := run(ctx, os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr)
 	stop()
-	if err != nil {
+	if err != nil { // coverage-exempt: part of main, which no test can call
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(exitCode(err))
 	}

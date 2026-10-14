@@ -58,7 +58,7 @@ jobs:
       - uses: $/.github/actions/setup
 
       - name: Validate the configuration
-        run: ./.ci/in-devshell go run ./cmd/audit validate --config report/repos.toml
+        run: ./.ci/in-devshell go run ./cmd/github-repos-audit validate --config report/repos.toml
 
       - name: Check the report's formatting
         run: |

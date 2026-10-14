@@ -1,7 +1,7 @@
 // Package config reads repos.toml and checks its shape and vocabulary:
 // unknown keys, unknown types and checks, malformed overrides, and the
 // [identity] table. Dead overrides are rules.ValidateOffline's; the checks
-// that need live data (see cmd/audit's collect) run there through
+// that need live data (see cmd/github-repos-audit's collect) run there through
 // rules.Validate.
 package config
 
@@ -200,7 +200,7 @@ func possibleRepoName(name string) bool {
 }
 
 // validate turns one raw entry into a Repo, returning every problem it found
-// rather than only the first, so one run of `audit validate` reports the whole
+// rather than only the first, so one run of `github-repos-audit validate` reports the whole
 // file.
 func validate(name string, e entryShape, types rules.Types) (Repo, []error) {
 	repo := Repo{Name: name, Published: e.Published}

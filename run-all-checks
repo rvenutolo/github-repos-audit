@@ -133,11 +133,11 @@ function main() {
   # advisory.
   "${REPO_DIR}/.ci/check-vulns" || rc=1
 
-  ci::log 'running audit validate (offline config gate)'
+  ci::log 'running github-repos-audit validate (offline config gate)'
   # The tool repository carries no repos.toml of its own; the examples are the
   # only configuration there is to validate.
-  go run ./cmd/audit validate --config examples/repos.toml || rc=1
-  go run ./cmd/audit validate --config examples/repos.invalid.toml && {
+  go run ./cmd/github-repos-audit validate --config examples/repos.toml || rc=1
+  go run ./cmd/github-repos-audit validate --config examples/repos.invalid.toml && {
     ci::log 'FAIL: examples/repos.invalid.toml was accepted; validate has stopped rejecting a dead override'
     rc=1
   }

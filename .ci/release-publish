@@ -145,12 +145,12 @@ source "${SCRIPT_DIR}/lib.sh"
 # missing is noticed and a file that strayed into the directory is never
 # uploaded.
 readonly -a CHECKSUMMED=(
-  audit-linux-amd64
-  audit-linux-arm64
-  audit-darwin-amd64
-  audit-darwin-arm64
-  audit-windows-amd64.exe
-  audit.cdx.json
+  github-repos-audit-linux-amd64
+  github-repos-audit-linux-arm64
+  github-repos-audit-darwin-amd64
+  github-repos-audit-darwin-arm64
+  github-repos-audit-windows-amd64.exe
+  github-repos-audit.cdx.json
 )
 readonly SUMS='SHA256SUMS'
 readonly BUNDLE='SHA256SUMS.sigstore.json'

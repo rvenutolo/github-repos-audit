@@ -40,12 +40,12 @@ readonly SHA='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001'
 
 # The files a release is made of, in the order the script uploads them.
 readonly -a ASSETS=(
-  audit-linux-amd64
-  audit-linux-arm64
-  audit-darwin-amd64
-  audit-darwin-arm64
-  audit-windows-amd64.exe
-  audit.cdx.json
+  github-repos-audit-linux-amd64
+  github-repos-audit-linux-arm64
+  github-repos-audit-darwin-amd64
+  github-repos-audit-darwin-arm64
+  github-repos-audit-windows-amd64.exe
+  github-repos-audit.cdx.json
   SHA256SUMS
   SHA256SUMS.sigstore.json
 )
@@ -140,7 +140,7 @@ function write_dist() {
   for name in "${ASSETS[@]:0:6}"; do
     printf 'contents of %s\n' "${name}" > "${dir}/${name}"
   done
-  (cd "${dir}" && sha256sum -- audit-* audit.cdx.json | LC_ALL=C sort --key=2 > SHA256SUMS)
+  (cd "${dir}" && sha256sum -- github-repos-audit-* github-repos-audit.cdx.json | LC_ALL=C sort --key=2 > SHA256SUMS)
   printf 'INERT_BUNDLE\n' > "${dir}/SHA256SUMS.sigstore.json"
 }
 
@@ -1036,12 +1036,12 @@ function test_draft_is_incomplete() {
   local rc=0 repo
   local name='release: the draft lacks an asset'
   repo="$(make_repo '')"
-  jq --compact-output '.assets |= map(select(.name != "audit.cdx.json"))' \
+  jq --compact-output '.assets |= map(select(.name != "github-repos-audit.cdx.json"))' \
     "${repo}/.stub/assets.json" > "${repo}/.stub/assets.short.json"
   cp -- "${repo}/.stub/assets.short.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_text "${name}" "${errors}" '  audit.cdx.json. In the draft and not on disk: nothing.' || rc=1
+  want_text "${name}" "${errors}" '  github-repos-audit.cdx.json. In the draft and not on disk: nothing.' || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
   want_no_call "${name}" 'release edit' || rc=1
 
@@ -1069,12 +1069,12 @@ function test_draft_is_incomplete() {
   # The right name over the wrong bytes: an upload that was cut short.
   name='release: an asset of the draft has another digest'
   repo="$(make_repo '')"
-  jq --compact-output '.assets |= map(if .name == "audit-linux-arm64" then .digest = "sha256:0000" else . end)' \
+  jq --compact-output '.assets |= map(if .name == "github-repos-audit-linux-arm64" then .digest = "sha256:0000" else . end)' \
     "${repo}/.stub/assets.json" > "${repo}/.stub/assets.wrong.json"
   cp -- "${repo}/.stub/assets.wrong.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_text "${name}" "${errors}" 'sha256:0000  audit-linux-arm64' || rc=1
+  want_text "${name}" "${errors}" 'sha256:0000  github-repos-audit-linux-arm64' || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
   want_no_call "${name}" 'release edit' || rc=1
 
@@ -1092,12 +1092,12 @@ function test_draft_is_incomplete() {
 
   name='release: an asset of the draft lacks the digest field'
   repo="$(make_repo '')"
-  jq --compact-output '.assets |= map(if .name == "audit.cdx.json" then del(.digest) else . end)' \
+  jq --compact-output '.assets |= map(if .name == "github-repos-audit.cdx.json" then del(.digest) else . end)' \
     "${repo}/.stub/assets.json" > "${repo}/.stub/assets.bare.json"
   cp -- "${repo}/.stub/assets.bare.json" "${repo}/.stub/assets.json"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_text "${name}" "${errors}" 'sha256:unknown  audit.cdx.json' || rc=1
+  want_text "${name}" "${errors}" 'sha256:unknown  github-repos-audit.cdx.json' || rc=1
   want_only_calls "${name}" "${READ_TAG}" "${READ_STATE}" "${write_create}" "${read_assets}" || rc=1
 
   name='release: the draft cannot be read back'
@@ -1165,11 +1165,11 @@ function test_bad_dist() {
   local rc=0 repo
   local name='release: a file altered after SHA256SUMS was written'
   repo="$(make_repo '')"
-  printf 'something else\n' >> "${repo}/dist/audit-linux-arm64"
+  printf 'something else\n' >> "${repo}/dist/github-repos-audit-linux-arm64"
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
   want_text "${name}" "${errors}" 'the files in dist do not match SHA256SUMS: ' || rc=1
-  want_text "${name}" "${errors}" 'audit-linux-arm64: FAILED' || rc=1
+  want_text "${name}" "${errors}" 'github-repos-audit-linux-arm64: FAILED' || rc=1
   want_only_calls "${name}" || rc=1
 
   name='release: a dist with no signature bundle'
@@ -1184,10 +1184,10 @@ function test_bad_dist() {
   # release has, so the list itself is held to the six it must cover.
   name='release: a SHA256SUMS that leaves a file out'
   repo="$(make_repo '')"
-  (cd "${repo}/dist" && sha256sum -- audit-linux-amd64 audit.cdx.json > SHA256SUMS)
+  (cd "${repo}/dist" && sha256sum -- github-repos-audit-linux-amd64 github-repos-audit.cdx.json > SHA256SUMS)
   run_script "${repo}" release --version "${VERSION}" --dist dist --sha "${SHA}"
   want_status "${name}" 1 || rc=1
-  want_text "${name}" "${errors}" 'dist/SHA256SUMS lists audit-linux-amd64, audit.cdx.json; it must list exactly ' || rc=1
+  want_text "${name}" "${errors}" 'dist/SHA256SUMS lists github-repos-audit-linux-amd64, github-repos-audit.cdx.json; it must list exactly ' || rc=1
   want_only_calls "${name}" || rc=1
 
   name='release: a dist that does not exist'
