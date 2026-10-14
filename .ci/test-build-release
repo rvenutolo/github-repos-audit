@@ -64,8 +64,8 @@ function main() {
   # Guarded: with no dist (the build failed above) the remaining cases must
   # still run and report, not abort the script through errexit.
   listing="$( (cd "${dist}" && printf '%s\n' * | LC_ALL=C sort) 2> /dev/null || printf '(no output directory)')"
-  want="$(printf '%s\n' audit-darwin-amd64 audit-darwin-arm64 audit-linux-amd64 \
-    audit-linux-arm64 audit-windows-amd64.exe audit.cdx.json SHA256SUMS | LC_ALL=C sort)"
+  want="$(printf '%s\n' github-repos-audit-darwin-amd64 github-repos-audit-darwin-arm64 github-repos-audit-linux-amd64 \
+    github-repos-audit-linux-arm64 github-repos-audit-windows-amd64.exe github-repos-audit.cdx.json SHA256SUMS | LC_ALL=C sort)"
   if [[ "${listing}" != "${want}" ]]; then
     ci::log "FAIL: the output directory holds the wrong files: ${listing//$'\n'/ }"
     rc=1
@@ -87,7 +87,7 @@ function main() {
   local host_os host_arch host_bin printed
   host_os="$(go env GOOS)"
   host_arch="$(go env GOARCH)"
-  host_bin="${dist}/audit-${host_os}-${host_arch}"
+  host_bin="${dist}/github-repos-audit-${host_os}-${host_arch}"
   if [[ ! -x "${host_bin}" ]]; then
     ci::log "FAIL: no runnable binary for the host platform ${host_os}/${host_arch}"
     rc=1
@@ -96,14 +96,14 @@ function main() {
     rc=1
   fi
 
-  if ! jq --exit-status '.bomFormat == "CycloneDX"' "${dist}/audit.cdx.json" > /dev/null; then
-    ci::log 'FAIL: audit.cdx.json is not a CycloneDX document'
+  if ! jq --exit-status '.bomFormat == "CycloneDX"' "${dist}/github-repos-audit.cdx.json" > /dev/null; then
+    ci::log 'FAIL: github-repos-audit.cdx.json is not a CycloneDX document'
     rc=1
   fi
   # An SBOM that does not name the release it describes cannot be matched
   # to one once it is downloaded.
   local sbom_version
-  sbom_version="$(jq --raw-output '.metadata.component.version // "(none)"' "${dist}/audit.cdx.json" 2> /dev/null)" \
+  sbom_version="$(jq --raw-output '.metadata.component.version // "(none)"' "${dist}/github-repos-audit.cdx.json" 2> /dev/null)" \
     || sbom_version='(unreadable)'
   if [[ "${sbom_version}" != 'v9.8.7' ]]; then
     ci::log "FAIL: the SBOM's metadata.component.version is ${sbom_version}, want v9.8.7"
@@ -119,7 +119,7 @@ function main() {
     # The SBOM and the checksum file as well as the binaries: a release is
     # rebuilt and compared as a whole.
     local built
-    for built in "${dist}"/audit-* "${dist}/audit.cdx.json" "${dist}/SHA256SUMS"; do
+    for built in "${dist}"/github-repos-audit-* "${dist}/github-repos-audit.cdx.json" "${dist}/SHA256SUMS"; do
       if ! cmp --silent -- "${built}" "${dist2}/${built##*/}"; then
         ci::log "FAIL: ${built##*/} differs between two builds of the same tree"
         rc=1

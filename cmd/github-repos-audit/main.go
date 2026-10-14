@@ -1,4 +1,4 @@
-// Command audit reads every active repository on the account and reports what
+// Command github-repos-audit reads every active repository on the account and reports what
 // each one is missing.
 package main
 

@@ -1,5 +1,5 @@
 # Go build and test artefacts
-/audit
+/github-repos-audit
 coverage.out
 coverage-integration.out
 

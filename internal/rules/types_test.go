@@ -124,7 +124,7 @@ func TestTypeProblems_minReleaseAgeWords(t *testing.T) {
 	}
 }
 
-// TestTypeProblems_reportsEveryProblemInAStableOrder: one run of `audit
+// TestTypeProblems_reportsEveryProblemInAStableOrder: one run of `github-repos-audit
 // validate` shows the whole table, ordered by type name and then by check
 // order, with unknown names after the checks.
 func TestTypeProblems_reportsEveryProblemInAStableOrder(t *testing.T) {

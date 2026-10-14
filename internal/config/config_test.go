@@ -505,7 +505,7 @@ func TestParse_rejectsAKeyThatCannotBeARepositoryName(t *testing.T) {
 			if !errors.Is(err, config.ErrInvalid) {
 				t.Errorf("Parse() error = %v, want it to wrap ErrInvalid", err)
 			}
-			// User-facing `audit validate` output. The key is quoted, so an
+			// User-facing `github-repos-audit validate` output. The key is quoted, so an
 			// empty or blank one is visible in the message.
 			for _, want := range []string{"not a possible repository name", strconv.Quote(tc.key)} {
 				if !strings.Contains(err.Error(), want) {
@@ -577,7 +577,7 @@ func TestParse_rejectsUnknownKeys(t *testing.T) {
 	if !errors.Is(err, config.ErrInvalid) {
 		t.Errorf("Parse() error = %v, want it to wrap ErrInvalid", err)
 	}
-	// User-facing `audit validate` output, so the message text is asserted.
+	// User-facing `github-repos-audit validate` output, so the message text is asserted.
 	if !strings.Contains(err.Error(), "repos.alpha.publish") {
 		t.Errorf("Parse() error = %q, want it to name the unknown key", err.Error())
 	}
@@ -590,7 +590,7 @@ func TestParse_reportsEveryProblemAtOnce(t *testing.T) {
 	if err == nil {
 		t.Fatal("Parse() error = nil, want two problems reported")
 	}
-	// One run of `audit validate` must show the whole file, not the first
+	// One run of `github-repos-audit validate` must show the whole file, not the first
 	// broken line; a reader who fixes one problem and re-runs pays a full
 	// round trip for each.
 	for _, want := range []string{`unknown type "widget"`, `unknown check "nonesuch"`} {
@@ -638,7 +638,7 @@ func TestLoad_acceptsTheExampleConfig(t *testing.T) {
 
 	// examples/repos.toml is the file the gate validates: this repository
 	// carries no repos.toml of its own. Keeping it in the unit suite means a
-	// broken example fails `go test` as well as `audit validate`.
+	// broken example fails `go test` as well as `github-repos-audit validate`.
 	cfg, err := config.Load("../../examples/repos.toml")
 	if err != nil {
 		t.Fatalf("Load(examples/repos.toml) error = %v, want nil", err)
@@ -688,7 +688,7 @@ func FuzzParse(f *testing.F) {
 
 // TestLoad_namesTheFileItRejected keeps a parse failure attributable. Load is
 // given a path where Parse is given a reader, so it is the only layer that can
-// say which file was wrong — and `audit render --config` means there is more
+// say which file was wrong — and `github-repos-audit render --config` means there is more
 // than one candidate.
 func TestLoad_namesTheFileItRejected(t *testing.T) {
 	t.Parallel()

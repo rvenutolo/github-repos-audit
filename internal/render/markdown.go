@@ -3,7 +3,7 @@
 //
 // It pads its own table columns. The old bash tool emitted unpadded tables and
 // let prettier align them, which was safe because a human ran the formatter
-// before committing. Here the cron commits `audit render` output directly, so
+// before committing. Here the cron commits `github-repos-audit render` output directly, so
 // unpadded output would land on the default branch and fail the repository's
 // own format check every single day.
 package render

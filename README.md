@@ -7,7 +7,7 @@ for anything that wants to diff it.
 
 The tool is read-only. Every call it makes is a `GET` request or a single
 GraphQL `query`; it never issues a GraphQL `mutation` or a write-verb REST
-call. All of that reading happens in `audit render` (or `audit json`, which
+call. All of that reading happens in `github-repos-audit render` (or `github-repos-audit json`, which
 prints the same snapshot to stdout instead). Writing the report back to a
 repository — creating a branch, committing to it, opening a pull request and
 merging it once its checks are green — happens entirely inside the reusable
@@ -15,9 +15,9 @@ workflow described below, never in the tool's own code path.
 
 Both reading commands take their token from `GITHUB_TOKEN` and, when it is
 unset, from `gh auth token --hostname github.com`, the one subprocess the tool
-ever starts. `audit validate` checks `repos.toml` alone, offline, with no
-token. `audit --help` lists the flags (`--config`, `--dir`, `--verbose`,
-`--debug`) and `audit --version` prints the version. The exit codes are part
+ever starts. `github-repos-audit validate` checks `repos.toml` alone, offline, with no
+token. `github-repos-audit --help` lists the flags (`--config`, `--dir`, `--verbose`,
+`--debug`) and `github-repos-audit --version` prints the version. The exit codes are part
 of the interface:
 
 - `0` — success.
@@ -39,7 +39,7 @@ of the interface:
    repositories. The config and the account are meant to name the same
    repositories: every repository the account has needs an entry, and every
    entry needs a repository the account has. Where they disagree,
-   `audit render` reports on the repositories both name and opens the report
+   `github-repos-audit render` reports on the repositories both name and opens the report
    with a **Configuration drift** section listing the repositories that need
    an entry and the entries that name no repository — deleted, archived or
    turned into a fork. The same two lists are in `audit.json` under
@@ -55,7 +55,7 @@ of the interface:
    <!-- END GENERATED: audit -->
    ```
 
-   `audit render` rewrites only the text between them and leaves the rest of
+   `github-repos-audit render` rewrites only the text between them and leaves the rest of
    the file alone; a README with either marker missing, repeated or out of
    order is refused before anything is written.
 
@@ -144,14 +144,14 @@ of the interface:
 4. Set two repository secrets on the report repository:
    - `AUDIT_TOKEN` — a token that can read every repository on the account:
      contents, metadata, actions, and administration, all read-only. The
-     workflow hands it to `audit render` as `GITHUB_TOKEN`, and inside the
+     workflow hands it to `github-repos-audit render` as `GITHUB_TOKEN`, and inside the
      workflow it is the only token the tool's own code ever sees (a local run
      without `GITHUB_TOKEN` falls back to whatever `gh auth token` holds).
-     `audit validate` is offline and needs no token at all. It cannot write
+     `github-repos-audit validate` is offline and needs no token at all. It cannot write
      anything, on this repository or any other.
    - `REFRESH_TOKEN` — a token scoped to the report repository alone, with
      Contents and Pull requests write access. It is used only by the refresh
-     workflow, after `audit render` has finished, to commit the regenerated
+     workflow, after `github-repos-audit render` has finished, to commit the regenerated
      report to a branch, open (or reopen) the pull request and enable
      auto-merge on it — or merge it outright when every check has already
      reported — so it is the token that merges.
@@ -206,14 +206,14 @@ no leading zero, a single space, then minute, hour, day or week, singular or
 plural) — or `not_required` or `info`; an
 override may give it a different duration. A type that leaves a check out is
 an error, so a check added in a later version of the tool is decided for every
-type before `audit validate` passes. Type names use lowercase letters, digits,
+type before `github-repos-audit validate` passes. Type names use lowercase letters, digits,
 `_` and `-`, and a type no repository uses is allowed.
 
 Each `[repos.<name>]` entry declares a `type`, and optionally `published` and
 per-repository `overrides`. `<name>` is the repository's name alone, without
 the owner, and has to be one GitHub could have: 1 to 100 letters, digits, `.`,
 `_` and `-`, and not `.` or `..`. Anything else is a typo no repository will
-ever match, and `audit validate` rejects it. Visibility is never declared; it
+ever match, and `github-repos-audit validate` rejects it. Visibility is never declared; it
 is always read live from GitHub.
 
 `[identity]` declares your git identity, for the `git_identity` check:
@@ -254,7 +254,7 @@ a value-only check, and an override with an empty value is an error.
 `examples/repos.invalid.toml` is a worked example of the
 dead-override error: it is a copy of `examples/repos.toml` with one override
 restated — and with `git_identity` judged by no type, so it needs no
-`[identity]` table — and `audit validate` is expected to reject it.
+`[identity]` table — and `github-repos-audit validate` is expected to reject it.
 
 ## The checks
 
@@ -320,28 +320,28 @@ Grouped by theme here; the report lists them in the fixed worklist order
 
 ## Running locally
 
-Three ways to get an `audit` binary:
+Three ways to get an `github-repos-audit` binary:
 
 - **`go install`**, which needs Go:
-  `go install github.com/rvenutolo/github-repos-audit/cmd/audit@latest`.
+  `go install github.com/rvenutolo/github-repos-audit/cmd/github-repos-audit@latest`.
 - **A prebuilt binary** from the repository's Releases page. Each release
-  carries one binary per platform, named `audit-<os>-<arch>`
-  (`audit-linux-amd64`, `audit-linux-arm64`, `audit-darwin-amd64`,
-  `audit-darwin-arm64` and `audit-windows-amd64.exe`), a CycloneDX SBOM
-  `audit.cdx.json`, the checksum list `SHA256SUMS` and its signature
+  carries one binary per platform, named `github-repos-audit-<os>-<arch>`
+  (`github-repos-audit-linux-amd64`, `github-repos-audit-linux-arm64`, `github-repos-audit-darwin-amd64`,
+  `github-repos-audit-darwin-arm64` and `github-repos-audit-windows-amd64.exe`), a CycloneDX SBOM
+  `github-repos-audit.cdx.json`, the checksum list `SHA256SUMS` and its signature
   `SHA256SUMS.sigstore.json`. On Linux and macOS, make the download
-  executable first: `chmod +x audit-<os>-<arch>`.
-- **A clone**, which needs only Nix: `./.ci/in-devshell go run ./cmd/audit`.
+  executable first: `chmod +x github-repos-audit-<os>-<arch>`.
+- **A clone**, which needs only Nix: `./.ci/in-devshell go run ./cmd/github-repos-audit`.
 
-`audit validate` is offline and needs no token. `audit render` and
-`audit json` read your account from GitHub and need `GITHUB_TOKEN` in the
+`github-repos-audit validate` is offline and needs no token. `github-repos-audit render` and
+`github-repos-audit json` read your account from GitHub and need `GITHUB_TOKEN` in the
 environment, or a logged-in `gh` (the token comes from `gh auth token`).
 
 ## Verifying a release
 
 Download the release's files from the Releases page, or with
 `gh release download <tag> --repo rvenutolo/github-repos-audit`, into one
-directory, and run the commands there. `audit.cdx.json` is the CycloneDX
+directory, and run the commands there. `github-repos-audit.cdx.json` is the CycloneDX
 SBOM (software bill of materials) for the binaries.
 
 ```sh
@@ -370,7 +370,7 @@ There is no long-lived signing key to steal. The bundle is written by
 cosign 3, and the command is for cosign 3.
 
 ```sh
-gh attestation verify audit-linux-amd64 \
+gh attestation verify github-repos-audit-linux-amd64 \
   --repo rvenutolo/github-repos-audit \
   --signer-workflow rvenutolo/github-repos-audit/.github/workflows/release.yml \
   --source-ref refs/heads/main
@@ -390,7 +390,7 @@ interface a version number speaks for is:
 - the keys and values of `repos.toml`,
 - the keys of `audit.json`,
 - the exit codes,
-- the commands and flags of `audit`,
+- the commands and flags of `github-repos-audit`,
 - the inputs and secrets of the reusable workflows.
 
 A **major** release makes an incompatible change to any of these. Every new

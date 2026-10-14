@@ -8,7 +8,7 @@
     gofumpt.enable = true;
     # Reads .prettierrc.yaml from the repo root. Every *.md is formatted; the
     # render goldens fall under the testdata exclusion below, so prettier
-    # never touches `audit render` output.
+    # never touches `github-repos-audit render` output.
     prettier = {
       enable = true;
       includes = [

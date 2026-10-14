@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/rvenutolo/github-repos-audit/main/audit.schema.json",
   "title": "github-repos-audit snapshot",
-  "description": "One complete reading of the account, as `audit render` writes it to audit.json. The document carries collected facts, the declared repos.toml types and overrides; it carries no verdicts, which live only in the generated README table. Hand-maintained: the Go structs in internal/audit are the encoder, and this file is the contract they are held to. `additionalProperties` is false everywhere, so a new field is a deliberate edit here rather than an accident. Required means the Go tag has no `omitzero`, and therefore that the encoder always emits the key.",
+  "description": "One complete reading of the account, as `github-repos-audit render` writes it to audit.json. The document carries collected facts, the declared repos.toml types and overrides; it carries no verdicts, which live only in the generated README table. Hand-maintained: the Go structs in internal/audit are the encoder, and this file is the contract they are held to. `additionalProperties` is false everywhere, so a new field is a deliberate edit here rather than an accident. Required means the Go tag has no `omitzero`, and therefore that the encoder always emits the key.",
   "type": "object",
   "additionalProperties": false,
   "required": ["generated_at", "owner", "types", "repos"],

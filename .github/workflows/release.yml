@@ -298,11 +298,11 @@ jobs:
         run: ./.ci/in-devshell ./.ci/release-publish sign --dist dist
 
       # The five binaries and nothing else in dist: the SBOM is named
-      # audit.cdx.json, with a dot where the binaries have a hyphen.
+      # github-repos-audit.cdx.json, with a dot where the binaries have a hyphen.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         if: steps.pending.outputs.publish == 'true'
         with:
-          subject-path: dist/audit-*
+          subject-path: dist/github-repos-audit-*
 
       # Last, because it is the one step that cannot be taken back: the
       # signature and the attestation exist before the tag does.
@@ -447,10 +447,10 @@ jobs:
         run: ./.ci/in-devshell ./.ci/release-publish sign --dist dist
 
       # The five binaries and nothing else in dist: the SBOM is named
-      # audit.cdx.json, with a dot where the binaries have a hyphen.
+      # github-repos-audit.cdx.json, with a dot where the binaries have a hyphen.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/audit-*
+          subject-path: dist/github-repos-audit-*
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

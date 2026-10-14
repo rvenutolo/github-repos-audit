@@ -5,7 +5,7 @@
 # justified in the commit message that carries it.
 #
 # n/a marks a package with no statements to cover.
-github.com/rvenutolo/github-repos-audit/cmd/audit 94.6%
+github.com/rvenutolo/github-repos-audit/cmd/github-repos-audit 94.6%
 github.com/rvenutolo/github-repos-audit/internal/audit n/a
 github.com/rvenutolo/github-repos-audit/internal/config 100.0%
 github.com/rvenutolo/github-repos-audit/internal/fixturevocab n/a
