@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+
+# @description Download the Linux release binary of the release cut from a
+#              given commit and refuse it unless two independent proofs hold.
+#
+#              The release is found from the commit, not named by the caller:
+#              the tag that points at --sha and looks like vMAJOR.MINOR.PATCH.
+#              A commit with no such tag, or with more than one, is not a
+#              release this script can name, so it fails instead of guessing.
+#
+#              Proof one, the checksum: the binary's SHA-256 must match the
+#              line for it in the release's SHA256SUMS. That ties the file to
+#              the list the release published, and catches a damaged or
+#              swapped download.
+#              Proof two, the attestation: `gh attestation verify` must find
+#              build provenance for the file that names the release workflow
+#              of --repo, run from refs/heads/main, at exactly --sha. That
+#              ties the file to the workflow and the commit, so a binary
+#              built from any other commit fails even if the same workflow
+#              built it, and one built by a different workflow fails even if
+#              it was built from this commit.
+#
+#              The file is made executable only after both proofs hold. Right
+#              after the download it is made non-executable, whatever mode the
+#              download gave it, and any failure leaves it that way.
+#
+#              Runs on a bare GitHub-hosted runner, outside the devshell:
+#              bash, GNU coreutils, gh and nothing else, so no jq (the
+#              ref filter is gh's own --jq).
+#
+#              The output directory must be absent or empty, so a stale file
+#              from an earlier run can never be the one that is verified and
+#              this script never deletes anything.
+# @option --repo <owner/name> the repository the release belongs to
+# @option --sha <sha> the 40-character lowercase hex commit the release was cut from
+# @option --out <dir> directory to download into; created if absent
+# @env GH_TOKEN a token gh can read the repository's releases and attestations with
+# @stdout the absolute path of the verified, executable binary; nothing else
+# @exitcode 0 the binary was downloaded, verified and made executable
+# @exitcode 1 a runtime failure: no or several release tags at the commit, a
+#             non-empty --out, a failed download, checksum or attestation, or
+#             no GH_TOKEN. Whatever was downloaded is left, not executable.
+# @exitcode 2 a usage error: an unknown argument, a missing option or value, or
+#             a --repo or --sha that is not well formed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# Located from this file's resolved path, not from git and not from the
+# working directory: the script runs from a sparse checkout that holds only
+# .ci, and from another repository's working tree, where `git rev-parse`
+# would find that repository. Resolving the path first makes a bare name
+# (`cd .ci && bash fetch-release-binary`) and a symlink to the script work.
+# realpath, not `cd && pwd`: CDPATH can make cd land elsewhere.
+REPO_DIR="$(dirname -- "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")")"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# The asset name is fixed, not derived from the runner: this is the only
+# platform the workflows that call this script run on.
+readonly ASSET='github-repos-audit-linux-amd64'
+
+# The same shape build-release accepts: the release workflow only ever
+# creates plain vMAJOR.MINOR.PATCH tags, so any other v* tag at the commit
+# (a probe, a pre-release) is not a release and is ignored.
+readonly VERSION_PATTERN='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+
+# @description Print a usage error and exit 2.
+# @arg $1 message what was wrong
+function usage_error() {
+  printf '%s: %s\n' "${0##*/}" "$1" >&2
+  exit 2
+}
+
+# @description Print a runtime failure and exit 1.
+# @arg $1 message what went wrong
+function fail() {
+  printf '%s: %s\n' "${0##*/}" "$1" >&2
+  exit 1
+}
+
+# @description Find the one vMAJOR.MINOR.PATCH tag that points at the commit.
+#              Only lightweight tags match: the release workflow creates
+#              lightweight tags, whose ref object is the commit itself. An
+#              annotated tag's ref object is the tag object, so it would read
+#              as "not a release" here.
+# @arg $1 repo owner/name
+# @arg $2 sha the commit, already validated as lowercase hex
+# @stdout the tag name
+function release_tag() {
+  local -r repo="$1" sha="$2"
+  local refs
+  # matching-refs lists every tag whose name starts with "v", and is paged,
+  # so --paginate: a release past the first page would otherwise read as "no
+  # release". The filter runs per page. The SHA is spliced into the filter
+  # text, which is safe only because the caller has checked it is hex.
+  if ! refs="$(gh api --paginate "repos/${repo}/git/matching-refs/tags/v" \
+    --jq ".[] | select(.object.sha == \"${sha}\") | .ref")"; then
+    fail "cannot list the tags of ${repo}"
+  fi
+
+  local ref name
+  local -a tags=()
+  while IFS= read -r ref; do
+    name="${ref#refs/tags/}"
+    if [[ "${name}" =~ ${VERSION_PATTERN} ]]; then
+      tags+=("${name}")
+    fi
+  done <<< "${refs}"
+
+  if ((${#tags[@]} == 0)); then
+    fail "commit ${sha} is not a release of ${repo}: no vMAJOR.MINOR.PATCH tag points at it. The workflow pin must be the commit a release's notes name."
+  fi
+  if ((${#tags[@]} > 1)); then
+    fail "commit ${sha} has more than one release tag (${tags[*]}); refusing to choose"
+  fi
+  printf '%s\n' "${tags[0]}"
+}
+
+# @description Confirm SHA256SUMS lists the binary, then check the binary
+#              against it.
+# @arg $1 out the directory holding both files
+function verify_checksum() {
+  local -r out="$1"
+  # Recent GNU coreutils make `sha256sum --check --ignore-missing` exit 1
+  # when none of the listed files is present, but that is a property of the
+  # version on the runner. Naming the binary in the list is checked here
+  # first anyway, so the failure has a clear message and the guarantee does
+  # not depend on that version. The name is compared whole and as a fixed
+  # string, never built into a pattern.
+  [[ -f "${out}/SHA256SUMS" ]] || fail "the download left no SHA256SUMS"
+  local name listed=0
+  while IFS=' ' read -r _ name; do
+    if [[ "${name}" == "${ASSET}" ]]; then
+      listed=1
+    fi
+  done < "${out}/SHA256SUMS"
+  ((listed)) || fail "SHA256SUMS does not list ${ASSET}"
+
+  # --strict: a malformed line in the list is a failure, not a skipped line.
+  # Both streams go to stderr so stdout stays the one path line.
+  (cd "${out}" && sha256sum --check --ignore-missing --strict SHA256SUMS >&2) \
+    || fail "${ASSET} does not match SHA256SUMS"
+}
+
+# @description Parse the arguments, find the release, download and verify.
+# @arg $@ --repo <owner/name> --sha <sha> --out <dir>, all required
+function main() {
+  local repo='' sha='' out='' have_repo=0 have_sha=0 have_out=0
+  while (($# > 0)); do
+    case "$1" in
+      --repo | --sha | --out)
+        # A usage error (exit 2), not the "${2:?...}" form: that form faults
+        # through set -u into an unhandled exit 1, which is indistinguishable
+        # from the runtime-failure path below.
+        if (($# < 2)); then
+          usage_error "$1 needs a value"
+        fi
+        case "$1" in
+          --repo) repo="$2" have_repo=1 ;;
+          --sha) sha="$2" have_sha=1 ;;
+          --out) out="$2" have_out=1 ;;
+        esac
+        shift 2
+        ;;
+      *)
+        usage_error "unknown argument $(printf '%q' "$1")"
+        ;;
+    esac
+  done
+  ((have_repo)) || usage_error '--repo is required'
+  ((have_sha)) || usage_error '--sha is required'
+  ((have_out)) || usage_error '--out is required'
+  # "." and ".." match the character class but are path traversal in the
+  # API URL built from this value (repos/../../...), so they are refused.
+  if [[ ! "${repo}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
+    || [[ "${repo%%/*}" =~ ^\.\.?$ || "${repo##*/}" =~ ^\.\.?$ ]]; then
+    usage_error "--repo $(printf '%q' "${repo}") is not <owner>/<name>"
+  fi
+  # Lowercase hex only: the value is compared with what the API reports and
+  # is spliced into a gh --jq filter, so nothing else may reach either.
+  if [[ ! "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
+    usage_error "--sha $(printf '%q' "${sha}") is not 40 lowercase hex characters"
+  fi
+  if [[ -z "${out}" ]]; then
+    usage_error '--out must not be empty'
+  fi
+  if [[ -z "${GH_TOKEN:-}" ]]; then
+    fail 'GH_TOKEN is not set; gh cannot read the release without it'
+  fi
+
+  local tag
+  # `|| exit 1`: release_tag already printed its designed message in the
+  # command substitution; without it the ERR trap adds a second, noisy line.
+  tag="$(release_tag "${repo}" "${sha}")" || exit 1
+  ci::log "commit ${sha} is release ${tag} of ${repo}"
+
+  if [[ -e "${out}" ]]; then
+    if [[ ! -d "${out}" ]]; then
+      fail "${out} exists and is not a directory"
+    fi
+    if [[ -n "$(ls --almost-all -- "${out}")" ]]; then
+      fail "${out} is not empty; refusing to mix a download into it"
+    fi
+  fi
+  mkdir --parents -- "${out}" || fail "cannot create ${out}"
+  # realpath, not `cd && pwd`: CDPATH can make cd land elsewhere.
+  out="$(realpath -- "${out}")" || fail "cannot resolve ${out}"
+
+  ci::log "downloading ${ASSET} and SHA256SUMS of ${tag}"
+  gh release download "${tag}" --repo "${repo}" \
+    --pattern "${ASSET}" --pattern SHA256SUMS --dir "${out}" >&2 \
+    || fail "cannot download ${ASSET} and SHA256SUMS of ${tag}"
+
+  # Nothing the download left may be run, or followed, before every proof has
+  # held: a missing file or a symlink (which could point anywhere) is
+  # refused, and the mode is cleared here so that "not executable on failure"
+  # is this script's guarantee and not a property of how gh writes files.
+  if [[ ! -f "${out}/${ASSET}" || -L "${out}/${ASSET}" ]]; then
+    fail "the download left no regular file ${ASSET}"
+  fi
+  chmod a-x -- "${out}/${ASSET}"
+
+  verify_checksum "${out}"
+  ci::log 'checksum matches'
+
+  # The signer workflow and the source ref and digest are what make this
+  # more than "some build of this tool": see the header.
+  gh attestation verify "${out}/${ASSET}" \
+    --repo "${repo}" \
+    --signer-workflow "${repo}/.github/workflows/release.yml" \
+    --source-ref refs/heads/main \
+    --source-digest "${sha}" >&2 \
+    || fail "${ASSET} has no build provenance from the release workflow on main at ${sha}"
+  ci::log 'attestation verified'
+
+  chmod +x -- "${out}/${ASSET}"
+  printf '%s\n' "${out}/${ASSET}"
+}
+
+main "$@"

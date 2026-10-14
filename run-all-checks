@@ -67,6 +67,7 @@ function main() {
   "${REPO_DIR}/.ci/test-release-version" || rc=1
   "${REPO_DIR}/.ci/test-release-pull-request" || rc=1
   "${REPO_DIR}/.ci/test-release-publish" || rc=1
+  "${REPO_DIR}/.ci/test-fetch-release-binary" || rc=1
   "${REPO_DIR}/.ci/check-doc-rot" || rc=1
 
   ci::log 'running lint checks'

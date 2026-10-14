@@ -126,6 +126,32 @@ function main() {
   expect "${backtick_repo}" "${backtick_base}" 1 'a backticked repository name' || rc=1
   rm -rf -- "${backtick_repo%/repo}"
 
+  # Only the exact own name is exempt: a repository whose name merely starts
+  # with this repository's own name is account data. The commit holds no
+  # login, only the made-up longer name in the backticked shape the script
+  # treats as a repository-name mention, so the names file alone decides the
+  # outcome. Listed, it is found and the commit is reported; absent from the
+  # file, the same commit is clean. The pair fails if the own-name exemption
+  # ever turns into a prefix match, which would hide the first direction.
+  local sibling_repo sibling_base sibling_head sibling_out
+  sibling_repo="$(new_case_repo)"
+  commit_file "${sibling_repo}" README.md 'nothing account-shaped here' 'chore: start'
+  sibling_base="$(git -C "${sibling_repo}" rev-parse HEAD)"
+  # shellcheck disable=SC2016 # the backticks are the text being committed
+  commit_file "${sibling_repo}" sibling.md 'see `github-repos-audit-example`' 'docs: longer name'
+  sibling_head="$(git -C "${sibling_repo}" rev-parse HEAD)"
+  printf 'github-repos-audit\ngithub-repos-audit-example\n' > "${sibling_repo%/repo}/names"
+  expect "${sibling_repo}" "${sibling_base}" 1 'a name extending this repository'"'"'s own name, listed' || rc=1
+  sibling_out="$(cd "${sibling_repo}" && "${REPO_DIR}/.ci/check-account-data" \
+    --login "${LOGIN}" --names "${sibling_repo}/../names" --range "${sibling_base}..HEAD" 2>&1)" || :
+  if [[ "${sibling_out}" != *"commit ${sibling_head}: sibling.md"* ]]; then
+    ci::log "FAIL: a name extending this repository's own name: the commit was not reported (output: ${sibling_out})"
+    rc=1
+  fi
+  printf 'github-repos-audit\n' > "${sibling_repo%/repo}/names"
+  expect "${sibling_repo}" "${sibling_base}" 0 'the same commit, name not listed' || rc=1
+  rm -rf -- "${sibling_repo%/repo}"
+
   # A deliberately unresolvable range (a remote sha absent locally, a pruned
   # or rewritten ref) must abort the scan, not be misread by the caller as
   # "nothing found": `git rev-list` fails, and that failure has to reach the

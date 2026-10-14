@@ -39,8 +39,8 @@ func TestParseThreshold(t *testing.T) {
 	}
 }
 
-// renovateToMs is Renovate's own lib/util/pretty-time.spec.ts toMs table,
-// copied 2026-09-22. -1 means Renovate answers null.
+// renovateToMs is the toMs table of Renovate's own
+// lib/util/pretty-time.spec.ts. -1 means Renovate answers null.
 var renovateToMs = []struct {
 	in string
 	ms int64

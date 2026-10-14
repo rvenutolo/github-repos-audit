@@ -4,9 +4,16 @@ name: audit
 # carries it. The caller is a report repository holding only repos.toml, the
 # generated README.md and audit.json; this workflow is the tool.
 #
-# The tool is checked out at the workspace root, so .ci/in-devshell and every
-# .ci script find their own repository through `git rev-parse --show-toplevel`,
-# and the caller lands under report/, which is what --config and --dir name.
+# Only .ci/fetch-release-binary, the library it sources and
+# .ci/refresh-pull-request are checked out from the tool, at the commit the
+# caller pinned: the workflow runs the binary released from that commit, not
+# source, so no Nix or Go toolchain is installed. The script downloads the
+# binary, checks it against the release's SHA256SUMS and verifies that its
+# build provenance names this repository's release workflow on main and that
+# exact commit. Any failure, including an unreachable attestation service,
+# fails the run, and a pin that is not a release's commit fails with a message
+# saying so. The caller lands under report/, which is what --config and --dir
+# name.
 on:
   workflow_call:
     secrets:
@@ -24,45 +31,64 @@ jobs:
     name: refresh
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # contents: read is for the two checkouts and nothing else. The built-in
-    # token cannot read the audited repositories, so the reads use AUDIT_TOKEN,
-    # and anything it created would trigger no workflow run, so the writes use
-    # REFRESH_TOKEN.
+    # contents: read is for the two checkouts and nothing else. The fetch uses
+    # the built-in token because downloading a public release needs no account
+    # access. That token cannot read the audited repositories, so the reads use
+    # AUDIT_TOKEN, and anything it created would trigger no workflow run, so
+    # the writes use REFRESH_TOKEN.
     permissions:
       contents: read
     steps:
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
+          # Exactly what fetching and verifying the release binary and both
+          # checkouts reach: the API and release assets, the checkout tarballs,
+          # and Sigstore's TUF root for the attestation check.
           allowed-endpoints: >-
             api.github.com:443
-            cache.nixos.org:443
-            channels.nixos.org:443
             codeload.github.com:443
             github.com:443
             hosted-compute-*.githubapp.com:443
-            install.determinate.systems:443
-            nixos.org:443
             objects.githubusercontent.com:443
-            proxy.golang.org:443
-            raw.githubusercontent.com:443
             release-assets.githubusercontent.com:443
-            releases.nixos.org:443
-            storage.googleapis.com:443
-            sum.golang.org:443
-            tarballs.nixos.org:443
-      # The tool, at the exact commit the caller pinned.
+            tuf-repo-cdn.sigstore.dev:443
+      # Only the files the fetch needs, from the exact commit the caller
+      # pinned. The patterns are files, so cone mode is off.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
+          sparse-checkout: |
+            .ci/fetch-release-binary
+            .ci/lib.sh
+            .ci/refresh-pull-request
+          sparse-checkout-cone-mode: false
           persist-credentials: false
       # The caller's own repository, which holds the config and the report.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: report
           persist-credentials: false
-      - uses: $/.github/actions/setup
+
+      - name: Fetch and verify the release binary
+        id: tool
+        # The built-in token only downloads public release assets and reads
+        # their attestation, so it needs no access to the account. The
+        # expressions arrive through env so none is spliced into script text.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL_REPO: ${{ job.workflow_repository }}
+          TOOL_SHA: ${{ job.workflow_sha }}
+        run: |
+          # Assigned before it is echoed: a command substitution inside echo
+          # would hide the script's exit status and let a failed verification
+          # pass.
+          path="$(./.ci/fetch-release-binary \
+            --repo "${TOOL_REPO}" \
+            --sha "${TOOL_SHA}" \
+            --out "${RUNNER_TEMP}/github-repos-audit")"
+          echo "path=${path}" >>"${GITHUB_OUTPUT}"
 
       - name: Render the report
         id: render
@@ -71,8 +97,9 @@ jobs:
         # $GITHUB_OUTPUT syntax, so nothing here parses anything.
         env:
           GITHUB_TOKEN: ${{ secrets.AUDIT_TOKEN }}
+          TOOL: ${{ steps.tool.outputs.path }}
         run: >-
-          ./.ci/in-devshell go run ./cmd/github-repos-audit render
+          "${TOOL}" render
           --config report/repos.toml --dir report >>"${GITHUB_OUTPUT}"
 
       - name: Commit the report, open the pull request and queue the merge
@@ -81,7 +108,7 @@ jobs:
         # exactly the repository the pull request belongs in.
         env:
           GH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
-        run: ./.ci/in-devshell ./.ci/refresh-pull-request --dir report
+        run: ./.ci/refresh-pull-request --dir report
 
       - name: Report that nothing material changed
         if: steps.render.outputs.material-change != 'true'
