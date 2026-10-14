@@ -20,4 +20,4 @@ require (
 	github.com/titanous/json5 v1.0.0
 )
 
-require golang.org/x/text v0.14.0
+require golang.org/x/text v0.43.0
