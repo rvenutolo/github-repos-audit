@@ -15,4 +15,9 @@ require (
 
 require go.uber.org/goleak v1.3.0
 
-require github.com/titanous/json5 v1.0.0
+require (
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	github.com/titanous/json5 v1.0.0
+)
+
+require golang.org/x/text v0.14.0

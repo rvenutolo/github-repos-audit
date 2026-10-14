@@ -15,6 +15,7 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/config"
 	"github.com/rvenutolo/github-repos-audit/internal/render"
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
+	"github.com/rvenutolo/github-repos-audit/internal/schema"
 )
 
 const usageText = `github-repos-audit — report what each repository on this account is missing.
@@ -25,7 +26,7 @@ Usage:
 Commands:
   render     read GitHub, then rewrite README.md and audit.json
   json       read GitHub, then print the snapshot to stdout
-  validate   check repos.toml alone; offline, needs no token
+  validate   check repos.toml, and audit.json with --audit; offline, needs no token
 
 render writes both files whole, through a temp file and a rename, only after
 every repository has been read successfully — no failure leaves a partial
@@ -49,6 +50,7 @@ Flags:
 
 Subcommand flags:
       --config    path to the configuration file (default repos.toml)
+      --audit     validate only: also check this audit.json against its schema
       --dir       render only: directory holding README.md and audit.json
                   (default .)
       --verbose   render and json: log progress to stderr at info level
@@ -64,9 +66,10 @@ Environment:
 
 Exit codes:
   0   success
-  1   runtime failure: an unexpected API response, a malformed repos.toml, or
-      a repos.toml naming no repository the account has. The invocation was
-      fine; something else was not.
+  1   runtime failure: an unexpected API response, a malformed repos.toml, an
+      audit.json that does not match its schema, or a repos.toml naming no
+      repository the account has. The invocation was fine; something else was
+      not.
   2   usage error: an unknown subcommand, a flag that does not parse, or a
       missing or invalid argument.
   130 interrupted by SIGINT or SIGTERM.
@@ -154,11 +157,20 @@ func logLevel(fs *flag.FlagSet) func() slog.Level {
 func runValidate(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("validate", stderr)
 	path := fs.String("config", "repos.toml", "path to the configuration file")
+	auditPath := fs.String("audit", "", "also check this audit.json against its schema")
 	if helped, err := parse(fs, args, stdout); helped || err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
 		return fmt.Errorf("%w: validate takes no arguments, got %q", errUsage, fs.Arg(0))
+	}
+	// An empty value is a usage error, not "no audit file": a workflow that
+	// passes an unset variable would otherwise get a green run that checked
+	// nothing.
+	auditGiven := false
+	fs.Visit(func(f *flag.Flag) { auditGiven = auditGiven || f.Name == "audit" })
+	if auditGiven && *auditPath == "" {
+		return fmt.Errorf("%w: --audit needs a file path, got an empty value", errUsage)
 	}
 
 	cfg, err := config.Load(*path)
@@ -171,6 +183,18 @@ func runValidate(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("%s: %w", *path, err)
 	}
 	fmt.Fprintf(stdout, "%s: %d repositories, no problems found\n", *path, len(cfg.Repos))
+
+	if !auditGiven {
+		return nil
+	}
+	raw, err := os.ReadFile(*auditPath)
+	if err != nil {
+		return err
+	}
+	if err := schema.Validate(raw); err != nil {
+		return fmt.Errorf("%s: %w", *auditPath, err)
+	}
+	fmt.Fprintf(stdout, "%s: matches the audit.json schema\n", *auditPath)
 	return nil
 }
 

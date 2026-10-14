@@ -175,6 +175,138 @@ func TestRun_validateReportsAMissingFile(t *testing.T) {
 	}
 }
 
+const (
+	exampleConfig = "../../examples/repos.toml"
+	goldenAudit   = "../../internal/render/testdata/golden/audit.json"
+)
+
+// writeFile puts content in a fresh temp directory and returns its path.
+func writeFile(t *testing.T, name, content string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+	return path
+}
+
+func TestRunValidate_auditAcceptsAConformingFile(t *testing.T) {
+	t.Parallel()
+
+	stdout, _, err := exec(t, "validate", "--config", exampleConfig, "--audit", goldenAudit)
+	if err != nil {
+		t.Fatalf("validate --audit %s: %v", goldenAudit, err)
+	}
+	if want := exampleConfig + ": "; !strings.Contains(stdout, want) {
+		t.Errorf("stdout = %q, want the config line starting %q", stdout, want)
+	}
+	if want := goldenAudit + ": matches the audit.json schema\n"; !strings.Contains(stdout, want) {
+		t.Errorf("stdout = %q, want the line %q", stdout, want)
+	}
+}
+
+func TestRunValidate_auditRejectsANonConformingFile(t *testing.T) {
+	t.Parallel()
+
+	path := writeFile(t, "audit.json", `{"surprise": true}`)
+	_, _, err := exec(t, "validate", "--config", exampleConfig, "--audit", path)
+	if err == nil {
+		t.Fatal("validate --audit: error = nil, want a schema violation")
+	}
+	if errors.Is(err, errUsage) {
+		t.Errorf("error = %v, want a runtime error rather than a usage error", err)
+	}
+	if got := exitCode(err); got != 1 {
+		t.Errorf("exitCode(%v) = %d, want 1", err, got)
+	}
+	for _, want := range []string{path, "surprise"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err, want)
+		}
+	}
+}
+
+func TestRunValidate_auditReportsAMissingFile(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := exec(t, "validate", "--config", exampleConfig, "--audit", filepath.Join(t.TempDir(), "absent.json"))
+	if err == nil {
+		t.Fatal("validate --audit: error = nil, want a not-exist error")
+	}
+	if got := exitCode(err); got != 1 {
+		t.Errorf("exitCode(%v) = %d, want 1", err, got)
+	}
+}
+
+func TestRunValidate_auditChecksTheConfigFirst(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := exec(t, "validate", "--config", "../../examples/repos.invalid.toml", "--audit", goldenAudit)
+	if err == nil {
+		t.Fatal("validate: error = nil, want the config to be rejected")
+	}
+	if !strings.Contains(err.Error(), "dead") {
+		t.Errorf("error = %q, want the configuration error, not an audit one", err)
+	}
+}
+
+func TestRun_auditFlagBelongsToValidateAlone(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{
+		{"validate", "--audit"},
+		{"validate", "--config", exampleConfig, "--audit", ""},
+		{"validate", "--config", exampleConfig, "--audit="},
+		{"render", "--audit", "x"},
+		{"json", "--audit", "x"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := exec(t, args...)
+			if !errors.Is(err, errUsage) {
+				t.Errorf("run(%v) error = %v, want it to wrap errUsage", args, err)
+			}
+			if got := exitCode(err); got != 2 {
+				t.Errorf("exitCode(run(%v)) = %d, want 2", args, got)
+			}
+		})
+	}
+}
+
+func TestRunValidate_auditRejectsAFileThatIsNotAnAuditDocument(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{"invalid JSON", "this is not json"},
+		{"a top-level array", "[]"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeFile(t, "audit.json", tc.content)
+			_, _, err := exec(t, "validate", "--config", exampleConfig, "--audit", path)
+			if err == nil {
+				t.Fatal("validate --audit: error = nil, want a rejection")
+			}
+			if errors.Is(err, errUsage) {
+				t.Errorf("error = %v, want a runtime error rather than a usage error", err)
+			}
+			if got := exitCode(err); got != 1 {
+				t.Errorf("exitCode(%v) = %d, want 1", err, got)
+			}
+			if !strings.Contains(err.Error(), path) {
+				t.Errorf("error = %q, want it to name %q", err, path)
+			}
+		})
+	}
+}
+
 func TestRun_subcommandHelpIsNotAnError(t *testing.T) {
 	t.Parallel()
 

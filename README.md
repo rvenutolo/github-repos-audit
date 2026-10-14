@@ -15,15 +15,18 @@ workflow described below, never in the tool's own code path.
 
 Both reading commands take their token from `GITHUB_TOKEN` and, when it is
 unset, from `gh auth token --hostname github.com`, the one subprocess the tool
-ever starts. `github-repos-audit validate` checks `repos.toml` alone, offline, with no
-token. `github-repos-audit --help` lists the flags (`--config`, `--dir`, `--verbose`,
-`--debug`) and `github-repos-audit --version` prints the version. The exit codes are part
-of the interface:
+ever starts. `github-repos-audit validate` checks `repos.toml` offline, with no
+token; with `--audit <path>` it also checks an `audit.json` against the schema
+embedded in the binary. `github-repos-audit --help` lists the flags
+(`--config`, `--audit`, `--dir`, `--verbose`, `--debug`) and
+`github-repos-audit --version` prints the version. The exit codes are part of
+the interface:
 
 - `0` — success.
 - `1` — runtime failure: an unexpected API response, a malformed
-  `repos.toml`, or a `repos.toml` naming no repository the account has. The
-  invocation was fine; something else was not.
+  `repos.toml`, an `audit.json` that does not match its schema, or a
+  `repos.toml` naming no repository the account has. The invocation was fine;
+  something else was not.
 - `2` — usage error: an unknown subcommand, a flag that does not parse, or a
   missing or invalid argument.
 - `130` — interrupted by SIGINT or SIGTERM.
