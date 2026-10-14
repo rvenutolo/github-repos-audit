@@ -4,6 +4,30 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v2.0.0
+
+### Breaking changes
+
+- run the live smoke suite from this repository
+
+  smoke.yml is not a reusable workflow. A report repository
+  deletes its smoke caller and its SMOKE_* variables.
+
+- run the release binary in the reusable workflows
+
+  the pinned commit must be a release's commit; any other
+  fails the run. validate.yml checks repos.toml and audit.json and does not
+  lint the caller's README.
+
+### Features
+
+- validate audit.json against its schema with validate --audit
+- fetch and verify the release binary for a pinned commit
+
+### Fixes
+
+- **deps:** update module golang.org/x/text to v0.43.0
+
 ## v1.0.1
 
 ### Fixes
