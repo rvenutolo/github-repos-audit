@@ -8,9 +8,10 @@
 #
 #              Allowed: the tool's own authorship lines, where the login is
 #              part of `<login>/github-repos-audit` (the module path, the
-#              schema $id, `uses:` examples) and LICENSE. The tool's own name
-#              and its -report and -archive siblings are never treated as
-#              account data.
+#              schema $id, `uses:` examples) and LICENSE. Only the tool's own
+#              name is exempt, because it is in the module path and every
+#              doc; any other repository name, including one that merely
+#              starts with it, is account data.
 #
 #              Repository names match only where they are shaped like a
 #              repository — `<login>/<name>`, `"name": "<name>"`,
@@ -34,7 +35,7 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
-readonly SELF_NAMES='github-repos-audit|github-repos-audit-report|github-repos-audit-archive'
+readonly SELF_NAMES='github-repos-audit'
 
 function usage() {
   printf 'usage: %s --login LOGIN --names FILE --range REVS\n' "${0##*/}" >&2
