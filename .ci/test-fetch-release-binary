@@ -1,0 +1,489 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/fetch-release-binary with a stand-in for gh. The
+#              stand-in answers the tag listing from a file the case writes
+#              (running the script's own --jq filter over it), writes an
+#              inert text file and the case's SHA256SUMS where a download
+#              goes, and answers `attestation verify` with the status the case
+#              names. It records every argument list, so a case can assert
+#              both what the script asked and what it never asked: a refused
+#              commit downloads nothing, and a failed checksum never reaches
+#              the attestation. No call reaches GitHub, and the downloaded
+#              "binary" is a text file that is never run.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly SCRIPT="${REPO_DIR}/.ci/fetch-release-binary"
+
+readonly REPO='gh-owner/tool'
+readonly SHA='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001'
+readonly OTHER_SHA='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0002'
+readonly ASSET='github-repos-audit-linux-amd64'
+# The content the stand-in download writes. Inert text, never executed.
+readonly PAYLOAD='PAYLOAD_MARKER'
+
+rc=0
+# work is not local: see the EXIT-trap note in .ci/check-account-data main().
+work=''
+# The stand-in's PATH directory, and the count of cases run, which numbers
+# each case's directory.
+stub_dir=''
+case_no=0
+
+# @description Record a failed assertion; the run continues.
+# @arg $1 message what failed
+function fail() {
+  ci::log "FAIL: $1"
+  rc=1
+}
+
+# @description Write the gh stand-in to a bin directory. Its behavior comes
+#              from files in $CASE_DIR; it fails on any call it does not know.
+# @arg $1 dir the directory to put gh in
+function write_stub() {
+  mkdir --parents -- "$1"
+  cat > "$1/gh" << 'STUB'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf '%s\n' "$*" >> "${CASE_DIR}/calls.log"
+case "$1 $2" in
+  'api --paginate')
+    # The script's own filter is the last argument.
+    jq --raw-output "${!#}" "${CASE_DIR}/refs.json"
+    ;;
+  'release download')
+    dir=''
+    while (($# > 0)); do
+      if [[ "$1" == '--dir' ]]; then dir="$2"; fi
+      shift
+    done
+    # Noise on stdout, in every case: the script must send it to stderr.
+    printf 'gh noise: downloading\n'
+    if [[ -f "${CASE_DIR}/download-status" ]]; then
+      exit "$(cat "${CASE_DIR}/download-status")"
+    fi
+    kind=file
+    if [[ -f "${CASE_DIR}/binary-kind" ]]; then kind="$(cat "${CASE_DIR}/binary-kind")"; fi
+    case "${kind}" in
+      file) printf 'PAYLOAD_MARKER\n' > "${dir}/github-repos-audit-linux-amd64" ;;
+      executable)
+        # A download that leaves the file executable: the script, not gh,
+        # must be what keeps it non-executable on failure.
+        printf 'PAYLOAD_MARKER\n' > "${dir}/github-repos-audit-linux-amd64"
+        chmod 755 "${dir}/github-repos-audit-linux-amd64"
+        ;;
+      symlink)
+        printf 'PAYLOAD_MARKER\n' > "${CASE_DIR}/symlink-target"
+        ln --symbolic "${CASE_DIR}/symlink-target" "${dir}/github-repos-audit-linux-amd64"
+        ;;
+      none) ;;
+    esac
+    if [[ ! -f "${CASE_DIR}/no-sums" ]]; then
+      cp -- "${CASE_DIR}/SHA256SUMS" "${dir}/SHA256SUMS"
+    fi
+    ;;
+  'attestation verify')
+    printf 'gh noise: attestation\n'
+    status=0
+    if [[ -f "${CASE_DIR}/attest-status" ]]; then status="$(cat "${CASE_DIR}/attest-status")"; fi
+    exit "${status}"
+    ;;
+  *)
+    printf 'unexpected gh call: %s\n' "$*" >&2
+    exit 99
+    ;;
+esac
+STUB
+  chmod +x -- "$1/gh"
+}
+
+# @description Print the SHA256SUMS line the stand-in download's content has.
+# @stdout "<sha256>  <asset>"
+function good_line() {
+  printf '%s  %s\n' "$(printf '%s\n' "${PAYLOAD}" | sha256sum | cut --delimiter=' ' --fields=1)" "${ASSET}"
+}
+
+# @description Start a case: make its directory with a valid default setup
+#              (one release tag at SHA, a correct checksum list).
+# @arg $1 name the case's name, used in messages
+# @stdout nothing; sets CASE_DIR, OUT and the result variables
+function new_case() {
+  case_no=$((case_no + 1))
+  name="$1"
+  CASE_DIR="${work}/case-${case_no}"
+  OUT="${CASE_DIR}/out"
+  mkdir --parents -- "${CASE_DIR}"
+  printf '[{"ref":"refs/tags/v1.2.3","object":{"sha":"%s","type":"commit"}},{"ref":"refs/tags/v1.2.4","object":{"sha":"%s","type":"commit"}}]\n' \
+    "${SHA}" "${OTHER_SHA}" > "${CASE_DIR}/refs.json"
+  good_line > "${CASE_DIR}/SHA256SUMS"
+}
+
+# @description Run the script with the stand-in first on PATH. Sets status,
+#              stdout_text and stderr_text.
+# @arg $@ arguments passed to the script
+function run() {
+  status=0
+  CASE_DIR="${CASE_DIR}" PATH="${stub_dir}:${PATH}" GH_TOKEN=stub-token \
+    "${SCRIPT}" "$@" > "${CASE_DIR}/stdout" 2> "${CASE_DIR}/stderr" || status=$?
+  stdout_text="$(cat "${CASE_DIR}/stdout")"
+  stderr_text="$(cat "${CASE_DIR}/stderr")"
+}
+
+# @description Run the script with the standard valid arguments.
+function run_default() {
+  run --repo "${REPO}" --sha "${SHA}" --out "${OUT}"
+}
+
+# @description Assert the exit status, and that the ERR trap never printed:
+#              every failure the script has is a designed one with its own
+#              message, so a trap line means an unhandled command failed.
+# @arg $1 want the expected status
+function expect_status() {
+  if [[ "${status}" != "$1" ]]; then
+    fail "${name}: exit ${status}, want $1 (stderr: ${stderr_text})"
+  fi
+  if [[ "${stderr_text}" == *'] ERROR: line '* ]]; then
+    fail "${name}: the ERR trap fired (stderr: ${stderr_text})"
+  fi
+}
+
+# @description Assert a passing run's stdout is exactly the binary's path.
+# @arg $1 want the expected path
+function expect_stdout_path() {
+  if [[ "${stdout_text}" != "$1" ]]; then
+    fail "${name}: stdout is '${stdout_text}', want exactly $1"
+  fi
+}
+
+# @description Assert a passing run left the binary executable.
+function expect_executable() {
+  if [[ ! -x "${OUT}/${ASSET}" ]]; then
+    fail "${name}: the verified file is not executable"
+  fi
+}
+
+# @description Assert the logged call that starts with a prefix contains a
+#              fragment.
+# @arg $1 prefix the start of the call
+# @arg $2 fragment the text the call must contain
+function expect_call_has() {
+  local line
+  line="$(grep --fixed-strings -- "$1" "${CASE_DIR}/calls.log" || true)"
+  if [[ "${line}" != *"$2"* ]]; then
+    fail "${name}: '$1' call lacks '$2' (call: ${line})"
+  fi
+}
+
+# @description Assert stderr contains a substring.
+# @arg $1 needle the text expected
+function expect_stderr() {
+  if [[ "${stderr_text}" != *"$1"* ]]; then
+    fail "${name}: stderr lacks '$1' (stderr: ${stderr_text})"
+  fi
+}
+
+# @description Assert stdout is empty.
+function expect_no_stdout() {
+  if [[ -n "${stdout_text}" ]]; then
+    fail "${name}: stdout is '${stdout_text}', want empty"
+  fi
+}
+
+# @description Assert the binary exists and is not executable.
+function expect_not_executable() {
+  if [[ ! -f "${OUT}/${ASSET}" ]]; then
+    fail "${name}: no downloaded file to check the executable bit of"
+  elif [[ -x "${OUT}/${ASSET}" ]]; then
+    fail "${name}: the file is executable after a failure"
+  fi
+}
+
+# @description Assert whether the call log has a call starting with a prefix.
+# @arg $1 want "yes" or "no"
+# @arg $2 prefix the start of the call
+function expect_call() {
+  local found=no
+  if [[ -f "${CASE_DIR}/calls.log" ]] && grep --quiet --fixed-strings -- "$2" "${CASE_DIR}/calls.log"; then
+    found=yes
+  fi
+  if [[ "${found}" != "$1" ]]; then
+    fail "${name}: call '$2' present=${found}, want $1"
+  fi
+}
+
+# @description Assert the case downloaded nothing and made no attestation call.
+function expect_nothing_downloaded() {
+  expect_call no 'release download'
+  expect_call no 'attestation verify'
+  if [[ -e "${OUT}" ]]; then
+    fail "${name}: --out was created although nothing was downloaded"
+  fi
+}
+
+function main() {
+  work="$(mktemp --directory)"
+  trap 'rm -rf -- "${work}"' EXIT
+  stub_dir="${work}/stub"
+  write_stub "${stub_dir}"
+
+  new_case 'happy path'
+  run_default
+  expect_status 0
+  expect_stdout_path "${OUT}/${ASSET}"
+  expect_executable
+  expect_call yes 'api --paginate repos/gh-owner/tool/git/matching-refs/tags/v'
+  expect_call yes "release download v1.2.3 --repo ${REPO}"
+  expect_call_has 'release download' "--pattern ${ASSET}"
+  expect_call_has 'release download' '--pattern SHA256SUMS'
+  expect_call_has 'release download' "--dir ${OUT}"
+  # The file argument is what the proof is about: the checksum list or any
+  # other file would pass a verify that was pointed at it.
+  if ! grep --quiet --fixed-strings --line-regexp \
+    "attestation verify ${OUT}/${ASSET} --repo ${REPO} --signer-workflow ${REPO}/.github/workflows/release.yml --source-ref refs/heads/main --source-digest ${SHA}" \
+    "${CASE_DIR}/calls.log"; then
+    fail "${name}: attestation verify call is not exactly the expected one ($(grep --fixed-strings 'attestation verify' "${CASE_DIR}/calls.log" || true))"
+  fi
+
+  new_case 'relative --out'
+  (cd "${CASE_DIR}" && CASE_DIR="${CASE_DIR}" PATH="${stub_dir}:${PATH}" GH_TOKEN=stub-token \
+    "${SCRIPT}" --repo "${REPO}" --sha "${SHA}" --out rel/out > stdout 2> stderr) || status=$?
+  stdout_text="$(cat "${CASE_DIR}/stdout")"
+  stderr_text="$(cat "${CASE_DIR}/stderr")"
+  expect_status 0
+  expect_stdout_path "${CASE_DIR}/rel/out/${ASSET}"
+
+  # The script finds lib.sh from its own path, however it was reached.
+  new_case 'invoked from inside .ci by bare name'
+  status=0
+  (cd "${REPO_DIR}/.ci" && CASE_DIR="${CASE_DIR}" PATH="${stub_dir}:${PATH}" GH_TOKEN=stub-token \
+    bash fetch-release-binary --repo "${REPO}" --sha "${SHA}" --out "${OUT}" > "${CASE_DIR}/stdout" 2> "${CASE_DIR}/stderr") || status=$?
+  stdout_text="$(cat "${CASE_DIR}/stdout")"
+  stderr_text="$(cat "${CASE_DIR}/stderr")"
+  expect_status 0
+  expect_stdout_path "${OUT}/${ASSET}"
+
+  new_case 'invoked through a symlink'
+  status=0
+  local link="${CASE_DIR}/linked-fetch"
+  ln --symbolic "${SCRIPT}" "${link}"
+  CASE_DIR="${CASE_DIR}" PATH="${stub_dir}:${PATH}" GH_TOKEN=stub-token \
+    "${link}" --repo "${REPO}" --sha "${SHA}" --out "${OUT}" > "${CASE_DIR}/stdout" 2> "${CASE_DIR}/stderr" || status=$?
+  stdout_text="$(cat "${CASE_DIR}/stdout")"
+  stderr_text="$(cat "${CASE_DIR}/stderr")"
+  expect_status 0
+  expect_stdout_path "${OUT}/${ASSET}"
+
+  new_case 'no tag at the commit'
+  run --repo "${REPO}" --sha cccccccccccccccccccccccccccccccccccc0003 --out "${OUT}"
+  expect_status 1
+  expect_stderr 'not a release'
+  expect_stderr 'pin'
+  expect_no_stdout
+  expect_nothing_downloaded
+
+  new_case 'two version tags at the commit'
+  printf '[{"ref":"refs/tags/v1.2.3","object":{"sha":"%s"}},{"ref":"refs/tags/v1.2.5","object":{"sha":"%s"}}]\n' \
+    "${SHA}" "${SHA}" > "${CASE_DIR}/refs.json"
+  run_default
+  expect_status 1
+  expect_stderr 'v1.2.3'
+  expect_stderr 'v1.2.5'
+  expect_no_stdout
+  expect_nothing_downloaded
+
+  new_case 'a non-version tag beside a version tag'
+  printf '[{"ref":"refs/tags/v2-probe","object":{"sha":"%s"}},{"ref":"refs/tags/v1.2.3","object":{"sha":"%s"}},{"ref":"refs/tags/v1.2.3-rc1","object":{"sha":"%s"}},{"ref":"refs/tags/v01.2.3","object":{"sha":"%s"}}]\n' \
+    "${SHA}" "${SHA}" "${SHA}" "${SHA}" > "${CASE_DIR}/refs.json"
+  run_default
+  expect_status 0
+  expect_stdout_path "${OUT}/${ASSET}"
+  expect_executable
+  expect_call yes "release download v1.2.3 --repo ${REPO}"
+
+  new_case 'only a non-version tag at the commit'
+  printf '[{"ref":"refs/tags/v2-probe","object":{"sha":"%s"}}]\n' "${SHA}" > "${CASE_DIR}/refs.json"
+  run_default
+  expect_status 1
+  expect_stderr 'not a release'
+  expect_stderr 'pin'
+  expect_no_stdout
+  expect_nothing_downloaded
+
+  new_case 'checksum mismatch'
+  printf '%s  %s\n' "$(printf 'other\n' | sha256sum | cut --delimiter=' ' --fields=1)" "${ASSET}" > "${CASE_DIR}/SHA256SUMS"
+  printf 'executable\n' > "${CASE_DIR}/binary-kind"
+  run_default
+  expect_status 1
+  expect_stderr 'does not match'
+  expect_no_stdout
+  expect_not_executable
+  expect_call no 'attestation verify'
+
+  new_case 'SHA256SUMS without the binary'
+  printf '%s  %s\n' "$(printf '%s\n' "${PAYLOAD}" | sha256sum | cut --delimiter=' ' --fields=1)" "other-file" > "${CASE_DIR}/SHA256SUMS"
+  run_default
+  expect_status 1
+  expect_stderr 'does not list'
+  expect_no_stdout
+  expect_not_executable
+  expect_call no 'attestation verify'
+
+  new_case 'SHA256SUMS naming the binary only as a substring'
+  printf '%s  %s\n' "$(printf '%s\n' "${PAYLOAD}" | sha256sum | cut --delimiter=' ' --fields=1)" "x${ASSET}.sig" > "${CASE_DIR}/SHA256SUMS"
+  run_default
+  expect_status 1
+  expect_stderr 'does not list'
+  expect_no_stdout
+  expect_not_executable
+  expect_call no 'attestation verify'
+
+  new_case 'SHA256SUMS with a malformed line beside a good one'
+  printf 'this is not a checksum line\n' >> "${CASE_DIR}/SHA256SUMS"
+  run_default
+  expect_status 1
+  expect_stderr 'does not match'
+  expect_no_stdout
+  expect_not_executable
+  expect_call no 'attestation verify'
+
+  new_case 'SHA256SUMS missing from the download'
+  : > "${CASE_DIR}/no-sums"
+  run_default
+  expect_status 1
+  expect_stderr 'SHA256SUMS'
+  expect_no_stdout
+  expect_not_executable
+  expect_call no 'attestation verify'
+
+  new_case 'the download left no binary'
+  printf 'none\n' > "${CASE_DIR}/binary-kind"
+  run_default
+  expect_status 1
+  expect_stderr 'no regular file'
+  expect_no_stdout
+  expect_call no 'attestation verify'
+
+  new_case 'the download left a symlink as the binary'
+  printf 'symlink\n' > "${CASE_DIR}/binary-kind"
+  run_default
+  expect_status 1
+  expect_stderr 'no regular file'
+  expect_no_stdout
+  expect_not_executable
+  expect_call no 'attestation verify'
+
+  new_case 'download failure (gh exits 4)'
+  printf '4\n' > "${CASE_DIR}/download-status"
+  run_default
+  expect_status 1
+  expect_stderr 'cannot download'
+  expect_no_stdout
+  expect_call no 'attestation verify'
+
+  new_case 'download failure (gh exits 2, the usage code)'
+  printf '2\n' > "${CASE_DIR}/download-status"
+  run_default
+  expect_status 1
+  expect_stderr 'cannot download'
+  expect_no_stdout
+  expect_call no 'attestation verify'
+
+  new_case 'attestation failure'
+  printf '1\n' > "${CASE_DIR}/attest-status"
+  printf 'executable\n' > "${CASE_DIR}/binary-kind"
+  run_default
+  expect_status 1
+  expect_stderr 'provenance'
+  expect_no_stdout
+  expect_not_executable
+
+  new_case 'non-empty --out'
+  mkdir --parents -- "${OUT}"
+  printf 'keep me\n' > "${OUT}/marker"
+  run_default
+  expect_status 1
+  expect_stderr 'not empty'
+  expect_no_stdout
+  expect_call no 'release download'
+  if [[ "$(ls --almost-all -- "${OUT}")" != 'marker' ]]; then
+    fail "${name}: a refused run changed --out"
+  fi
+
+  new_case '--out is a file'
+  printf 'keep me\n' > "${OUT}"
+  run_default
+  expect_status 1
+  expect_stderr 'not a directory'
+  expect_no_stdout
+  expect_call no 'release download'
+
+  new_case 'no GH_TOKEN'
+  status=0
+  CASE_DIR="${CASE_DIR}" PATH="${stub_dir}:${PATH}" env --unset=GH_TOKEN \
+    "${SCRIPT}" --repo "${REPO}" --sha "${SHA}" --out "${OUT}" > "${CASE_DIR}/stdout" 2> "${CASE_DIR}/stderr" || status=$?
+  stdout_text="$(cat "${CASE_DIR}/stdout")"
+  stderr_text="$(cat "${CASE_DIR}/stderr")"
+  expect_status 1
+  expect_stderr 'GH_TOKEN'
+  expect_no_stdout
+  if [[ -f "${CASE_DIR}/calls.log" ]]; then
+    fail "${name}: gh was called without a token"
+  fi
+
+  local -a bad_usage=(
+    '--repo gh-owner/tool --out X'
+    "--repo gh-owner/tool --sha ${SHA:0:39} --out X"
+    "--repo gh-owner/tool --sha ${SHA^^} --out X"
+    "--repo gh-owner/tool --sha ${SHA}0 --out X"
+    "--repo gh-owner/tool --sha ${SHA} --out X --bogus"
+    "--repo gh-owner/tool --sha ${SHA}"
+    "--sha ${SHA} --out X"
+    "--repo --sha ${SHA} --out X --extra"
+    "--repo not-a-slug --sha ${SHA} --out X"
+    "--repo ../.. --sha ${SHA} --out X"
+    "--repo ./.. --sha ${SHA} --out X"
+    "--repo owner/.. --sha ${SHA} --out X"
+    "--repo gh-owner/tool --sha ${SHA} --out"
+  )
+  local usage
+  for usage in "${bad_usage[@]}"; do
+    new_case "usage: ${usage}"
+    # IFS is newline/tab, so the words are split on a space by hand.
+    IFS=' ' read -r -a words <<< "${usage}"
+    run "${words[@]//X/${OUT}}"
+    expect_status 2
+    expect_no_stdout
+    expect_call no 'api'
+  done
+
+  new_case 'usage: --repo as the last word, no value'
+  run --sha "${SHA}" --out "${OUT}" --repo
+  expect_status 2
+  expect_no_stdout
+
+  new_case 'usage: empty --out'
+  run --repo "${REPO}" --sha "${SHA}" --out ''
+  expect_status 2
+  expect_stderr '--out must not be empty'
+  expect_no_stdout
+
+  if ((rc == 0)); then
+    ci::log "all ${case_no} cases passed"
+  fi
+  exit "${rc}"
+}
+
+main "$@"

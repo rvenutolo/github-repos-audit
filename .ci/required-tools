@@ -71,8 +71,9 @@ statix
 deadnix
 # invoked by .ci/run-lint-checks; the binary name, not its `renovate` package
 renovate-config-validator
-# every script uses git: most derive the repo root via `git rev-parse`;
-# check-account-data runs git grep and git rev-list; .ci/release-version
+# every script but .ci/fetch-release-binary (which derives its root from its
+# own path and calls no git) uses git: most derive the repo root via
+# `git rev-parse`; check-account-data runs git grep and git rev-list; .ci/release-version
 # reads tags and merge commits, .ci/release-pull-request resolves HEAD and
 # .ci/release-publish looks for a release's tag and its release commit
 git
@@ -81,7 +82,11 @@ git
 # through `gh api` and opens or updates its pull request with `gh pr`;
 # .ci/release-publish asks whether a release or its tag exists, drafts,
 # reads back and publishes the release with `gh release`, and reads the tag
-# and the default branch's changelog with `gh api`
+# and the default branch's changelog with `gh api`;
+# .ci/fetch-release-binary lists a commit's tags with `gh api`, downloads
+# a release with `gh release download` and checks its provenance with
+# `gh attestation verify`; it runs on a bare runner outside the devshell, so
+# this entry covers only its test
 gh
 # the task runner .justfile documents; .ci/run-lint-checks runs `just --fmt`
 # and .ci/check-readme-recipes runs `just --summary`
@@ -116,7 +121,9 @@ sort
 # created
 sleep
 # .ci/build-release writes SHA256SUMS with it; .ci/release-publish holds the
-# files to that list before it uploads them
+# files to that list before it uploads them; .ci/fetch-release-binary checks
+# a downloaded binary against the list (on a bare runner, outside the
+# devshell, so this entry covers only its test)
 sha256sum
 # .ci/check-patch-coverage drops its sort keys before printing
 cut
