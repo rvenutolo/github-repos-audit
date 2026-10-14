@@ -59,7 +59,7 @@ of the interface:
    the file alone; a README with either marker missing, repeated or out of
    order is refused before anything is written.
 
-3. Add three workflow files to the report repository's `.github/workflows/`,
+3. Add two workflow files to the report repository's `.github/workflows/`,
    each calling one of this repository's reusable workflows at a pinned
    commit. Pin the `uses:` line to a released tag's commit SHA, not to a
    branch name, so a change here cannot alter what runs in your repository
@@ -119,32 +119,11 @@ of the interface:
          contents: read
    ```
 
-   ```yaml
-   # .github/workflows/smoke.yml — the tool's own live integration suite,
-   # run against two fixture repositories of yours. Optional; skip it if you
-   # would rather not maintain fixture repositories.
-   name: smoke
-   on:
-     schedule:
-       - cron: "0 5 * * 1"
-     workflow_dispatch: {}
-   jobs:
-     smoke:
-       uses: rvenutolo/github-repos-audit/.github/workflows/smoke.yml@0123456789abcdef0123456789abcdef01234567 # vX.Y.Z
-       permissions:
-         contents: read
-       with:
-         owner: ${{ vars.SMOKE_OWNER }}
-         public-repo: ${{ vars.SMOKE_PUBLIC_REPO }}
-         private-repo: ${{ vars.SMOKE_PRIVATE_REPO }}
-       secrets:
-         AUDIT_TOKEN: ${{ secrets.AUDIT_TOKEN }}
-   ```
-
 4. Set two repository secrets on the report repository:
    - `AUDIT_TOKEN` — a token that can read every repository on the account:
-     contents, metadata, actions, and administration, all read-only. The
-     workflow hands it to `github-repos-audit render` as `GITHUB_TOKEN`, and inside the
+     contents, metadata, actions, administration, and pull requests, all
+     read-only. Without pull requests the open pull request count of a private
+     repository is unreadable. The workflow hands it to `github-repos-audit render` as `GITHUB_TOKEN`, and inside the
      workflow it is the only token the tool's own code ever sees (a local run
      without `GITHUB_TOKEN` falls back to whatever `gh auth token` holds).
      `github-repos-audit validate` is offline and needs no token at all. It cannot write
@@ -155,30 +134,6 @@ of the interface:
      report to a branch, open (or reopen) the pull request and enable
      auto-merge on it — or merge it outright when every check has already
      reported — so it is the token that merges.
-
-5. If you added `smoke.yml`, set three repository variables: `SMOKE_OWNER`,
-   `SMOKE_PUBLIC_REPO` and `SMOKE_PRIVATE_REPO`, naming an account and one
-   public and one private repository on it that the tool is allowed to probe.
-   `SMOKE_OWNER` must be the account `AUDIT_TOKEN` authenticates as; the suite
-   fails outright on a mismatch, and it expects the account to own at least
-   two repositories, since one test checks that discovery sees the whole
-   account rather than a selected list. The suite only reads the
-   repositories, but it is not indifferent to which two you pick —
-   `internal/github/live_integration_test.go` asserts real facts about each
-   one, and a fixture missing one of these fails the weekly run with no
-   further explanation:
-   - The public repository needs a description, a README, at least one
-     workflow file, at least one ruleset, readable branch protection rules, a
-     non-empty Actions permissions policy, a default workflow permissions
-     setting, at least one allowed merge strategy, a commit history whose
-     authors carry both a name and an email, a recorded last push, a
-     secret-scanning status, a private-vulnerability-reporting answer, and at
-     least one CI check run on its default-branch head (a workflow file alone
-     is not enough; the head commit must have been checked).
-   - The private repository needs to genuinely be private, so the suite can
-     observe the settings that only differ on a private repository (secret
-     scanning and private vulnerability reporting both report as absent
-     there, and the Actions access-level setting only exists there).
 
 ## `repos.toml` reference
 
@@ -430,6 +385,42 @@ Nix is expected to be installed on the host.
 | `just mutate`        | mutation-test a package; slow, never part of the gate     |
 | `just gremlins-bump` | bump gremlins to its latest release; needs network        |
 | `just build-release` | cross-compile the release binaries, SBOM and checksums    |
+
+`.github/workflows/smoke.yml` runs the live suite on `main` once a week. Its
+token and its three `SMOKE_*` values belong to the `smoke` environment, which
+only `main` may deploy to, so a run from any other branch is refused before
+the token is in scope. `SMOKE_TOKEN` is a fine-grained token limited to the
+two fixture repositories, with Actions, Administration, Contents, Metadata and
+Pull requests read-only. It carries an expiry: once it lapses the run fails on
+its first request, and the fix is a new token in the environment's secret.
+
+`just smoke` runs the suite with your own `gh` login. To run it with another
+token, call the command the recipe wraps:
+
+```sh
+GITHUB_TOKEN=<token> SMOKE_OWNER=<owner> SMOKE_PUBLIC_REPO=<repo> SMOKE_PRIVATE_REPO=<repo> \
+  ./.ci/in-devshell go test -tags=integration ./internal/github/... -count=1
+```
+
+`SMOKE_OWNER` must be the account the token authenticates as; the suite fails
+outright on a mismatch. The suite only reads the two repositories, but it is
+not indifferent to which two they are:
+`internal/github/live_integration_test.go` asserts real facts about each, and
+a fixture missing one fails the run with no further explanation:
+
+- The public repository needs a description, a README, at least one
+  workflow file, at least one ruleset, readable branch protection rules, a
+  non-empty Actions permissions policy, a default workflow permissions
+  setting, at least one allowed merge strategy, a commit history whose
+  authors carry both a name and an email, a recorded last push, a
+  secret-scanning status, a private-vulnerability-reporting answer, and at
+  least one CI check run on its default-branch head (a workflow file alone
+  is not enough; the head commit must have been checked).
+- The private repository needs to genuinely be private and to have at least
+  one commit, so the suite can observe the settings that only differ on a
+  private repository (secret scanning and private vulnerability reporting
+  both report as absent there, and the Actions access-level setting only
+  exists there).
 
 A release is proposed by `.github/workflows/release.yml`, which runs on every
 push to `main`. Whenever something releasable has merged since the last

@@ -16,8 +16,8 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
 
-// The live suite. Real requests against real GitHub, read-only, with the same
-// token the daily refresh uses.
+// The live suite. Real requests against real GitHub, read-only, with a token
+// that can read the two fixture repositories and nothing else.
 //
 // It exists because recorded fixtures pass forever while the API drifts
 // underneath them. The entire collection is one GraphQL query (plus one per
@@ -26,7 +26,7 @@ import (
 // it coming.
 //
 // A failure here is informational, not a broken build: it means GitHub changed
-// something and the collector needs attention before the next cron run does it
+// something and the collector needs attention before a report repository's next refresh does it
 // loudly. That is why it is behind a build tag and never in the gate.
 
 // liveTargets is what the live suite reads. The names come from the
@@ -42,8 +42,8 @@ type liveTargets struct {
 	owner, publicRepo, privateRepo string
 }
 
-// targets reads liveTargets, or skips when any is unset. The reusable smoke
-// workflow makes all three required inputs, so CI cannot skip silently.
+// targets reads liveTargets, or skips when any is unset. The smoke workflow
+// refuses to start with an empty one, so CI cannot skip silently.
 func targets(t *testing.T) liveTargets {
 	t.Helper()
 
@@ -358,11 +358,11 @@ func TestLive_rollupNeedsNoChecksPermission(t *testing.T) {
 	}
 }
 
-// TestLive_discoverSeesTheWholeAccount checks the token has repository access
-// "All repositories" rather than a selected list — a selected list would
-// make a repository created after the token invisible to the very comparison
-// that exists to report it as having no repos.toml entry.
-func TestLive_discoverSeesTheWholeAccount(t *testing.T) {
+// TestLive_discoverReturnsTheFixtures checks that discovery lists what the
+// token can see. The suite's token is limited to the two fixtures, so both
+// must come back; it says nothing about how many repositories the account
+// has.
+func TestLive_discoverReturnsTheFixtures(t *testing.T) {
 	t.Parallel()
 
 	c, lt := liveClient(t)
@@ -371,11 +371,11 @@ func TestLive_discoverSeesTheWholeAccount(t *testing.T) {
 		t.Fatalf("Discover() error = %v, want nil", err)
 	}
 	if len(names) < 2 {
-		t.Fatalf("Discover() found %d repositories, want the whole account", len(names))
+		t.Fatalf("Discover() found %d repositories, want both fixtures", len(names))
 	}
 	for _, want := range []string{lt.publicRepo, lt.privateRepo} {
 		if !slices.Contains(names, want) {
-			t.Errorf("Discover() did not return %s; the token may be scoped to a selected list", want)
+			t.Errorf("Discover() did not return %s; the token may not have access to it", want)
 		}
 	}
 }

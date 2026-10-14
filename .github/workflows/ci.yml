@@ -83,9 +83,12 @@ jobs:
         # run is still --ignore-environment, so the hermetic boundary is
         # unchanged.
         shell: nix develop --command bash -o errexit {0}
-        # No AUDIT_TOKEN here: the only secret the tool repository holds is
-        # CODECOV_TOKEN. lychee needs no token either; see the lychee comment
-        # in .ci/run-lint-checks.
+        # No token here: nothing in the gate reads a GitHub account. The
+        # repository's secrets are CODECOV_TOKEN for the upload below,
+        # REFRESH_TOKEN for the workflows that open pull requests, and the
+        # smoke environment's SMOKE_TOKEN, which only smoke.yml on main can
+        # read. lychee needs no token either; see the lychee comment in
+        # .ci/run-lint-checks.
         run: ./.ci/in-devshell ./run-all-checks
       # Reporting only: .ci/check-coverage inside the gate is the source of
       # truth, and Codecov adds history and a per-line PR view on top of it.
