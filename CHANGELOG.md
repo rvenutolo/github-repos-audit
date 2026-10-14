@@ -4,6 +4,13 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v1.0.1
+
+### Fixes
+
+- refuse to publish a withdrawn release commit
+- name the released binary after the repository
+
 ## v1.0.0
 
 The first stable release. From here on the version number is a promise about
