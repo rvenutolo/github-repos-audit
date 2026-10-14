@@ -36,7 +36,6 @@ jq
 # .ci/run-lint-checks (verify) and .ci/run-fixers (write); treefmt drives it too
 shfmt
 # the end-to-end test shells out to `prettier --check` on the golden README;
-# validate.yml also runs it, on the caller's report/README.md;
 # .ci/release-pull-request formats the CHANGELOG.md it commits with it, and
 # .ci/test-release-version checks generated sections with it
 prettier
@@ -48,9 +47,8 @@ yamllint
 actionlint
 # invoked by .ci/run-lint-checks
 zizmor
-# invoked by .ci/run-lint-checks and .ci/run-fixers; validate.yml also runs
-# it, on the caller's report/README.md; .ci/test-release-version lints a
-# generated changelog section with it
+# invoked by .ci/run-lint-checks and .ci/run-fixers; .ci/test-release-version
+# lints a generated changelog section with it
 markdownlint-cli2
 # .ci/run-lint-checks: every tracked file no formatter owns
 editorconfig-checker
@@ -62,8 +60,7 @@ typos
 # invoked by .ci/run-lint-checks (whole-tree scan of the tracked files)
 gitleaks
 # .ci/run-lint-checks: audit.schema.json against its metaschema, then the
-# golden audit.json fixtures against audit.schema.json; validate.yml also runs
-# it, on the caller's report/audit.json when present
+# golden audit.json fixtures against audit.schema.json
 check-jsonschema
 # invoked by .ci/run-lint-checks
 statix
@@ -73,9 +70,11 @@ deadnix
 renovate-config-validator
 # every script but .ci/fetch-release-binary (which derives its root from its
 # own path and calls no git) uses git: most derive the repo root via
-# `git rev-parse`; check-account-data runs git grep and git rev-list; .ci/release-version
-# reads tags and merge commits, .ci/release-pull-request resolves HEAD and
-# .ci/release-publish looks for a release's tag and its release commit
+# `git rev-parse`; check-account-data runs git grep and git rev-list;
+# .ci/release-version reads tags and merge commits, .ci/release-pull-request
+# resolves HEAD and .ci/release-publish looks for a release's tag and its
+# release commit; audit.yml runs .ci/refresh-pull-request on a bare runner
+# outside the devshell, where the runner's own git serves it
 git
 # internal/github shells out to `gh auth token` when GITHUB_TOKEN is unset;
 # every .ci/*-pull-request script, .ci/release-pull-request included, commits
@@ -86,7 +85,8 @@ git
 # .ci/fetch-release-binary lists a commit's tags with `gh api`, downloads
 # a release with `gh release download` and checks its provenance with
 # `gh attestation verify`; it runs on a bare runner outside the devshell, so
-# this entry covers only its test
+# this entry covers only its test, and so does audit.yml's run of
+# .ci/refresh-pull-request
 gh
 # the task runner .justfile documents; .ci/run-lint-checks runs `just --fmt`
 # and .ci/check-readme-recipes runs `just --summary`
@@ -106,7 +106,8 @@ cp
 mktemp
 # .ci/refresh-pull-request, .ci/fuzz-pull-request and
 # .ci/release-pull-request encode the files they commit for
-# createCommitOnBranch
+# createCommitOnBranch; audit.yml runs .ci/refresh-pull-request on a bare
+# runner outside the devshell, so this entry covers only its test
 base64
 # .ci/run-lint-checks feeds the tracked file list to cp through xargs
 xargs

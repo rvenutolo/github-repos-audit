@@ -66,7 +66,15 @@ the interface:
    each calling one of this repository's reusable workflows at a pinned
    commit. Pin the `uses:` line to a released tag's commit SHA, not to a
    branch name, so a change here cannot alter what runs in your repository
-   without your say:
+   without your say.
+
+   The reusable workflows run the release binary built from the pinned
+   commit. Each run downloads it, checks it against the release's
+   `SHA256SUMS`, and verifies that its build provenance names this
+   repository's release workflow on `main` and that exact commit. A run fails
+   if any of that fails, including when the attestation service is
+   unreachable. The pin must therefore be a release's commit: a commit between
+   releases fails with a message saying so.
 
    Every caller job below sets `permissions: contents: read` explicitly,
    because a called workflow's own `permissions: {}` only caps what it can be
@@ -106,8 +114,9 @@ the interface:
    ```
 
    ```yaml
-   # .github/workflows/validate.yml — checks repos.toml and the committed
-   # report on every pull request, without changing anything.
+   # .github/workflows/validate.yml — checks repos.toml and, when it exists,
+   # audit.json against its schema on every pull request, without changing
+   # anything.
    name: validate
    on: pull_request
    # A superseded push should not keep an old validation run alive: cancel it
@@ -129,7 +138,8 @@ the interface:
      repository is unreadable. The workflow hands it to `github-repos-audit render` as `GITHUB_TOKEN`, and inside the
      workflow it is the only token the tool's own code ever sees (a local run
      without `GITHUB_TOKEN` falls back to whatever `gh auth token` holds).
-     `github-repos-audit validate` is offline and needs no token at all. It cannot write
+     `github-repos-audit validate` is offline and needs no token at all, whether
+     it checks `repos.toml` alone or `audit.json` too. It cannot write
      anything, on this repository or any other.
    - `REFRESH_TOKEN` — a token scoped to the report repository alone, with
      Contents and Pull requests write access. It is used only by the refresh
@@ -291,9 +301,11 @@ Three ways to get an `github-repos-audit` binary:
   executable first: `chmod +x github-repos-audit-<os>-<arch>`.
 - **A clone**, which needs only Nix: `./.ci/in-devshell go run ./cmd/github-repos-audit`.
 
-`github-repos-audit validate` is offline and needs no token. `github-repos-audit render` and
-`github-repos-audit json` read your account from GitHub and need `GITHUB_TOKEN` in the
-environment, or a logged-in `gh` (the token comes from `gh auth token`).
+`github-repos-audit validate --config repos.toml` is offline and needs no
+token; add `--audit audit.json` to check that file against the embedded schema
+too. `github-repos-audit render` and `github-repos-audit json` read your
+account from GitHub and need `GITHUB_TOKEN` in the environment, or a logged-in
+`gh` (the token comes from `gh auth token`).
 
 ## Verifying a release
 
@@ -331,14 +343,18 @@ cosign 3, and the command is for cosign 3.
 gh attestation verify github-repos-audit-linux-amd64 \
   --repo rvenutolo/github-repos-audit \
   --signer-workflow rvenutolo/github-repos-audit/.github/workflows/release.yml \
-  --source-ref refs/heads/main
+  --source-ref refs/heads/main \
+  --source-digest <commit>
 ```
 
 This proves which workflow run, on which commit, built the binary (its build
-provenance). `--signer-workflow` and `--source-ref` pin the same workflow on
-`main` that the certificate identity does: the repository also holds
-attestations for trial builds made from other branches, and without the two
-flags one of those would pass. Run it for each binary you use.
+provenance). `--source-digest` adds the commit: the attestation must name the
+commit the release was built from (the release's commit SHA), so a binary
+built from any other commit fails. The reusable workflows run this same check.
+`--signer-workflow` and `--source-ref` pin the same workflow on `main` that
+the certificate identity does: the repository also holds attestations for
+trial builds made from other branches, and without the two flags one of those
+would pass. Run it for each binary you use.
 
 ## Versioning
 
