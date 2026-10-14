@@ -70,13 +70,11 @@ function main() {
     ci::log 'workflow_files list is empty - this is a failure, not a clean pass'
     rc=1
   else
-    # actionlint 1.7.12 (nixpkgs' current package) predates the
-    # self-repository reusable-workflow syntax: `job.workflow_repository` and
-    # `job.workflow_sha` were only added to the job context on 2026-09-03, and
-    # `$/` for a same-repository `uses:` is newer still, so all three are
-    # flagged as unknown. Drop these three -ignore patterns once nixpkgs
-    # packages an actionlint release that understands them; upstream has no
-    # tracking issue to cite (https://github.com/rhysd/actionlint/issues).
+    # actionlint's job-context schema does not know `job.workflow_repository`
+    # and `job.workflow_sha` (GitHub provides both), and it does not accept
+    # `$/` for a same-repository `uses:`, so all three are flagged as
+    # unknown. Drop these three -ignore patterns once the packaged actionlint
+    # understands them.
     actionlint \
       -ignore 'property "workflow_repository" is not defined' \
       -ignore 'property "workflow_sha" is not defined' \
