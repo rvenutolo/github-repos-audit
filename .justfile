@@ -67,7 +67,7 @@ mutate package="./internal/rules/":
 gremlins-bump:
     # Same command as .github/workflows/gremlins-bump.yml; see nix/gremlins.nix
     # for why the hashes are never edited by hand.
-    nix run nixpkgs#nix-update -- --flake --version=stable gremlins
+    nix run --inputs-from . nixpkgs#nix-update -- --flake --version=stable gremlins
 
 # Cross-compile the release binaries, SBOM and checksums into a directory.
 build-release version out:
