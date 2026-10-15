@@ -4,6 +4,14 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v2.0.1
+
+### Fixes
+
+- fetch each preset at most once even when collectors race
+- never reset a pull request's branch onto its base
+- name the refused field in GraphQL error messages
+
 ## v2.0.0
 
 ### Breaking changes
