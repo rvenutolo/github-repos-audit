@@ -4,6 +4,12 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v2.0.2
+
+### Fixes
+
+- resolve nix-update from the flake lock, not the registry
+
 ## v2.0.1
 
 ### Fixes
