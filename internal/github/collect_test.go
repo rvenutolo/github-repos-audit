@@ -818,6 +818,51 @@ func TestClient_Collect_graphQLErrorsAbort(t *testing.T) {
 	}
 }
 
+// TestClient_Collect_graphQLErrorNamesField covers a refusal of one field: a
+// fine-grained token missing one permission is refused field by field, and
+// the error must say which field so the missing permission can be named.
+// List indices in a path are JSON numbers, not strings.
+func TestClient_Collect_graphQLErrorNamesField(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "field",
+			path: `["repository","open_pull_requests"]`,
+			want: "FORBIDDEN at repository.open_pull_requests: Resource not accessible by personal access token",
+		},
+		{
+			name: "list index",
+			path: `["repository","rulesets","nodes",0,"rules"]`,
+			want: "FORBIDDEN at repository.rulesets.nodes.0.rules: Resource not accessible by personal access token",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			body := `{"data":{"repository":null},"errors":[{"type":"FORBIDDEN","path":` + tc.path +
+				`,"message":"Resource not accessible by personal access token"}]}`
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if _, err := w.Write([]byte(body)); err != nil {
+					t.Errorf("write: %v", err)
+				}
+			}))
+			t.Cleanup(server.Close)
+
+			_, err := newTestClient(t, server.URL).Collect(t.Context(), []string{"ghost"})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Collect() error = %v, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+}
+
 // TestClient_Collect_graphQLNon200Aborts covers the endpoint answering with a
 // status rather than an errors array.
 func TestClient_Collect_graphQLNon200Aborts(t *testing.T) {
