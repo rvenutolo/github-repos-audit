@@ -74,7 +74,13 @@ jobs:
       - uses: $/.github/actions/setup
 
       - name: Bump gremlins to its latest release
-        run: nix run nixpkgs#nix-update -- --flake --version=stable gremlins
+        # --inputs-from . resolves `nixpkgs` from this flake's lock, not the
+        # flake registry. On the runner the Determinate installer's registry
+        # maps `nixpkgs` to flakehub.com, which the egress policy above blocks;
+        # the lock points at github.com, which it allows. It also pins the
+        # nix-update version, so a bump is reproducible and lock maintenance
+        # keeps the tool current.
+        run: nix run --inputs-from . nixpkgs#nix-update -- --flake --version=stable gremlins
 
       - name: Report what changed
         id: bump
