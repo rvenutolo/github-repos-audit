@@ -220,9 +220,14 @@ type graphQLData struct {
 	Repository *repository `json:"repository"`
 }
 
+// graphQLError is one entry of an errors array. Path is the response path of
+// the field the error belongs to, absent for an error about the whole
+// document. Its elements are response keys, so they are this package's
+// snake_case aliases, and list indices, which decode as float64.
 type graphQLError struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
+	Path    []any  `json:"path"`
 }
 
 // gitObject is a file probe's answer. Only its presence matters; oid is
@@ -489,15 +494,38 @@ func graphQLRateLimited(body []byte) bool {
 }
 
 // joinGraphQLErrors renders every message GitHub returned, because the first
-// one is often the least specific.
+// one is often the least specific. Each carries its path when it has one: a
+// fine-grained token missing one permission is refused field by field with
+// the same FORBIDDEN message, so the path is the only thing that says which
+// permission is missing.
 func joinGraphQLErrors(errs []graphQLError) string {
 	messages := make([]string, 0, len(errs))
 	for _, e := range errs {
-		if e.Type != "" {
-			messages = append(messages, e.Type+": "+e.Message)
+		var prefix string
+		switch path := joinPath(e.Path); {
+		case e.Type != "" && path != "":
+			prefix = e.Type + " at " + path
+		case e.Type != "":
+			prefix = e.Type
+		default:
+			prefix = path
+		}
+		if prefix == "" {
+			messages = append(messages, e.Message)
 			continue
 		}
-		messages = append(messages, e.Message)
+		messages = append(messages, prefix+": "+e.Message)
 	}
 	return strings.Join(messages, "; ")
+}
+
+// joinPath renders a response path as dotted keys, e.g.
+// repository.rulesets.nodes.0.rules. fmt prints a whole float64 without a
+// fraction, so a list index reads as an integer.
+func joinPath(path []any) string {
+	parts := make([]string, len(path))
+	for i, p := range path {
+		parts[i] = fmt.Sprint(p)
+	}
+	return strings.Join(parts, ".")
 }
