@@ -23,9 +23,19 @@
 #              mutation and not `git push`, because the protect-main ruleset
 #              requires signed commits and GitHub refuses to merge a pull
 #              request carrying unsigned ones; commits made through the API
-#              are GitHub-signed. expectedHeadOid gives optimistic
-#              concurrency: if the release branch moved between the reset
-#              and the write, the mutation fails and clobbers nothing.
+#              are GitHub-signed.
+#
+#              The commit is made on a staging branch, set to the default
+#              branch's head first, and the release branch is then moved
+#              onto the new commit in one ref update. The release branch is
+#              never reset onto the default branch itself: GitHub closes a
+#              pull request whose branch equals its base, asynchronously, so
+#              a reset there can close the open release pull request after
+#              any check of its state has already read OPEN. No pull request
+#              uses the staging branch, so nothing is closed when it equals
+#              the base. expectedHeadOid gives optimistic concurrency: if the
+#              staging branch moved between being set and the write, the
+#              mutation fails and clobbers nothing.
 #
 #              Everything is decided before the first write. A run that has
 #              nothing to do, or refuses, leaves GitHub as it found it. The
@@ -48,11 +58,10 @@
 #             is not the default branch's head and --skip-if-stale was not
 #             given, the version is not above
 #             the last release, or its tag exists. A refusal writes nothing.
-#             A failure after the release branch was reset can leave the
-#             open release pull request closed: GitHub closes it the moment
-#             its branch equals the default branch, and only the commit that
-#             follows lets it be reopened. The next run finds no open pull
-#             request and opens a new one.
+#             A failure part way through the writes can leave the staging
+#             branch behind, or the release branch moved without its pull
+#             request's title and body updated; the next run sets the
+#             staging branch afresh and repeats every write.
 # @exitcode 2 a usage error: an unknown argument, --version with no value,
 #             or a version that is not vMAJOR.MINOR.PATCH
 
@@ -72,6 +81,8 @@ readonly RELEASE_VERSION="${SCRIPT_DIR}/release-version"
 source "${SCRIPT_DIR}/lib.sh"
 
 readonly BRANCH='chore/release'
+# Where the commit is made before the release branch is moved onto it.
+readonly STAGING='chore/release-staging'
 readonly TITLE_PREFIX='chore(release): '
 
 # What a section says when it has nothing to list. A section is never left
@@ -136,9 +147,9 @@ function write_section() {
   printf '%s\n' "${section}" > "${file}"
 }
 
-# @description Decide the version, assemble the changelog, then reset the
-#              release branch onto the default branch, commit the changelog
-#              to it through the API and open or update the pull request.
+# @description Decide the version, assemble the changelog, commit it through
+#              the API onto the default branch's head, move the release
+#              branch onto that commit and open or update the pull request.
 # @arg $@ optionally --version <version> and --skip-if-stale
 function main() {
   local explicit='' skip_if_stale=0
@@ -220,12 +231,8 @@ function main() {
     return 0
   fi
 
-  # Note the open pull request BEFORE touching the branch. Resetting the
-  # branch onto the base makes its head momentarily identical to the base,
-  # and GitHub closes a pull request the instant that is true. Without this,
-  # every run would abandon the open pull request and open a new number,
-  # leaving a trail of auto-closed ones: the opposite of the invariant this
-  # script keeps, at most one release pull request open at a time.
+  # The open pull request, if any, is updated rather than replaced: at most
+  # one release pull request is open at a time.
   #
   # Only a pull request from this repository's own branch counts. --head
   # matches by branch name alone, and anyone may open a pull request from a
@@ -312,33 +319,27 @@ function main() {
   } > "${body}"
   # The mutation reads the changelog from this file. As an argument it
   # would be one string holding the whole file, and a single argument has a
-  # size limit; hitting it at the commit would be after the branch reset.
+  # size limit; hitting it at the commit would be after the first write.
   base64 --wrap=0 < "${new}" > "${encoded}"
   local -r title="${TITLE_PREFIX}${version}"
 
   # Everything above only reads. Everything below writes.
 
-  # Recreate the branch from the current base and do not reuse the last
-  # run's, so the pull request's diff is always the changelog against the
-  # current default branch and nothing else.
-  if gh api "repos/${repo}/git/ref/heads/${BRANCH}" > '/dev/null' 2>&1; then
-    ci::log "resetting ${BRANCH} onto ${base_sha}"
-    gh api --method PATCH "repos/${repo}/git/refs/heads/${BRANCH}" \
-      --field "sha=${base_sha}" --field 'force=true' > '/dev/null'
-  else
-    ci::log "creating ${BRANCH} at ${base_sha}"
-    gh api --method POST "repos/${repo}/git/refs" \
-      --field "ref=refs/heads/${BRANCH}" --field "sha=${base_sha}" > '/dev/null'
-  fi
+  # The commit's parent is the current base, never the last run's commit,
+  # so the pull request's diff is always the changelog against the current
+  # default branch and nothing else.
+  ci::point_branch "${repo}" "${STAGING}" "${base_sha}"
 
   ci::log "committing CHANGELOG.md as ${title}"
+  local commit
   # shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
-  gh api graphql \
+  commit="$(gh api graphql \
     --field "repo=${repo}" \
-    --field "branch=${BRANCH}" \
+    --field "branch=${STAGING}" \
     --field "oid=${base_sha}" \
     --field "changelog=@${encoded}" \
     --field "headline=${title}" \
+    --jq '.data.createCommitOnBranch.commit.oid' \
     --raw-field 'query=
       mutation($repo: String!, $branch: String!, $oid: GitObjectID!, $changelog: Base64String!, $headline: String!) {
         createCommitOnBranch(input: {
@@ -349,16 +350,18 @@ function main() {
             { path: "CHANGELOG.md", contents: $changelog }
           ] }
         }) { commit { oid } }
-      }' > '/dev/null'
+      }')"
+  if [[ ! "${commit}" =~ ^[0-9a-f]{40}$ ]]; then
+    fail "createCommitOnBranch returned no commit: '${commit}'"
+  fi
+
+  ci::point_branch "${repo}" "${BRANCH}" "${commit}"
+  ci::delete_branch "${repo}" "${STAGING}"
 
   # No auto-merge, here or anywhere in this script: merging the pull request
   # is the decision to release, and it stays with whoever reads the
   # changelog and presses the button.
   if [[ -n "${existing}" ]]; then
-    if [[ "$(gh pr view "${existing}" --repo "${repo}" --json state --jq '.state')" == 'CLOSED' ]]; then
-      ci::log "reopening #${existing}, closed while the branch was momentarily equal to ${base_branch}"
-      gh pr reopen "${existing}" --repo "${repo}" > '/dev/null'
-    fi
     gh pr edit "${existing}" --repo "${repo}" --title "${title}" --body-file "${body}" > '/dev/null'
     ci::log "pull request #${existing} now proposes ${version}"
     return 0

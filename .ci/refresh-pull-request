@@ -18,12 +18,23 @@
 #              writes one file per commit — two files would otherwise mean two
 #              commits a night.
 #
-#              expectedHeadOid gives optimistic concurrency for free: if the
-#              default branch moved between the read and the write, the
+#              The commit is made on a staging branch, set to the default
+#              branch's head first, and the refresh branch is then moved onto
+#              the new commit in one ref update. The refresh branch is never
+#              reset onto the default branch itself: GitHub closes a pull
+#              request whose branch equals its base, asynchronously, so a
+#              reset there can close the open refresh pull request after any
+#              check of its state has already read OPEN. No pull request uses
+#              the staging branch, so nothing is closed when it equals the
+#              base. expectedHeadOid gives optimistic concurrency for free: if
+#              the staging branch moved between being set and the write, the
 #              mutation fails rather than clobbering.
 # @option --dir <dir> directory holding README.md and audit.json
 # @exitcode 0 the pull request is open and carries the new report
-# @exitcode 1 something went wrong; nothing partial is left behind
+# @exitcode 1 something went wrong. A failure part way through the writes
+#             can leave the staging branch behind, or the refresh branch moved
+#             without auto-merge enabled on its pull request; the next run
+#             sets the staging branch afresh and repeats every write.
 # @exitcode 2 a usage error: an unknown argument, or --dir with no value
 
 set -Eeuo pipefail
@@ -39,6 +50,8 @@ readonly REPO_DIR
 source "${REPO_DIR}/.ci/lib.sh"
 
 readonly BRANCH='chore/refresh-audit'
+# Where the commit is made before the refresh branch is moved onto it.
+readonly STAGING='chore/refresh-audit-staging'
 readonly TITLE='chore: refresh the repository audit'
 
 # @description Queue the merge behind the branch protection, so the nightly
@@ -64,9 +77,9 @@ function enable_auto_merge() {
   gh pr merge "${target}" --repo "${repo}" --merge
 }
 
-# @description Reset the refresh branch onto the default branch, commit the
-#              rendered report to it through the API, and open or update the
-#              pull request that carries it.
+# @description Commit the rendered report through the API onto the default
+#              branch's head, move the refresh branch onto that commit, and
+#              open or update the pull request that carries it.
 # @arg $@ optionally --dir <dir>; default the repository root
 function main() {
   local dir="${REPO_DIR}" repo base_branch base_sha existing
@@ -100,17 +113,13 @@ function main() {
   base_sha="$(gh api "repos/${repo}/git/ref/heads/${base_branch}" --jq '.object.sha')"
   ci::log "base ${base_branch} at ${base_sha}"
 
-  # Note the open pull request BEFORE touching the branch. Resetting the branch
-  # onto the base makes its head momentarily identical to the base, and GitHub
-  # closes a pull request the instant that is true. Without this, every run
-  # would abandon the previous run's pull request and open a new number, leaving a
-  # trail of auto-closed ones — the opposite of the invariant this script
-  # keeps: at most one refresh pull request open at a time.
+  # The open pull request, if any, is updated rather than replaced: at most
+  # one refresh pull request is open at a time.
   #
   # Only a pull request from this repository's own branch counts. --head
   # matches by branch name alone, and anyone may open a pull request from a
-  # fork whose branch is named the same; adopting it would reopen and queue
-  # a merge of code this script did not write. The filter runs after gh's
+  # fork whose branch is named the same; adopting it would queue a merge
+  # of code this script did not write. The filter runs after gh's
   # result limit, so the limit is raised well past what fork pull requests
   # could fill, and it keeps only an explicit false, so a missing field
   # adopts nothing.
@@ -118,27 +127,21 @@ function main() {
     --json number,isCrossRepository \
     --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
 
-  # Recreate the branch from the current base rather than reusing the last run's,
-  # so the diff is always against current main and a red refresh pull request
+  # The commit's parent is the current base, never the last run's commit, so
+  # the diff is always against current main and a red refresh pull request
   # is replaced rather than stacked on.
-  if gh api "repos/${repo}/git/ref/heads/${BRANCH}" > '/dev/null' 2>&1; then
-    ci::log "resetting ${BRANCH} onto ${base_sha}"
-    gh api --method PATCH "repos/${repo}/git/refs/heads/${BRANCH}" \
-      --field "sha=${base_sha}" --field 'force=true' > '/dev/null'
-  else
-    ci::log "creating ${BRANCH} at ${base_sha}"
-    gh api --method POST "repos/${repo}/git/refs" \
-      --field "ref=refs/heads/${BRANCH}" --field "sha=${base_sha}" > '/dev/null'
-  fi
+  ci::point_branch "${repo}" "${STAGING}" "${base_sha}"
 
   ci::log 'committing README.md and audit.json in one signed commit'
+  local commit
   # shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
-  gh api graphql \
+  commit="$(gh api graphql \
     --field "repo=${repo}" \
-    --field "branch=${BRANCH}" \
+    --field "branch=${STAGING}" \
     --field "oid=${base_sha}" \
     --field "readme=$(base64 --wrap=0 < "${readme}")" \
     --field "audit=$(base64 --wrap=0 < "${audit}")" \
+    --jq '.data.createCommitOnBranch.commit.oid' \
     --raw-field 'query=
       mutation($repo: String!, $branch: String!, $oid: GitObjectID!, $readme: Base64String!, $audit: Base64String!) {
         createCommitOnBranch(input: {
@@ -150,13 +153,16 @@ function main() {
             { path: "audit.json", contents: $audit }
           ] }
         }) { commit { oid } }
-      }' > '/dev/null'
+      }')"
+  if [[ ! "${commit}" =~ ^[0-9a-f]{40}$ ]]; then
+    ci::log "createCommitOnBranch returned no commit: '${commit}'"
+    return 1
+  fi
+
+  ci::point_branch "${repo}" "${BRANCH}" "${commit}"
+  ci::delete_branch "${repo}" "${STAGING}"
 
   if [[ -n "${existing}" ]]; then
-    if [[ "$(gh pr view "${existing}" --repo "${repo}" --json state --jq '.state')" == 'CLOSED' ]]; then
-      ci::log "reopening #${existing}, closed while the branch was momentarily equal to ${base_branch}"
-      gh pr reopen "${existing}" --repo "${repo}" > '/dev/null'
-    fi
     ci::log "pull request #${existing} now carries the new report"
     enable_auto_merge "${repo}" "${existing}"
     return 0

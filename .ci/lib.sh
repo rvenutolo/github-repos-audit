@@ -46,3 +46,33 @@ function ci::shell_files() {
     esac
   done < <(ci::ls_files)
 }
+
+# @description Point a branch at a commit through the API: move it there,
+#              forced, when it exists, or create it there when it does not.
+#              Existence is read from the single-ref endpoint, which matches
+#              exactly: a branch whose name only starts with this one's
+#              (chore/release-staging for chore/release) is not taken for it.
+# @arg $1 repo owner/name
+# @arg $2 branch
+# @arg $3 sha the commit to point it at
+function ci::point_branch() {
+  local -r repo="$1" branch="$2" sha="$3"
+  if gh api "repos/${repo}/git/ref/heads/${branch}" > '/dev/null' 2>&1; then
+    ci::log "moving ${branch} to ${sha}"
+    gh api --method PATCH "repos/${repo}/git/refs/heads/${branch}" \
+      --field "sha=${sha}" --field 'force=true' > '/dev/null'
+  else
+    ci::log "creating ${branch} at ${sha}"
+    gh api --method POST "repos/${repo}/git/refs" \
+      --field "ref=refs/heads/${branch}" --field "sha=${sha}" > '/dev/null'
+  fi
+}
+
+# @description Delete a branch through the API.
+# @arg $1 repo owner/name
+# @arg $2 branch
+function ci::delete_branch() {
+  local -r repo="$1" branch="$2"
+  ci::log "deleting ${branch}"
+  gh api --method DELETE "repos/${repo}/git/refs/heads/${branch}" > '/dev/null'
+}
