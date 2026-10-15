@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
-
-	"golang.org/x/sync/singleflight"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/renovate"
@@ -45,14 +42,28 @@ func (c *Client) renovateFacts(
 
 // presetCache fetches each preset file at most once per run. Several
 // repositories usually extend the same shared preset, and the collectors run
-// concurrently, so singleflight collapses simultaneous requests and the map
-// answers later ones. A fetch outcome for one ref cannot change within a run.
-// Only outcomes are cached, never errors: an error aborts the run anyway.
+// concurrently. Each key gets one entry, created under the mutex by whichever
+// caller misses first, and the entry's sync.Once runs the fetch: every other
+// caller, early or late, waits on that same Once and reads its outcome. A
+// lookup and a separate deduplicated call would leave a gap between them in
+// which a caller that missed the map starts a second fetch after the first
+// has finished. A fetch outcome for one ref cannot change within a run.
+//
+// The error is kept with the outcome. It is never read past the run it came
+// from: any error aborts the run (see Client.Collect), and the cache is made
+// per run, and every collector in a run shares one context, so the first
+// caller's context is everyone's.
 type presetCache struct {
-	c     *Client
-	group singleflight.Group
-	mu    sync.Mutex
-	files map[string]presetFile
+	c       *Client
+	mu      sync.Mutex
+	entries map[string]*presetEntry
+}
+
+// presetEntry is one key's fetch, run once.
+type presetEntry struct {
+	once sync.Once
+	file presetFile
+	err  error
 }
 
 // presetFile is one fetch outcome: the file's text, or the problem that makes
@@ -63,7 +74,7 @@ type presetFile struct {
 }
 
 func newPresetCache(c *Client) *presetCache {
-	return &presetCache{c: c, files: map[string]presetFile{}}
+	return &presetCache{c: c, entries: map[string]*presetEntry{}}
 }
 
 // fetch is a renovate.Fetch.
@@ -72,29 +83,19 @@ func (p *presetCache) fetch(ctx context.Context, preset renovate.Preset) (string
 	// NUL cannot occur in any of the three, so the key is unambiguous.
 	key := strings.ToLower(preset.Repo) + "\x00" + preset.Path + "\x00" + preset.Ref
 	p.mu.Lock()
-	f, done := p.files[key]
-	p.mu.Unlock()
-	if done {
-		return f.text, f.problem, nil
-	}
-	v, err, _ := p.group.Do(key, func() (any, error) {
-		f, err := p.c.fetchContents(ctx, preset)
-		if err != nil {
-			return nil, err
-		}
-		p.mu.Lock()
-		p.files[key] = f
-		p.mu.Unlock()
-		return f, nil
-	})
-	if err != nil {
-		return "", "", err
-	}
-	f, ok := v.(presetFile)
+	e, ok := p.entries[key]
 	if !ok {
-		return "", "", fmt.Errorf("preset cache: unexpected %T", v)
+		e = &presetEntry{}
+		p.entries[key] = e
 	}
-	return f.text, f.problem, nil
+	p.mu.Unlock()
+	e.once.Do(func() {
+		e.file, e.err = p.c.fetchContents(ctx, preset)
+	})
+	if e.err != nil {
+		return "", "", e.err
+	}
+	return e.file.text, e.file.problem, nil
 }
 
 // contentsFile is the slice of the contents API's answer this tool reads.
