@@ -32,6 +32,9 @@ readonly RELEASE_VERSION="${REPO_DIR}/.ci/release-version"
 # The number the stub gives the open release pull request.
 readonly PR='7'
 
+# The commit the stub's createCommitOnBranch answers with.
+readonly COMMIT='c0ffeec0ffeec0ffeec0ffeec0ffeec0ffee0001'
+
 # The reads the script makes before it decides anything, as the stub logs
 # them. A run that stops early must have made exactly some prefix of these
 # and nothing else.
@@ -112,8 +115,10 @@ function make_repo() {
 #              - `pr-list.json`: the open pull requests whose head branch is
 #                named chore/release, as `gh pr list --json` prints them
 #              - `pr-title`: that pull request's title
-#              - `pr-state`: its state after the branch reset, default OPEN
 #              - `branch-exists`: present when chore/release exists
+#              - `staging-exists`: present when chore/release-staging exists
+#              - `commit-oid`: what createCommitOnBranch answers, default
+#                COMMIT
 #
 #              A write only logs, and copies the files it was pointed at
 #              (the changelog, the pull request's body) into the directory.
@@ -137,20 +142,14 @@ case "\$*" in
     fi
     ;;
   'api repos/gh-owner/report/git/ref/heads/chore/release') [[ -e '${dir}/branch-exists' ]] ;;
+  'api repos/gh-owner/report/git/ref/heads/chore/release-staging') [[ -e '${dir}/staging-exists' ]] ;;
   'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq '*)
     # The script's own filter, the last argument, is run over the list, so
     # which pull request it picks is the script's doing and not the stub's.
     jq --raw-output "\${!#}" '${dir}/pr-list.json'
     ;;
   'pr view ${PR} --repo gh-owner/report --json title --jq .title') cat '${dir}/pr-title' ;;
-  'pr view ${PR} --repo gh-owner/report --json state --jq .state')
-    if [[ -f '${dir}/pr-state' ]]; then
-      cat '${dir}/pr-state'
-    else
-      echo OPEN
-    fi
-    ;;
-  'api --method PATCH '* | 'api --method POST '*) : ;;
+  'api --method PATCH '* | 'api --method POST '* | 'api --method DELETE '*) : ;;
   'api graphql '*)
     # The changelog is handed over as a file to read, as gh's own
     # \`--field name=@file\` takes it; keep what the file held.
@@ -159,8 +158,12 @@ case "\$*" in
         cat -- "\${arg#changelog=@}" > '${dir}/changelog.b64'
       fi
     done
+    if [[ -f '${dir}/commit-oid' ]]; then
+      cat '${dir}/commit-oid'
+    else
+      echo '${COMMIT}'
+    fi
     ;;
-  'pr reopen '*) : ;;
   'pr edit '* | 'pr create '*)
     # The body is a file too, gone once the script exits.
     cat -- "\${!#}" > '${dir}/body.md'
@@ -274,6 +277,16 @@ function want_log() {
   fi
 }
 
+# @description Fail when the last run pointed the release branch at the
+#              default branch's head, by moving it there or by creating it
+#              there. GitHub closes a pull request whose branch equals its
+#              base, so the open release pull request would be closed.
+# @arg $1 case name
+# @arg $2 base the default branch's head
+function want_release_branch_never_at_base() {
+  want_no_call "$1" "heads/chore/release --field sha=$2" || return 1
+}
+
 # @description Print the changelog the last run committed: the base64 file
 #              its graphql call named in the `changelog=@` field, decoded.
 # @stdout the changelog, or nothing when no commit was made
@@ -323,10 +336,14 @@ function test_files_a_new_pull_request() {
   want_status "${name}" 0 || rc=1
   want_call "${name}" '--field headline=chore(release): v1.1.0' || rc=1
   want_call "${name}" "--field oid=$(git -C "${repo}" rev-parse HEAD)" || rc=1
-  want_call "${name}" '--field branch=chore/release' || rc=1
-  # No branch yet, so it is created, at the base.
-  want_call "${name}" "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/release --field sha=$(git -C "${repo}" rev-parse HEAD)" || rc=1
+  # The commit is made on the staging branch, created at the base, and the
+  # release branch, which does not exist yet, is created at that commit.
+  want_call "${name}" '--field branch=chore/release-staging' || rc=1
+  want_call "${name}" "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/release-staging --field sha=$(git -C "${repo}" rev-parse HEAD)" || rc=1
+  want_call "${name}" "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/release --field sha=${COMMIT}" || rc=1
+  want_release_branch_never_at_base "${name}" "$(git -C "${repo}" rev-parse HEAD)" || rc=1
   want_no_call "${name}" '--method PATCH' || rc=1
+  want_call "${name}" 'api --method DELETE repos/gh-owner/report/git/refs/heads/chore/release-staging' || rc=1
   want_call "${name}" 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 --body-file ' || rc=1
   want_no_call "${name}" 'pr edit' || rc=1
   # Merging is the release decision; the script never makes it.
@@ -386,18 +403,61 @@ function test_branch_without_pull_request() {
   sha="$(git -C "${repo}" rev-parse HEAD)"
   run_script "${repo}"
   want_status "${name}" 0 || rc=1
-  local -r reset="api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=${sha} --field force=true"
-  want_call "${name}" "${reset}" || rc=1
-  want_no_call "${name}" '--method POST' || rc=1
+  local -r stage="api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/release-staging --field sha=${sha}"
+  local -r move="api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=${COMMIT} --field force=true"
+  want_call "${name}" "${stage}" || rc=1
+  want_call "${name}" "${move}" || rc=1
+  want_no_call "${name}" 'ref=refs/heads/chore/release --field' || rc=1
+  want_release_branch_never_at_base "${name}" "${sha}" || rc=1
   want_no_call "${name}" 'pr edit' || rc=1
-  want_no_call "${name}" 'pr reopen' || rc=1
-  # In that order: the reset, the commit, then the pull request.
-  local rest="${calls#*"${reset}"}"
+  # In that order: the staging branch, the commit on it, the release branch
+  # moved onto that commit, the staging branch deleted, then the pull
+  # request.
+  local rest="${calls#*"${stage}"}"
   rest="${rest#*'api graphql '}"
+  rest="${rest#*"${move}"}"
+  rest="${rest#*'api --method DELETE repos/gh-owner/report/git/refs/heads/chore/release-staging'}"
   if [[ "${rest}" != *'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 '* ]]; then
-    ci::log "FAIL: ${name}: no pull request was created after the reset and the commit (calls: ${calls})"
+    ci::log "FAIL: ${name}: the writes were not staging, commit, move, delete, pull request (calls: ${calls})"
     rc=1
   fi
+  return "${rc}"
+}
+
+# A staging branch a failed run left behind is moved back onto the base, not
+# committed on where it stands.
+function test_staging_branch_left_behind() {
+  local rc=0 repo sha
+  local -r name='a staging branch left behind'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v1.1.0'
+  : > "${repo}/.stub/staging-exists"
+  commit "${repo}" 'feat: add widget'
+  sha="$(git -C "${repo}" rev-parse HEAD)"
+  run_script "${repo}"
+  want_status "${name}" 0 || rc=1
+  want_call "${name}" "api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release-staging --field sha=${sha} --field force=true" || rc=1
+  want_no_call "${name}" '--method POST' || rc=1
+  want_call "${name}" "--field oid=${sha}" || rc=1
+  want_call "${name}" "pr edit ${PR} " || rc=1
+  return "${rc}"
+}
+
+# A commit the API does not name is a failure, and the release branch and
+# the pull request are left as they were.
+function test_commit_without_oid() {
+  local rc=0 repo
+  local -r name='createCommitOnBranch names no commit'
+  repo="$(make_repo v1.0.0)"
+  open_pull_request "${repo}" 'chore(release): v1.1.0'
+  : > "${repo}/.stub/commit-oid"
+  commit "${repo}" 'feat: add widget'
+  run_script "${repo}"
+  want_status "${name}" 1 || rc=1
+  want_log "${name}" 'createCommitOnBranch returned no commit' || rc=1
+  want_no_call "${name}" 'heads/chore/release --field' || rc=1
+  want_no_call "${name}" 'pr edit' || rc=1
+  want_no_call "${name}" 'pr create' || rc=1
   return "${rc}"
 }
 
@@ -508,10 +568,11 @@ function test_open_version_is_not_lowered() {
   want_call "${name}" '--field headline=chore(release): v3.0.0' || rc=1
   want_call "${name}" "pr edit ${PR} --repo gh-owner/report --title chore(release): v3.0.0 --body-file " || rc=1
   want_no_call "${name}" 'pr create' || rc=1
-  want_no_call "${name}" 'pr reopen' || rc=1
-  # The branch exists, so it is moved onto the base, not created.
-  want_call "${name}" "api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=$(git -C "${repo}" rev-parse HEAD) --field force=true" || rc=1
-  want_no_call "${name}" '--method POST' || rc=1
+  # The branch exists, so it is moved onto the new commit, not created, and
+  # never onto the base.
+  want_call "${name}" "api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=${COMMIT} --field force=true" || rc=1
+  want_no_call "${name}" 'ref=refs/heads/chore/release --field' || rc=1
+  want_release_branch_never_at_base "${name}" "$(git -C "${repo}" rev-parse HEAD)" || rc=1
   changelog="$(committed_changelog)"
   want_text "${name}" "${changelog}" '## v3.0.0' || rc=1
   want_text "${name}" "${changelog}" '- pad columns' || rc=1
@@ -527,19 +588,7 @@ function test_open_version_is_not_lowered() {
   want_call "${name}" '--field headline=chore(release): v3.0.0' || rc=1
   want_call "${name}" "pr edit ${PR} " || rc=1
   want_no_call "${name}" 'pr create' || rc=1
-
-  # Resetting the branch closes the pull request; it is reopened, not
-  # replaced.
-  name='a pull request the reset closed'
-  repo="$(make_repo v1.0.0)"
-  open_pull_request "${repo}" 'chore(release): v3.0.0'
-  printf 'CLOSED\n' > "${repo}/.stub/pr-state"
-  commit "${repo}" 'fix: pad columns'
-  run_script "${repo}"
-  want_status "${name}" 0 || rc=1
-  want_call "${name}" "pr reopen ${PR} --repo gh-owner/report" || rc=1
-  want_call "${name}" "pr edit ${PR} " || rc=1
-  want_no_call "${name}" 'pr create' || rc=1
+  want_release_branch_never_at_base "${name}" "$(git -C "${repo}" rev-parse HEAD)" || rc=1
   return "${rc}"
 }
 
@@ -750,6 +799,8 @@ function main() {
 
   test_files_a_new_pull_request || rc=1
   test_branch_without_pull_request || rc=1
+  test_staging_branch_left_behind || rc=1
+  test_commit_without_oid || rc=1
   test_subject_is_literal_text || rc=1
   test_nothing_to_release || rc=1
   test_explicit_version || rc=1

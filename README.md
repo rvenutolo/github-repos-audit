@@ -91,8 +91,8 @@ the interface:
 
    ```yaml
    # .github/workflows/audit.yml — daily report refresh. When something
-   # changed it opens a pull request (or reopens and updates the existing
-   # one) and enables auto-merge, so the report lands once its checks pass.
+   # changed it opens a pull request (or updates the existing one) and
+   # enables auto-merge, so the report lands once its checks pass.
    name: audit
    on:
      schedule:
@@ -144,7 +144,7 @@ the interface:
    - `REFRESH_TOKEN` — a token scoped to the report repository alone, with
      Contents and Pull requests write access. It is used only by the refresh
      workflow, after `github-repos-audit render` has finished, to commit the regenerated
-     report to a branch, open (or reopen) the pull request and enable
+     report to a branch, open (or update) the pull request and enable
      auto-merge on it — or merge it outright when every check has already
      reported — so it is the token that merges.
 
