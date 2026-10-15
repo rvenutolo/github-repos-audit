@@ -1,5 +1,11 @@
 # github-repos-audit
 
+> **A personal tool.** I wrote this to audit my own GitHub account against my
+> own standard, and it is not intended for general use. It is unsupported and
+> may change or break in any release. I don't expect issues or pull requests
+> from others and may close them without response. The license lets you fork
+> it if it happens to be useful.
+
 A Go tool that reads live GitHub for every repository an account owns that is
 neither a fork nor archived, judges each one against a standard declared in
 `repos.toml`, and writes a report: a Markdown file for people and a JSON file
@@ -31,9 +37,12 @@ the interface:
   missing or invalid argument.
 - `130` — interrupted by SIGINT or SIGTERM.
 
-## Using this with your own account
+## Setting up the report repository
 
-1. Create a private repository to hold your configuration and report. This
+The tool runs from a separate private repository that holds the configuration
+and the generated report. These steps describe how that repository is wired up.
+
+1. Create a private repository to hold the configuration and report. This
    guide calls it the report repository; the tool never needs write access to
    anything else.
 
