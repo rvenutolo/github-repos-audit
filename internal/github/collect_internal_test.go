@@ -206,6 +206,29 @@ func TestJoinGraphQLErrors(t *testing.T) {
 			errs: []graphQLError{{Message: "first"}, {Type: "FORBIDDEN", Message: "second"}},
 			want: "first; FORBIDDEN: second",
 		},
+		{
+			name: "a typed error with a path",
+			errs: []graphQLError{{Type: "FORBIDDEN", Message: "denied", Path: []any{"repository", "open_pull_requests"}}},
+			want: "FORBIDDEN at repository.open_pull_requests: denied",
+		},
+		{
+			name: "an untyped error with a path",
+			errs: []graphQLError{{Message: "denied", Path: []any{"repository", "rulesets"}}},
+			want: "repository.rulesets: denied",
+		},
+		{
+			name: "an empty path is no path",
+			errs: []graphQLError{{Type: "FORBIDDEN", Message: "denied", Path: []any{}}},
+			want: "FORBIDDEN: denied",
+		},
+		{
+			name: "with and without paths, in the order given",
+			errs: []graphQLError{
+				{Type: "FORBIDDEN", Message: "first", Path: []any{"repository", "rulesets"}},
+				{Type: "FORBIDDEN", Message: "second"},
+			},
+			want: "FORBIDDEN at repository.rulesets: first; FORBIDDEN: second",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
