@@ -4,6 +4,22 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v3.0.0
+
+### Breaking changes
+
+- add file-path checks for tooling and community files
+
+### Features
+
+- add accepted-name tables for multi-path files
+- report file paths in their own section
+
+### Fixes
+
+- resolve nix-update from the flake lock, not the registry
+- match justfile names case-insensitively, as just does
+
 ## v2.0.1
 
 ### Fixes
