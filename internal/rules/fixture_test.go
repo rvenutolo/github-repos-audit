@@ -49,12 +49,18 @@ func fixture(name string, typ rules.Type) audit.Repo {
 			Editorconfig:   true,
 			FlakeNix:       true,
 			Justfile:       true,
+			JustfilePath:   "justfile",
 			Changelog:      true,
 			Security:       true,
 			Contributing:   true,
 			CodeOfConduct:  true,
 			RenovateConfig: "renovate.json",
 			Workflows:      []string{"ci.yml"},
+
+			LicenseFile:    "LICENSE",
+			SecurityPolicy: "SECURITY.md",
+			PRTemplate:     ".github/pull_request_template.md",
+			Commitlint:     ".commitlintrc.yml",
 		},
 		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
 		CIState:  "SUCCESS",
@@ -154,7 +160,8 @@ func publicToolsRepos(names ...string) []audit.Repo {
 
 // table builds one complete type table: every check listed at a word it
 // accepts — required, blocked for direct push, info for the value-only checks,
-// "7 days" for the release-age threshold, not_required for git_identity —
+// "7 days" for the release-age threshold, not_required for git_identity
+// and the file-path checks —
 // with set overriding individual words. git_identity defaults to not_required
 // because most tests are about other checks, and a judged git_identity would
 // make each of them declare an identity standard it has no interest in. A key in set that is not a check is
@@ -169,7 +176,7 @@ func table(set map[string]string) map[string]string {
 			out[c.String()] = "info"
 		case c.Threshold():
 			out[c.String()] = "7 days"
-		case c == rules.CheckGitIdentity:
+		case c == rules.CheckGitIdentity, c.PathCheck() && c != rules.CheckJustfile && c != rules.CheckRenovate:
 			out[c.String()] = rules.OverrideNotRequired
 		default:
 			out[c.String()] = rules.OverrideRequired

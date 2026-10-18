@@ -63,8 +63,14 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			Editorconfig:   true,
 			FlakeNix:       true,
 			Justfile:       true,
+			JustfilePath:   "justfile",
 			RenovateConfig: "renovate.json",
 			Workflows:      []string{"ci.yml"},
+
+			LicenseFile:    "LICENSE",
+			SecurityPolicy: "SECURITY.md",
+			PRTemplate:     ".github/pull_request_template.md",
+			Commitlint:     ".commitlintrc.yml",
 		},
 		// The canonical identity, and a bot's that is never the owner's.
 		Identities: []audit.Identity{
@@ -158,6 +164,7 @@ func fullSnapshot() *audit.Snapshot {
 	content.Renovate = audit.Renovate{} // no configuration, so nothing it says
 	content.Files.FlakeNix = false
 	content.Files.Justfile = false
+	content.Files.JustfilePath = ""
 	content.Files.Workflows = nil
 	content.CIState = ""
 	content.Settings.SecretScanning = "disabled"

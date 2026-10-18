@@ -93,6 +93,7 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 	rep.Identities = identityLines(rep.Repos, std)
 	rep.Overrides = collectOverrides(rep.Repos)
 	rep.Exceptions, rep.NoConsensus = modalExceptions(snap.Repos)
+	markDeviations(rep.Repos)
 	return rep, nil
 }
 
@@ -242,6 +243,14 @@ func verdictFor(exp expectation, obs observation) Verdict {
 	}
 }
 
+// pathObservation is the observation of a check that looks for a file: present
+// when a path was found, carrying that path as code. The path survives an n/a
+// verdict, so a repository the type does not ask for the file still shows
+// where it keeps one.
+func pathObservation(path string) observation {
+	return observation{ok: path != "", value: path, code: true, scalar: true}
+}
+
 //nolint:exhaustive // direct push, the release-age threshold and git_identity are handled in evaluateRepo
 func observe(c Check, r audit.Repo) observation {
 	switch c {
@@ -256,7 +265,7 @@ func observe(c Check, r audit.Repo) observation {
 	case CheckFlakeNix:
 		return observation{ok: r.Files.FlakeNix}
 	case CheckJustfile:
-		return observation{ok: r.Files.Justfile}
+		return pathObservation(r.Files.JustfilePath)
 	case CheckChangelog:
 		return observation{ok: r.Files.Changelog}
 	case CheckHomepage:
@@ -302,7 +311,46 @@ func observe(c Check, r audit.Repo) observation {
 		return observation{ok: n == communityFileCount, value: fmt.Sprintf("%d/%d", n, communityFileCount)}
 
 	case CheckRenovate:
-		return observation{ok: r.Files.RenovateConfig != "", value: r.Files.RenovateConfig, code: true, scalar: true}
+		return pathObservation(r.Files.RenovateConfig)
+
+	case CheckLicenseFile:
+		return pathObservation(r.Files.LicenseFile)
+	case CheckSecurityPolicy:
+		return pathObservation(r.Files.SecurityPolicy)
+	case CheckCodeowners:
+		return pathObservation(r.Files.Codeowners)
+	case CheckPRTemplate:
+		return pathObservation(r.Files.PRTemplate)
+	case CheckClaudeMD:
+		return pathObservation(r.Files.ClaudeMD)
+	case CheckCommitlint:
+		return pathObservation(r.Files.Commitlint)
+	case CheckGitCliff:
+		return pathObservation(r.Files.GitCliff)
+	case CheckTreefmt:
+		return pathObservation(r.Files.Treefmt)
+	case CheckCompose:
+		// A repository may carry several compose files at any depth; the
+		// cell lists them all so a deviation is visible as a different set.
+		return pathObservation(strings.Join(r.Files.Compose, ", "))
+	case CheckTypos:
+		return pathObservation(r.Files.Typos)
+	case CheckYamllint:
+		return pathObservation(r.Files.Yamllint)
+	case CheckMarkdownlint:
+		return pathObservation(r.Files.Markdownlint)
+	case CheckPrettier:
+		return pathObservation(r.Files.Prettier)
+	case CheckEditorconfigChecker:
+		return pathObservation(r.Files.EditorconfigChecker)
+	case CheckLychee:
+		return pathObservation(r.Files.Lychee)
+	case CheckZizmor:
+		return pathObservation(r.Files.Zizmor)
+	case CheckCodecov:
+		return pathObservation(r.Files.Codecov)
+	case CheckMkDocs:
+		return pathObservation(r.Files.MkDocs)
 
 	case CheckCIWorkflows:
 		return observation{ok: hasRealWorkflow(r.Files.Workflows)}

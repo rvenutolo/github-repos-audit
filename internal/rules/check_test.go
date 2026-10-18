@@ -37,11 +37,11 @@ func TestChecks_areAllDistinctAndRoundTrip(t *testing.T) {
 func TestChecks_count(t *testing.T) {
 	t.Parallel()
 
-	// 26 report rows, the git identity the latest, plus direct push, the one
+	// 44 report rows, the file-path checks the latest, plus direct push, the one
 	// declared setting a type decides. A change here is a change to the
 	// report, to the override vocabulary, and to every [types.*] table at
 	// once.
-	const want = 27
+	const want = 45
 	if got := len(rules.Checks()); got != want {
 		t.Errorf("len(Checks()) = %d, want %d", got, want)
 	}

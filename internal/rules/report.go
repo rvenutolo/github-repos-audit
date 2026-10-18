@@ -67,6 +67,9 @@ type Cell struct {
 	// Overridden reports that this cell came from a repos.toml override rather
 	// than from the repository's type.
 	Overridden bool
+	// Deviates reports that this cell's value is a file path differing from
+	// the one most of the account uses for the same check; see markDeviations.
+	Deviates bool
 }
 
 // RepoReport is every cell for one repository, beside the facts they were

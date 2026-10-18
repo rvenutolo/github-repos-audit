@@ -175,9 +175,9 @@ func (r *repository) files() audit.Files {
 	return files
 }
 
-// recordPaths copies where each file was found onto the facts. Justfile stays
-// a boolean for the existing check and is derived from the path, so the two
-// can never disagree.
+// recordPaths copies where each file was found onto the facts. Justfile is the
+// boolean form of JustfilePath, derived from it so the two can never
+// disagree.
 func recordPaths(f *audit.Files, p filepaths.Paths) {
 	f.Justfile = p.Justfile != ""
 	f.JustfilePath = p.Justfile

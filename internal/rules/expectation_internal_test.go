@@ -73,3 +73,36 @@ func TestGapLabels_coverEveryJudgedCheck(t *testing.T) {
 		}
 	}
 }
+
+// TestGapLabels_filePathLabels pins the worklist phrase of each file-path
+// check and the justfile's.
+func TestGapLabels_filePathLabels(t *testing.T) {
+	t.Parallel()
+
+	want := map[Check]string{
+		CheckJustfile:            "No justfile",
+		CheckLicenseFile:         "No LICENSE file",
+		CheckSecurityPolicy:      "No security policy",
+		CheckCodeowners:          "No CODEOWNERS",
+		CheckPRTemplate:          "No pull request template",
+		CheckClaudeMD:            "No CLAUDE.md",
+		CheckCommitlint:          "No commitlint config",
+		CheckGitCliff:            "No git-cliff config",
+		CheckTreefmt:             "No treefmt config",
+		CheckCompose:             "No compose file",
+		CheckTypos:               "No typos config",
+		CheckYamllint:            "No yamllint config",
+		CheckMarkdownlint:        "No markdownlint config",
+		CheckPrettier:            "No Prettier config",
+		CheckEditorconfigChecker: "No editorconfig-checker config",
+		CheckLychee:              "No lychee config",
+		CheckZizmor:              "No zizmor config",
+		CheckCodecov:             "No Codecov config",
+		CheckMkDocs:              "No MkDocs config",
+	}
+	for c, label := range want {
+		if got := gapLabels[c]; got != label {
+			t.Errorf("gapLabels[%s] = %q, want %q", c, got, label)
+		}
+	}
+}

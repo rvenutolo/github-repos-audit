@@ -35,6 +35,24 @@ const (
 	CheckCommunityFiles
 	CheckReleases
 	CheckChangelog
+	CheckLicenseFile
+	CheckSecurityPolicy
+	CheckCodeowners
+	CheckPRTemplate
+	CheckClaudeMD
+	CheckCommitlint
+	CheckGitCliff
+	CheckTreefmt
+	CheckCompose
+	CheckTypos
+	CheckYamllint
+	CheckMarkdownlint
+	CheckPrettier
+	CheckEditorconfigChecker
+	CheckLychee
+	CheckZizmor
+	CheckCodecov
+	CheckMkDocs
 	CheckSignedCommits
 	CheckGitIdentity
 	CheckTagRuleset
@@ -69,6 +87,24 @@ var checkNames = [...]string{
 	CheckCommunityFiles:        "community_files",
 	CheckReleases:              "releases",
 	CheckChangelog:             "changelog",
+	CheckLicenseFile:           "license_file",
+	CheckSecurityPolicy:        "security_policy",
+	CheckCodeowners:            "codeowners",
+	CheckPRTemplate:            "pr_template",
+	CheckClaudeMD:              "claude_md",
+	CheckCommitlint:            "commitlint",
+	CheckGitCliff:              "git_cliff",
+	CheckTreefmt:               "treefmt",
+	CheckCompose:               "compose",
+	CheckTypos:                 "typos",
+	CheckYamllint:              "yamllint",
+	CheckMarkdownlint:          "markdownlint",
+	CheckPrettier:              "prettier",
+	CheckEditorconfigChecker:   "editorconfig_checker",
+	CheckLychee:                "lychee",
+	CheckZizmor:                "zizmor",
+	CheckCodecov:               "codecov",
+	CheckMkDocs:                "mkdocs",
 	CheckSignedCommits:         "signed_commits",
 	CheckGitIdentity:           "git_identity",
 	CheckTagRuleset:            "tag_ruleset",
@@ -119,6 +155,24 @@ func (c Check) ValueOnly() bool {
 	//nolint:exhaustive // every other check carries a pass or a fail
 	switch c {
 	case CheckLastReleaseAge, CheckLastPush, CheckOpenPRs, CheckBranches:
+		return true
+	default:
+		return false
+	}
+}
+
+// PathCheck reports whether a check's value is the repository path of the file
+// it looks for: the justfile, the Renovate configuration and the tooling and
+// community files. The File paths section compares these across the account
+// and marks a path that differs from the usual one; see markDeviations.
+func (c Check) PathCheck() bool {
+	//nolint:exhaustive // every other check carries no file path
+	switch c {
+	case CheckJustfile, CheckRenovate, CheckLicenseFile, CheckSecurityPolicy,
+		CheckCodeowners, CheckPRTemplate, CheckClaudeMD, CheckCommitlint,
+		CheckGitCliff, CheckTreefmt, CheckCompose, CheckTypos, CheckYamllint,
+		CheckMarkdownlint, CheckPrettier, CheckEditorconfigChecker, CheckLychee,
+		CheckZizmor, CheckCodecov, CheckMkDocs:
 		return true
 	default:
 		return false
