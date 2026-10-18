@@ -21,20 +21,21 @@ import (
 //
 // It exists because recorded fixtures pass forever while the API drifts
 // underneath them. The entire collection is one GraphQL query (plus one per
-// further hundred commits of history) and eight REST calls, so a single
-// renamed field or changed enum breaks every run — and nothing offline can see
-// it coming.
+// further hundred commits of history), eight REST calls and one recursive tree
+// read, so a single renamed field or changed enum breaks every run — and
+// nothing offline can see it coming.
 //
 // A failure here is informational, not a broken build: it means GitHub changed
-// something and the collector needs attention before a report repository's next refresh does it
-// loudly. That is why it is behind a build tag and never in the gate.
+// something and the collector needs attention before a report repository's
+// next refresh does it loudly. That is why it is behind a build tag and never
+// in the gate.
 
 // liveTargets is what the live suite reads. The names come from the
 // environment, because this code is meant to be public and must not name any
 // real account's repositories:
 //
 //   - SMOKE_OWNER is the account the token belongs to.
-//   - SMOKE_PUBLIC_REPO is public and has CI.
+//   - SMOKE_PUBLIC_REPO is public, has CI and has a license file at the root.
 //   - SMOKE_PRIVATE_REPO is private, which is what makes the n/a paths
 //     observable: security_and_analysis and private-vulnerability-reporting
 //     both behave differently there.
@@ -145,6 +146,12 @@ func TestLive_collectParsesEveryField(t *testing.T) {
 	}
 	if len(pub.Files.Workflows) == 0 {
 		t.Errorf("%s reads as having no workflows; the tree probe may have changed", pub.Name)
+	}
+	// The license is the one file path every public repository has, so an
+	// empty value means the tree read stopped reporting entries and every
+	// repository would show false file gaps.
+	if pub.Files.LicenseFile == "" {
+		t.Errorf("%s reads as having no license file; the tree read may have changed", pub.Name)
 	}
 	if len(pub.Rulesets) == 0 {
 		t.Errorf("%s reads as having no rulesets; Administration: Read may be missing", pub.Name)

@@ -64,10 +64,19 @@ const apiVersion = "2022-11-28"
 // userAgent identifies this tool in GitHub's logs.
 const userAgent = "github-repos-audit"
 
-// maxBodyBytes bounds a single response. The largest answer here is a few
-// kilobytes of GraphQL, so this only exists to keep a misbehaving endpoint
-// from being read into memory without limit.
-const maxBodyBytes = 8 << 20
+// maxBodyBytes bounds a single response. The largest answer here is the
+// recursive git tree read: GitHub caps a tree at 100,000 entries and about
+// 7 MB, and every entry carries a sha, mode, size and url, so a large
+// repository's answer runs to several megabytes while everything else is a few
+// kilobytes. The limit leaves several times that headroom and exists to keep a
+// misbehaving endpoint from being read into memory without limit. A body that
+// reaches it is an error rather than a silent cut, because a truncated
+// document would surface as an unrelated decode failure.
+const maxBodyBytes = 32 << 20
+
+// errBodyTooLarge marks a response that reached maxBodyBytes. Resending the
+// request would download the same oversized answer again, so it is final.
+var errBodyTooLarge = errors.New("response body too large")
 
 // maxSnippetRunes is how much of an unexpected body an error quotes.
 const maxSnippetRunes = 200
@@ -349,12 +358,17 @@ func (c *Client) send(ctx context.Context, req *http.Request, body []byte) (*res
 	}
 	defer resp.Body.Close()
 
-	read, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	// One byte past the limit tells a body that is exactly the limit from one
+	// that was cut at it.
+	read, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
-	// ReadAll stopped at the limit rather than at EOF if the body was larger,
-	// so drain the remainder to keep the connection reusable.
+	if len(read) > maxBodyBytes {
+		return nil, fmt.Errorf("%w: response to %s exceeds the %d-byte limit", errBodyTooLarge, req.URL.Path, maxBodyBytes)
+	}
+	// ReadAll stopped at EOF, so the drain is a no-op for a body read in full;
+	// it keeps the connection reusable if a reader ever stops early.
 	if _, derr := io.Copy(io.Discard, resp.Body); derr != nil {
 		c.log.DebugContext(ctx, "drain response body", "err", derr)
 	}
@@ -437,9 +451,10 @@ func (c *Client) backoff(attempt int) time.Duration {
 
 // retryableSendErr reports whether an error from the transport is worth
 // another attempt. A cancelled or expired context is the caller giving up and
-// never is; anything else is a connection this run may get a second time.
+// never is, nor is an oversized body, which would arrive oversized again;
+// anything else is a connection this run may get a second time.
 func retryableSendErr(ctx context.Context, err error) bool {
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || errors.Is(err, errBodyTooLarge) {
 		return false
 	}
 	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)

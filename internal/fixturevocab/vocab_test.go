@@ -218,6 +218,15 @@ func isFakeBase64Content(v any) bool {
 	return err == nil && namesOnlyFakeRepos(string(text))
 }
 
+// treePath is every path a fixture git tree may list.
+const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUDE\.md|LICENSE|` +
+	`\.gitignore|\.editorconfig|flake\.nix|[Jj]ustfile|\.justfile|renovate\.json|` +
+	`\.commitlintrc\.yml|cliff\.toml|treefmt\.toml|compose\.yaml|typos\.toml|\.yamllint\.yml|` +
+	`\.markdownlint-cli2\.jsonc|\.prettierrc\.json|\.editorconfig-checker\.json|lychee\.toml|mkdocs\.yml|` +
+	`stacks|stacks/media|stacks/media/docker-compose\.yml|vendor/sub|` +
+	`\.github|\.github/(SECURITY\.md|renovate\.json|workflows|workflows/(ci|workflow-33)\.yml|` +
+	`zizmor\.yml|codecov\.yml|CODEOWNERS|pull_request_template\.md))$`
+
 var apiRules = []rule{
 	{regexp.MustCompile(`^(\[\]\.)?name$`), isFakeRepo, "a fake repository name"},
 	{regexp.MustCompile(`^((\[\]\.)?full_name|\[\]\.ruleset_source)$`), isOwnerSlashRepo, "gh-owner/<fake>"},
@@ -227,6 +236,11 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^\[\]\.ruleset_id$`), matches(`^2000\d{3}$`), "a synthetic ruleset id"},
 	{regexp.MustCompile(`integration_id$`), matches(`^3000\d{3}$`), "a synthetic integration id"},
 	{regexp.MustCompile(`\.oid$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^sha$`), matches(oid), "a pattern oid"},
+	// A tree listing is repository content, so a path is held to the closed
+	// set of names the tools' configuration tables accept plus a few
+	// structural ones; a real repository's file names would not match.
+	{regexp.MustCompile(`^tree\[\]\.path$`), matches(treePath), "a path from the fixture tree vocabulary"},
 	{regexp.MustCompile(`^(data\.repository\.)?description$`), isDescription, "empty or the placeholder"},
 	{regexp.MustCompile(`^(homepage|data\.repository\.homepage_url)$`), isHomepage, "empty or https://example.com/<fake>"},
 	{regexp.MustCompile(`^selected_actions_url$`), matches(`^https://api\.github\.com/repositories/1000\d{3}/actions/permissions/selected-actions$`), "a url with a synthetic id"},
@@ -258,7 +272,7 @@ var apiRules = []rule{
 		`has_discussions`, `has_pages`, `is_template`, `allow_forking`, `web_commit_signoff_required`,
 		`paused`, `verified_allowed`, `can_approve_pull_request_reviews`,
 		`default_workflow_permissions`, `enabled`, `github_owned_allowed`, `sha_pinning_required`,
-		`open_issues_count`, `message`, `documentation_url`, `status`, `\[\]\.type`,
+		`open_issues_count`, `truncated`, `message`, `documentation_url`, `status`, `\[\]\.type`, `tree\[\]\.type`,
 		`\[\]\.ruleset_source_type`,
 		// A ruleset parameter's value is never account data (a branch-name
 		// pattern, a boolean, a count): keep accepts it unconditionally;
@@ -286,7 +300,7 @@ var apiRules = []rule{
 		`data\.repository\.(license_info|default_branch_ref|workflows)`,
 		`data\.repository\.default_branch_ref\.target\.status_check_rollup`,
 		`data\.repository\.(readme_md|readme_github_md|readme_docs_md|readme_rst|readme_txt|readme_plain)`,
-		`data\.repository\.(gitignore|editorconfig|flake_nix|changelog_md|justfile_dot|justfile_plain)`,
+		`data\.repository\.(gitignore|editorconfig|flake_nix|changelog_md)`,
 		`data\.repository\.(security_root|security_github|security_docs)`,
 		`data\.repository\.(contributing_root|contributing_github|contributing_docs)`,
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,

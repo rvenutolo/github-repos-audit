@@ -1,0 +1,98 @@
+{
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000b",
+  "tree": [
+    {
+      "path": "justfile",
+      "type": "blob"
+    },
+    {
+      "path": ".commitlintrc.yml",
+      "type": "blob"
+    },
+    {
+      "path": "cliff.toml",
+      "type": "blob"
+    },
+    {
+      "path": "treefmt.toml",
+      "type": "blob"
+    },
+    {
+      "path": "compose.yaml",
+      "type": "blob"
+    },
+    {
+      "path": "stacks",
+      "type": "tree"
+    },
+    {
+      "path": "stacks/media",
+      "type": "tree"
+    },
+    {
+      "path": "stacks/media/docker-compose.yml",
+      "type": "blob"
+    },
+    {
+      "path": "typos.toml",
+      "type": "blob"
+    },
+    {
+      "path": ".yamllint.yml",
+      "type": "blob"
+    },
+    {
+      "path": ".markdownlint-cli2.jsonc",
+      "type": "blob"
+    },
+    {
+      "path": ".prettierrc.json",
+      "type": "blob"
+    },
+    {
+      "path": ".editorconfig-checker.json",
+      "type": "blob"
+    },
+    {
+      "path": "lychee.toml",
+      "type": "blob"
+    },
+    {
+      "path": ".github",
+      "type": "tree"
+    },
+    {
+      "path": ".github/zizmor.yml",
+      "type": "blob"
+    },
+    {
+      "path": ".github/codecov.yml",
+      "type": "blob"
+    },
+    {
+      "path": "mkdocs.yml",
+      "type": "blob"
+    },
+    {
+      "path": "LICENSE",
+      "type": "blob"
+    },
+    {
+      "path": "SECURITY.md",
+      "type": "blob"
+    },
+    {
+      "path": ".github/CODEOWNERS",
+      "type": "blob"
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "type": "blob"
+    },
+    {
+      "path": "CLAUDE.md",
+      "type": "blob"
+    }
+  ],
+  "truncated": false
+}

@@ -91,6 +91,7 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/permissions/workflow", f.fixtureHandler("actions-workflow"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/permissions/access", f.fixtureHandler("actions-access"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/contents/{path...}", f.handleContents)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/git/trees/{sha}", f.handleTree)
 
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.record(r)
@@ -272,6 +273,21 @@ func (f *fakeAPI) handleContents(w http.ResponseWriter, r *http.Request) {
 		base += "@" + ref
 	}
 	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), base)
+}
+
+// handleTree answers the git tree API from the repository's git-tree fixture.
+// One tree per repository is enough because only the head commit is ever
+// listed. The recursive flag is asserted rather than ignored: without it the
+// real API lists the root only, and every nested path would read as absent.
+func (f *fakeAPI) handleTree(w http.ResponseWriter, r *http.Request) {
+	f.t.Helper()
+	if owner := r.PathValue("owner"); owner != testOwner {
+		f.t.Errorf("request for owner %q, want %q", owner, testOwner)
+	}
+	if got := r.URL.Query().Get("recursive"); got != "1" {
+		f.t.Errorf("tree request for %s has recursive=%q, want 1", r.URL.Path, got)
+	}
+	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), "git-tree")
 }
 
 // serve writes the fixture named base from dir. A plain <base>.json is a 200;

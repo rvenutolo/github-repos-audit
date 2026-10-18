@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -469,5 +471,51 @@ func TestClient_getJSON_returnsNoResponseWithAnError(t *testing.T) {
 				t.Errorf("getJSON response = %+v alongside an error, want nil", resp)
 			}
 		})
+	}
+}
+
+// TestClient_getJSON_rejectsABodyPastTheLimit pins that a response larger than
+// maxBodyBytes fails by naming the request and the limit, not as the decode
+// error a silently cut document would produce.
+func TestClient_getJSON_rejectsABodyPastTheLimit(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+		// A valid JSON prefix, so only the size can be what fails.
+		chunk := bytes.Repeat([]byte(" "), 1<<20)
+		if _, err := w.Write([]byte(`{"message":"`)); err != nil {
+			return
+		}
+		for range maxBodyBytes/len(chunk) + 1 {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(Options{Owner: "someone", Token: "token", BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	// A resend would re-download the oversized body, so the wait is never
+	// reached when the failure is final; stubbing it keeps a regression fast.
+	c.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+
+	var out struct{ Message string }
+	_, err = c.getJSON(t.Context(), "/big", &out)
+	if err == nil {
+		t.Fatal("getJSON error = nil, want an over-limit error")
+	}
+	for _, want := range []string{"/big", strconv.Itoa(maxBodyBytes), "limit"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("getJSON error = %q, want it to contain %q", err, want)
+		}
+	}
+	if got := requests.Load(); got != 1 {
+		t.Errorf("server saw %d requests, want 1: an oversized body is not retried", got)
 	}
 }

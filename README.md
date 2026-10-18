@@ -436,8 +436,8 @@ not indifferent to which two they are:
 `internal/github/live_integration_test.go` asserts real facts about each, and
 a fixture missing one fails the run with no further explanation:
 
-- The public repository needs a description, a README, at least one
-  workflow file, at least one ruleset, readable branch protection rules, a
+- The public repository needs a description, a README, a license file at
+  the root, at least one workflow file, at least one ruleset, readable branch protection rules, a
   non-empty Actions permissions policy, a default workflow permissions
   setting, at least one allowed merge strategy, a commit history whose
   authors carry both a name and an email, a recorded last push, a

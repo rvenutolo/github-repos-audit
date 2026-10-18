@@ -112,8 +112,6 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
     editorconfig: object(expression: "HEAD:.editorconfig") { oid }
     flake_nix: object(expression: "HEAD:flake.nix") { oid }
     changelog_md: object(expression: "HEAD:CHANGELOG.md") { oid }
-    justfile_dot: object(expression: "HEAD:.justfile") { oid }
-    justfile_plain: object(expression: "HEAD:justfile") { oid }
     security_root: object(expression: "HEAD:SECURITY.md") { oid }
     security_github: object(expression: "HEAD:.github/SECURITY.md") { oid }
     security_docs: object(expression: "HEAD:docs/SECURITY.md") { oid }
@@ -296,9 +294,6 @@ type repository struct {
 	Editorconfig *gitObject `json:"editorconfig"`
 	FlakeNix     *gitObject `json:"flake_nix"`
 	ChangelogMD  *gitObject `json:"changelog_md"`
-
-	JustfileDot   *gitObject `json:"justfile_dot"`
-	JustfilePlain *gitObject `json:"justfile_plain"`
 
 	SecurityRoot       *gitObject `json:"security_root"`
 	SecurityGitHub     *gitObject `json:"security_github"`

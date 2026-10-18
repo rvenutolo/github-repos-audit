@@ -161,10 +161,6 @@
       "changelog_md": {
         "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0006"
       },
-      "justfile_dot": null,
-      "justfile_plain": {
-        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0007"
-      },
       "security_root": {
         "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0008"
       },

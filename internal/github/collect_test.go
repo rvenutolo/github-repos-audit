@@ -61,7 +61,9 @@ func wantShellScripts(t *testing.T) audit.Repo {
 			Editorconfig:   true,
 			FlakeNix:       true,
 			Justfile:       true,
+			JustfilePath:   ".justfile",
 			Security:       true,
+			SecurityPolicy: ".github/SECURITY.md",
 			RenovateConfig: ".github/renovate.json",
 			Workflows: []string{
 				"ci.yml", "workflow-06.yml", "workflow-10.yml", "workflow-12.yml", "workflow-13.yml",
@@ -360,7 +362,7 @@ func TestClient_Collect_oneHistoryPage(t *testing.T) {
 }
 
 // TestClient_Collect_releasesAndAlternates covers the fields no other fixture
-// exercises: a real release history, the undotted justfile spelling, a Renovate
+// exercises: a real release history, a capitalised `Justfile`, a Renovate
 // config at the root whose minimum release age comes from a preset, and two of
 // the three community health files.
 func TestClient_Collect_releasesAndAlternates(t *testing.T) {
@@ -384,8 +386,10 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 		Editorconfig:   true,
 		FlakeNix:       true,
 		Justfile:       true,
+		JustfilePath:   "Justfile",
 		Changelog:      true,
 		Security:       true,
+		SecurityPolicy: "SECURITY.md",
 		Contributing:   true,
 		RenovateConfig: "renovate.json",
 		Workflows:      repo.Files.Workflows,
@@ -1040,6 +1044,7 @@ func TestClient_Collect_abortsOnAnUnreadableEndpoint(t *testing.T) {
 		base + "/actions/permissions/workflow",
 		base + "/actions/permissions/access",
 		base + "/rules/branches/main",
+		base + "/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
 	}
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {

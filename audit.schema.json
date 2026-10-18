@@ -347,7 +347,7 @@
         "editorconfig": { "type": "boolean" },
         "flake_nix": { "type": "boolean" },
         "justfile": {
-          "description": "Satisfied by either `.justfile` or `justfile`.",
+          "description": "True when `justfile_path` is set. just matches the name case-insensitively.",
           "type": "boolean"
         },
         "changelog": { "type": "boolean" },
@@ -364,6 +364,102 @@
         },
         "workflows": {
           "description": "The entries of `.github/workflows`, sorted. Absent when the directory is empty or missing.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "justfile_path": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The justfile, matched case-insensitively. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "commitlint": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The commitlint configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "git_cliff": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The git-cliff configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "treefmt": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The treefmt configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "typos": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The typos configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "yamllint": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The yamllint configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "markdownlint": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The markdownlint configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "prettier": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The Prettier configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "editorconfig_checker": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The editorconfig-checker configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "lychee": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The lychee configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "zizmor": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The zizmor configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "codecov": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The Codecov configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "mkdocs": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The MkDocs configuration. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "license_file": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The license text, or the `LICENSES/` directory (trailing slash). Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "security_policy": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The security policy, matched case-insensitively. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "codeowners": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The CODEOWNERS file. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "pr_template": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The pull request template file or directory (trailing slash). Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "claude_md": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The Claude Code memory file. Absent when no accepted name is present.",
+          "type": "string",
+          "minLength": 1
+        },
+        "compose": {
+          "description": "The distinct compose file names found at any depth, sorted. Absent when there are none.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }

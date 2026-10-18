@@ -152,7 +152,8 @@ type Files struct {
 	Editorconfig bool `json:"editorconfig"`
 	// FlakeNix matches `flake.nix`.
 	FlakeNix bool `json:"flake_nix"`
-	// Justfile is satisfied by either `.justfile` or `justfile`.
+	// Justfile is true when JustfilePath is set. just matches the name
+	// case-insensitively, so `Justfile` counts.
 	Justfile bool `json:"justfile"`
 	// Changelog matches `CHANGELOG.md`.
 	Changelog bool `json:"changelog"`
@@ -167,6 +168,51 @@ type Files struct {
 	RenovateConfig string `json:"renovate_config,omitzero"`
 	// Workflows lists the entries of `.github/workflows`, sorted.
 	Workflows []string `json:"workflows,omitzero"`
+
+	// The fields below are where a file was found in the repository's tree at
+	// HEAD, as the tree spells it. Empty means no accepted name is present. A
+	// directory match carries a trailing slash. Which names each tool accepts
+	// is internal/filepaths' table.
+
+	// JustfilePath is the justfile, matched case-insensitively.
+	JustfilePath string `json:"justfile_path,omitzero"`
+	// Commitlint is the commitlint configuration.
+	Commitlint string `json:"commitlint,omitzero"`
+	// GitCliff is the git-cliff configuration.
+	GitCliff string `json:"git_cliff,omitzero"`
+	// Treefmt is the treefmt configuration.
+	Treefmt string `json:"treefmt,omitzero"`
+	// Compose lists the distinct compose file names found at any depth,
+	// sorted.
+	Compose []string `json:"compose,omitzero"`
+	// Typos is the typos configuration.
+	Typos string `json:"typos,omitzero"`
+	// Yamllint is the yamllint configuration.
+	Yamllint string `json:"yamllint,omitzero"`
+	// Markdownlint is the markdownlint configuration.
+	Markdownlint string `json:"markdownlint,omitzero"`
+	// Prettier is the Prettier configuration.
+	Prettier string `json:"prettier,omitzero"`
+	// EditorconfigChecker is the editorconfig-checker configuration.
+	EditorconfigChecker string `json:"editorconfig_checker,omitzero"`
+	// Lychee is the lychee configuration.
+	Lychee string `json:"lychee,omitzero"`
+	// Zizmor is the zizmor configuration.
+	Zizmor string `json:"zizmor,omitzero"`
+	// Codecov is the Codecov configuration.
+	Codecov string `json:"codecov,omitzero"`
+	// MkDocs is the MkDocs configuration.
+	MkDocs string `json:"mkdocs,omitzero"`
+	// LicenseFile is the license text, or the `LICENSES/` directory.
+	LicenseFile string `json:"license_file,omitzero"`
+	// SecurityPolicy is the security policy, matched case-insensitively.
+	SecurityPolicy string `json:"security_policy,omitzero"`
+	// Codeowners is the CODEOWNERS file.
+	Codeowners string `json:"codeowners,omitzero"`
+	// PRTemplate is the pull request template file or directory.
+	PRTemplate string `json:"pr_template,omitzero"`
+	// ClaudeMD is the Claude Code memory file.
+	ClaudeMD string `json:"claude_md,omitzero"`
 }
 
 // Releases summarises a repository's releases.

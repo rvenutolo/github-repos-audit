@@ -155,10 +155,6 @@
         "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0010"
       },
       "changelog_md": null,
-      "justfile_dot": {
-        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0011"
-      },
-      "justfile_plain": null,
       "security_root": null,
       "security_github": {
         "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0012"
