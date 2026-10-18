@@ -7,10 +7,35 @@
 
 ## Tree
 
-| Repository                                 | Renovate        | Min. release age | .gitignore | .editorconfig | flake.nix | .justfile | CHANGELOG | Community files |
-| ------------------------------------------ | --------------- | ---------------- | ---------- | ------------- | --------- | --------- | --------- | --------------- |
-| [alpha](https://github.com/gh-owner/alpha) | `renovate.json` | ✓ 7 days         | ✓          | ✓             | ✓         | ✓         | n/a       | n/a             |
-| [bravo](https://github.com/gh-owner/bravo) | `renovate.json` | ✓ 7 days         | ✓          | ✓             | ✓         | ✓         | n/a       | n/a             |
+| Repository                                 | Min. release age | .gitignore | .editorconfig | flake.nix | CHANGELOG | Community files |
+| ------------------------------------------ | ---------------- | ---------- | ------------- | --------- | --------- | --------------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓ 7 days         | ✓          | ✓             | ✓         | n/a       | n/a             |
+| [bravo](https://github.com/gh-owner/bravo) | ✓ 7 days         | ✓          | ✓             | ✓         | n/a       | n/a             |
+
+## File paths
+
+Where each tooling and community file lives. `≠` marks a path that differs from the one most repositories use.
+
+### Build & release
+
+| Repository                                 | justfile   | Renovate        | commitlint          | git-cliff | treefmt | Compose |
+| ------------------------------------------ | ---------- | --------------- | ------------------- | --------- | ------- | ------- |
+| [alpha](https://github.com/gh-owner/alpha) | `justfile` | `renovate.json` | `.commitlintrc.yml` | n/a       | n/a     | n/a     |
+| [bravo](https://github.com/gh-owner/bravo) | `justfile` | `renovate.json` | `.commitlintrc.yml` | n/a       | n/a     | n/a     |
+
+### Linters
+
+| Repository                                 | typos | yamllint | markdownlint | Prettier | editorconfig-checker | lychee | zizmor | Codecov | MkDocs |
+| ------------------------------------------ | ----- | -------- | ------------ | -------- | -------------------- | ------ | ------ | ------- | ------ |
+| [alpha](https://github.com/gh-owner/alpha) | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
+| [bravo](https://github.com/gh-owner/bravo) | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
+
+### GitHub & docs
+
+| Repository                                 | LICENSE   | SECURITY      | CODEOWNERS | PR template                        | CLAUDE.md |
+| ------------------------------------------ | --------- | ------------- | ---------- | ---------------------------------- | --------- |
+| [alpha](https://github.com/gh-owner/alpha) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+| [bravo](https://github.com/gh-owner/bravo) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 
 ## Policy
 

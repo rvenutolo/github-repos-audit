@@ -2,10 +2,12 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
+	"github.com/rvenutolo/github-repos-audit/internal/filepaths"
 )
 
 // restRepo is the slice of the repository object this tool reads. Only
@@ -69,6 +71,16 @@ type requiredStatusCheck struct {
 	Context string `json:"context"`
 }
 
+// gitTree is a recursive tree listing. Truncated is GitHub's own flag that the
+// listing hit its size limit and omits entries.
+type gitTree struct {
+	Tree []struct {
+		Path string `json:"path"`
+		Type string `json:"type"`
+	} `json:"tree"`
+	Truncated bool `json:"truncated"`
+}
+
 // repoPath builds /repos/{owner}/{name}. Both segments are escaped: they reach
 // this package from repos.toml and from GitHub, and a path built by
 // concatenation is how an unexpected name becomes an unexpected request.
@@ -78,7 +90,8 @@ func (c *Client) repoPath(name string) string {
 
 // fetchREST makes the per-repository REST calls and fills the parts of repo
 // that GraphQL does not answer. There are eight, all GET, and seven for an
-// empty repository, whose default branch does not exist.
+// empty repository, whose default branch does not exist. The tree read that
+// finds file paths is separate (see fetchTree).
 func (c *Client) fetchREST(ctx context.Context, name string, repo *audit.Repo) error {
 	base := c.repoPath(name)
 
@@ -244,4 +257,30 @@ func (c *Client) fetchBranchRules(ctx context.Context, base string, repo *audit.
 		RequiredChecks: sortedUnique(checks),
 	}
 	return nil
+}
+
+// fetchTree lists every path at the commit oid with one recursive GET. A
+// "tree" entry is a directory and a "blob" a file; a "commit" entry is a
+// submodule, which holds no file this tool looks for, so it is dropped. A
+// truncated listing is an error rather than a partial answer: a file missing
+// from it would be reported as absent when it may simply not have been listed,
+// which is a fake gap. base is the repository's /repos/{owner}/{name} path.
+func (c *Client) fetchTree(ctx context.Context, base, oid string) ([]filepaths.Entry, error) {
+	var body gitTree
+	if _, err := c.getJSON(ctx, base+"/git/trees/"+url.PathEscape(oid)+"?recursive=1", &body); err != nil {
+		return nil, err
+	}
+	if body.Truncated {
+		return nil, fmt.Errorf("%s: git tree at %s is truncated, so file paths cannot be decided", base, oid)
+	}
+	entries := make([]filepaths.Entry, 0, len(body.Tree))
+	for _, e := range body.Tree {
+		switch e.Type {
+		case "tree":
+			entries = append(entries, filepaths.Entry{Path: e.Path, Dir: true})
+		case "blob":
+			entries = append(entries, filepaths.Entry{Path: e.Path})
+		}
+	}
+	return entries, nil
 }

@@ -61,7 +61,9 @@ func wantShellScripts(t *testing.T) audit.Repo {
 			Editorconfig:   true,
 			FlakeNix:       true,
 			Justfile:       true,
+			JustfilePath:   ".justfile",
 			Security:       true,
+			SecurityPolicy: ".github/SECURITY.md",
 			RenovateConfig: ".github/renovate.json",
 			Workflows: []string{
 				"ci.yml", "workflow-06.yml", "workflow-10.yml", "workflow-12.yml", "workflow-13.yml",
@@ -360,7 +362,7 @@ func TestClient_Collect_oneHistoryPage(t *testing.T) {
 }
 
 // TestClient_Collect_releasesAndAlternates covers the fields no other fixture
-// exercises: a real release history, the undotted justfile spelling, a Renovate
+// exercises: a real release history, a capitalised `Justfile`, a Renovate
 // config at the root whose minimum release age comes from a preset, and two of
 // the three community health files.
 func TestClient_Collect_releasesAndAlternates(t *testing.T) {
@@ -384,8 +386,10 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 		Editorconfig:   true,
 		FlakeNix:       true,
 		Justfile:       true,
+		JustfilePath:   "Justfile",
 		Changelog:      true,
 		Security:       true,
+		SecurityPolicy: "SECURITY.md",
 		Contributing:   true,
 		RenovateConfig: "renovate.json",
 		Workflows:      repo.Files.Workflows,
@@ -1040,6 +1044,7 @@ func TestClient_Collect_abortsOnAnUnreadableEndpoint(t *testing.T) {
 		base + "/actions/permissions/workflow",
 		base + "/actions/permissions/access",
 		base + "/rules/branches/main",
+		base + "/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
 	}
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {
@@ -1067,5 +1072,117 @@ func TestClient_Collect_abortsOnAnUnreadableEndpoint(t *testing.T) {
 				t.Errorf("the failing endpoint saw %d calls, want 1 — a 401 must not be retried", n)
 			}
 		})
+	}
+}
+
+// TestCollect_justfileMatchesAnyCase: just finds a justfile whatever its case,
+// so a tree holding `Justfile` has one, and the path is recorded as spelled.
+func TestCollect_justfileMatchesAnyCase(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if !got[0].Files.Justfile {
+		t.Error("Files.Justfile = false, want true for a tree holding Justfile")
+	}
+	if got[0].Files.JustfilePath != "Justfile" {
+		t.Errorf("Files.JustfilePath = %q, want Justfile", got[0].Files.JustfilePath)
+	}
+}
+
+// TestCollect_recordsFilePaths: pkg-index's tree holds one accepted name per
+// recorded file, so every field must carry exactly that path.
+func TestCollect_recordsFilePaths(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"pkg-index"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	want := audit.Files{
+		Justfile:            true,
+		JustfilePath:        "justfile",
+		Commitlint:          ".commitlintrc.yml",
+		GitCliff:            "cliff.toml",
+		Treefmt:             "treefmt.toml",
+		Compose:             []string{"compose.yaml", "docker-compose.yml"},
+		Typos:               "typos.toml",
+		Yamllint:            ".yamllint.yml",
+		Markdownlint:        ".markdownlint-cli2.jsonc",
+		Prettier:            ".prettierrc.json",
+		EditorconfigChecker: ".editorconfig-checker.json",
+		Lychee:              "lychee.toml",
+		Zizmor:              ".github/zizmor.yml",
+		Codecov:             ".github/codecov.yml",
+		MkDocs:              "mkdocs.yml",
+		LicenseFile:         "LICENSE",
+		SecurityPolicy:      "SECURITY.md",
+		Codeowners:          ".github/CODEOWNERS",
+		PRTemplate:          ".github/pull_request_template.md",
+		ClaudeMD:            "CLAUDE.md",
+	}
+	if diff := cmp.Diff(want, got[0].Files); diff != "" {
+		t.Errorf("Files mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestCollect_requestsTheTreeRecursivelyAtHead: the tree is read once, at the
+// head commit GraphQL answered with. The fake asserts recursive=1.
+func TestCollect_requestsTheTreeRecursivelyAtHead(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	const path = "/repos/gh-owner/shell-scripts/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c"
+	if n := api.callsTo(path); n != 1 {
+		t.Errorf("%s saw %d calls, want 1", path, n)
+	}
+}
+
+// TestCollect_emptyRepoFetchesNoTree: an empty repository has no commit to
+// list, so no tree is requested and no path is recorded.
+func TestCollect_emptyRepoFetchesNoTree(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"blank-repo"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	for _, c := range api.seen() {
+		if strings.Contains(c.path, "/git/trees/") {
+			t.Errorf("called %s for an empty repository", c.path)
+		}
+	}
+	if diff := cmp.Diff(audit.Files{}, got[0].Files); diff != "" {
+		t.Errorf("Files mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestCollect_truncatedTreeAborts: a truncated listing omits entries, so any
+// path decided from it could be a fake gap. The run must fail naming the
+// repository and return nothing.
+func TestCollect_truncatedTreeAborts(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	api.failNext("/repos/gh-owner/shell-scripts/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
+		scriptedFailure{status: http.StatusOK, body: `{"sha":"x","tree":[],"truncated":true}`})
+
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts", "web-app"})
+	if err == nil {
+		t.Fatal("Collect() error = nil, want a failure for a truncated tree")
+	}
+	if !strings.Contains(err.Error(), "shell-scripts") || !strings.Contains(err.Error(), "truncated") {
+		t.Errorf("Collect() error = %q, want it to name shell-scripts and say truncated", err)
+	}
+	if got != nil {
+		t.Errorf("Collect returned %d repositories alongside an error, want none", len(got))
 	}
 }

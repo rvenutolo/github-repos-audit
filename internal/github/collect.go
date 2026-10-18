@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
+	"github.com/rvenutolo/github-repos-audit/internal/filepaths"
 )
 
 // Collect reads every named repository and returns the facts, sorted by name
@@ -57,6 +58,8 @@ func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, err
 // already read. The first hundred commits of the default branch's history
 // arrive with the GraphQL query; a longer history costs one more request per
 // further hundred commits, so a large repository is the slow one to collect.
+// Last comes one recursive tree read at the head commit, which is where every
+// file path the report records is found; it is skipped for an empty repository.
 func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache) (audit.Repo, error) {
 	gql, err := c.fetchRepository(ctx, name)
 	if err != nil {
@@ -77,6 +80,14 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 	}
 	if err := c.fetchREST(ctx, name, &repo); err != nil {
 		return audit.Repo{}, err
+	}
+	// An empty repository has no commit to list, so it costs no tree request.
+	if repo.HeadOID != "" {
+		entries, err := c.fetchTree(ctx, c.repoPath(name), repo.HeadOID)
+		if err != nil {
+			return audit.Repo{}, err
+		}
+		recordPaths(&repo.Files, filepaths.Find(entries))
 	}
 	return repo, nil
 }
@@ -146,9 +157,7 @@ func (r *repository) files() audit.Files {
 		Gitignore:    present(r.Gitignore),
 		Editorconfig: present(r.Editorconfig),
 		FlakeNix:     present(r.FlakeNix),
-		// Either spelling counts; mixedCase-flake uses the undotted one.
-		Justfile:  present(r.JustfileDot) || present(r.JustfilePlain),
-		Changelog: present(r.ChangelogMD),
+		Changelog:    present(r.ChangelogMD),
 		// Each community health file is probed at all three locations GitHub
 		// itself recognises: the root, .github/ and docs/.
 		Security:       present(r.SecurityRoot) || present(r.SecurityGitHub) || present(r.SecurityDocs),
@@ -164,6 +173,32 @@ func (r *repository) files() audit.Files {
 		files.Workflows = sortedUnique(names)
 	}
 	return files
+}
+
+// recordPaths copies where each file was found onto the facts. Justfile is the
+// boolean form of JustfilePath, derived from it so the two can never
+// disagree.
+func recordPaths(f *audit.Files, p filepaths.Paths) {
+	f.Justfile = p.Justfile != ""
+	f.JustfilePath = p.Justfile
+	f.Commitlint = p.Commitlint
+	f.GitCliff = p.GitCliff
+	f.Treefmt = p.Treefmt
+	f.Compose = p.Compose
+	f.Typos = p.Typos
+	f.Yamllint = p.Yamllint
+	f.Markdownlint = p.Markdownlint
+	f.Prettier = p.Prettier
+	f.EditorconfigChecker = p.EditorconfigChecker
+	f.Lychee = p.Lychee
+	f.Zizmor = p.Zizmor
+	f.Codecov = p.Codecov
+	f.MkDocs = p.MkDocs
+	f.LicenseFile = p.LicenseFile
+	f.SecurityPolicy = p.SecurityPolicy
+	f.Codeowners = p.Codeowners
+	f.PRTemplate = p.PRTemplate
+	f.ClaudeMD = p.ClaudeMD
 }
 
 // renovateConfig returns the first accepted path that exists, so the report

@@ -1,0 +1,22 @@
+{
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
+  "tree": [
+    {
+      "path": "renovate.json",
+      "type": "blob"
+    },
+    {
+      "path": ".github",
+      "type": "tree"
+    },
+    {
+      "path": ".github/workflows",
+      "type": "tree"
+    },
+    {
+      "path": ".github/workflows/workflow-33.yml",
+      "type": "blob"
+    }
+  ],
+  "truncated": false
+}

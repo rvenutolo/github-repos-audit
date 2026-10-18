@@ -248,11 +248,14 @@ Grouped by theme here; the report lists them in the fixed worklist order
   check other than the `merge-gate` placeholder (n/a wherever a direct push
   is allowed, since there is no gate to require anything), and whether the
   head commit's checks last reported success.
-- **renovate**, **flake_nix**, **justfile** — whether the corresponding
-  tooling file exists. The Renovate file is looked for at every path
-  Renovate itself reads, in Renovate's order, and the first one found is the
-  one reported and judged, as it is the one Renovate uses. The deprecated
-  `renovate` key in `package.json` is not read.
+- **renovate**, **flake_nix** — whether the corresponding tooling file
+  exists. The Renovate file is looked for at every path Renovate itself
+  reads, in Renovate's order, and the first one found is the one reported and
+  judged, as it is the one Renovate uses. The deprecated `renovate` key in
+  `package.json` is not read.
+- **justfile** — whether `justfile` or `.justfile` exists at the root, in any
+  letter case, as `just` itself matches it; the path is reported as the
+  repository spells it.
 - **renovate_min_release_age** — Renovate's effective `minimumReleaseAge`,
   held to the type's duration. The value is read from the repository's own
   Renovate file merged with any presets it extends from the same account;
@@ -269,6 +272,53 @@ Grouped by theme here; the report lists them in the fixed worklist order
   conduct are present.
 - **releases**, **changelog** — whether the repository has published
   releases and keeps a changelog.
+- **license_file** — the license text, a root file matched in any letter
+  case, in this order: bare `LICENSE`, `LICENCE` or `UNLICENSE`; the same
+  with a `.md`, `.markdown`, `.txt` or `.html` extension; `COPYING`;
+  `COPYING.<extension>`; the same three stems with any other extension but
+  `.spdx` and `.header`; `LICENSE-*`, `LICENSE_*`, `LICENCE-*` or
+  `LICENCE_*`; `COPYING-*`; and last the REUSE `LICENSES/` directory. Unlike
+  `license`, which asks GitHub which license it recognised, this asks where
+  the text lives.
+- **security_policy** — `.github/SECURITY.md`, `SECURITY.md` or
+  `docs/SECURITY.md`, in any letter case.
+- **codeowners** — `.github/CODEOWNERS`, `CODEOWNERS` or `docs/CODEOWNERS`.
+- **pr_template** — a file named `pull_request_template`, with any extension
+  or none, or a directory of that name, in `.github/`, the root or `docs/`, in
+  any letter case.
+- **claude_md** — `CLAUDE.md` or `.claude/CLAUDE.md`.
+- **commitlint** — `.commitlintrc`, `.commitlintrc.json`, `.commitlintrc.yaml`,
+  `.commitlintrc.yml`, `.commitlintrc.js`, `.commitlintrc.cjs`,
+  `.commitlintrc.mjs`, `commitlint.config.js`, `commitlint.config.cjs`,
+  `commitlint.config.mjs`, `.commitlintrc.ts`, `.commitlintrc.cts`,
+  `.commitlintrc.mts`, `commitlint.config.ts`, `commitlint.config.cts` or
+  `commitlint.config.mts`.
+- **git_cliff** — `cliff.toml`, `.cliff.toml` or `.config/cliff.toml`.
+- **treefmt** — `treefmt.toml`, `.treefmt.toml`, `.config/treefmt.toml`,
+  `treefmt.nix` or `.treefmt.nix`.
+- **compose** — every distinct file name among `compose.yaml`, `compose.yml`,
+  `docker-compose.yml` and `docker-compose.yaml`, found at any depth, because
+  compose files live one per stack. The cell lists the names, sorted.
+- **typos** — `typos.toml`, `_typos.toml` or `.typos.toml`.
+- **yamllint** — `.yamllint`, `.yamllint.yaml` or `.yamllint.yml`.
+- **markdownlint** — `.markdownlint-cli2.jsonc`, `.markdownlint-cli2.yaml`,
+  `.markdownlint-cli2.cjs`, `.markdownlint-cli2.mjs`, `.markdownlint.jsonc`,
+  `.markdownlint.json`, `.markdownlint.yaml`, `.markdownlint.yml`,
+  `.markdownlint.cjs`, `.markdownlint.mjs` or `.markdownlintrc`.
+- **prettier** — `.prettierrc`, `.prettierrc.json`, `.prettierrc.yml`,
+  `.prettierrc.yaml`, `.prettierrc.json5`, `.prettierrc.js`,
+  `prettier.config.js`, `.prettierrc.ts`, `prettier.config.ts`,
+  `.prettierrc.mjs`, `prettier.config.mjs`, `.prettierrc.mts`,
+  `prettier.config.mts`, `.prettierrc.cjs`, `prettier.config.cjs`,
+  `.prettierrc.cts`, `prettier.config.cts` or `.prettierrc.toml`.
+- **editorconfig_checker** — `.editorconfig-checker.json`, the only name the
+  tool's source reads.
+- **lychee** — `lychee.toml`.
+- **zizmor** — `.github/zizmor.yml`, `.github/zizmor.yaml`, `zizmor.yml` or
+  `zizmor.yaml`.
+- **codecov** — `codecov.yml`, `.codecov.yml`, `codecov.yaml` or
+  `.codecov.yaml`, in the root, `dev/` or `.github/`.
+- **mkdocs** — `mkdocs.yml` or `mkdocs.yaml`.
 - **signed_commits**, **tag_ruleset**, **direct_push** — whether commit
   signing is required, whether tags are protected by an active ruleset
   targeting tags, and whether a push straight to the default branch is
@@ -294,6 +344,15 @@ Grouped by theme here; the report lists them in the fixed worklist order
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches
   exist besides the default branch (`audit.json` records the raw count).
+
+These file-path checks, with `justfile` and `renovate`, take any of the
+expectation words, report the path they found as code, and keep showing it
+where the type does not ask for the file. Where several accepted names are
+present, the first in the order listed for that check is the one reported. A name
+with a directory is a repository-relative path, and a directory match ends
+in `/`. The File paths section of the report marks a path that differs from
+the one most of the account uses for the same check; with no single most
+common path, nothing is marked.
 
 ## Running locally
 
@@ -436,8 +495,8 @@ not indifferent to which two they are:
 `internal/github/live_integration_test.go` asserts real facts about each, and
 a fixture missing one fails the run with no further explanation:
 
-- The public repository needs a description, a README, at least one
-  workflow file, at least one ruleset, readable branch protection rules, a
+- The public repository needs a description, a README, a license file at
+  the root, at least one workflow file, at least one ruleset, readable branch protection rules, a
   non-empty Actions permissions policy, a default workflow permissions
   setting, at least one allowed merge strategy, a commit history whose
   authors carry both a name and an email, a recorded last push, a

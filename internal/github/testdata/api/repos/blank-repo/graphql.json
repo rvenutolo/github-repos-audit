@@ -45,8 +45,6 @@
       "editorconfig": null,
       "flake_nix": null,
       "changelog_md": null,
-      "justfile_dot": null,
-      "justfile_plain": null,
       "security_root": null,
       "security_github": null,
       "security_docs": null,

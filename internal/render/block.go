@@ -18,6 +18,10 @@ const (
 	markNA   = "n/a"
 )
 
+// deviationSuffix follows a path that differs from the one most of the
+// account uses; the File paths intro explains it.
+const deviationSuffix = " ≠"
+
 // footerPrefix opens the footer line. MaterialChange strips the line by this
 // prefix, so the two must not drift apart.
 const footerPrefix = "_Read from GitHub on "
@@ -45,6 +49,7 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	writeSection(&b, gapsSection(rep))
 	writeSection(&b, metadataSection(rep))
 	writeSection(&b, treeSection(rep))
+	writeSection(&b, filePathsSection(rep))
 	writeSection(&b, policySection(rep))
 	writeSection(&b, activitySection(rep, at))
 	writeSection(&b, identitiesSection(rep))
@@ -137,23 +142,110 @@ func metadataSection(rep *rules.Report) string {
 }
 
 func treeSection(rep *rules.Report) string {
-	t := newTable("Repository", "Renovate", "Min. release age", ".gitignore", ".editorconfig",
-		"flake.nix", ".justfile", "CHANGELOG", "Community files")
+	t := newTable("Repository", "Min. release age", ".gitignore", ".editorconfig",
+		"flake.nix", "CHANGELOG", "Community files")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
 			repoLink(rep.Owner, r.Repo.Name),
-			cell(r.Cell(rules.CheckRenovate)),
 			cell(r.Cell(rules.CheckRenovateMinReleaseAge)),
 			cell(r.Cell(rules.CheckGitignore)),
 			cell(r.Cell(rules.CheckEditorconfig)),
 			cell(r.Cell(rules.CheckFlakeNix)),
-			cell(r.Cell(rules.CheckJustfile)),
 			cell(r.Cell(rules.CheckChangelog)),
 			cell(r.Cell(rules.CheckCommunityFiles)),
 		)
 	}
 	return heading("Tree", t)
+}
+
+// filePathsIntro is one line on purpose, like driftIntro: the block is
+// committed unformatted.
+const filePathsIntro = "Where each tooling and community file lives. " +
+	"`≠` marks a path that differs from the one most repositories use."
+
+// pathColumn is one column of a File paths sub-table: its header and the
+// check whose path it shows.
+type pathColumn struct {
+	header string
+	check  rules.Check
+}
+
+// pathGroup is one File paths sub-table.
+type pathGroup struct {
+	title   string
+	columns []pathColumn
+}
+
+// filePathGroups splits the path checks into sub-tables by what the files are
+// for. One table of twenty columns would be wider than any screen; the groups
+// keep each table readable while the checks stay one flat list in rules.
+//
+// It is a function rather than a package variable so no mutable global backs
+// the render.
+func filePathGroups() []pathGroup {
+	return []pathGroup{
+		{"Build & release", []pathColumn{
+			{"justfile", rules.CheckJustfile},
+			{"Renovate", rules.CheckRenovate},
+			{"commitlint", rules.CheckCommitlint},
+			{"git-cliff", rules.CheckGitCliff},
+			{"treefmt", rules.CheckTreefmt},
+			{"Compose", rules.CheckCompose},
+		}},
+		{"Linters", []pathColumn{
+			{"typos", rules.CheckTypos},
+			{"yamllint", rules.CheckYamllint},
+			{"markdownlint", rules.CheckMarkdownlint},
+			{"Prettier", rules.CheckPrettier},
+			{"editorconfig-checker", rules.CheckEditorconfigChecker},
+			{"lychee", rules.CheckLychee},
+			{"zizmor", rules.CheckZizmor},
+			{"Codecov", rules.CheckCodecov},
+			{"MkDocs", rules.CheckMkDocs},
+		}},
+		{"GitHub & docs", []pathColumn{
+			{"LICENSE", rules.CheckLicenseFile},
+			{"SECURITY", rules.CheckSecurityPolicy},
+			{"CODEOWNERS", rules.CheckCodeowners},
+			{"PR template", rules.CheckPRTemplate},
+			{"CLAUDE.md", rules.CheckClaudeMD},
+		}},
+	}
+}
+
+// filePathsSection shows where each repository keeps its tooling and
+// community files, one sub-table per group. The sub-tables are headed with
+// ### beneath a single ## so the section reads as one; a group whose table
+// would have no rows is dropped, as heading drops any empty table.
+func filePathsSection(rep *rules.Report) string {
+	var b strings.Builder
+	for _, g := range filePathGroups() {
+		headers := make([]string, 0, len(g.columns)+1)
+		headers = append(headers, "Repository")
+		for _, c := range g.columns {
+			headers = append(headers, c.header)
+		}
+		t := newTable(headers...)
+		for i := range rep.Repos {
+			r := &rep.Repos[i]
+			row := make([]string, 0, len(headers))
+			row = append(row, repoLink(rep.Owner, r.Repo.Name))
+			for _, c := range g.columns {
+				row = append(row, cell(r.Cell(c.check)))
+			}
+			t.add(row...)
+		}
+		body := t.String()
+		if body == "" {
+			continue
+		}
+		b.WriteString("### " + g.title + "\n\n" + body + "\n")
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return "## File paths\n\n" + filePathsIntro + "\n\n" + strings.TrimSuffix(b.String(), "\n")
 }
 
 func policySection(rep *rules.Report) string {
@@ -300,6 +392,11 @@ func cell(c rules.Cell) string {
 	value := c.Value
 	if c.Code {
 		value = code(value)
+	}
+	// Only a rendered value takes the suffix: a bare tick or cross has no path
+	// for it to qualify.
+	if c.Deviates && value != "" {
+		value += deviationSuffix
 	}
 
 	mark := ""

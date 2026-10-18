@@ -650,3 +650,120 @@ func TestBlock_configDriftComesBeforeTheGaps(t *testing.T) {
 		t.Errorf("drift section at %d, Gaps at %d; want drift first and both present", drift, gaps)
 	}
 }
+
+// sectionTable returns the header cells of the first table under heading in
+// block, or fails when the heading is absent.
+func sectionTable(t *testing.T, block, heading string) []string {
+	t.Helper()
+	_, after, ok := strings.Cut(block, heading+"\n\n")
+	if !ok {
+		t.Fatalf("no %q in:\n%s", heading, block)
+	}
+	for line := range strings.SplitSeq(after, "\n") {
+		if strings.HasPrefix(line, "|") {
+			return splitRow(line)
+		}
+	}
+	t.Fatalf("no table under %q in:\n%s", heading, block)
+	return nil
+}
+
+func TestBlock_filePathsSection(t *testing.T) {
+	t.Parallel()
+
+	got, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+
+	const intro = "Where each tooling and community file lives. " +
+		"`≠` marks a path that differs from the one most repositories use.\n"
+	positions := []string{"## File paths\n\n" + intro, "### Build & release\n", "### Linters\n", "### GitHub & docs\n"}
+	last := -1
+	for _, p := range positions {
+		i := strings.Index(got, p)
+		if i < 0 {
+			t.Fatalf("block has no %q:\n%s", p, got)
+		}
+		if i < last {
+			t.Errorf("%q appears before the heading above it", p)
+		}
+		last = i
+	}
+
+	tests := []struct {
+		heading string
+		want    []string
+	}{
+		{"### Build & release", []string{"Repository", "justfile", "Renovate", "commitlint", "git-cliff", "treefmt", "Compose"}},
+		{"### Linters", []string{
+			"Repository", "typos", "yamllint", "markdownlint", "Prettier", "editorconfig-checker",
+			"lychee", "zizmor", "Codecov", "MkDocs",
+		}},
+		{"### GitHub & docs", []string{"Repository", "LICENSE", "SECURITY", "CODEOWNERS", "PR template", "CLAUDE.md"}},
+	}
+	for _, tc := range tests {
+		if diff := cmp.Diff(tc.want, sectionTable(t, got, tc.heading)); diff != "" {
+			t.Errorf("%s columns mismatch (-want +got):\n%s", tc.heading, diff)
+		}
+	}
+}
+
+func TestBlock_treeLosesMovedColumns(t *testing.T) {
+	t.Parallel()
+
+	got, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	header := sectionTable(t, got, "## Tree")
+	for _, moved := range []string{"Renovate", ".justfile"} {
+		if slices.Contains(header, moved) {
+			t.Errorf("Tree columns = %v, want no %q", header, moved)
+		}
+	}
+	if !slices.Contains(header, "Min. release age") {
+		t.Errorf("Tree columns = %v, want Min. release age", header)
+	}
+}
+
+func TestCell_deviates(t *testing.T) {
+	t.Parallel()
+
+	// The fixture's Renovate paths: two repositories share renovate.json and
+	// one keeps its file elsewhere, so only that one deviates.
+	got, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	for _, want := range []string{"`.github/renovate.json5` ≠", "`renovate.json` "} {
+		if !strings.Contains(got, want) {
+			t.Errorf("block has no %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "`renovate.json` ≠") {
+		t.Errorf("the usual path is marked as deviating:\n%s", got)
+	}
+	// A bare mark carries no value for the suffix to qualify.
+	for _, bad := range []string{"✗ ≠", "n/a ≠"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("block has %q, want the suffix only after a value", bad)
+		}
+	}
+}
+
+func TestBlock_tiedPathColumnIsUnmarked(t *testing.T) {
+	t.Parallel()
+
+	got, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	// Two repositories use each commitlint spelling: no standard, no mark.
+	if !strings.Contains(got, "`.commitlintrc.json`") || !strings.Contains(got, "`.commitlintrc.yml`") {
+		t.Fatalf("fixture lacks both commitlint spellings:\n%s", got)
+	}
+	if strings.Contains(got, "`.commitlintrc.json` ≠") || strings.Contains(got, "`.commitlintrc.yml` ≠") {
+		t.Errorf("a tied column is marked:\n%s", got)
+	}
+}

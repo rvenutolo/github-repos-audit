@@ -1,0 +1,42 @@
+{
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001",
+  "tree": [
+    {
+      "path": "README.md",
+      "type": "blob"
+    },
+    {
+      "path": ".gitignore",
+      "type": "blob"
+    },
+    {
+      "path": ".editorconfig",
+      "type": "blob"
+    },
+    {
+      "path": "flake.nix",
+      "type": "blob"
+    },
+    {
+      "path": "Justfile",
+      "type": "blob"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "type": "blob"
+    },
+    {
+      "path": "SECURITY.md",
+      "type": "blob"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "type": "blob"
+    },
+    {
+      "path": "renovate.json",
+      "type": "blob"
+    }
+  ],
+  "truncated": false
+}
