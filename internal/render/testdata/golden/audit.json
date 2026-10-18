@@ -340,7 +340,7 @@
           "ci.yml"
         ],
         "justfile_path": "justfile",
-        "commitlint": ".commitlintrc.yml",
+        "commitlint": ".commitlintrc.json",
         "license_file": "LICENSE",
         "security_policy": "SECURITY.md",
         "pr_template": ".github/pull_request_template.md"
@@ -728,7 +728,7 @@
           "ci.yml"
         ],
         "justfile_path": "justfile",
-        "commitlint": ".commitlintrc.yml",
+        "commitlint": ".commitlintrc.json",
         "license_file": "LICENSE",
         "security_policy": "SECURITY.md",
         "pr_template": ".github/pull_request_template.md"

@@ -32,13 +32,47 @@
 
 ## Tree
 
-| Repository                                                           | Renovate                 | Min. release age | .gitignore | .editorconfig | flake.nix | .justfile  | CHANGELOG | Community files |
-| -------------------------------------------------------------------- | ------------------------ | ---------------- | ---------- | ------------- | --------- | ---------- | --------- | --------------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a                      | n/a              | ✓          | ✓             | n/a       | n/a        | n/a       | n/a             |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `renovate.json`          | ✓ 7 days         | ✓          | ✓             | ✓         | `justfile` | n/a       | n/a             |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗                        | n/a              | ✗          | ✗             | ✗         | ✗          | n/a       | n/a             |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `.github/renovate.json5` | ✗ 3 days         | ✓          | ✓             | ✓         | `justfile` | ✓         | 1/3             |
-| [web-app](https://github.com/gh-owner/web-app)                       | `renovate.json`          | ✗ unresolved     | ✗          | ✓             | n/a       | `justfile` | n/a       | n/a             |
+| Repository                                                           | Min. release age | .gitignore | .editorconfig | flake.nix | CHANGELOG | Community files |
+| -------------------------------------------------------------------- | ---------------- | ---------- | ------------- | --------- | --------- | --------------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a              | ✓          | ✓             | n/a       | n/a       | n/a             |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ 7 days         | ✓          | ✓             | ✓         | n/a       | n/a             |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a              | ✗          | ✗             | ✗         | n/a       | n/a             |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✗ 3 days         | ✓          | ✓             | ✓         | ✓         | 1/3             |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✗ unresolved     | ✗          | ✓             | n/a       | n/a       | n/a             |
+
+## File paths
+
+Where each tooling and community file lives. `≠` marks a path that differs from the one most repositories use.
+
+### Build & release
+
+| Repository                                                           | justfile   | Renovate                   | commitlint           | git-cliff | treefmt | Compose |
+| -------------------------------------------------------------------- | ---------- | -------------------------- | -------------------- | --------- | ------- | ------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a        | n/a                        | `.commitlintrc.yml`  | n/a       | n/a     | n/a     |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `justfile` | `renovate.json`            | `.commitlintrc.yml`  | n/a       | n/a     | n/a     |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗          | ✗                          | n/a                  | n/a       | n/a     | n/a     |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `justfile` | `.github/renovate.json5` ≠ | `.commitlintrc.json` | n/a       | n/a     | n/a     |
+| [web-app](https://github.com/gh-owner/web-app)                       | `justfile` | `renovate.json`            | `.commitlintrc.json` | n/a       | n/a     | n/a     |
+
+### Linters
+
+| Repository                                                           | typos | yamllint | markdownlint | Prettier | editorconfig-checker | lychee | zizmor | Codecov | MkDocs |
+| -------------------------------------------------------------------- | ----- | -------- | ------------ | -------- | -------------------- | ------ | ------ | ------- | ------ |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
+
+### GitHub & docs
+
+| Repository                                                           | LICENSE   | SECURITY      | CODEOWNERS | PR template                        | CLAUDE.md |
+| -------------------------------------------------------------------- | --------- | ------------- | ---------- | ---------------------------------- | --------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a       | n/a           | n/a        | n/a                                | n/a       |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+| [web-app](https://github.com/gh-owner/web-app)                       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 
 ## Policy
 

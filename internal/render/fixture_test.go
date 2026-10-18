@@ -130,6 +130,8 @@ func fullSnapshot() *audit.Snapshot {
 	soft.Files.Changelog = true
 	soft.Files.Security = true
 	soft.Files.RenovateConfig = ".github/renovate.json5"
+	// Two repositories per commitlint spelling: a tied column names no standard.
+	soft.Files.Commitlint = ".commitlintrc.json"
 	// Its release age comes from a preset and falls short of the type's.
 	soft.Renovate = audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store"}
 	soft.Releases = audit.Releases{Total: 4, Drafts: 1, LastPublishedAt: at(2026, time.April, 2)}
@@ -195,6 +197,7 @@ func fullSnapshot() *audit.Snapshot {
 	// A private config repository with an override that excuses a real gap.
 	cfg := baseRepo("web-app", "config")
 	cfg.Files.Gitignore = false
+	cfg.Files.Commitlint = ".commitlintrc.json"
 	cfg.Overrides = map[string]string{"flake_nix": rules.OverrideNotRequired}
 	cfg.Files.FlakeNix = false
 	cfg.Settings.HasWiki = true // the one deviation on wiki
