@@ -4,6 +4,27 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v4.0.0
+
+### Breaking changes
+
+- write a fresh report on every render run
+
+  render prints nothing to stdout on success; the
+  material-change=\<bool> line is gone, and so is the workflow step that
+  appended it to $GITHUB_OUTPUT.
+
+### Features
+
+- collect recent CI timing per repository
+- compute CI timing lines for the report
+- show CI timing in the report
+
+### Fixes
+
+- widen the CI suite page and correct its comments
+- retry a GraphQL query that timed out
+
 ## v3.0.0
 
 ### Breaking changes
