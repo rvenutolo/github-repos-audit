@@ -4,6 +4,13 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v4.0.3
+
+### Fixes
+
+- send the refresh commit's files in the request body
+- keep the refresh script to gh and coreutils
+
 ## v4.0.2
 
 ### Fixes
