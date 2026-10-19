@@ -534,7 +534,7 @@
           "items": { "$ref": "#/$defs/ci_commit" }
         },
         "default_branch": {
-          "description": "The most recent default-branch commits, newest first, whether or not any check ran on them.",
+          "description": "The most recent default-branch commits, newest first, whether or not any workflow ran on them.",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/ci_commit" }
@@ -542,7 +542,7 @@
       }
     },
     "ci_commit": {
-      "description": "One commit's checks, reduced to timestamp arithmetic. A check suite with no check runs is not counted at all.",
+      "description": "One commit's GitHub Actions workflow runs, reduced to timestamp arithmetic. A check another app posts is not counted.",
       "type": "object",
       "additionalProperties": false,
       "required": ["oid", "complete"],
@@ -568,16 +568,16 @@
           "const": true
         },
         "complete": {
-          "description": "At least one counted check run, every counted run COMPLETED, and no suite or run list cut short by the query's page size.",
+          "description": "At least one workflow run, every run and every job completed with a known completion time, and no jobs list cut short by its page size.",
           "type": "boolean"
         },
         "wait_seconds": {
-          "description": "The latest completion over the counted runs minus the earliest creation over the counted suites, in seconds. Present only when complete and positive.",
+          "description": "The latest job completion over the commit's runs minus the earliest run creation, in seconds. Present only when complete and positive.",
           "type": "integer",
           "minimum": 1
         },
         "jobs": {
-          "description": "Every counted run that completed with both timestamps, in the order GitHub listed them. Absent when there is none.",
+          "description": "Every job that completed with both timestamps, in the order GitHub listed them. Absent when there is none.",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/ci_job" }
@@ -585,18 +585,18 @@
       }
     },
     "ci_job": {
-      "description": "One check run's duration.",
+      "description": "One workflow job's duration.",
       "type": "object",
       "additionalProperties": false,
       "required": ["label", "seconds"],
       "properties": {
         "label": {
-          "description": "\"<workflow> / <run>\" for a GitHub Actions run, \"<app> / <run>\" for any other app's.",
+          "description": "\"<workflow> / <job>\".",
           "type": "string",
           "minLength": 1
         },
         "seconds": {
-          "description": "The run's completion minus its start: time on a runner, not time queued for one.",
+          "description": "The job's completion minus its start: time on a runner, not time queued for one.",
           "type": "integer",
           "minimum": 0
         }

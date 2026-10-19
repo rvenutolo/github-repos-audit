@@ -35,11 +35,12 @@ const graphQLPath = "/graphql"
 // repository with a short history costs no request beyond this one; the rest
 // are paged by historyQuery.
 //
-// So do the check suites of the latest merged pull requests' head commits and
-// of the most recent default-branch commits, which is what the CI timing is
-// read from; ciFields explains the page sizes. Merged pull requests can only
-// be ordered by when they were last updated, not by when they merged, which
-// is why each one's merge time is selected beside it.
+// So do the commits the CI timing samples: the head commit of each of the
+// latest merged pull requests and the most recent default-branch commits. Only
+// their oids are read here; their workflow runs come from the Actions REST
+// API (see fetchCI). Merged pull requests can only be ordered by when they
+// were last updated, not by when they merged, which is why each one's merge
+// time is selected beside it.
 const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     description
@@ -60,7 +61,7 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
         number
         merged_at: mergedAt
         author { type: __typename }
-        commits(last: 1) { nodes { commit { ...CICommit } } }
+        commits(last: 1) { nodes { commit { oid } } }
       }
     }
     branches: refs(refPrefix: "refs/heads/", first: 1) {
@@ -90,7 +91,7 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
             ` + historyFields + `
           }
           recent_commits: history(first: ` + ciCommitsPage + `) {
-            nodes { ...CICommit }
+            nodes { oid }
           }
         }
       }
@@ -198,57 +199,17 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
       }
     }
   }
-}
-` + ciFields
-
-// The CI page sizes. ciCommitsPage is how many merged pull requests and how
-// many default-branch commits are read: twice the five the report averages
-// over, so that leaving out bot-authored pull requests, commits no check ran
-// on and commits still running usually leaves five to average. A repository
-// whose merges are mostly bot pull requests can come up short of five human
-// ones; the mean then averages what exists, which the README documents.
-// ciSuitesPage and ciRunsPage bound one commit's suites and each suite's runs;
-// a commit that overflows either is recorded as incomplete rather than
-// measured short. A commit carries one suite per workflow its push triggered
-// plus one per app that subscribes to checks, which can pass ten, and a page
-// too small for that would quietly make every commit incomplete.
-//
-// The binding constraint is not the documented 500,000-node ceiling, which
-// these pages stay far inside, but GitHub's per-query resource limit. That
-// limit depends on the data behind the nodes, not on their count: the same
-// query answers for one repository and comes back as a 200 carrying
-// RESOURCE_LIMITS_EXCEEDED for another whose commits each carry a dozen or
-// more suites, and postGraphQL treats any such error as fatal to the run.
-// So the pages are sized to the worst case measured against real accounts,
-// and the cut falls on the commit lists rather than the suite or run pages:
-// fewer commits only thins the sample, while a smaller suite page would mark
-// every commit of a many-workflow repository incomplete and leave it no
-// timing at all. Raising any of these needs that measurement repeated.
-const (
-	ciCommitsPage = "10"
-	ciSuitesPage  = "20"
-	ciRunsPage    = "30"
-)
-
-// ciFields is the fragment both CI lists select per commit: when each check
-// suite was created, which app and workflow it belongs to, and each check
-// run's status and times. A re-run is timed like any other run, so a flaky
-// job that needed one reads as the wait it caused.
-const ciFields = `fragment CICommit on Commit {
-  oid
-  check_suites: checkSuites(first: ` + ciSuitesPage + `) {
-    page_info: pageInfo { has_next_page: hasNextPage }
-    nodes {
-      created_at: createdAt
-      app { name }
-      workflow_run: workflowRun { workflow { name } }
-      check_runs: checkRuns(first: ` + ciRunsPage + `) {
-        page_info: pageInfo { has_next_page: hasNextPage }
-        nodes { name status started_at: startedAt completed_at: completedAt }
-      }
-    }
-  }
 }`
+
+// ciCommitsPage is how many merged pull requests and how many default-branch
+// commits the CI timing samples: twice the five the report averages over, so
+// that leaving out bot-authored pull requests, commits no workflow ran on and
+// commits still running usually leaves five to average. A repository whose
+// merges are mostly bot pull requests can come up short of five human ones;
+// the mean then averages what exists, which the README documents. Each
+// sampled commit's runs cost REST requests rather than query nodes, so the
+// size is bounded by fetchCI's request budget, not by GraphQL's limits.
+const ciCommitsPage = "10"
 
 // historyFields is one page of a commit's history: who wrote and who
 // committed each commit. It is shared by the first page, which rides along
@@ -465,46 +426,9 @@ type ciCommits struct {
 	Nodes []ciCommit `json:"nodes"`
 }
 
-// ciCommit is one commit as ciFields selects it.
+// ciCommit is one sampled commit, which repoQuery reads only the oid of.
 type ciCommit struct {
-	OID         string      `json:"oid"`
-	CheckSuites checkSuites `json:"check_suites"`
-}
-
-type checkSuites struct {
-	PageInfo pageInfo     `json:"page_info"`
-	Nodes    []checkSuite `json:"nodes"`
-}
-
-type checkSuite struct {
-	CreatedAt time.Time `json:"created_at"`
-	// App is null when GitHub does not name the app that owns the suite.
-	App *namedNode `json:"app"`
-	// WorkflowRun is null for every suite that is not a GitHub Actions run.
-	WorkflowRun *workflowRun `json:"workflow_run"`
-	CheckRuns   checkRuns    `json:"check_runs"`
-}
-
-type workflowRun struct {
-	Workflow *namedNode `json:"workflow"`
-}
-
-type namedNode struct {
-	Name string `json:"name"`
-}
-
-type checkRuns struct {
-	PageInfo pageInfo   `json:"page_info"`
-	Nodes    []checkRun `json:"nodes"`
-}
-
-// checkRun is one run. StartedAt and CompletedAt are null until the run gets
-// that far.
-type checkRun struct {
-	Name        string     `json:"name"`
-	Status      string     `json:"status"`
-	StartedAt   *time.Time `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at"`
+	OID string `json:"oid"`
 }
 
 type rollupState struct {

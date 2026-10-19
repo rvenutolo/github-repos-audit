@@ -72,21 +72,22 @@ func wantShellScripts(t *testing.T) audit.Repo {
 			},
 		},
 		CIState: "SUCCESS",
-		// Every shape the CI fixtures carry, recorded as it is: the empty
-		// Renovate suite is not counted, so the first pull request's wait
-		// starts at the Actions suite; the bot's pull request is marked, not
-		// dropped; and a run still going, a commit no check ran on and a
-		// truncated run list are each recorded as incomplete, with whatever
-		// finished runs they have.
+		// Every shape the CI fixtures carry, recorded as it is: the first pull
+		// request's two workflows ran side by side, so its wait spans both runs
+		// from the earlier creation; the bot's pull request is marked, not
+		// dropped; and a run still going, a commit no workflow ran on and a
+		// truncated jobs list are each recorded as incomplete, with whatever
+		// finished jobs they have. A run on a commit outside the sample is
+		// never asked for its jobs.
 		CI: audit.CI{
 			PullRequests: []audit.CICommit{
 				{
 					OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c01", PRNumber: 12, MergedAt: at(t, "2025-09-04T18:00:00Z"),
-					Complete: true, WaitSeconds: 405,
+					Complete: true, WaitSeconds: 385,
 					Jobs: []audit.CIJob{
+						{Label: "docs / docs", Seconds: 60},
 						{Label: "ci / check", Seconds: 240},
 						{Label: "ci / test", Seconds: 360},
-						{Label: "Codecov / codecov/patch", Seconds: 5},
 					},
 				},
 				{
@@ -702,6 +703,17 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 		}
 	}
 
+	// The CI reads are the newest GETs; a fixture set that stopped reaching
+	// them would leave them out of this test without failing it.
+	for _, path := range []string{
+		"/repos/gh-owner/shell-scripts/actions/runs",
+		"/repos/gh-owner/shell-scripts/actions/runs/4000001/jobs",
+	} {
+		if api.callsTo(path) == 0 {
+			t.Errorf("no request to %s; the read-only assertion did not cover it", path)
+		}
+	}
+
 	documents := api.graphQLDocuments()
 	if len(documents) == 0 {
 		t.Fatal("no GraphQL documents recorded; the assertion below would be vacuous")
@@ -1095,6 +1107,8 @@ func TestClient_Collect_abortsOnAnUnreadableEndpoint(t *testing.T) {
 		base + "/actions/permissions/access",
 		base + "/rules/branches/main",
 		base + "/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
+		base + "/actions/runs",
+		base + "/actions/runs/4000001/jobs",
 	}
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {
@@ -1234,5 +1248,66 @@ func TestCollect_truncatedTreeAborts(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("Collect returned %d repositories alongside an error, want none", len(got))
+	}
+}
+
+// TestClient_Collect_ciRequestBudget pins what CI timing costs: one runs page
+// per repository that has a commit to time, and one jobs read per run on a
+// sampled commit, never one for a run on any other commit. A repository with
+// nothing sampled asks for no runs at all.
+func TestClient_Collect_ciRequestBudget(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts", "pkg-index"}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	base := "/repos/" + testOwner + "/shell-scripts/actions/runs"
+	want := map[string]int{
+		base: 1,
+		"/repos/" + testOwner + "/pkg-index/actions/runs": 0,
+		// 4000008 ran on a commit outside the sample.
+		base + "/4000008/jobs": 0,
+	}
+	for _, id := range []string{"4000001", "4000002", "4000003", "4000004", "4000005", "4000006"} {
+		want[base+"/"+id+"/jobs"] = 1
+	}
+	for path, n := range want {
+		if got := api.callsTo(path); got != n {
+			t.Errorf("%s saw %d calls, want %d", path, got, n)
+		}
+	}
+}
+
+// TestClient_Collect_actionsDisabled: a repository with Actions turned off
+// answers the runs list with a 200 and no runs, which is an ordinary answer:
+// every sampled commit is recorded with no jobs and not complete, and no jobs
+// are asked for.
+func TestClient_Collect_actionsDisabled(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	runs := "/repos/" + testOwner + "/web-app/actions/runs"
+	api.failNext(runs, scriptedFailure{status: http.StatusOK, body: `{"total_count":0,"workflow_runs":[]}`})
+
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	want := audit.CI{
+		PullRequests: []audit.CICommit{{
+			OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11", PRNumber: 3, MergedAt: at(t, "2025-09-01T09:00:00Z"),
+		}},
+		DefaultBranch: []audit.CICommit{{OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014"}},
+	}
+	if diff := cmp.Diff(want, got[0].CI); diff != "" {
+		t.Errorf("CI mismatch (-want +got):\n%s", diff)
+	}
+	for _, c := range api.seen() {
+		if strings.HasSuffix(c.path, "/jobs") {
+			t.Errorf("asked for %s with no runs listed", c.path)
+		}
 	}
 }

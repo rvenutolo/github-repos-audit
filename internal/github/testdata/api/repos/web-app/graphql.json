@@ -24,38 +24,7 @@
               "nodes": [
                 {
                   "commit": {
-                    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11",
-                    "check_suites": {
-                      "page_info": {
-                        "has_next_page": false
-                      },
-                      "nodes": [
-                        {
-                          "created_at": "2025-09-01T08:00:00Z",
-                          "app": {
-                            "name": "GitHub Actions"
-                          },
-                          "workflow_run": {
-                            "workflow": {
-                              "name": "ci"
-                            }
-                          },
-                          "check_runs": {
-                            "page_info": {
-                              "has_next_page": false
-                            },
-                            "nodes": [
-                              {
-                                "name": "check",
-                                "status": "COMPLETED",
-                                "started_at": "2025-09-01T08:00:30Z",
-                                "completed_at": "2025-09-01T08:02:30Z"
-                              }
-                            ]
-                          }
-                        }
-                      ]
-                    }
+                    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11"
                   }
                 }
               ]
@@ -114,38 +83,7 @@
           "recent_commits": {
             "nodes": [
               {
-                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
-                "check_suites": {
-                  "page_info": {
-                    "has_next_page": false
-                  },
-                  "nodes": [
-                    {
-                      "created_at": "2025-09-02T01:45:00Z",
-                      "app": {
-                        "name": "GitHub Actions"
-                      },
-                      "workflow_run": {
-                        "workflow": {
-                          "name": "ci"
-                        }
-                      },
-                      "check_runs": {
-                        "page_info": {
-                          "has_next_page": false
-                        },
-                        "nodes": [
-                          {
-                            "name": "check",
-                            "status": "COMPLETED",
-                            "started_at": "2025-09-02T01:45:20Z",
-                            "completed_at": "2025-09-02T01:47:20Z"
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014"
               }
             ]
           }

@@ -90,6 +90,8 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 		f.fixtureHandler("selected-actions"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/permissions/workflow", f.fixtureHandler("actions-workflow"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/permissions/access", f.fixtureHandler("actions-access"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs", f.handleRuns)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs", f.handleJobs)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/contents/{path...}", f.handleContents)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/git/trees/{sha}", f.handleTree)
 
@@ -288,6 +290,41 @@ func (f *fakeAPI) handleTree(w http.ResponseWriter, r *http.Request) {
 		f.t.Errorf("tree request for %s has recursive=%q, want 1", r.URL.Path, got)
 	}
 	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), "git-tree")
+}
+
+// handleRuns answers the workflow runs list from the repository's
+// actions-runs fixture. The page size is asserted rather than ignored: the
+// API's default is thirty, and a commit outside a page that small would read
+// as one no workflow ran on.
+func (f *fakeAPI) handleRuns(w http.ResponseWriter, r *http.Request) {
+	f.t.Helper()
+	if owner := r.PathValue("owner"); owner != testOwner {
+		f.t.Errorf("request for owner %q, want %q", owner, testOwner)
+	}
+	if got := r.URL.Query().Get("per_page"); got != "100" {
+		f.t.Errorf("runs request for %s has per_page=%q, want 100", r.URL.Path, got)
+	}
+	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), "actions-runs")
+}
+
+// handleJobs answers one run's jobs list from actions-jobs-<run id>, flat for
+// the same reason the contents fixtures are. A run with no fixture answers
+// 404, so a jobs read the collector should not have made fails the run that
+// made it. Only the latest attempt is ever asked for: a filter other than the
+// default would time a re-run's earlier, abandoned attempts too.
+func (f *fakeAPI) handleJobs(w http.ResponseWriter, r *http.Request) {
+	f.t.Helper()
+	if owner := r.PathValue("owner"); owner != testOwner {
+		f.t.Errorf("request for owner %q, want %q", owner, testOwner)
+	}
+	query := r.URL.Query()
+	if got := query.Get("per_page"); got != "100" {
+		f.t.Errorf("jobs request for %s has per_page=%q, want 100", r.URL.Path, got)
+	}
+	if got := query.Get("filter"); got != "" && got != "latest" {
+		f.t.Errorf("jobs request for %s has filter=%q, want the latest attempt", r.URL.Path, got)
+	}
+	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), "actions-jobs-"+r.PathValue("run_id"))
 }
 
 // serve writes the fixture named base from dir. A plain <base>.json is a 200;

@@ -144,7 +144,8 @@ and the generated report. These steps describe how that repository is wired up.
    - `AUDIT_TOKEN` — a token that can read every repository on the account:
      contents, metadata, actions, administration, and pull requests, all
      read-only. Without pull requests the open pull request count of a private
-     repository is unreadable. The workflow hands it to `github-repos-audit render` as `GITHUB_TOKEN`, and inside the
+     repository is unreadable, and actions is what the CI timing is read
+     from. The workflow hands it to `github-repos-audit render` as `GITHUB_TOKEN`, and inside the
      workflow it is the only token the tool's own code ever sees (a local run
      without `GITHUB_TOKEN` falls back to whatever `gh auth token` holds).
      `github-repos-audit validate` is offline and needs no token at all, whether
@@ -363,22 +364,25 @@ Main CI first. Like `last_push` and `open_prs` it is a plain fact: shown,
 never judged, and the raw per-commit facts are in `audit.json` under `ci`.
 
 - **PR CI** — the mean wait over the head commits of the repository's last 5
-  merged pull requests whose checks all finished. Pull requests opened by a
+  merged pull requests whose workflow runs all finished. Pull requests opened by a
   bot (a dependency bump, say) are left out: they run a narrower set of
   checks than the work a person waits on. `n/a` when no pull request
   qualifies.
 - **Main CI** — the mean wait over the last 5 default-branch commits whose
-  checks all finished. `n/a` when none did.
+  workflow runs all finished. `n/a` when none did.
 - **Slowest job** and **Slowest job mean** — the job, shown as
   `workflow / job`, with the highest mean duration across those same runs.
-  A run that took 0 seconds was skipped and is not averaged in.
+  A job that took 0 seconds was skipped and is not averaged in.
 
-The wait runs from the push until every check has finished, so time spent
-queued for a runner counts, parallel workflows are counted once, and a
-re-run counts toward the wait. A commit whose checks are still running, or
-whose check list was too long to read in full, is skipped rather than counted
-short. A mean with fewer than 5 samples averages what exists. Durations read
-`45s`, `9m40s` and `1h05m`; from an hour up the seconds are dropped.
+Only GitHub Actions workflow runs are timed; a check another app posts
+(Codecov, say) does not count. The wait runs from the first run's creation
+until every job has finished, so time spent queued for a runner counts,
+parallel workflows are counted once, and a re-run counts toward the wait. A
+commit whose runs are still going, or one of whose jobs lists was too long to
+read in full, is skipped rather than counted short, and so is a commit older
+than the repository's latest 100 workflow runs, which are all that are read.
+A mean with fewer than 5 samples averages what exists. Durations read `45s`,
+`9m40s` and `1h05m`; from an hour up the seconds are dropped.
 
 ## Running locally
 

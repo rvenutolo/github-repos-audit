@@ -229,14 +229,13 @@ type CI struct {
 	// not merge order, which is why each entry carries MergedAt.
 	PullRequests []CICommit `json:"pull_requests,omitzero"`
 	// DefaultBranch is the most recent default-branch commits, newest first,
-	// whether or not any check ran on them. Empty for an empty repository.
+	// whether or not any workflow ran on them. Empty for an empty repository.
 	DefaultBranch []CICommit `json:"default_branch,omitzero"`
 }
 
-// CICommit is one commit's checks, reduced to timestamp arithmetic. A check
-// suite with no check runs is not counted at all: an app that subscribes to
-// checks but never posts one leaves a suite queued forever, and counting it
-// would hold every commit open.
+// CICommit is one commit's GitHub Actions workflow runs, reduced to
+// timestamp arithmetic. A check another app posts is not a workflow run and
+// is not counted.
 type CICommit struct {
 	// OID is the commit, all forty characters.
 	OID string `json:"oid"`
@@ -249,27 +248,27 @@ type CICommit struct {
 	// AuthorBot is whether the pull request's author is a GitHub App's bot
 	// account. False for a default-branch entry and for a deleted author.
 	AuthorBot bool `json:"author_bot,omitzero"`
-	// Complete is whether the commit's checks are a finished whole: at least
-	// one counted check run, every counted run COMPLETED, and no suite or run
-	// list cut short by the query's page size. A truncated list might hide
-	// the run that finished last, so it is never read as complete.
+	// Complete is whether the commit's runs are a finished whole: at least
+	// one workflow run, every run and every job completed with a known
+	// completion time, and no jobs list cut short by its page size. A
+	// truncated list might hide the job that finished last, so it is never
+	// read as complete.
 	Complete bool `json:"complete"`
-	// WaitSeconds is the latest completion over the counted runs minus the
-	// earliest creation over the counted suites: how long a push waited for
-	// every check, queue time included and parallel workflows counted once.
-	// Zero unless Complete.
+	// WaitSeconds is the latest job completion over the commit's runs minus
+	// the earliest run creation: how long a push waited for every workflow,
+	// queue time included and parallel workflows counted once. Zero unless
+	// Complete.
 	WaitSeconds int64 `json:"wait_seconds,omitzero"`
-	// Jobs is every counted run that completed with both timestamps, in the
-	// order GitHub listed them.
+	// Jobs is every job that completed with both timestamps, in the order
+	// GitHub listed them.
 	Jobs []CIJob `json:"jobs,omitzero"`
 }
 
-// CIJob is one check run's duration.
+// CIJob is one workflow job's duration.
 type CIJob struct {
-	// Label is "<workflow> / <run>" for a GitHub Actions run and
-	// "<app> / <run>" for any other app's.
+	// Label is "<workflow> / <job>".
 	Label string `json:"label"`
-	// Seconds is the run's completion minus its start: time on a runner, not
+	// Seconds is the job's completion minus its start: time on a runner, not
 	// time queued for one.
 	Seconds int64 `json:"seconds"`
 }
