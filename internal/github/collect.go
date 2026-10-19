@@ -58,6 +58,8 @@ func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, err
 // already read. The first hundred commits of the default branch's history
 // arrive with the GraphQL query; a longer history costs one more request per
 // further hundred commits, so a large repository is the slow one to collect.
+// The CI timing costs one runs read plus one jobs read per run on a sampled
+// commit (see fetchCI), and nothing for a repository with no commits.
 // Last comes one recursive tree read at the head commit, which is where every
 // file path the report records is found; it is skipped for an empty repository.
 func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache) (audit.Repo, error) {
@@ -79,6 +81,9 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 		repo.Renovate = rn
 	}
 	if err := c.fetchREST(ctx, name, &repo); err != nil {
+		return audit.Repo{}, err
+	}
+	if err := c.fetchCI(ctx, c.repoPath(name), &repo.CI); err != nil {
 		return audit.Repo{}, err
 	}
 	// An empty repository has no commit to list, so it costs no tree request.

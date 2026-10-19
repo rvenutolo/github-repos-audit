@@ -370,13 +370,12 @@ func TestLive_rollupNeedsNoChecksPermission(t *testing.T) {
 // audit.json to identify the commit it timed.
 var fullOID = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-// TestLive_ciSelectionDecodes reads the check suites and runs of both
-// fixtures' recent commits. That the query is accepted at all is most of the
-// point: GitHub refuses a selection whose worst-case node count is too large,
-// and a field renamed or withdrawn from the token's reach fails the whole
-// query. Beyond that only shape is asserted, never timings or a count of
-// commits, since what has run on the fixtures lately is not this suite's to
-// decide.
+// TestLive_ciSelectionDecodes reads the workflow runs and jobs of both
+// fixtures' recent commits. That the Actions endpoints answer the token at all
+// is most of the point: a token without Actions (read) is refused there, and a
+// field renamed or withdrawn fails the decode. Beyond that only shape is
+// asserted, never timings or a count of commits, since what has run on the
+// fixtures lately is not this suite's to decide.
 func TestLive_ciSelectionDecodes(t *testing.T) {
 	t.Parallel()
 

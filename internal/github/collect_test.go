@@ -72,21 +72,22 @@ func wantShellScripts(t *testing.T) audit.Repo {
 			},
 		},
 		CIState: "SUCCESS",
-		// Every shape the CI fixtures carry, recorded as it is: the empty
-		// Renovate suite is not counted, so the first pull request's wait
-		// starts at the Actions suite; the bot's pull request is marked, not
-		// dropped; and a run still going, a commit no check ran on and a
-		// truncated run list are each recorded as incomplete, with whatever
-		// finished runs they have.
+		// Every shape the CI fixtures carry, recorded as it is: the first pull
+		// request's two workflows ran side by side, so its wait spans both runs
+		// from the earlier creation; the bot's pull request is marked, not
+		// dropped; and a run still going, a commit no workflow ran on and a
+		// truncated jobs list are each recorded as incomplete, with whatever
+		// finished jobs they have. A run on a commit outside the sample is
+		// never asked for its jobs.
 		CI: audit.CI{
 			PullRequests: []audit.CICommit{
 				{
 					OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c01", PRNumber: 12, MergedAt: at(t, "2025-09-04T18:00:00Z"),
-					Complete: true, WaitSeconds: 405,
+					Complete: true, WaitSeconds: 385,
 					Jobs: []audit.CIJob{
+						{Label: "docs / docs", Seconds: 60},
 						{Label: "ci / check", Seconds: 240},
 						{Label: "ci / test", Seconds: 360},
-						{Label: "Codecov / codecov/patch", Seconds: 5},
 					},
 				},
 				{
@@ -702,6 +703,17 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 		}
 	}
 
+	// The CI reads are the newest GETs; a fixture set that stopped reaching
+	// them would leave them out of this test without failing it.
+	for _, path := range []string{
+		"/repos/gh-owner/shell-scripts/actions/runs",
+		"/repos/gh-owner/shell-scripts/actions/runs/4000001/jobs",
+	} {
+		if api.callsTo(path) == 0 {
+			t.Errorf("no request to %s; the read-only assertion did not cover it", path)
+		}
+	}
+
 	documents := api.graphQLDocuments()
 	if len(documents) == 0 {
 		t.Fatal("no GraphQL documents recorded; the assertion below would be vacuous")
@@ -1095,6 +1107,8 @@ func TestClient_Collect_abortsOnAnUnreadableEndpoint(t *testing.T) {
 		base + "/actions/permissions/access",
 		base + "/rules/branches/main",
 		base + "/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
+		base + "/actions/runs",
+		base + "/actions/runs/4000001/jobs",
 	}
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {
@@ -1234,5 +1248,175 @@ func TestCollect_truncatedTreeAborts(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("Collect returned %d repositories alongside an error, want none", len(got))
+	}
+}
+
+// TestClient_Collect_ciRequestBudget pins what CI timing costs: one runs page
+// per repository that has a commit to time, and one jobs read per run on a
+// sampled commit, never one for a run on any other commit. A repository with
+// nothing sampled asks for no runs at all.
+func TestClient_Collect_ciRequestBudget(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts", "pkg-index"}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	base := "/repos/" + testOwner + "/shell-scripts/actions/runs"
+	want := map[string]int{
+		base: 1,
+		"/repos/" + testOwner + "/pkg-index/actions/runs": 0,
+		// 4000008 ran on a commit outside the sample; 4000011 is a scheduled
+		// run, 4000012 a dispatched one and 4000013 a repository_dispatch one,
+		// none of which count.
+		base + "/4000008/jobs": 0,
+		base + "/4000011/jobs": 0,
+		base + "/4000012/jobs": 0,
+		base + "/4000013/jobs": 0,
+	}
+	for _, id := range []string{"4000001", "4000002", "4000003", "4000004", "4000005", "4000006"} {
+		want[base+"/"+id+"/jobs"] = 1
+	}
+	for path, n := range want {
+		if got := api.callsTo(path); got != n {
+			t.Errorf("%s saw %d calls, want %d", path, got, n)
+		}
+	}
+}
+
+// TestClient_Collect_actionsDisabled: a repository with Actions turned off
+// answers the runs list with a 200 and no runs, which is an ordinary answer:
+// every sampled commit is recorded with no jobs and not complete, and no jobs
+// are asked for.
+func TestClient_Collect_actionsDisabled(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	runs := "/repos/" + testOwner + "/web-app/actions/runs"
+	api.failNext(runs, scriptedFailure{status: http.StatusOK, body: `{"total_count":0,"workflow_runs":[]}`})
+
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	want := audit.CI{
+		PullRequests: []audit.CICommit{{
+			OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11", PRNumber: 3, MergedAt: at(t, "2025-09-01T09:00:00Z"),
+		}},
+		DefaultBranch: []audit.CICommit{{OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014"}},
+	}
+	if diff := cmp.Diff(want, got[0].CI); diff != "" {
+		t.Errorf("CI mismatch (-want +got):\n%s", diff)
+	}
+	for _, c := range api.seen() {
+		if strings.HasSuffix(c.path, "/jobs") {
+			t.Errorf("asked for %s with no runs listed", c.path)
+		}
+	}
+}
+
+// webAppRuns is web-app's runs list with extra appended: its own two runs, a
+// pull_request run on the pull request's head and a push run on the
+// default-branch commit, then whatever the test adds.
+func webAppRuns(extra ...string) string {
+	runs := make([]string, 0, 2+len(extra))
+	runs = append(runs,
+		`{"id":4000010,"name":"ci","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014","event":"push","status":"completed","created_at":"2025-09-02T01:45:00Z"}`,
+		`{"id":4000009,"name":"ci","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11","event":"pull_request","status":"completed","created_at":"2025-09-01T08:00:00Z"}`,
+	)
+	return `{"workflow_runs":[` + strings.Join(append(runs, extra...), ",") + `]}`
+}
+
+// collectWebAppWithRuns collects web-app with its runs list replaced by body,
+// failing the test if any jobs read is made for ignored, a run that must not
+// count. ignored has no jobs fixture, so such a read would also fail Collect.
+func collectWebAppWithRuns(t *testing.T, body, ignored string) audit.CI {
+	t.Helper()
+
+	api := newFakeAPI(t)
+	base := "/repos/" + testOwner + "/web-app/actions/runs"
+	api.failNext(base, scriptedFailure{status: http.StatusOK, body: body})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if n := api.callsTo(base + "/" + ignored + "/jobs"); n != 0 {
+		t.Errorf("run %s was asked for its jobs %d times, want never", ignored, n)
+	}
+	return got[0].CI
+}
+
+// TestClient_Collect_ciIgnoresScheduledRunOnMain: a scheduled run that lands on
+// the default-branch head a day later is not CI the push waited on, so the
+// commit's wait stays the push's.
+func TestClient_Collect_ciIgnoresScheduledRunOnMain(t *testing.T) {
+	t.Parallel()
+
+	ci := collectWebAppWithRuns(t, webAppRuns(
+		`{"id":4000099,"name":"ci","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014","event":"schedule","status":"completed","created_at":"2025-09-03T01:45:00Z"}`,
+	), "4000099")
+
+	if got := ci.DefaultBranch[0]; !got.Complete || got.WaitSeconds != 140 {
+		t.Errorf("Complete = %t, WaitSeconds = %d, want true and 140", got.Complete, got.WaitSeconds)
+	}
+}
+
+// TestClient_Collect_ciIgnoresDispatchOnPullRequestHead: a run started by hand
+// on a pull request's head is not what merging it waited on.
+func TestClient_Collect_ciIgnoresDispatchOnPullRequestHead(t *testing.T) {
+	t.Parallel()
+
+	ci := collectWebAppWithRuns(t, webAppRuns(
+		`{"id":4000098,"name":"ci","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11","event":"workflow_dispatch","status":"in_progress","created_at":"2025-09-01T07:00:00Z"}`,
+	), "4000098")
+
+	if got := ci.PullRequests[0]; !got.Complete || got.WaitSeconds != 150 {
+		t.Errorf("Complete = %t, WaitSeconds = %d, want true and 150", got.Complete, got.WaitSeconds)
+	}
+}
+
+// TestClient_Collect_ciCountsPushOnPullRequestHead: a workflow triggered by
+// the push to a pull request's branch is part of what merging it waited on,
+// and some repositories run CI on push alone, so it counts toward the pull
+// request's wait like a pull_request run does.
+func TestClient_Collect_ciCountsPushOnPullRequestHead(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	base := "/repos/" + testOwner + "/web-app/actions/runs"
+	api.failNext(base, scriptedFailure{status: http.StatusOK, body: webAppRuns(
+		`{"id":4000097,"name":"docs","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11","event":"push","status":"completed","created_at":"2025-09-01T08:00:00Z"}`,
+	)})
+	api.failNext(base+"/4000097/jobs", scriptedFailure{status: http.StatusOK, body: `{"total_count":1,"jobs":[` +
+		`{"name":"docs","status":"completed","started_at":"2025-09-01T08:00:20Z","completed_at":"2025-09-01T08:05:00Z"}]}`})
+
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	want := audit.CICommit{
+		OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11", PRNumber: 3, MergedAt: at(t, "2025-09-01T09:00:00Z"),
+		Complete: true, WaitSeconds: 300,
+		Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}, {Label: "docs / docs", Seconds: 280}},
+	}
+	if diff := cmp.Diff(want, got[0].CI.PullRequests[0]); diff != "" {
+		t.Errorf("pull request commit mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestClient_Collect_ciOnlyIgnoredRunsIsNoCI: a commit whose only runs are of
+// events that do not count reads as one no workflow ran on.
+func TestClient_Collect_ciOnlyIgnoredRunsIsNoCI(t *testing.T) {
+	t.Parallel()
+
+	ci := collectWebAppWithRuns(t,
+		`{"workflow_runs":[{"id":4000096,"name":"ci","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014","event":"workflow_run","status":"completed","created_at":"2025-09-02T01:45:00Z"}]}`,
+		"4000096")
+
+	if diff := cmp.Diff(audit.CICommit{OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014"}, ci.DefaultBranch[0]); diff != "" {
+		t.Errorf("default-branch commit mismatch (-want +got):\n%s", diff)
 	}
 }

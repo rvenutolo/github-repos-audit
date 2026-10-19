@@ -2,6 +2,7 @@ package github
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,132 +27,149 @@ func decodeRepository(t *testing.T, body string) *repository {
 	return &r
 }
 
-// onDefaultBranch wraps one commit's check_suites selection as the only
-// recent default-branch commit.
-func onDefaultBranch(suites string) string {
-	return `{"default_branch_ref":{"name":"main","target":{"oid":"` + ciOID + `","recent_commits":{"nodes":[` +
-		`{"oid":"` + ciOID + `","check_suites":` + suites + `}]}}}}`
-}
-
-// suites renders a check_suites selection from its nodes, untruncated.
-func suites(nodes ...string) string {
-	return `{"page_info":{"has_next_page":false},"nodes":[` + strings.Join(nodes, ",") + `]}`
-}
-
-// actionsSuite is a GitHub Actions suite for workflow "ci" with the given runs.
-func actionsSuite(createdAt string, runs ...string) string {
-	return `{"created_at":"` + createdAt + `","app":{"name":"GitHub Actions"},"workflow_run":{"workflow":{"name":"ci"}},` +
-		`"check_runs":{"page_info":{"has_next_page":false},"nodes":[` + strings.Join(runs, ",") + `]}}`
-}
-
-// completedRun is a finished check run.
-func completedRun(name, startedAt, completedAt string) string {
-	return `{"name":"` + name + `","status":"COMPLETED","started_at":"` + startedAt + `","completed_at":"` + completedAt + `"}`
-}
-
-// onlyDefaultBranchCommit returns the single default-branch entry, failing
-// when there is not exactly one.
-func onlyDefaultBranchCommit(t *testing.T, ci audit.CI) audit.CICommit {
+// workflowRun decodes one entry of the runs list and the jobs list read for
+// it, the two REST answers fetchCI pairs up, so timeCommit is fed exactly the
+// shape GitHub's JSON produces.
+func workflowRun(t *testing.T, run, jobs string) ciRun {
 	t.Helper()
 
-	if len(ci.DefaultBranch) != 1 {
-		t.Fatalf("DefaultBranch has %d entries, want 1: %+v", len(ci.DefaultBranch), ci.DefaultBranch)
+	var out ciRun
+	if err := json.Unmarshal([]byte(run), &out.run); err != nil {
+		t.Fatalf("unmarshal the run: %v", err)
 	}
-	return ci.DefaultBranch[0]
+	if err := json.Unmarshal([]byte(jobs), &out.jobs); err != nil {
+		t.Fatalf("unmarshal the jobs: %v", err)
+	}
+	return out
 }
 
-// TestToAudit_ciWaitSpansParallelSuites: two workflows run side by side, so
-// the wait is from the first suite's creation to the last run's completion,
-// not the sum of the two, and the time the first workflow sat queued is in it.
-func TestToAudit_ciWaitSpansParallelSuites(t *testing.T) {
+// run renders one workflow_runs entry for ciOID.
+func run(name, status, createdAt string) string {
+	return `{"id":4000001,"name":"` + name + `","head_sha":"` + ciOID + `","status":"` + status +
+		`","created_at":"` + createdAt + `"}`
+}
+
+// jobList renders a jobs answer whose total_count is the number of jobs
+// listed, which is what a list read in full looks like.
+func jobList(jobs ...string) string {
+	return `{"total_count":` + strconv.Itoa(len(jobs)) + `,"jobs":[` + strings.Join(jobs, ",") + `]}`
+}
+
+// completedJob is a finished job.
+func completedJob(name, startedAt, completedAt string) string {
+	return `{"name":"` + name + `","status":"completed","started_at":"` + startedAt + `","completed_at":"` + completedAt + `"}`
+}
+
+// TestTimeCommit_waitSpansParallelRuns: two workflows run side by side, so the
+// wait is from the first run's creation to the last job's completion, not the
+// sum of the two, and the time the first workflow sat queued is in it.
+func TestTimeCommit_waitSpansParallelRuns(t *testing.T) {
 	t.Parallel()
 
-	body := onDefaultBranch(suites(
-		actionsSuite("2026-10-01T10:00:00Z", completedRun("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z")),
-		actionsSuite("2026-10-01T10:00:05Z", completedRun("test", "2026-10-01T10:00:30Z", "2026-10-01T10:07:30Z")),
-	))
-	got := onlyDefaultBranchCommit(t, decodeRepository(t, body).toAudit("web-app").CI)
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"),
+			jobList(completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"))),
+		workflowRun(t, run("docs", "completed", "2026-10-01T10:00:05Z"),
+			jobList(completedJob("docs", "2026-10-01T10:00:30Z", "2026-10-01T10:07:30Z"))),
+	})
 
 	want := audit.CICommit{
 		OID:         ciOID,
 		Complete:    true,
 		WaitSeconds: 450,
-		Jobs:        []audit.CIJob{{Label: "ci / check", Seconds: 120}, {Label: "ci / test", Seconds: 420}},
+		Jobs:        []audit.CIJob{{Label: "ci / check", Seconds: 120}, {Label: "docs / docs", Seconds: 420}},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("default-branch commit mismatch (-want +got):\n%s", diff)
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
 	}
 }
 
-// TestToAudit_ciIgnoresEmptySuites: an app that subscribes to checks but never
-// posts one leaves a suite with no runs, created long before the real ones. It
-// must neither stretch the wait nor hold the commit open.
-func TestToAudit_ciIgnoresEmptySuites(t *testing.T) {
+// TestTimeCommit_inProgressRun: a run still going makes the commit
+// incomplete, and an incomplete commit carries no wait, because the wait it
+// would show is a lower bound rather than the wait. The finished job's
+// duration is still a fact and is kept.
+func TestTimeCommit_inProgressRun(t *testing.T) {
 	t.Parallel()
 
-	empty := `{"created_at":"2026-10-01T09:00:00Z","app":{"name":"Renovate"},"workflow_run":null,` +
-		`"check_runs":{"page_info":{"has_next_page":false},"nodes":[]}}`
-	body := onDefaultBranch(suites(
-		empty,
-		actionsSuite("2026-10-01T10:00:00Z", completedRun("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z")),
-		actionsSuite("2026-10-01T10:00:05Z", completedRun("test", "2026-10-01T10:00:30Z", "2026-10-01T10:07:30Z")),
-	))
-	got := onlyDefaultBranchCommit(t, decodeRepository(t, body).toAudit("web-app").CI)
-
-	if !got.Complete || got.WaitSeconds != 450 {
-		t.Errorf("Complete = %t, WaitSeconds = %d, want true and 450", got.Complete, got.WaitSeconds)
-	}
-}
-
-// TestToAudit_ciIncompleteRun: a run still going makes the commit incomplete,
-// and an incomplete commit carries no wait, because the wait it would show is
-// a lower bound rather than the wait. The finished run's duration is still a
-// fact and is kept.
-func TestToAudit_ciIncompleteRun(t *testing.T) {
-	t.Parallel()
-
-	body := onDefaultBranch(suites(actionsSuite("2026-10-01T10:00:00Z",
-		completedRun("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"),
-		`{"name":"test","status":"IN_PROGRESS","started_at":"2026-10-01T10:01:00Z","completed_at":null}`,
-	)))
-	got := onlyDefaultBranchCommit(t, decodeRepository(t, body).toAudit("web-app").CI)
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "in_progress", "2026-10-01T10:00:00Z"), jobList(
+			completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"),
+			`{"name":"test","status":"in_progress","started_at":"2026-10-01T10:01:00Z","completed_at":null}`,
+		)),
+	})
 
 	want := audit.CICommit{OID: ciOID, Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}}}
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("default-branch commit mismatch (-want +got):\n%s", diff)
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
 	}
 }
 
-// TestToAudit_ciCompletedWithoutTimestamp: a run GitHub calls COMPLETED but
-// gives no completion time cannot be placed on the timeline, so the latest
-// completion is unknown and the commit is not complete. Its missing time must
-// not read as an early finish.
-func TestToAudit_ciCompletedWithoutTimestamp(t *testing.T) {
+// TestTimeCommit_queuedRunAmongFinishedOnes: one run still queued holds the
+// whole commit open, however finished the others are.
+func TestTimeCommit_queuedRunAmongFinishedOnes(t *testing.T) {
 	t.Parallel()
 
-	body := onDefaultBranch(suites(actionsSuite("2026-10-01T10:00:00Z",
-		completedRun("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"),
-		`{"name":"test","status":"COMPLETED","started_at":null,"completed_at":null}`,
-	)))
-	got := onlyDefaultBranchCommit(t, decodeRepository(t, body).toAudit("web-app").CI)
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"),
+			jobList(completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"))),
+		workflowRun(t, run("docs", "queued", "2026-10-01T10:00:05Z"), jobList()),
+	})
+
+	if got.Complete || got.WaitSeconds != 0 {
+		t.Errorf("Complete = %t, WaitSeconds = %d, want false and 0", got.Complete, got.WaitSeconds)
+	}
+}
+
+// TestTimeCommit_completedJobWithoutTimestamp: a job GitHub calls completed
+// but gives no completion time cannot be placed on the timeline, so the
+// latest completion is unknown and the commit is not complete. Its missing
+// time must not read as an early finish.
+func TestTimeCommit_completedJobWithoutTimestamp(t *testing.T) {
+	t.Parallel()
+
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"), jobList(
+			completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"),
+			`{"name":"test","status":"completed","started_at":null,"completed_at":null}`,
+		)),
+	})
 
 	want := audit.CICommit{OID: ciOID, Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}}}
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("default-branch commit mismatch (-want +got):\n%s", diff)
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
 	}
 }
 
-// TestToAudit_ciSkippedRunTakesNoTime: GitHub stamps a skipped run's
-// completion a second before its start. That is a run that took no time, not
+// TestTimeCommit_unfinishedJobInFinishedRun: a job not yet completed has no
+// completion to place, so even under a run GitHub calls completed it leaves
+// the commit's end unknown.
+func TestTimeCommit_unfinishedJobInFinishedRun(t *testing.T) {
+	t.Parallel()
+
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"), jobList(
+			completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"),
+			`{"name":"test","status":"queued","started_at":null,"completed_at":null}`,
+		)),
+	})
+
+	if got.Complete || got.WaitSeconds != 0 {
+		t.Errorf("Complete = %t, WaitSeconds = %d, want false and 0", got.Complete, got.WaitSeconds)
+	}
+}
+
+// TestTimeCommit_skippedJobTakesNoTime: GitHub stamps a skipped job's
+// completion a second before its start. That is a job that took no time, not
 // a negative one, and it still finishes the commit.
-func TestToAudit_ciSkippedRunTakesNoTime(t *testing.T) {
+func TestTimeCommit_skippedJobTakesNoTime(t *testing.T) {
 	t.Parallel()
 
-	body := onDefaultBranch(suites(actionsSuite("2026-10-01T10:00:00Z",
-		completedRun("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"),
-		completedRun("lint", "2026-10-01T10:00:02Z", "2026-10-01T10:00:01Z"),
-	)))
-	got := onlyDefaultBranchCommit(t, decodeRepository(t, body).toAudit("web-app").CI)
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"), jobList(
+			completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"),
+			completedJob("lint", "2026-10-01T10:00:02Z", "2026-10-01T10:00:01Z"),
+		)),
+	})
 
 	want := audit.CICommit{
 		OID:         ciOID,
@@ -160,100 +178,126 @@ func TestToAudit_ciSkippedRunTakesNoTime(t *testing.T) {
 		Jobs:        []audit.CIJob{{Label: "ci / check", Seconds: 120}, {Label: "ci / lint", Seconds: 0}},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("default-branch commit mismatch (-want +got):\n%s", diff)
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
 	}
 }
 
-// TestToAudit_ciTruncatedIsIncomplete: a list cut short by the page size might
-// hide the run that finished last, so either kind of truncation makes the
-// commit incomplete even when every run shown has finished.
-func TestToAudit_ciTruncatedIsIncomplete(t *testing.T) {
+// TestTimeCommit_truncatedJobsIsIncomplete: a jobs list shorter than its
+// total_count might hide the job that finished last, so the commit is
+// incomplete even when every job shown has finished. The jobs shown are
+// still facts and are kept.
+func TestTimeCommit_truncatedJobsIsIncomplete(t *testing.T) {
 	t.Parallel()
 
-	run := completedRun("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z")
-	tests := []struct {
-		name   string
-		suites string
-	}{
-		{
-			name: "the run list",
-			suites: suites(`{"created_at":"2026-10-01T10:00:00Z","app":{"name":"GitHub Actions"},` +
-				`"workflow_run":{"workflow":{"name":"ci"}},` +
-				`"check_runs":{"page_info":{"has_next_page":true},"nodes":[` + run + `]}}`),
-		},
-		{
-			name:   "the suite list",
-			suites: `{"page_info":{"has_next_page":true},"nodes":[` + actionsSuite("2026-10-01T10:00:00Z", run) + `]}`,
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"),
+			`{"total_count":2,"jobs":[`+completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z")+`]}`),
+	})
 
-			got := onlyDefaultBranchCommit(t, decodeRepository(t, onDefaultBranch(tc.suites)).toAudit("web-app").CI)
-			if got.Complete || got.WaitSeconds != 0 {
-				t.Errorf("Complete = %t, WaitSeconds = %d, want false and 0", got.Complete, got.WaitSeconds)
-			}
-		})
+	want := audit.CICommit{OID: ciOID, Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}}}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
 	}
 }
 
-// TestToAudit_ciNoRunsIsIncomplete: a commit no check ran on has nothing to
-// wait for, which is not the same as a zero wait, so it is recorded but not
-// complete.
-func TestToAudit_ciNoRunsIsIncomplete(t *testing.T) {
+// TestTimeCommit_noRunsIsIncomplete: a commit no workflow ran on has nothing
+// to wait for, which is not the same as a zero wait, so it is recorded with no
+// jobs and not complete.
+func TestTimeCommit_noRunsIsIncomplete(t *testing.T) {
 	t.Parallel()
 
-	got := onlyDefaultBranchCommit(t, decodeRepository(t, onDefaultBranch(suites())).toAudit("web-app").CI)
+	if diff := cmp.Diff(audit.CICommit{OID: ciOID}, timeCommit(audit.CICommit{OID: ciOID}, nil)); diff != "" {
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestTimeCommit_finishedRunWithoutJobsIsIncomplete: a run that ended before
+// any job started (a workflow file GitHub could not start, say) gives no
+// completion to end the wait at, so it is not read as a zero wait.
+func TestTimeCommit_finishedRunWithoutJobsIsIncomplete(t *testing.T) {
+	t.Parallel()
+
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"), jobList()),
+	})
 	if diff := cmp.Diff(audit.CICommit{OID: ciOID}, got); diff != "" {
-		t.Errorf("default-branch commit mismatch (-want +got):\n%s", diff)
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
 	}
 }
 
-// TestToAudit_ciJobLabels: an Actions run is named by its workflow, any other
-// app's run by the app, and a run whose app GitHub does not name by its own
-// name alone.
-func TestToAudit_ciJobLabels(t *testing.T) {
+// TestTimeCommit_rerunExtendsTheWait: the jobs list is the latest attempt's,
+// while the run keeps its first creation time, so a re-run an hour later
+// stretches the wait to cover it. A flaky job that needed a re-run reads as
+// the wait it caused.
+func TestTimeCommit_rerunExtendsTheWait(t *testing.T) {
 	t.Parallel()
 
-	run := func(name string) string {
-		return completedRun(name, "2026-10-01T10:01:00Z", "2026-10-01T10:02:00Z")
-	}
-	other := func(app, name string) string {
-		return `{"created_at":"2026-10-01T10:00:00Z","app":` + app + `,"workflow_run":null,` +
-			`"check_runs":{"page_info":{"has_next_page":false},"nodes":[` + run(name) + `]}}`
-	}
-	body := onDefaultBranch(suites(
-		actionsSuite("2026-10-01T10:00:00Z", run("check")),
-		other(`{"name":"Codecov"}`, "codecov/patch"),
-		other(`null`, "lint"),
-	))
-	got := onlyDefaultBranchCommit(t, decodeRepository(t, body).toAudit("web-app").CI)
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"),
+			jobList(completedJob("test", "2026-10-01T11:00:00Z", "2026-10-01T11:02:00Z"))),
+	})
 
-	want := []audit.CIJob{
-		{Label: "ci / check", Seconds: 60},
-		{Label: "Codecov / codecov/patch", Seconds: 60},
-		{Label: "lint", Seconds: 60},
+	want := audit.CICommit{
+		OID:         ciOID,
+		Complete:    true,
+		WaitSeconds: 3720,
+		Jobs:        []audit.CIJob{{Label: "ci / test", Seconds: 120}},
 	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestTimeCommit_jobLabels: a job is named by the workflow that ran it and its
+// own name, so two workflows' same-named jobs stay apart.
+func TestTimeCommit_jobLabels(t *testing.T) {
+	t.Parallel()
+
+	job := completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:02:00Z")
+	got := timeCommit(audit.CICommit{OID: ciOID}, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"), jobList(job)),
+		workflowRun(t, run("docs", "completed", "2026-10-01T10:00:00Z"), jobList(job)),
+	})
+
+	want := []audit.CIJob{{Label: "ci / check", Seconds: 60}, {Label: "docs / check", Seconds: 60}}
 	if diff := cmp.Diff(want, got.Jobs); diff != "" {
 		t.Errorf("Jobs mismatch (-want +got):\n%s", diff)
 	}
 }
 
-// mergedPR renders one merged_pull_requests node whose head commit has one
-// finished Actions run.
+// TestTimeCommit_keepsThePullRequestFacts: timing a commit adds to what
+// repoQuery recorded about it and never replaces it.
+func TestTimeCommit_keepsThePullRequestFacts(t *testing.T) {
+	t.Parallel()
+
+	sampled := audit.CICommit{
+		OID: ciOID, PRNumber: 7, MergedAt: time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC), AuthorBot: true,
+	}
+	got := timeCommit(sampled, []ciRun{
+		workflowRun(t, run("ci", "completed", "2026-10-01T10:00:00Z"),
+			jobList(completedJob("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"))),
+	})
+
+	want := sampled
+	want.Complete = true
+	want.WaitSeconds = 180
+	want.Jobs = []audit.CIJob{{Label: "ci / check", Seconds: 120}}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("commit mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// mergedPR renders one merged_pull_requests node whose head commit is ciOID.
 func mergedPR(number, mergedAt, author string) string {
-	return `{"number":` + number + `,"merged_at":"` + mergedAt + `","author":` + author + `,"commits":{"nodes":[{"commit":` +
-		`{"oid":"` + ciOID + `","check_suites":` +
-		suites(actionsSuite("2026-10-01T10:00:00Z", completedRun("check", "2026-10-01T10:01:00Z", "2026-10-01T10:03:00Z"))) +
-		`}}]}}`
+	return `{"number":` + number + `,"merged_at":"` + mergedAt + `","author":` + author +
+		`,"commits":{"nodes":[{"commit":{"oid":"` + ciOID + `"}}]}}`
 }
 
 // TestToAudit_ciBotAuthor: a pull request a GitHub App opened is marked, so the
 // report can leave it out of the wait a person sits through; one whose author
 // account was deleted is not a bot. The pull request's number and merge time
 // ride along, the time normalised to UTC like every instant in audit.json, and
-// the order is GitHub's.
+// the order is GitHub's. Nothing is timed yet: that is fetchCI's, over REST.
 func TestToAudit_ciBotAuthor(t *testing.T) {
 	t.Parallel()
 
@@ -264,17 +308,31 @@ func TestToAudit_ciBotAuthor(t *testing.T) {
 		`]}}`
 	got := decodeRepository(t, body).toAudit("web-app").CI.PullRequests
 
-	jobs := []audit.CIJob{{Label: "ci / check", Seconds: 120}}
 	want := []audit.CICommit{
-		{OID: ciOID, PRNumber: 7, MergedAt: time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC), AuthorBot: true, Complete: true, WaitSeconds: 180, Jobs: jobs},
-		{OID: ciOID, PRNumber: 5, MergedAt: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC), Complete: true, WaitSeconds: 180, Jobs: jobs},
-		{OID: ciOID, PRNumber: 3, MergedAt: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC), Complete: true, WaitSeconds: 180, Jobs: jobs},
+		{OID: ciOID, PRNumber: 7, MergedAt: time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC), AuthorBot: true},
+		{OID: ciOID, PRNumber: 5, MergedAt: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)},
+		{OID: ciOID, PRNumber: 3, MergedAt: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatalf("PullRequests mismatch (-want +got):\n%s", diff)
 	}
 	if got[0].MergedAt.Location() != time.UTC {
 		t.Errorf("MergedAt location = %v, want UTC", got[0].MergedAt.Location())
+	}
+}
+
+// TestToAudit_ciDefaultBranchSample: the recent default-branch commits are
+// recorded by oid, newest first, ready to be timed.
+func TestToAudit_ciDefaultBranchSample(t *testing.T) {
+	t.Parallel()
+
+	const older = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00c2"
+	body := `{"default_branch_ref":{"name":"main","target":{"oid":"` + ciOID + `","recent_commits":{"nodes":[` +
+		`{"oid":"` + ciOID + `"},{"oid":"` + older + `"}]}}}}`
+	got := decodeRepository(t, body).toAudit("web-app").CI.DefaultBranch
+
+	if diff := cmp.Diff([]audit.CICommit{{OID: ciOID}, {OID: older}}, got); diff != "" {
+		t.Errorf("DefaultBranch mismatch (-want +got):\n%s", diff)
 	}
 }
 

@@ -26,77 +26,7 @@
               "nodes": [
                 {
                   "commit": {
-                    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c01",
-                    "check_suites": {
-                      "page_info": {
-                        "has_next_page": false
-                      },
-                      "nodes": [
-                        {
-                          "created_at": "2025-09-04T16:59:00Z",
-                          "app": {
-                            "name": "Renovate"
-                          },
-                          "workflow_run": null,
-                          "check_runs": {
-                            "page_info": {
-                              "has_next_page": false
-                            },
-                            "nodes": []
-                          }
-                        },
-                        {
-                          "created_at": "2025-09-04T17:00:00Z",
-                          "app": {
-                            "name": "GitHub Actions"
-                          },
-                          "workflow_run": {
-                            "workflow": {
-                              "name": "ci"
-                            }
-                          },
-                          "check_runs": {
-                            "page_info": {
-                              "has_next_page": false
-                            },
-                            "nodes": [
-                              {
-                                "name": "check",
-                                "status": "COMPLETED",
-                                "started_at": "2025-09-04T17:00:20Z",
-                                "completed_at": "2025-09-04T17:04:20Z"
-                              },
-                              {
-                                "name": "test",
-                                "status": "COMPLETED",
-                                "started_at": "2025-09-04T17:00:25Z",
-                                "completed_at": "2025-09-04T17:06:25Z"
-                              }
-                            ]
-                          }
-                        },
-                        {
-                          "created_at": "2025-09-04T17:00:05Z",
-                          "app": {
-                            "name": "Codecov"
-                          },
-                          "workflow_run": null,
-                          "check_runs": {
-                            "page_info": {
-                              "has_next_page": false
-                            },
-                            "nodes": [
-                              {
-                                "name": "codecov/patch",
-                                "status": "COMPLETED",
-                                "started_at": "2025-09-04T17:06:40Z",
-                                "completed_at": "2025-09-04T17:06:45Z"
-                              }
-                            ]
-                          }
-                        }
-                      ]
-                    }
+                    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c01"
                   }
                 }
               ]
@@ -112,38 +42,7 @@
               "nodes": [
                 {
                   "commit": {
-                    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c02",
-                    "check_suites": {
-                      "page_info": {
-                        "has_next_page": false
-                      },
-                      "nodes": [
-                        {
-                          "created_at": "2025-09-03T11:00:00Z",
-                          "app": {
-                            "name": "GitHub Actions"
-                          },
-                          "workflow_run": {
-                            "workflow": {
-                              "name": "ci"
-                            }
-                          },
-                          "check_runs": {
-                            "page_info": {
-                              "has_next_page": false
-                            },
-                            "nodes": [
-                              {
-                                "name": "check",
-                                "status": "COMPLETED",
-                                "started_at": "2025-09-03T11:00:10Z",
-                                "completed_at": "2025-09-03T11:03:10Z"
-                              }
-                            ]
-                          }
-                        }
-                      ]
-                    }
+                    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c02"
                   }
                 }
               ]
@@ -157,44 +56,7 @@
               "nodes": [
                 {
                   "commit": {
-                    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c03",
-                    "check_suites": {
-                      "page_info": {
-                        "has_next_page": false
-                      },
-                      "nodes": [
-                        {
-                          "created_at": "2025-09-02T11:00:00Z",
-                          "app": {
-                            "name": "GitHub Actions"
-                          },
-                          "workflow_run": {
-                            "workflow": {
-                              "name": "ci"
-                            }
-                          },
-                          "check_runs": {
-                            "page_info": {
-                              "has_next_page": false
-                            },
-                            "nodes": [
-                              {
-                                "name": "check",
-                                "status": "COMPLETED",
-                                "started_at": "2025-09-02T11:00:10Z",
-                                "completed_at": "2025-09-02T11:02:10Z"
-                              },
-                              {
-                                "name": "test",
-                                "status": "IN_PROGRESS",
-                                "started_at": "2025-09-02T11:00:15Z",
-                                "completed_at": null
-                              }
-                            ]
-                          }
-                        }
-                      ]
-                    }
+                    "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c03"
                   }
                 }
               ]
@@ -262,81 +124,13 @@
           "recent_commits": {
             "nodes": [
               {
-                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
-                "check_suites": {
-                  "page_info": {
-                    "has_next_page": false
-                  },
-                  "nodes": [
-                    {
-                      "created_at": "2025-09-05T01:39:30Z",
-                      "app": {
-                        "name": "GitHub Actions"
-                      },
-                      "workflow_run": {
-                        "workflow": {
-                          "name": "ci"
-                        }
-                      },
-                      "check_runs": {
-                        "page_info": {
-                          "has_next_page": false
-                        },
-                        "nodes": [
-                          {
-                            "name": "check",
-                            "status": "COMPLETED",
-                            "started_at": "2025-09-05T01:39:45Z",
-                            "completed_at": "2025-09-05T01:43:45Z"
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c"
               },
               {
-                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c04",
-                "check_suites": {
-                  "page_info": {
-                    "has_next_page": false
-                  },
-                  "nodes": []
-                }
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c04"
               },
               {
-                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c05",
-                "check_suites": {
-                  "page_info": {
-                    "has_next_page": false
-                  },
-                  "nodes": [
-                    {
-                      "created_at": "2025-09-04T10:00:00Z",
-                      "app": {
-                        "name": "GitHub Actions"
-                      },
-                      "workflow_run": {
-                        "workflow": {
-                          "name": "ci"
-                        }
-                      },
-                      "check_runs": {
-                        "page_info": {
-                          "has_next_page": true
-                        },
-                        "nodes": [
-                          {
-                            "name": "check",
-                            "status": "COMPLETED",
-                            "started_at": "2025-09-04T10:00:10Z",
-                            "completed_at": "2025-09-04T10:01:10Z"
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
+                "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c05"
               }
             ]
           }
