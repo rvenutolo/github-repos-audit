@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"time"
 
@@ -17,6 +18,20 @@ const actionsCompleted = "completed"
 // login does not carry the "[bot]" suffix its REST login and commit identity
 // do, so the type is the only reliable mark.
 const botType = "Bot"
+
+// prEvents and pushEvents are the run events that count toward a sampled
+// commit's wait: the ones the change itself triggered. A pull request's head
+// waits on its pull_request runs and on the runs the push to its branch set
+// off, since some repositories run CI on push alone; a default-branch commit
+// waits on its push runs and, in a merge queue, its merge_group runs. Every
+// other event (schedule, workflow_dispatch, repository_dispatch, workflow_run,
+// release and the rest) can land on the same commit hours or days later, and
+// counting it would stretch the wait to cover time nobody spent waiting, so
+// such a run is ignored outright: its jobs are not read and it decides
+// neither the wait nor completeness. Functions rather than variables, so no
+// caller can change the rule for the rest of the run.
+func prEvents() []string   { return []string{"pull_request", "pull_request_target", "push"} }
+func pushEvents() []string { return []string{"push", "merge_group"} }
 
 // ciRunsPage and ciJobsPage are the page sizes of the runs list and of one
 // run's jobs list, both the API's maximum. The sampled commits are recent, so
@@ -49,6 +64,7 @@ type actionsRun struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
 	HeadSHA   string    `json:"head_sha"`
+	Event     string    `json:"event"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -110,25 +126,38 @@ func (r *repository) ci() audit.CI {
 // this. The trade-off is that only GitHub Actions is timed: a check another
 // app posts, such as Codecov's, is not a workflow run and does not count.
 //
-// Runs are matched to commits by head_sha, so a run triggered by a push and
-// one triggered by the pull request on the same commit both count, as both
-// are CI that commit waited on. Actions disabled on a repository is a 200
-// with no runs, which leaves every commit untimed rather than failing.
+// Runs are matched to commits by head_sha and then by event: a commit counts
+// only the runs its own change triggered (see prEvents and pushEvents), so a
+// commit whose only runs are of other events reads as one no workflow ran on.
+// The events differ by sample, so a commit sampled both as a pull request's
+// head and on the default branch is judged by each list's own events.
+// Actions disabled on a repository is a 200 with no runs, which leaves every
+// commit untimed rather than failing.
 // base is the repository's /repos/{owner}/{name} path.
 func (c *Client) fetchCI(ctx context.Context, base string, ci *audit.CI) error {
-	commits := make([]*audit.CICommit, 0, len(ci.PullRequests)+len(ci.DefaultBranch))
+	type sampledCommit struct {
+		commit *audit.CICommit
+		events []string
+	}
+	commits := make([]sampledCommit, 0, len(ci.PullRequests)+len(ci.DefaultBranch))
 	for i := range ci.PullRequests {
-		commits = append(commits, &ci.PullRequests[i])
+		commits = append(commits, sampledCommit{&ci.PullRequests[i], prEvents()})
 	}
 	for i := range ci.DefaultBranch {
-		commits = append(commits, &ci.DefaultBranch[i])
+		commits = append(commits, sampledCommit{&ci.DefaultBranch[i], pushEvents()})
 	}
 	if len(commits) == 0 {
 		return nil
 	}
-	sampled := make(map[string]bool, len(commits))
-	for _, commit := range commits {
-		sampled[commit.OID] = true
+	// counts reports whether a run on sha with event counts toward any
+	// sampled entry for that commit, which is when its jobs are worth a read.
+	counts := func(sha, event string) bool {
+		for _, s := range commits {
+			if s.commit.OID == sha && slices.Contains(s.events, event) {
+				return true
+			}
+		}
+		return false
 	}
 
 	var list actionsRuns
@@ -139,7 +168,7 @@ func (c *Client) fetchCI(ctx context.Context, base string, ci *audit.CI) error {
 	// sampled entries share its commit.
 	bySHA := map[string][]ciRun{}
 	for _, run := range list.WorkflowRuns {
-		if !sampled[run.HeadSHA] {
+		if !counts(run.HeadSHA, run.Event) {
 			continue
 		}
 		var jobs actionsJobs
@@ -149,8 +178,14 @@ func (c *Client) fetchCI(ctx context.Context, base string, ci *audit.CI) error {
 		}
 		bySHA[run.HeadSHA] = append(bySHA[run.HeadSHA], ciRun{run: run, jobs: jobs})
 	}
-	for _, commit := range commits {
-		*commit = timeCommit(*commit, bySHA[commit.OID])
+	for _, s := range commits {
+		var runs []ciRun
+		for _, r := range bySHA[s.commit.OID] {
+			if slices.Contains(s.events, r.run.Event) {
+				runs = append(runs, r)
+			}
+		}
+		*s.commit = timeCommit(*s.commit, runs)
 	}
 	return nil
 }

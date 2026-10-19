@@ -302,10 +302,10 @@ var apiRules = []rule{
 		`data\.repository\.rulesets\.nodes\[\]\.(enforcement|target|conditions\.ref_name\.include\[\]|rules\.nodes\[\]\.type)`,
 		`data\.repository\.`+renovateProbes+`\.(is_truncated|is_binary)`,
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
-		// A pull request number, a run's or job's status and a list's total
-		// are counts and enums.
+		// A pull request number, a run's event, a run's or job's status and a
+		// list's total are counts and enums.
 		`data\.repository\.merged_pull_requests\.nodes\[\]\.number`,
-		`(workflow_runs|jobs)\[\]\.status`, `total_count`,
+		`(workflow_runs|jobs)\[\]\.status`, `workflow_runs\[\]\.event`, `total_count`,
 		// The contents API's envelope: "file" and "base64" are GitHub's words.
 		`type`, `encoding`,
 	),

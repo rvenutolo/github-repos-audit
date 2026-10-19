@@ -5,6 +5,7 @@
       "id": 4000010,
       "name": "ci",
       "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014",
+      "event": "push",
       "status": "completed",
       "created_at": "2025-09-02T01:45:00Z"
     },
@@ -12,6 +13,7 @@
       "id": 4000009,
       "name": "ci",
       "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11",
+      "event": "pull_request",
       "status": "completed",
       "created_at": "2025-09-01T08:00:00Z"
     }

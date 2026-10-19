@@ -375,7 +375,12 @@ never judged, and the raw per-commit facts are in `audit.json` under `ci`.
   A job that took 0 seconds was skipped and is not averaged in.
 
 Only GitHub Actions workflow runs are timed; a check another app posts
-(Codecov, say) does not count. The wait runs from the first run's creation
+(Codecov, say) does not count. Only runs the change itself triggered count:
+`pull_request`, `pull_request_target` and `push` runs for a pull request's
+head commit, and `push` and `merge_group` runs for a default-branch commit.
+Runs of any other event (`schedule`, `workflow_dispatch`, `workflow_run` and
+the like) are ignored, so a nightly run on the head commit does not stretch
+its wait, and a commit with only such runs reads as having no CI. The wait runs from the first run's creation
 until every job has finished, so time spent queued for a runner counts,
 parallel workflows are counted once, and a re-run counts toward the wait. A
 commit whose runs are still going, or one of whose jobs lists was too long to
