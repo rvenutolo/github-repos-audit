@@ -367,7 +367,7 @@ func TestLive_rollupNeedsNoChecksPermission(t *testing.T) {
 }
 
 // fullOID is a whole commit oid, which is what every CI entry must carry for
-// the report to name the commit it timed.
+// audit.json to identify the commit it timed.
 var fullOID = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // TestLive_ciSelectionDecodes reads the check suites and runs of both

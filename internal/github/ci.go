@@ -49,9 +49,10 @@ func (r *repository) ci() audit.CI {
 // toAudit reduces one commit's check suites to its wait and job durations.
 //
 // Only suites with at least one run count. An app that subscribes to check
-// suites but never posts a run leaves its suite queued indefinitely and
-// from the push; counting it would hold every commit open forever and
-// stretch its wait back to whenever that suite happened to be created.
+// suites but never posts a run still gets a suite created at the push, and
+// that suite never completes: counting it would hold every commit open, and,
+// when it was created earlier than the first workflow's suite, stretch the
+// wait back to its creation.
 //
 // The wait runs from the earliest counted suite's creation to the latest
 // counted run's completion. That includes the time the first workflow sat

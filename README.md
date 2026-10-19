@@ -357,9 +357,10 @@ common path, nothing is marked.
 ## CI timing
 
 The CI timing section of the report shows how long CI takes, one row per
-repository with at least one finished sample, slowest PR CI first. Like
-`last_push` and `open_prs` it is a plain fact: shown, never judged, and the
-raw per-commit facts are in `audit.json` under `ci`.
+repository with at least one finished sample. Rows with a PR sample come
+first, slowest PR CI first, followed by the rows with no PR sample, slowest
+Main CI first. Like `last_push` and `open_prs` it is a plain fact: shown,
+never judged, and the raw per-commit facts are in `audit.json` under `ci`.
 
 - **PR CI** — the mean wait over the head commits of the repository's last 5
   merged pull requests whose checks all finished. Pull requests opened by a

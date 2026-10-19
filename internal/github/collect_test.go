@@ -74,9 +74,10 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		CIState: "SUCCESS",
 		// Every shape the CI fixtures carry, recorded as it is: the empty
 		// Renovate suite is not counted, so the first pull request's wait
-		// starts at the Actions suite; the bot's pull request is marked, not dropped; and a run
-		// still going, a commit no check ran on and a truncated run list are
-		// each recorded as incomplete, with whatever finished runs they have.
+		// starts at the Actions suite; the bot's pull request is marked, not
+		// dropped; and a run still going, a commit no check ran on and a
+		// truncated run list are each recorded as incomplete, with whatever
+		// finished runs they have.
 		CI: audit.CI{
 			PullRequests: []audit.CICommit{
 				{

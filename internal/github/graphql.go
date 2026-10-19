@@ -207,15 +207,17 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
 // check ran on and commits still running normally leaves five to average.
 // ciSuitesPage and ciRunsPage bound one commit's suites and each suite's runs;
 // a commit that overflows either is recorded as incomplete rather than
-// measured short.
+// measured short. A commit carries one suite per workflow its push triggered
+// plus one per app that subscribes to checks, which can pass ten, and a page
+// too small for that would quietly make every commit incomplete.
 //
 // GitHub refuses a query whose worst case exceeds 500,000 nodes, and the
-// worst case multiplies along each path: the two CI lists together cost twice
-// the product of the three page sizes, a few thousand nodes, far inside the
-// limit and far above anything the CI of a personal repository produces.
+// worst case multiplies along each path: two lists of 15 commits × 20 suites
+// × 30 runs is 18,000 nodes, far inside the limit and far above anything the
+// CI of a personal repository produces.
 const (
 	ciCommitsPage = "15"
-	ciSuitesPage  = "10"
+	ciSuitesPage  = "20"
 	ciRunsPage    = "30"
 )
 
