@@ -91,6 +91,7 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 
 	rep.Gaps = collectGaps(rep.Repos)
 	rep.Identities = identityLines(rep.Repos, std)
+	rep.CITiming = ciTimingLines(rep.Repos)
 	rep.Overrides = collectOverrides(rep.Repos)
 	rep.Exceptions, rep.NoConsensus = modalExceptions(snap.Repos)
 	markDeviations(rep.Repos)
