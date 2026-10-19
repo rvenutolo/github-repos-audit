@@ -107,6 +107,7 @@ func (r *repository) toAudit(name string) audit.Repo {
 		Files:            r.files(),
 		Releases:         r.releases(),
 		Rulesets:         r.rulesets(),
+		CI:               r.ci(),
 		Settings: audit.Settings{
 			HasIssues:           r.HasIssues,
 			HasWiki:             r.HasWiki,

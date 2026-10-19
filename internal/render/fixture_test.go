@@ -3,6 +3,7 @@ package render_test
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,6 +131,17 @@ func fullSnapshot() *audit.Snapshot {
 	soft.Files.Changelog = true
 	soft.Files.Security = true
 	soft.Files.RenovateConfig = ".github/renovate.json5"
+	// Human pull requests and main commits both finished; a skipped run is
+	// recorded at zero and left out of the slowest-job mean.
+	soft.CI = audit.CI{
+		PullRequests: []audit.CICommit{
+			ciCommit("0001", 11, at(2026, time.August, 20), false, 580, ciJob("ci / check", 300), ciJob("ci / lint", 40), ciJob("ci / docs", 0)),
+			ciCommit("0002", 10, at(2026, time.August, 18), false, 600, ciJob("ci / check", 320), ciJob("ci / lint", 50)),
+		},
+		DefaultBranch: []audit.CICommit{
+			ciCommit("0003", 0, time.Time{}, false, 300, ciJob("ci / check", 280)),
+		},
+	}
 	// Two repositories per commitlint spelling: a tied column names no standard.
 	soft.Files.Commitlint = ".commitlintrc.json"
 	// Its release age comes from a preset and falls short of the type's.
@@ -181,6 +193,13 @@ func fullSnapshot() *audit.Snapshot {
 	tools.CIState = "PENDING"
 	tools.Branches = 4 // three besides the default, so the cell is not a zero
 	tools.Branch.RequiredChecks = []string{"merge-gate"}
+	// Its only merged pull requests are a bot's, so PR CI has nothing to show.
+	tools.CI = audit.CI{
+		PullRequests: []audit.CICommit{ciCommit("0004", 7, at(2026, time.August, 22), true, 90, ciJob("ci / check", 60))},
+		DefaultBranch: []audit.CICommit{
+			ciCommit("0005", 0, time.Time{}, false, 3900, ciJob("ci / test", 3800)),
+		},
+	}
 	// Consistently the wrong identity, beside GitHub's own web-flow committer.
 	tools.Identities = []audit.Identity{
 		{Name: "GitHub", Email: "noreply@github.com"},
@@ -217,6 +236,24 @@ func fullSnapshot() *audit.Snapshot {
 		Identity:    fixtureIdentity(),
 		Repos:       []audit.Repo{soft, content, tools, empty, cfg},
 	}
+}
+
+// ciCommit is a finished commit's checks. Its OID is thirty-six a's and the
+// four hex digits of seed, the synthetic shape internal/fixturevocab accepts.
+func ciCommit(seed string, pr int, merged time.Time, bot bool, wait int64, jobs ...audit.CIJob) audit.CICommit {
+	return audit.CICommit{
+		OID:         strings.Repeat("a", 36) + seed,
+		PRNumber:    pr,
+		MergedAt:    merged,
+		AuthorBot:   bot,
+		Complete:    true,
+		WaitSeconds: wait,
+		Jobs:        jobs,
+	}
+}
+
+func ciJob(label string, seconds int64) audit.CIJob {
+	return audit.CIJob{Label: label, Seconds: seconds}
 }
 
 // driftSnapshot is an otherwise clean account whose repos.toml disagrees with

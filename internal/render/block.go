@@ -53,6 +53,7 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	writeSection(&b, filePathsSection(rep))
 	writeSection(&b, policySection(rep))
 	writeSection(&b, activitySection(rep, at))
+	writeSection(&b, ciTimingSection(rep))
 	writeSection(&b, identitiesSection(rep))
 	writeSection(&b, exceptionsSection(rep))
 	writeSection(&b, overridesSection(rep))
@@ -284,6 +285,55 @@ func activitySection(rep *rules.Report, at time.Time) string {
 		)
 	}
 	return heading("Activity", t)
+}
+
+// ciTimingSection renders rep.CITiming in the order the rules package gave it,
+// and is omitted when no repository has a sampled commit. A column with no
+// sample is n/a rather than 0s: a zero would read as a repository whose CI is
+// instant. The slowest job's label comes from workflow and check names, which
+// the repository's owner chose, so it is escaped like any free-text cell.
+func ciTimingSection(rep *rules.Report) string {
+	if len(rep.CITiming) == 0 {
+		return ""
+	}
+	t := newTable("Repository", "PR CI", "Main CI", "Slowest job", "Slowest job mean")
+	for _, l := range rep.CITiming {
+		job, mean := markNA, markNA
+		if l.SlowestJob != "" {
+			job, mean = code(escape(l.SlowestJob)), ciDuration(l.SlowestMean)
+		}
+		t.add(
+			repoLink(rep.Owner, l.Repo),
+			ciWait(l.PR, l.HasPR),
+			ciWait(l.Main, l.HasMain),
+			job,
+			mean,
+		)
+	}
+	return heading("CI timing", t)
+}
+
+// ciWait is a mean wait, or n/a when there was nothing to average.
+func ciWait(d time.Duration, ok bool) string {
+	if !ok {
+		return markNA
+	}
+	return ciDuration(d)
+}
+
+// ciDuration formats a whole-second duration compactly: 45s, 9m40s, 2m05s.
+// From an hour up the seconds are noise next to a wait that long, so they are
+// dropped: 1h05m.
+func ciDuration(d time.Duration) string {
+	secs := int64(d / time.Second)
+	switch {
+	case secs < 60:
+		return fmt.Sprintf("%ds", secs)
+	case secs < 3600:
+		return fmt.Sprintf("%dm%02ds", secs/60, secs%60)
+	default:
+		return fmt.Sprintf("%dh%02dm", secs/3600, secs%3600/60)
+	}
 }
 
 // identitiesSection renders rep.Identities, one line per repository with any

@@ -350,6 +350,61 @@
         "min_release_age_source": "github>gh-owner/preset-store"
       },
       "ci_state": "SUCCESS",
+      "ci": {
+        "pull_requests": [
+          {
+            "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001",
+            "pr_number": 11,
+            "merged_at": "2026-08-20T12:00:00Z",
+            "complete": true,
+            "wait_seconds": 580,
+            "jobs": [
+              {
+                "label": "ci / check",
+                "seconds": 300
+              },
+              {
+                "label": "ci / lint",
+                "seconds": 40
+              },
+              {
+                "label": "ci / docs",
+                "seconds": 0
+              }
+            ]
+          },
+          {
+            "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002",
+            "pr_number": 10,
+            "merged_at": "2026-08-18T12:00:00Z",
+            "complete": true,
+            "wait_seconds": 600,
+            "jobs": [
+              {
+                "label": "ci / check",
+                "seconds": 320
+              },
+              {
+                "label": "ci / lint",
+                "seconds": 50
+              }
+            ]
+          }
+        ],
+        "default_branch": [
+          {
+            "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0003",
+            "complete": true,
+            "wait_seconds": 300,
+            "jobs": [
+              {
+                "label": "ci / check",
+                "seconds": 280
+              }
+            ]
+          }
+        ]
+      },
       "releases": {
         "total": 4,
         "drafts": 1,
@@ -565,6 +620,37 @@
         "min_release_age_source": "renovate.json"
       },
       "ci_state": "PENDING",
+      "ci": {
+        "pull_requests": [
+          {
+            "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0004",
+            "pr_number": 7,
+            "merged_at": "2026-08-22T12:00:00Z",
+            "author_bot": true,
+            "complete": true,
+            "wait_seconds": 90,
+            "jobs": [
+              {
+                "label": "ci / check",
+                "seconds": 60
+              }
+            ]
+          }
+        ],
+        "default_branch": [
+          {
+            "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0005",
+            "complete": true,
+            "wait_seconds": 3900,
+            "jobs": [
+              {
+                "label": "ci / test",
+                "seconds": 3800
+              }
+            ]
+          }
+        ]
+      },
       "releases": {
         "total": 0,
         "drafts": 0

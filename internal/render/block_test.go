@@ -767,3 +767,73 @@ func TestBlock_tiedPathColumnIsUnmarked(t *testing.T) {
 		t.Errorf("a tied column is marked:\n%s", got)
 	}
 }
+
+// ciTimingBlock renders a report holding only the given CI timing lines, so a
+// test reads the section without the fixture around it.
+func ciTimingBlock(t *testing.T, lines ...rules.CITimingLine) string {
+	t.Helper()
+	got, err := render.Block(&rules.Report{Owner: "gh-owner", CITiming: lines}, clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	return got
+}
+
+// TestCIDuration pins the compact duration format through the rendered PR CI
+// cell: seconds under a minute, zero-padded seconds under an hour, and minutes
+// alone from an hour up.
+func TestCIDuration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{45 * time.Second, "45s"},
+		{2*time.Minute + 5*time.Second, "2m05s"},
+		{9*time.Minute + 40*time.Second, "9m40s"},
+		{59*time.Minute + 59*time.Second, "59m59s"},
+		{time.Hour, "1h00m"},
+		{time.Hour + 5*time.Minute + 30*time.Second, "1h05m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
+			got := ciTimingBlock(t, rules.CITimingLine{Repo: "alpha", PR: tt.d, HasPR: true})
+			if want := "| " + tt.want + " "; !strings.Contains(got, want) {
+				t.Errorf("Block() for %v lacks %q:\n%s", tt.d, want, got)
+			}
+		})
+	}
+}
+
+func TestCITimingSection_omittedWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	if got := ciTimingBlock(t); strings.Contains(got, "## CI timing") {
+		t.Errorf("Block() with no CI timing lines has a CI timing heading:\n%s", got)
+	}
+}
+
+func TestCITimingSection_naCells(t *testing.T) {
+	t.Parallel()
+
+	got := ciTimingBlock(t,
+		rules.CITimingLine{Repo: "bot-only", Main: 90 * time.Second, HasMain: true},
+		rules.CITimingLine{Repo: "pr-only", PR: 30 * time.Second, HasPR: true, SlowestJob: "ci / check", SlowestMean: 20 * time.Second},
+	)
+	for l := range strings.SplitSeq(got, "\n") {
+		switch {
+		case strings.Contains(l, "bot-only"):
+			if strings.Count(l, "n/a") != 3 || !strings.Contains(l, "| 1m30s ") {
+				t.Errorf("bot-only row = %q, want n/a for PR CI, slowest job and its mean, and 1m30s for Main CI", l)
+			}
+		case strings.Contains(l, "pr-only"):
+			for _, want := range []string{"| 30s ", "| n/a ", "| `ci / check` ", "| 20s "} {
+				if !strings.Contains(l, want) {
+					t.Errorf("pr-only row = %q, lacks %q", l, want)
+				}
+			}
+		}
+	}
+}

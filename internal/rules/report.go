@@ -147,6 +147,32 @@ type Report struct {
 	// holder's git identities, in report order, whatever its verdict; nil
 	// without an identity standard. See identityLines.
 	Identities []IdentityLine
+	// CITiming is one line per repository with any complete sampled commit,
+	// slowest pull request mean first; see ciTimingLines.
+	CITiming []CITimingLine
+}
+
+// CITimingLine is how long one repository's CI takes: the mean over its latest
+// sampled commits, for pull requests and for the default branch, and the
+// slowest single job across them.
+type CITimingLine struct {
+	// Repo is the repository.
+	Repo string
+	// PR is the mean wait over the sampled pull request commits; valid only
+	// when HasPR.
+	PR time.Duration
+	// HasPR is whether any human-authored pull request commit was sampled.
+	HasPR bool
+	// Main is the mean wait over the sampled default-branch commits; valid
+	// only when HasMain.
+	Main time.Duration
+	// HasMain is whether any default-branch commit was sampled.
+	HasMain bool
+	// SlowestJob is the label of the job with the highest mean duration
+	// across the sampled commits; empty when no job ran.
+	SlowestJob string
+	// SlowestMean is that job's mean duration.
+	SlowestMean time.Duration
 }
 
 // IdentityLine is which of the account holder's identities one repository's

@@ -34,6 +34,12 @@ const graphQLPath = "/graphql"
 // The head commit's first hundred history entries ride along too, so a
 // repository with a short history costs no request beyond this one; the rest
 // are paged by historyQuery.
+//
+// So do the check suites of the latest merged pull requests' head commits and
+// of the most recent default-branch commits, which is what the CI timing is
+// read from; ciFields explains the page sizes. Merged pull requests can only
+// be ordered by when they were last updated, not by when they merged, which
+// is why each one's merge time is selected beside it.
 const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     description
@@ -48,6 +54,14 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
     }
     open_pull_requests: pullRequests(states: OPEN) {
       total_count: totalCount
+    }
+    merged_pull_requests: pullRequests(states: MERGED, first: ` + ciCommitsPage + `, orderBy: { field: UPDATED_AT, direction: DESC }) {
+      nodes {
+        number
+        merged_at: mergedAt
+        author { type: __typename }
+        commits(last: 1) { nodes { commit { ...CICommit } } }
+      }
     }
     branches: refs(refPrefix: "refs/heads/", first: 1) {
       total_count: totalCount
@@ -74,6 +88,9 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
           }
           history(first: 100) {
             ` + historyFields + `
+          }
+          recent_commits: history(first: ` + ciCommitsPage + `) {
+            nodes { ...CICommit }
           }
         }
       }
@@ -181,6 +198,47 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
       }
     }
   }
+}
+` + ciFields
+
+// The CI page sizes. ciCommitsPage is how many merged pull requests and how
+// many default-branch commits are read: three times the five the report
+// averages over, so that leaving out bot-authored pull requests, commits no
+// check ran on and commits still running normally leaves five to average.
+// ciSuitesPage and ciRunsPage bound one commit's suites and each suite's runs;
+// a commit that overflows either is recorded as incomplete rather than
+// measured short. A commit carries one suite per workflow its push triggered
+// plus one per app that subscribes to checks, which can pass ten, and a page
+// too small for that would quietly make every commit incomplete.
+//
+// GitHub refuses a query whose worst case exceeds 500,000 nodes, and the
+// worst case multiplies along each path: two lists of 15 commits × 20 suites
+// × 30 runs is 18,000 nodes, far inside the limit and far above anything the
+// CI of a personal repository produces.
+const (
+	ciCommitsPage = "15"
+	ciSuitesPage  = "20"
+	ciRunsPage    = "30"
+)
+
+// ciFields is the fragment both CI lists select per commit: when each check
+// suite was created, which app and workflow it belongs to, and each check
+// run's status and times. A re-run is timed like any other run, so a flaky
+// job that needed one reads as the wait it caused.
+const ciFields = `fragment CICommit on Commit {
+  oid
+  check_suites: checkSuites(first: ` + ciSuitesPage + `) {
+    page_info: pageInfo { has_next_page: hasNextPage }
+    nodes {
+      created_at: createdAt
+      app { name }
+      workflow_run: workflowRun { workflow { name } }
+      check_runs: checkRuns(first: ` + ciRunsPage + `) {
+        page_info: pageInfo { has_next_page: hasNextPage }
+        nodes { name status started_at: startedAt completed_at: completedAt }
+      }
+    }
+  }
 }`
 
 // historyFields is one page of a commit's history: who wrote and who
@@ -264,6 +322,7 @@ type repository struct {
 	LicenseInfo         *licenseInfo `json:"license_info"`
 	Topics              countOf      `json:"topics"`
 	OpenPullRequests    countOf      `json:"open_pull_requests"`
+	MergedPullRequests  mergedList   `json:"merged_pull_requests"`
 	Branches            countOf      `json:"branches"`
 	HasIssues           bool         `json:"has_issues"`
 	HasWiki             bool         `json:"has_wiki"`
@@ -339,6 +398,7 @@ type commit struct {
 	OID               string       `json:"oid"`
 	StatusCheckRollup *rollupState `json:"status_check_rollup"`
 	History           *history     `json:"history"`
+	RecentCommits     *ciCommits   `json:"recent_commits"`
 }
 
 // history is one page of a commit's history, as historyFields selects it.
@@ -363,6 +423,79 @@ type historyNode struct {
 type gitActor struct {
 	Name  *string `json:"name"`
 	Email *string `json:"email"`
+}
+
+// mergedList is the latest merged pull requests, as repoQuery selects them.
+type mergedList struct {
+	Nodes []mergedPullRequest `json:"nodes"`
+}
+
+type mergedPullRequest struct {
+	Number   int        `json:"number"`
+	MergedAt *time.Time `json:"merged_at"`
+	// Author is null when the account that opened the pull request has been
+	// deleted.
+	Author  *prAuthor `json:"author"`
+	Commits ciHeads   `json:"commits"`
+}
+
+// prAuthor is only the author's GraphQL type: Bot for a GitHub App's account.
+type prAuthor struct {
+	Type string `json:"type"`
+}
+
+// ciHeads is commits(last: 1): the pull request's head commit.
+type ciHeads struct {
+	Nodes []struct {
+		Commit ciCommit `json:"commit"`
+	} `json:"nodes"`
+}
+
+// ciCommits is the recent default-branch commits.
+type ciCommits struct {
+	Nodes []ciCommit `json:"nodes"`
+}
+
+// ciCommit is one commit as ciFields selects it.
+type ciCommit struct {
+	OID         string      `json:"oid"`
+	CheckSuites checkSuites `json:"check_suites"`
+}
+
+type checkSuites struct {
+	PageInfo pageInfo     `json:"page_info"`
+	Nodes    []checkSuite `json:"nodes"`
+}
+
+type checkSuite struct {
+	CreatedAt time.Time `json:"created_at"`
+	// App is null when GitHub does not name the app that owns the suite.
+	App *namedNode `json:"app"`
+	// WorkflowRun is null for every suite that is not a GitHub Actions run.
+	WorkflowRun *workflowRun `json:"workflow_run"`
+	CheckRuns   checkRuns    `json:"check_runs"`
+}
+
+type workflowRun struct {
+	Workflow *namedNode `json:"workflow"`
+}
+
+type namedNode struct {
+	Name string `json:"name"`
+}
+
+type checkRuns struct {
+	PageInfo pageInfo   `json:"page_info"`
+	Nodes    []checkRun `json:"nodes"`
+}
+
+// checkRun is one run. StartedAt and CompletedAt are null until the run gets
+// that far.
+type checkRun struct {
+	Name        string     `json:"name"`
+	Status      string     `json:"status"`
+	StartedAt   *time.Time `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at"`
 }
 
 type rollupState struct {
@@ -431,7 +564,7 @@ func (c *Client) postGraphQL(ctx context.Context, query string, vars map[string]
 		return fmt.Errorf("encode graphql request: %w", err)
 	}
 
-	resp, err := c.doRetrying(ctx, http.MethodPost, c.baseURL+graphQLPath, body, graphQLRateLimited)
+	resp, err := c.doRetrying(ctx, http.MethodPost, c.baseURL+graphQLPath, body, graphQLTransient)
 	if err != nil {
 		return fmt.Errorf("%s: %w", graphQLPath, err)
 	}
@@ -460,32 +593,56 @@ func (c *Client) postGraphQL(ctx context.Context, query string, vars map[string]
 // answer will not change".
 const rateLimitedType = "RATE_LIMITED"
 
-// graphQLRateLimited reports whether a 200 body is nothing but a rate limit.
+// timeoutMessage is the part of GitHub's answer to a query that ran out of
+// execution time that names the timeout. The error carries no type, and the
+// rest of its message ("Something went wrong while executing your query.",
+// then a request id) is the same for a genuine GitHub bug, so this phrase is
+// the only thing that tells a slow query apart.
+const timeoutMessage = "This may be the result of a timeout"
+
+// errGraphQLTimeout is a query GitHub gave up executing. It is a GraphQL
+// error, so a run that fails on it reads as one, not as a spent quota.
+var errGraphQLTimeout = fmt.Errorf("%w: the query timed out", errGraphQL)
+
+// graphQLTransient returns nil when a 200 body is an answer or a final
+// failure, and the kind of transient failure it is otherwise: ErrRateLimited
+// when any entry is a rate limit, errGraphQLTimeout when every entry is an
+// execution timeout.
 //
-// The GraphQL API has no status for a primary rate limit: it answers 200 with
-// an errors array whose entries carry RATE_LIMITED, so the retry policy cannot
-// see it from the status the way it sees a 429. Every other error type is
-// final on the first response, for the same reason a bare 403 is (see
-// retryWait): NOT_FOUND and FORBIDDEN answer the same however many times they
-// are asked. An array mixing a rate limit with one of those is final too —
-// waiting could clear the limit but never the rest, so the run would spend
-// its whole budget to fail anyway.
-func graphQLRateLimited(body []byte) bool {
+// The GraphQL API has no status for either. A primary rate limit is a 200
+// with RATE_LIMITED entries, so the retry policy cannot see it from the
+// status the way it sees a 429. A query that ran too long is a 200 with a
+// type-less timeout entry, where the same slowness one layer out is a 502
+// that is already retried; failing the whole nightly run over one slow
+// repository would treat the two differently for no reason. Every other
+// error is final on the first response, for the same reason a bare 403 is
+// (see retryWait): NOT_FOUND and FORBIDDEN answer the same however many
+// times they are asked. An array mixing a transient entry with one of those
+// is final too — waiting could clear the limit or let the query finish but
+// never fix the rest, so the run would spend its whole budget to fail anyway.
+func graphQLTransient(body []byte) error {
 	var decoded struct {
 		Errors []graphQLError `json:"errors"`
 	}
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		return false
+	// A body that does not decode is not transient: it goes back to
+	// postGraphQL as it stands, which reports it as the failure it is.
+	if json.Unmarshal(body, &decoded) != nil || len(decoded.Errors) == 0 {
+		return nil //nolint:nilerr // nil means "not transient", not "no error"; postGraphQL reports the bad body
 	}
-	if len(decoded.Errors) == 0 {
-		return false
-	}
+	limited := false
 	for _, e := range decoded.Errors {
-		if e.Type != rateLimitedType {
-			return false
+		switch {
+		case e.Type == rateLimitedType:
+			limited = true
+		case e.Type == "" && strings.Contains(e.Message, timeoutMessage):
+		default:
+			return nil
 		}
 	}
-	return true
+	if limited {
+		return ErrRateLimited
+	}
+	return errGraphQLTimeout
 }
 
 // joinGraphQLErrors renders every message GitHub returned, because the first

@@ -185,6 +185,17 @@ var (
 	// marketplace publisher used as an allowed-actions example; neither
 	// names the audited account.
 	pattern = `^(example-org/action-\d{2}@\*|step-security/\*)$`
+	// ciSuites is the end of every path into a commit's check suites. They
+	// ride along under two roots, a merged pull request's head commit and a
+	// recent default-branch commit, so the CI rules are anchored at the end.
+	ciSuites = `\.check_suites\.nodes\[\]`
+	// ciApp, ciWorkflow and ciRun are generic names: the GitHub Actions app
+	// and well-known third-party apps, the conventional workflow name, and
+	// common job names. A real repository's own workflow and job names could
+	// say what it is, so nothing else passes.
+	ciApp      = `^(GitHub Actions|Codecov|Renovate)$`
+	ciWorkflow = `^ci$`
+	ciRun      = `^(check|test|lint|codecov/patch)$`
 )
 
 // keep is a scalar that carries no account data: a flag, an enum, a count, a
@@ -265,6 +276,12 @@ var apiRules = []rule{
 	{regexp.MustCompile(`history\.nodes\[\]\.(author|committer)\.name$`), optional(isFakeIdentityName), "null or a fake identity name"},
 	{regexp.MustCompile(`history\.nodes\[\]\.(author|committer)\.email$`), optional(isFakeIdentityEmail), "null or a fake identity email"},
 	{regexp.MustCompile(`history\.page_info\.end_cursor$`), optional(matches(`^cursor-\d{2}$`)), "null or a synthetic cursor"},
+	{regexp.MustCompile(ciSuites + `\.app\.name$`), matches(ciApp), "a generic CI app name"},
+	{regexp.MustCompile(ciSuites + `\.workflow_run\.workflow\.name$`), matches(ciWorkflow), "a generic workflow name"},
+	{regexp.MustCompile(ciSuites + `\.check_runs\.nodes\[\]\.name$`), matches(ciRun), "a generic job name"},
+	{regexp.MustCompile(ciSuites + `\.check_runs\.nodes\[\]\.(started_at|completed_at)$`), optional(matches(timestamp)), "null or a timestamp"},
+	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
+	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.author\.type$`), matches(`^(User|Bot)$`), "User or Bot"},
 	keep(
 		`access_level`, `allowed_actions`, `\[\]\.archived`, `archived`, `\[\]\.disabled`, `disabled`,
 		`\[\]\.fork`, `fork`, `\[\]\.private`, `private`, `\[\]\.visibility`, `visibility`,
@@ -288,6 +305,11 @@ var apiRules = []rule{
 		`data\.repository\.rulesets\.nodes\[\]\.(enforcement|target|conditions\.ref_name\.include\[\]|rules\.nodes\[\]\.type)`,
 		`data\.repository\.`+renovateProbes+`\.(is_truncated|is_binary)`,
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
+		// A pull request number, a check run's status and the CI page flags
+		// are counts, enums and flags.
+		`data\.repository\.merged_pull_requests\.nodes\[\]\.number`,
+		`.*\.check_suites(\.nodes\[\]\.check_runs)?\.page_info\.has_next_page`,
+		`.*`+ciSuites+`\.check_runs\.nodes\[\]\.status`,
 		// The contents API's envelope: "file" and "base64" are GitHub's words.
 		`type`, `encoding`,
 	),
@@ -307,6 +329,10 @@ var apiRules = []rule{
 		`data\.repository\.`+renovateProbes,
 		// A null actor: GitHub could not resolve who wrote or committed it.
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.nodes\[\]\.(author|committer)`,
+		// A deleted account's pull request, and a suite that is not a GitHub
+		// Actions run.
+		`data\.repository\.merged_pull_requests\.nodes\[\]\.author`,
+		`.*`+ciSuites+`\.workflow_run`,
 	),
 }
 
@@ -331,11 +357,19 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^identity\.canonical$`), func(v any) bool { return v == "Pat Example <pat@example.com>" }, "the fixture canonical identity"},
 	{regexp.MustCompile(`^identity\.match$`), func(v any) bool { return v == " Example <" }, "the fixture identity match"},
 	{regexp.MustCompile(`^identity\.accepted\[\]$`), func(v any) bool { return v == "Pat Example <12345+pat@users.noreply.github.com>" }, "the fixture accepted identity"},
+	// Recorded CI facts: commits carry the synthetic oid, dates are
+	// timestamps, and a job label is a generic "<workflow> / <job>" pair like
+	// the API fixtures'.
+	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.oid$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^repos\[\]\.ci\.pull_requests\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
+	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.label$`), matches(`^(ci|Codecov) / (check|test|lint|docs|codecov/patch)$`), "a generic job label"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
 		`repos\[\]\.(branches|ci_state|default_branch|empty|license|open_pull_requests|published|topics|type|visibility)`,
 		`repos\[\]\.branch\.(known|types\[\])`,
+		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,
+		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.seconds`,
 		`repos\[\]\.files\.[a-z_]+`,
 		`repos\[\]\.overrides\.[a-z_]+`,
 		`repos\[\]\.releases\.(drafts|total)`,
