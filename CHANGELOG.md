@@ -4,6 +4,13 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v4.0.2
+
+### Fixes
+
+- read CI timing from the Actions API
+- count only change-triggered runs in CI timing
+
 ## v4.0.1
 
 ### Fixes
