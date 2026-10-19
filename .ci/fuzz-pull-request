@@ -21,6 +21,10 @@
 #
 #              Auto-merge is deliberately never enabled here. This pull request
 #              is supposed to be red.
+#
+#              It runs inside the devshell (.ci/in-devshell), so it may use
+#              any tool in .ci/required-tools, jq among them; unlike
+#              .ci/refresh-pull-request, which runs on a bare runner.
 # @noargs
 # @exitcode 0 every new crasher is filed, or there were none
 # @exitcode 1 a crasher was found but could not be filed
@@ -145,11 +149,12 @@ function main() {
 
   local work
   work="$(mktemp --directory)"
-  # Double-quoted outside, single inside, so the path is baked in now: work is
-  # local to main, and the EXIT trap fires after main's locals are gone, so a
-  # deferred expansion would evaluate empty and silently skip the cleanup.
+  # Expanded now, %q-quoted, so the path is baked in safely whatever TMPDIR
+  # holds: work is local to main, and the EXIT trap fires after main's locals
+  # are gone, so a deferred expansion would evaluate empty and silently skip
+  # the cleanup.
   # shellcheck disable=SC2064 # expand now (into the literal path), not later
-  trap "rm --recursive --force -- '${work}'" EXIT
+  trap "rm --recursive --force -- $(printf '%q' "${work}")" EXIT
   local rc=0 crasher
   for crasher in "${crashers[@]}"; do
     file_crasher "${repo}" "${base_sha}" "${base}" "${crasher}" "${work}" || rc=1

@@ -4,7 +4,7 @@
 #              files it commits are proved to come from --dir without any call
 #              reaching GitHub. The stub answers the few reads the script
 #              makes and records every argument list it was handed, and a
-#              copy of the GraphQL request body it was given with --input.
+#              copy of every file a GraphQL `--field name=@file` named.
 # @noargs
 # @exitcode 0 every case passed
 # @exitcode 1 a case failed
@@ -32,11 +32,13 @@ readonly COMMIT='c0ffeec0ffeec0ffeec0ffeec0ffeec0ffee0001'
 #              by running the script's own jq filter, the last argument, over
 #              it, so which pull request the script adopts is the script's
 #              doing and not the stub's. Neither the refresh branch nor its
-#              staging branch exists. createCommitOnBranch copies its --input
-#              body to `graphql-body.json`, since the script removes the
-#              original on exit, records the original's path in
-#              `graphql-input-path`, and answers with the contents of
-#              `commit-oid` (COMMIT when absent). `pr create`
+#              staging branch exists. createCommitOnBranch resolves each
+#              `name=@file` argument as real gh does, copying the file to
+#              `field-<name>` (the script removes the original on exit) and
+#              its path to `field-<name>.path`. It then exits 1 when
+#              `graphql-fails` exists, as real gh does on a 200 whose body
+#              carries GraphQL errors, and otherwise answers with the
+#              contents of `commit-oid` (COMMIT when absent). `pr create`
 #              prints the contents of `create-output` (nothing when absent),
 #              as the real command prints the new pull request's URL on
 #              stdout.
@@ -54,14 +56,13 @@ case "\$*" in
   'api repos/gh-owner/report/git/ref/heads/chore/refresh-audit') exit 1 ;;
   'api repos/gh-owner/report/git/ref/heads/chore/refresh-audit-staging') exit 1 ;;
   api\ graphql*)
-    prev=''
     for arg in "\$@"; do
-      if [[ "\${prev}" == --input ]]; then
-        cp -- "\${arg}" '${dir}/graphql-body.json'
-        printf '%s\n' "\${arg}" > '${dir}/graphql-input-path'
+      if [[ "\${arg}" == [a-z]*=@* ]]; then
+        cp -- "\${arg#*=@}" '${dir}/field-'"\${arg%%=@*}"
+        printf '%s\n' "\${arg#*=@}" > '${dir}/field-'"\${arg%%=@*}.path"
       fi
-      prev="\${arg}"
     done
+    if [[ -f '${dir}/graphql-fails' ]]; then exit 1; fi
     if [[ -f '${dir}/commit-oid' ]]; then cat '${dir}/commit-oid'; else echo '${COMMIT}'; fi
     ;;
   pr\ list*) jq --raw-output "\${!#}" '${dir}/pr-list.json' ;;
@@ -123,26 +124,26 @@ function want_untouched() {
   fi
 }
 
-# @description Assert the GraphQL body a case sent satisfies a jq filter. The
-#              filter sees the files under --dir, base64-encoded, as
-#              $readme and $audit, read from files so that a report too
-#              large for one argument can still be compared.
-# @arg $1 name   case directory under ${work}
-# @arg $2 filter jq expression that must be true of the body
-# @arg $3 what   what the filter checks, for the failure line
-function want_body() {
-  local -r body="${work}/$1/graphql-body.json"
-  if [[ ! -f "${body}" ]] || ! jq --exit-status \
-    --rawfile readme "${work}/expected-readme.b64" \
-    --rawfile audit "${work}/expected-audit.b64" \
-    "$2" "${body}" > '/dev/null'; then
-    ci::log "FAIL: $1: the commit body does not carry $3"
+# @description Assert a case's commit carried the given file from --dir, in
+#              full, base64-encoded and read by gh from a file: the field
+#              named an @file, and no logged call holds the encoded data
+#              itself.
+# @arg $1 name  case directory under ${work}
+# @arg $2 field readme or audit
+function want_field() {
+  local -r expected="${work}/expected-$2.b64"
+  if ! cmp --silent -- "${expected}" "${work}/$1/field-$2"; then
+    ci::log "FAIL: $1: the commit did not carry the full $2 from --dir"
+    rc=1
+  fi
+  if grep --quiet --fixed-strings --file="${expected}" -- "${work}/$1/calls.log"; then
+    ci::log "FAIL: $1: the $2 base64 appeared in argv"
     rc=1
   fi
 }
 
 # @description Record the base64 of the files under ${work}/report, for
-#              want_body to compare against.
+#              want_field to compare against.
 # @noargs
 function encode_report() {
   base64 --wrap=0 < "${work}/report/README.md" > "${work}/expected-readme.b64"
@@ -184,15 +185,17 @@ function test_fork_pull_requests_are_never_adopted() {
 function test_refresh_branch_never_at_base() {
   run_case own '[{"number":9,"isCrossRepository":false}]'
   want_call own "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/refresh-audit-staging --field sha=${BASE}"
-  want_call own 'api graphql --input '
-  want_body own '.variables.repo == "gh-owner/report"' 'the repository'
-  want_body own '.variables.branch == "chore/refresh-audit-staging"' 'the staging branch'
-  want_body own ".variables.oid == \"${BASE}\"" 'the base as the expected head'
-  # The body file lives in a temporary directory the script removes on exit.
-  local input
-  input="$(< "${work}/own/graphql-input-path")"
-  if [[ -e "${input}" || -e "${input%/*}" ]]; then
-    ci::log "FAIL: own: the request body's directory ${input%/*} outlived the run"
+  want_call own "api graphql --field repo=gh-owner/report --field branch=chore/refresh-audit-staging --field oid=${BASE} --field readme=@"
+  # The encoded files live in a temporary directory the script removes on exit.
+  local input=''
+  if [[ -f "${work}/own/field-readme.path" ]]; then
+    input="$(< "${work}/own/field-readme.path")"
+  fi
+  if [[ -z "${input}" ]]; then
+    ci::log 'FAIL: own: the commit named no readme=@file'
+    rc=1
+  elif [[ -e "${input}" || -e "${input%/*}" ]]; then
+    ci::log "FAIL: own: the encoded files' directory ${input%/*} outlived the run"
     rc=1
   fi
   want_call own "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/refresh-audit --field sha=${COMMIT}"
@@ -219,8 +222,8 @@ function test_commit_without_oid_stops_before_moving() {
 }
 
 # A report whose base64 is larger than one argument may be (128 KiB) still
-# commits, with every byte of it, because the files travel in the request
-# body rather than in argv.
+# commits, with every byte of it, because gh reads the files itself rather
+# than taking them in argv.
 function test_report_larger_than_one_argument_commits() {
   local -r name='large-report' saved="${work}/report/audit.json.small"
   mv -- "${work}/report/audit.json" "${saved}"
@@ -237,15 +240,32 @@ function test_report_larger_than_one_argument_commits() {
   fi
 
   run_case "${name}" '[{"number":9,"isCrossRepository":false}]'
-  # shellcheck disable=SC2016 # $readme and $audit are jq variables, not shell
-  want_body "${name}" '.variables.audit == $audit' 'the full audit.json'
-  # shellcheck disable=SC2016 # $readme and $audit are jq variables, not shell
-  want_body "${name}" '.variables.readme == $readme' 'README.md'
+  want_field "${name}" audit
+  want_field "${name}" readme
   want_call "${name}" "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/refresh-audit --field sha=${COMMIT}"
   want_call "${name}" 'pr merge 9 --repo gh-owner/report --merge --auto'
 
   mv -- "${saved}" "${work}/report/audit.json"
   encode_report
+}
+
+# A createCommitOnBranch that gh reports as failed (as it does for a 200
+# carrying GraphQL errors) stops the run before the refresh branch is moved
+# or anything is merged.
+function test_failed_commit_stops_before_moving() {
+  local -r name='commit-failed'
+  mkdir --parents "${work}/${name}"
+  write_stub "${work}/${name}" "${work}/${name}/calls.log"
+  printf '[{"number":9,"isCrossRepository":false}]\n' > "${work}/${name}/pr-list.json"
+  : > "${work}/${name}/graphql-fails"
+  if PATH="${work}/${name}:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
+    "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/report" > /dev/null 2>&1; then
+    ci::log "FAIL: ${name}: exited zero"
+    rc=1
+  fi
+  want_call "${name}" 'api graphql '
+  want_no_call "${name}" 'refs/heads/chore/refresh-audit --field'
+  want_no_call "${name}" 'pr merge'
 }
 
 # Output that does not end in a number must stop the run before any merge:
@@ -286,17 +306,8 @@ function main() {
     rc=1
   }
 
-  # shellcheck disable=SC2016 # $readme and $audit are jq variables, not shell
-  want_body bin '.variables.readme == $readme' 'README.md from --dir'
-  # shellcheck disable=SC2016 # $readme and $audit are jq variables, not shell
-  want_body bin '.variables.audit == $audit' 'audit.json from --dir'
-  # The query is the createCommitOnBranch mutation over exactly these
-  # variables, so the body and the query cannot drift apart.
-  want_body bin '.query | test("createCommitOnBranch")' 'the createCommitOnBranch mutation'
-  want_body bin '.variables | keys == ["audit", "branch", "oid", "readme", "repo"]' 'exactly the mutation variables'
-  # No file contents in argv: that is the limit the body file exists to avoid.
-  want_no_call bin 'readme='
-  want_no_call bin 'audit='
+  want_field bin readme
+  want_field bin audit
 
   if PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
     "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/missing" > /dev/null 2>&1; then
@@ -325,6 +336,7 @@ function main() {
   test_fork_pull_requests_are_never_adopted
   test_refresh_branch_never_at_base
   test_commit_without_oid_stops_before_moving
+  test_failed_commit_stops_before_moving
   test_unusable_create_output_stops_before_merging
   test_report_larger_than_one_argument_commits
 
