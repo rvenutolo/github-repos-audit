@@ -22,8 +22,8 @@ const (
 // account uses; the File paths intro explains it.
 const deviationSuffix = " ≠"
 
-// footerPrefix opens the footer line. MaterialChange strips the line by this
-// prefix, so the two must not drift apart.
+// footerPrefix opens the footer line, so the footer is recognisable as the
+// one line of the block that carries the run's time.
 const footerPrefix = "_Read from GitHub on "
 
 // Block renders everything that lives between the README's generated markers.

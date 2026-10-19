@@ -30,13 +30,8 @@ Commands:
 
 render writes both files whole, through a temp file and a rename, only after
 every repository has been read successfully — no failure leaves a partial
-report behind. It prints one line to stdout,
-
-  material-change=true
-
-or false, saying whether anything a reader would notice differs from what is
-already committed. The refresh workflow appends that line to $GITHUB_OUTPUT
-and opens a pull request only when it is true.
+report behind. It prints nothing to stdout on success, and every run stamps a
+fresh time into both files; the refresh workflow commits whatever render wrote.
 
 A repository the account has with no repos.toml entry, or an entry naming no
 repository the account has, does not stop render or json. The repositories
@@ -249,23 +244,12 @@ func runRender(
 	if err != nil {
 		return err
 	}
-	// An absent audit.json is the first run, not a failure.
-	oldJSON, err := os.ReadFile(jsonPath) //nolint:gosec // a path built from a flag, not from a request
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("read %s: %w", jsonPath, err)
-	}
-
-	changed, err := render.MaterialChange(oldJSON, newJSON, string(oldREADME), newREADME)
-	if err != nil {
-		return err
-	}
-
-	// Both files are written whatever the verdict. The binary reports; the
-	// workflow decides.
+	// Both files are written on every run, with a fresh timestamp, so there is
+	// always a diff for the refresh workflow to commit. The previous audit.json
+	// is never read: render has no notion of "unchanged".
 	if err := render.WriteFiles(readmePath, newREADME, jsonPath, newJSON); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "material-change=%t\n", changed)
 	return nil
 }
 

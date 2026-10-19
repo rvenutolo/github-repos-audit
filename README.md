@@ -99,9 +99,9 @@ and the generated report. These steps describe how that repository is wired up.
    notes on the Releases page.
 
    ```yaml
-   # .github/workflows/audit.yml — daily report refresh. When something
-   # changed it opens a pull request (or updates the existing one) and
-   # enables auto-merge, so the report lands once its checks pass.
+   # .github/workflows/audit.yml — daily report refresh. Every run opens a
+   # pull request (or updates the existing one) and enables auto-merge, so
+   # the report lands once its checks pass.
    name: audit
    on:
      schedule:
