@@ -468,7 +468,7 @@ func TestRunRender_writesBothArtefactsAndPrintsNothing(t *testing.T) {
 }
 
 // TestRunRender_rerunRewritesBothFiles: render has no notion of "unchanged".
-// A second run an hour later replaces both files, so the refresh workflow
+// A second run a day later replaces both files, so the refresh workflow
 // always has a diff to commit.
 func TestRunRender_rerunRewritesBothFiles(t *testing.T) {
 	t.Parallel()
@@ -477,8 +477,9 @@ func TestRunRender_rerunRewritesBothFiles(t *testing.T) {
 	fake := healthyFake()
 	args := []string{"--config", configPath, "--dir", dir}
 	first := fixedClock()
-	second := first.Add(time.Hour)
+	second := first.Add(24 * time.Hour)
 
+	readmes := make([]string, 0, 2)
 	for _, at := range []time.Time{first, second} {
 		var stdout, stderr bytes.Buffer
 		err := runRender(t.Context(), args, noEnv, &stdout, &stderr, fakeFactory(fake),
@@ -488,6 +489,17 @@ func TestRunRender_rerunRewritesBothFiles(t *testing.T) {
 		}
 		if got := stdout.String(); got != "" {
 			t.Errorf("stdout = %q, want nothing on success", got)
+		}
+		readme, err := os.ReadFile(filepath.Join(dir, "README.md"))
+		if err != nil {
+			t.Fatalf("read README.md: %v", err)
+		}
+		readmes = append(readmes, string(readme))
+	}
+
+	for i, at := range []time.Time{first, second} {
+		if want := "_Read from GitHub on " + at.Format(time.DateOnly) + "._"; !strings.Contains(readmes[i], want) {
+			t.Errorf("README.md after run %d lacks the footer %q", i+1, want)
 		}
 	}
 

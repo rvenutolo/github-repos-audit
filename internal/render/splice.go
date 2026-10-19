@@ -46,24 +46,9 @@ func Splice(readme, block string) (string, error) {
 	return b.String(), nil
 }
 
-// GeneratedBlock returns just the text between the markers, which is what the
-// change guard compares. Every layout Splice refuses is an error here too: a
-// README whose markers do not bracket exactly one block has no block to
-// return, and picking one would make the guard compare text chosen by
-// guesswork.
-func GeneratedBlock(readme string) (string, error) {
-	begin, end, err := locateMarkers(readme)
-	if err != nil {
-		return "", err
-	}
-	return readme[begin+len(BeginMarker) : end], nil
-}
-
 // locateMarkers returns the offsets of the two markers, refusing every layout
-// in which they do not bracket exactly one block. Splice and GeneratedBlock
-// share it so the writer and the reader agree on which READMEs are legible:
-// one that reads a shape the other will not rewrite would compare a block
-// that cannot be regenerated.
+// in which they do not bracket exactly one block, so Splice never has to guess
+// which text it is replacing.
 func locateMarkers(readme string) (begin, end int, err error) {
 	begin = strings.Index(readme, BeginMarker)
 	if begin < 0 {

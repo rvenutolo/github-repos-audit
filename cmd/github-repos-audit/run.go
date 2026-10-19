@@ -30,8 +30,9 @@ Commands:
 
 render writes both files whole, through a temp file and a rename, only after
 every repository has been read successfully — no failure leaves a partial
-report behind. It prints nothing to stdout on success, and every run stamps a
-fresh time into both files; the refresh workflow commits whatever render wrote.
+report behind. It prints nothing to stdout on success. Every run stamps the
+time into audit.json and the date into the README footer; the refresh
+workflow commits whatever render wrote.
 
 A repository the account has with no repos.toml entry, or an entry naming no
 repository the account has, does not stop render or json. The repositories
