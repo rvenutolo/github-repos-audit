@@ -357,11 +357,19 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^identity\.canonical$`), func(v any) bool { return v == "Pat Example <pat@example.com>" }, "the fixture canonical identity"},
 	{regexp.MustCompile(`^identity\.match$`), func(v any) bool { return v == " Example <" }, "the fixture identity match"},
 	{regexp.MustCompile(`^identity\.accepted\[\]$`), func(v any) bool { return v == "Pat Example <12345+pat@users.noreply.github.com>" }, "the fixture accepted identity"},
+	// Recorded CI facts: commits carry the synthetic oid, dates are
+	// timestamps, and a job label is a generic "<workflow> / <job>" pair like
+	// the API fixtures'.
+	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.oid$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^repos\[\]\.ci\.pull_requests\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
+	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.label$`), matches(`^(ci|Codecov) / (check|test|lint|docs|codecov/patch)$`), "a generic job label"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
 		`repos\[\]\.(branches|ci_state|default_branch|empty|license|open_pull_requests|published|topics|type|visibility)`,
 		`repos\[\]\.branch\.(known|types\[\])`,
+		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,
+		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.seconds`,
 		`repos\[\]\.files\.[a-z_]+`,
 		`repos\[\]\.overrides\.[a-z_]+`,
 		`repos\[\]\.releases\.(drafts|total)`,

@@ -100,6 +100,13 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 11d       | SUCCESS | 0        | 0        | 3        | 5mo          |
 | [web-app](https://github.com/gh-owner/web-app)                       | 11d       | SUCCESS | 0        | 0        | 0        | n/a          |
 
+## CI timing
+
+| Repository                                                           | PR CI | Main CI | Slowest job  | Slowest job mean |
+| -------------------------------------------------------------------- | ----- | ------- | ------------ | ---------------- |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 9m50s | 5m00s   | `ci / check` | 5m00s            |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | n/a   | 1h05m   | `ci / test`  | 1h03m            |
+
 ## Git identities
 
 - **github-repos-audit** — `Pat Example <pat@example.org>` — not canonical
