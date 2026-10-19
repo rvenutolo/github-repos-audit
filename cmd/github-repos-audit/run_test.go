@@ -441,7 +441,7 @@ func fakeFactory(f *fakeCollector) newCollector {
 	}
 }
 
-func TestRunRender_writesBothArtefactsAndReportsTheChange(t *testing.T) {
+func TestRunRender_writesBothArtefactsAndPrintsNothing(t *testing.T) {
 	t.Parallel()
 
 	dir, configPath := scratchProject(t, scratchConfig)
@@ -457,26 +457,62 @@ func TestRunRender_writesBothArtefactsAndReportsTheChange(t *testing.T) {
 		t.Fatalf("runRender() error = %v, want nil", err)
 	}
 
-	// The one line the refresh workflow appends to $GITHUB_OUTPUT.
-	if got := stdout.String(); got != "material-change=true\n" {
-		t.Errorf("stdout = %q, want the material-change line alone", got)
+	if got := stdout.String(); got != "" {
+		t.Errorf("stdout = %q, want nothing on success", got)
 	}
 	for _, name := range []string{"README.md", "audit.json"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("%s was not written: %v", name, err)
 		}
 	}
+}
 
-	// Running again over its own output is a no-op; render.volatileFields
-	// says why that matters.
-	stdout.Reset()
-	err = runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
-		noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock)
-	if err != nil {
-		t.Fatalf("runRender() error = %v, want nil", err)
+// TestRunRender_rerunRewritesBothFiles: render has no notion of "unchanged".
+// A second run a day later replaces both files, so the refresh workflow
+// always has a diff to commit.
+func TestRunRender_rerunRewritesBothFiles(t *testing.T) {
+	t.Parallel()
+
+	dir, configPath := scratchProject(t, scratchConfig)
+	fake := healthyFake()
+	args := []string{"--config", configPath, "--dir", dir}
+	first := fixedClock()
+	second := first.Add(24 * time.Hour)
+
+	readmes := make([]string, 0, 2)
+	for _, at := range []time.Time{first, second} {
+		var stdout, stderr bytes.Buffer
+		err := runRender(t.Context(), args, noEnv, &stdout, &stderr, fakeFactory(fake),
+			func() time.Time { return at })
+		if err != nil {
+			t.Fatalf("runRender() error = %v, want nil", err)
+		}
+		if got := stdout.String(); got != "" {
+			t.Errorf("stdout = %q, want nothing on success", got)
+		}
+		readme, err := os.ReadFile(filepath.Join(dir, "README.md"))
+		if err != nil {
+			t.Fatalf("read README.md: %v", err)
+		}
+		readmes = append(readmes, string(readme))
 	}
-	if got := stdout.String(); got != "material-change=false\n" {
-		t.Errorf("stdout = %q, want material-change=false on an unchanged rerun", got)
+
+	for i, at := range []time.Time{first, second} {
+		if want := "_Read from GitHub on " + at.Format(time.DateOnly) + "._"; !strings.Contains(readmes[i], want) {
+			t.Errorf("README.md after run %d lacks the footer %q", i+1, want)
+		}
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "audit.json"))
+	if err != nil {
+		t.Fatalf("read audit.json: %v", err)
+	}
+	var snap audit.Snapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		t.Fatalf("decode audit.json: %v", err)
+	}
+	if !snap.GeneratedAt.Equal(second) {
+		t.Errorf("audit.json generated_at = %v, want the second clock %v", snap.GeneratedAt, second)
 	}
 }
 
@@ -526,42 +562,6 @@ func TestRunJSON_recordsTheIdentityStandard(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, snap.Identity); diff != "" {
 		t.Errorf("snapshot identity mismatch (-want +got):\n%s", diff)
-	}
-}
-
-// TestRunRender_aTypesOnlyEditIsAMaterialChange: changing what a type expects
-// changes verdicts, so it must open a pull request even when no repository
-// changed.
-func TestRunRender_aTypesOnlyEditIsAMaterialChange(t *testing.T) {
-	t.Parallel()
-
-	dir, configPath := scratchProject(t, scratchConfig)
-	fake := healthyFake()
-	var stdout, stderr bytes.Buffer
-	args := []string{"--config", configPath, "--dir", dir}
-	if err := runRender(t.Context(), args, noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock); err != nil {
-		t.Fatalf("runRender() error = %v, want nil", err)
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("read repos.toml: %v", err)
-	}
-	// The first tools line in the fixture is its readme; relax it.
-	edited := strings.Replace(string(data), "[types.tools]\nreadme = \"required\"", "[types.tools]\nreadme = \"not_required\"", 1)
-	if edited == string(data) {
-		t.Fatal("the fixture's [types.tools] table no longer starts with readme; update this test")
-	}
-	if err := os.WriteFile(configPath, []byte(edited), 0o600); err != nil {
-		t.Fatalf("write repos.toml: %v", err)
-	}
-
-	stdout.Reset()
-	if err := runRender(t.Context(), args, noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock); err != nil {
-		t.Fatalf("runRender() error = %v, want nil", err)
-	}
-	if got := stdout.String(); got != "material-change=true\n" {
-		t.Errorf("stdout = %q, want material-change=true after a types-only edit", got)
 	}
 }
 
@@ -710,9 +710,8 @@ func TestRunRender_reportsAnUnconfiguredRepository(t *testing.T) {
 	fake := driftFake()
 	got := renderInto(t, dir, configPath, fake)
 
-	// Material, or the refresh workflow never commits the report that says so.
-	if got.stdout != "material-change=true\n" {
-		t.Errorf("stdout = %q, want the material-change line alone, true", got.stdout)
+	if got.stdout != "" {
+		t.Errorf("stdout = %q, want nothing on success", got.stdout)
 	}
 	if !strings.Contains(got.readme, "## Configuration drift") {
 		t.Errorf("README.md has no Configuration drift section:\n%s", got.readme)
@@ -739,12 +738,6 @@ func TestRunRender_reportsAnUnconfiguredRepository(t *testing.T) {
 	if !strings.Contains(got.stderr, "level=WARN") || !strings.Contains(got.stderr, "fresh") {
 		t.Errorf("stderr = %q, want a warning naming fresh", got.stderr)
 	}
-
-	// The same drift the next night is not news: no pull request over it.
-	again := renderInto(t, dir, configPath, fake)
-	if again.stdout != "material-change=false\n" {
-		t.Errorf("stdout = %q, want material-change=false on an unchanged rerun", again.stdout)
-	}
 }
 
 // TestRunRender_reportsAStaleEntry: archiving or deleting a repository is as
@@ -756,8 +749,8 @@ func TestRunRender_reportsAStaleEntry(t *testing.T) {
 	fake := healthyFake()
 	got := renderInto(t, dir, configPath, fake)
 
-	if got.stdout != "material-change=true\n" {
-		t.Errorf("stdout = %q, want the material-change line alone, true", got.stdout)
+	if got.stdout != "" {
+		t.Errorf("stdout = %q, want nothing on success", got.stdout)
 	}
 	if !strings.Contains(got.readme, "## Configuration drift") || !strings.Contains(got.readme, "`retired`") {
 		t.Errorf("README.md does not report the stale entry retired:\n%s", got.readme)
@@ -1282,52 +1275,6 @@ func TestRunValidate_rejectsADeadOverride(t *testing.T) {
 	}
 	if stdout != "" {
 		t.Errorf("stdout = %q, want nothing on a rejected config", stdout)
-	}
-}
-
-// TestRunRender_reportsAnUnreadableSnapshot covers the one read whose absence
-// is not a failure. A missing audit.json is the first run; an audit.json that
-// cannot be read is a real error and must not be mistaken for one.
-func TestRunRender_reportsAnUnreadableSnapshot(t *testing.T) {
-	t.Parallel()
-
-	dir, configPath := scratchProject(t, scratchConfig)
-	// A directory where the snapshot belongs: it exists, so this is not the
-	// first run, and reading it fails with something other than not-exist.
-	if err := os.Mkdir(filepath.Join(dir, "audit.json"), 0o750); err != nil {
-		t.Fatalf("create the obstruction: %v", err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	err := runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
-		noEnv, &stdout, &stderr, fakeFactory(healthyFake()), fixedClock)
-	if err == nil {
-		t.Fatal("runRender() error = nil, want the unreadable snapshot reported")
-	}
-	if !strings.Contains(err.Error(), "audit.json") {
-		t.Errorf("runRender() error = %q, want it to name audit.json", err)
-	}
-}
-
-// TestRunRender_reportsAMalformedSnapshot pins what happens when the previous
-// audit.json is not JSON: the change detector cannot compare against it, and
-// guessing "changed" would hide a corrupted file behind a green run.
-func TestRunRender_reportsAMalformedSnapshot(t *testing.T) {
-	t.Parallel()
-
-	dir, configPath := scratchProject(t, scratchConfig)
-	if err := os.WriteFile(filepath.Join(dir, "audit.json"), []byte("{not json"), 0o600); err != nil {
-		t.Fatalf("write the fixture: %v", err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	err := runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
-		noEnv, &stdout, &stderr, fakeFactory(healthyFake()), fixedClock)
-	if err == nil {
-		t.Fatal("runRender() error = nil, want the malformed snapshot reported")
-	}
-	if stdout.Len() != 0 {
-		t.Errorf("stdout = %q, want no material-change line when the comparison failed", stdout.String())
 	}
 }
 

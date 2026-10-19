@@ -129,44 +129,6 @@ func TestSplice_rejectsABlockContainingAMarker(t *testing.T) {
 	}
 }
 
-func TestGeneratedBlock(t *testing.T) {
-	t.Parallel()
-
-	got, err := render.GeneratedBlock(readmeWithMarkers)
-	if err != nil {
-		t.Fatalf("GeneratedBlock() error = %v, want nil", err)
-	}
-	if !strings.Contains(got, "_No report yet._") {
-		t.Errorf("GeneratedBlock() = %q, want the block between the markers", got)
-	}
-	if strings.Contains(got, "Hand-written prose.") {
-		t.Error("GeneratedBlock() reached outside the markers")
-	}
-}
-
-// TestGeneratedBlock_rejectsABrokenReadme holds the reader to the same marker
-// rules as the writer; GeneratedBlock and locateMarkers explain why.
-func TestGeneratedBlock_rejectsABrokenReadme(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range brokenReadmes {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := render.GeneratedBlock(tc.readme)
-			if err == nil {
-				t.Fatal("GeneratedBlock() error = nil, want a marker error")
-			}
-			if !errors.Is(err, render.ErrMarkers) {
-				t.Errorf("GeneratedBlock() error = %v, want it to wrap ErrMarkers", err)
-			}
-			if got != "" {
-				t.Errorf("GeneratedBlock() = %q alongside an error, want empty", got)
-			}
-		})
-	}
-}
-
 // FuzzSplice holds Splice to its invariants over arbitrary input: it never
 // panics; an error comes with no output; and a success carries exactly the
 // block between the markers, with the prose on either side untouched, and is
@@ -206,12 +168,10 @@ func FuzzSplice(f *testing.F) {
 		if !strings.HasSuffix(out, readme[end:]) {
 			t.Errorf("Splice() = %q, want it to keep the prose after the block", out)
 		}
-		got, err := render.GeneratedBlock(out)
-		if err != nil {
-			t.Fatalf("GeneratedBlock(Splice()) error = %v, want nil", err)
-		}
+		_, afterBegin, _ := strings.Cut(out, render.BeginMarker)
+		got, _, _ := strings.Cut(afterBegin, render.EndMarker)
 		if want := "\n\n" + strings.TrimSpace(block) + "\n\n"; got != want {
-			t.Errorf("GeneratedBlock(Splice()) = %q, want %q", got, want)
+			t.Errorf("text between the markers = %q, want %q", got, want)
 		}
 		again, err := render.Splice(out, block)
 		if err != nil {

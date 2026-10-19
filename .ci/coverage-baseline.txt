@@ -6,13 +6,13 @@
 #
 # n/a marks a package with no statements to cover.
 github.com/rvenutolo/github-repos-audit 100.0%
-github.com/rvenutolo/github-repos-audit/cmd/github-repos-audit 95.0%
+github.com/rvenutolo/github-repos-audit/cmd/github-repos-audit 94.8%
 github.com/rvenutolo/github-repos-audit/internal/audit n/a
 github.com/rvenutolo/github-repos-audit/internal/config 100.0%
 github.com/rvenutolo/github-repos-audit/internal/filepaths 100.0%
 github.com/rvenutolo/github-repos-audit/internal/fixturevocab n/a
-github.com/rvenutolo/github-repos-audit/internal/github 98.8%
-github.com/rvenutolo/github-repos-audit/internal/render 97.4%
+github.com/rvenutolo/github-repos-audit/internal/github 99.1%
+github.com/rvenutolo/github-repos-audit/internal/render 97.2%
 github.com/rvenutolo/github-repos-audit/internal/renovate 99.0%
 github.com/rvenutolo/github-repos-audit/internal/rules 98.8%
 github.com/rvenutolo/github-repos-audit/internal/schema 87.3%

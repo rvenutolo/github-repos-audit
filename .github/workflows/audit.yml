@@ -91,25 +91,21 @@ jobs:
           echo "path=${path}" >>"${GITHUB_OUTPUT}"
 
       - name: Render the report
-        id: render
         # AUDIT_TOKEN reads every repository on the account and can write
-        # nothing. render prints one machine-readable line, which is already
-        # $GITHUB_OUTPUT syntax, so nothing here parses anything.
+        # nothing. render prints nothing and always rewrites both files with a
+        # fresh timestamp, so the next step always has a diff to commit; the
+        # report repository auto-merges, so a timestamp-only pull request
+        # costs nothing.
         env:
           GITHUB_TOKEN: ${{ secrets.AUDIT_TOKEN }}
           TOOL: ${{ steps.tool.outputs.path }}
         run: >-
           "${TOOL}" render
-          --config report/repos.toml --dir report >>"${GITHUB_OUTPUT}"
+          --config report/repos.toml --dir report
 
       - name: Commit the report, open the pull request and queue the merge
-        if: steps.render.outputs.material-change == 'true'
         # GITHUB_REPOSITORY is the caller's in a called workflow, which is
         # exactly the repository the pull request belongs in.
         env:
           GH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: ./.ci/refresh-pull-request --dir report
-
-      - name: Report that nothing material changed
-        if: steps.render.outputs.material-change != 'true'
-        run: echo 'No material change since the last report; no pull request opened.'
