@@ -29,6 +29,10 @@
 #              base. expectedHeadOid gives optimistic concurrency for free: if
 #              the staging branch moved between being set and the write, the
 #              mutation fails rather than clobbering.
+#
+#              It runs on the bare runner the calling workflow provides, with
+#              no devshell: bash, git, GNU coreutils and gh and nothing else,
+#              so no jq (every JSON filter is gh's own --jq).
 # @option --dir <dir> directory holding README.md and audit.json
 # @exitcode 0 the pull request is open and carries the new report
 # @exitcode 1 something went wrong. A failure part way through the writes
@@ -133,14 +137,30 @@ function main() {
   ci::point_branch "${repo}" "${STAGING}" "${base_sha}"
 
   ci::log 'committing README.md and audit.json in one signed commit'
+  # The files reach gh as `--field name=@file`, which gh reads into a string
+  # variable itself, never as the contents in argv: Linux caps a single
+  # argument at 128 KiB (MAX_ARG_STRLEN), and a report's audit.json passes
+  # that once base64-encoded, so `--field "audit=$(base64 ...)"` fails exec
+  # with E2BIG. gh does no type conversion on a value read from a file, so an
+  # all-digit encoding still goes as a string.
+  local work
+  work="$(mktemp --directory)"
+  # Expanded now, %q-quoted, so the path is baked in safely whatever TMPDIR
+  # holds: work is local to main, and the EXIT trap fires after main's locals
+  # are gone, so a deferred expansion would evaluate empty and silently skip
+  # the cleanup.
+  # shellcheck disable=SC2064 # expand now (into the literal path), not later
+  trap "rm --recursive --force -- $(printf '%q' "${work}")" EXIT
+  base64 --wrap=0 < "${readme}" > "${work}/readme.b64"
+  base64 --wrap=0 < "${audit}" > "${work}/audit.b64"
   local commit
   # shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
   commit="$(gh api graphql \
     --field "repo=${repo}" \
     --field "branch=${STAGING}" \
     --field "oid=${base_sha}" \
-    --field "readme=$(base64 --wrap=0 < "${readme}")" \
-    --field "audit=$(base64 --wrap=0 < "${audit}")" \
+    --field "readme=@${work}/readme.b64" \
+    --field "audit=@${work}/audit.b64" \
     --jq '.data.createCommitOnBranch.commit.oid' \
     --raw-field 'query=
       mutation($repo: String!, $branch: String!, $oid: GitObjectID!, $readme: Base64String!, $audit: Base64String!) {

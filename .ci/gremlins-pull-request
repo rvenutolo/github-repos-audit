@@ -19,6 +19,10 @@
 #              One branch per version, never reset onto the base: a bump that
 #              is already filed must not be refiled every month, and a bump
 #              someone is still reviewing must not be clobbered.
+#
+#              It runs inside the devshell (.ci/in-devshell), so it may use
+#              any tool in .ci/required-tools, jq among them; unlike
+#              .ci/refresh-pull-request, which runs on a bare runner.
 # @noargs
 # @exitcode 0 the bump was filed, or there was nothing to file
 # @exitcode 1 a bump was found but could not be filed
@@ -100,15 +104,28 @@ function main() {
     --field "ref=refs/heads/${branch}" --field "sha=${base_sha}" > '/dev/null'
 
   ci::log "committing ${PACKAGE_FILE}"
+  local work
+  work="$(mktemp --directory)"
+  # Expanded now, %q-quoted, so the path is baked in safely whatever TMPDIR
+  # holds: work is local to main, and the EXIT trap fires after main's locals
+  # are gone, so a deferred expansion would evaluate empty and silently skip
+  # the cleanup.
+  # shellcheck disable=SC2064 # expand now (into the literal path), not later
+  trap "rm --recursive --force -- $(printf '%q' "${work}")" EXIT
+  # The file travels in a request body file, never in argv: Linux caps a
+  # single argument at 128 KiB (MAX_ARG_STRLEN), so a `--field contents=...`
+  # of a large enough file fails exec with E2BIG. base64 writes to a file that
+  # jq reads with --rawfile, and with --input gh sends that body as is.
+  base64 --wrap=0 < "${REPO_DIR}/${PACKAGE_FILE}" > "${work}/contents.b64"
   # shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
-  gh api graphql \
-    --field "repo=${repo}" \
-    --field "branch=${branch}" \
-    --field "oid=${base_sha}" \
-    --field "message=${headline}" \
-    --field "path=${PACKAGE_FILE}" \
-    --field "contents=$(base64 --wrap=0 < "${REPO_DIR}/${PACKAGE_FILE}")" \
-    --raw-field 'query=
+  jq --null-input \
+    --arg repo "${repo}" \
+    --arg branch "${branch}" \
+    --arg oid "${base_sha}" \
+    --arg message "${headline}" \
+    --arg path "${PACKAGE_FILE}" \
+    --rawfile contents "${work}/contents.b64" \
+    --arg query '
       mutation(
         $repo: String!
         $branch: String!
@@ -123,7 +140,10 @@ function main() {
           message: { headline: $message }
           fileChanges: { additions: [{ path: $path, contents: $contents }] }
         }) { commit { oid } }
-      }' > '/dev/null'
+      }' \
+    '{query: $query, variables: {repo: $repo, branch: $branch, oid: $oid, message: $message, path: $path, contents: $contents}}' \
+    > "${work}/body.json"
+  gh api graphql --input "${work}/body.json" > '/dev/null'
 
   ci::log 'opening the pull request'
   local created
