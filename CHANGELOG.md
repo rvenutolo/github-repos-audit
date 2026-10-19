@@ -4,6 +4,12 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v4.0.1
+
+### Fixes
+
+- size the CI query pages to GitHub's resource limit
+
 ## v4.0.0
 
 ### Breaking changes
