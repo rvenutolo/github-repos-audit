@@ -3,7 +3,8 @@
 # @description Exercise .ci/refresh-pull-request against a stub gh, so the
 #              files it commits are proved to come from --dir without any call
 #              reaching GitHub. The stub answers the few reads the script
-#              makes and records every argument list it was handed.
+#              makes and records every argument list it was handed, and a
+#              copy of the GraphQL request body it was given with --input.
 # @noargs
 # @exitcode 0 every case passed
 # @exitcode 1 a case failed
@@ -31,8 +32,11 @@ readonly COMMIT='c0ffeec0ffeec0ffeec0ffeec0ffeec0ffee0001'
 #              by running the script's own jq filter, the last argument, over
 #              it, so which pull request the script adopts is the script's
 #              doing and not the stub's. Neither the refresh branch nor its
-#              staging branch exists. createCommitOnBranch answers with the
-#              contents of `commit-oid` (COMMIT when absent). `pr create`
+#              staging branch exists. createCommitOnBranch copies its --input
+#              body to `graphql-body.json`, since the script removes the
+#              original on exit, records the original's path in
+#              `graphql-input-path`, and answers with the contents of
+#              `commit-oid` (COMMIT when absent). `pr create`
 #              prints the contents of `create-output` (nothing when absent),
 #              as the real command prints the new pull request's URL on
 #              stdout.
@@ -49,7 +53,17 @@ case "\$*" in
   'api repos/gh-owner/report/git/ref/heads/main --jq .object.sha') echo '${BASE}' ;;
   'api repos/gh-owner/report/git/ref/heads/chore/refresh-audit') exit 1 ;;
   'api repos/gh-owner/report/git/ref/heads/chore/refresh-audit-staging') exit 1 ;;
-  api\ graphql*) if [[ -f '${dir}/commit-oid' ]]; then cat '${dir}/commit-oid'; else echo '${COMMIT}'; fi ;;
+  api\ graphql*)
+    prev=''
+    for arg in "\$@"; do
+      if [[ "\${prev}" == --input ]]; then
+        cp -- "\${arg}" '${dir}/graphql-body.json'
+        printf '%s\n' "\${arg}" > '${dir}/graphql-input-path'
+      fi
+      prev="\${arg}"
+    done
+    if [[ -f '${dir}/commit-oid' ]]; then cat '${dir}/commit-oid'; else echo '${COMMIT}'; fi
+    ;;
   pr\ list*) jq --raw-output "\${!#}" '${dir}/pr-list.json' ;;
   pr\ create*) if [[ -f '${dir}/create-output' ]]; then cat '${dir}/create-output'; fi ;;
   *) : ;;
@@ -109,6 +123,32 @@ function want_untouched() {
   fi
 }
 
+# @description Assert the GraphQL body a case sent satisfies a jq filter. The
+#              filter sees the files under --dir, base64-encoded, as
+#              $readme and $audit, read from files so that a report too
+#              large for one argument can still be compared.
+# @arg $1 name   case directory under ${work}
+# @arg $2 filter jq expression that must be true of the body
+# @arg $3 what   what the filter checks, for the failure line
+function want_body() {
+  local -r body="${work}/$1/graphql-body.json"
+  if [[ ! -f "${body}" ]] || ! jq --exit-status \
+    --rawfile readme "${work}/expected-readme.b64" \
+    --rawfile audit "${work}/expected-audit.b64" \
+    "$2" "${body}" > '/dev/null'; then
+    ci::log "FAIL: $1: the commit body does not carry $3"
+    rc=1
+  fi
+}
+
+# @description Record the base64 of the files under ${work}/report, for
+#              want_body to compare against.
+# @noargs
+function encode_report() {
+  base64 --wrap=0 < "${work}/report/README.md" > "${work}/expected-readme.b64"
+  base64 --wrap=0 < "${work}/report/audit.json" > "${work}/expected-audit.b64"
+}
+
 # A pull request opened from a fork whose branch is named like ours is a
 # stranger's: the script must never touch or merge it.
 function test_fork_pull_requests_are_never_adopted() {
@@ -144,7 +184,17 @@ function test_fork_pull_requests_are_never_adopted() {
 function test_refresh_branch_never_at_base() {
   run_case own '[{"number":9,"isCrossRepository":false}]'
   want_call own "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/refresh-audit-staging --field sha=${BASE}"
-  want_call own 'api graphql --field repo=gh-owner/report --field branch=chore/refresh-audit-staging '
+  want_call own 'api graphql --input '
+  want_body own '.variables.repo == "gh-owner/report"' 'the repository'
+  want_body own '.variables.branch == "chore/refresh-audit-staging"' 'the staging branch'
+  want_body own ".variables.oid == \"${BASE}\"" 'the base as the expected head'
+  # The body file lives in a temporary directory the script removes on exit.
+  local input
+  input="$(< "${work}/own/graphql-input-path")"
+  if [[ -e "${input}" || -e "${input%/*}" ]]; then
+    ci::log "FAIL: own: the request body's directory ${input%/*} outlived the run"
+    rc=1
+  fi
   want_call own "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/refresh-audit --field sha=${COMMIT}"
   want_no_call own "heads/chore/refresh-audit --field sha=${BASE}"
   want_call own 'api --method DELETE repos/gh-owner/report/git/refs/heads/chore/refresh-audit-staging'
@@ -166,6 +216,36 @@ function test_commit_without_oid_stops_before_moving() {
   fi
   want_no_call "${name}" 'heads/chore/refresh-audit --field'
   want_no_call "${name}" 'pr merge'
+}
+
+# A report whose base64 is larger than one argument may be (128 KiB) still
+# commits, with every byte of it, because the files travel in the request
+# body rather than in argv.
+function test_report_larger_than_one_argument_commits() {
+  local -r name='large-report' saved="${work}/report/audit.json.small"
+  mv -- "${work}/report/audit.json" "${saved}"
+  local i
+  {
+    printf '['
+    for ((i = 0; i < 12000; i++)); do printf '{"x":"PAYLOAD"},'; done
+    printf '{"x":"PAYLOAD"}]\n'
+  } > "${work}/report/audit.json"
+  encode_report
+  if (($(wc --bytes < "${work}/expected-audit.b64") <= 131072)); then
+    ci::log "FAIL: ${name}: the filler is too small to exceed one argument"
+    rc=1
+  fi
+
+  run_case "${name}" '[{"number":9,"isCrossRepository":false}]'
+  # shellcheck disable=SC2016 # $readme and $audit are jq variables, not shell
+  want_body "${name}" '.variables.audit == $audit' 'the full audit.json'
+  # shellcheck disable=SC2016 # $readme and $audit are jq variables, not shell
+  want_body "${name}" '.variables.readme == $readme' 'README.md'
+  want_call "${name}" "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/refresh-audit --field sha=${COMMIT}"
+  want_call "${name}" 'pr merge 9 --repo gh-owner/report --merge --auto'
+
+  mv -- "${saved}" "${work}/report/audit.json"
+  encode_report
 }
 
 # Output that does not end in a number must stop the run before any merge:
@@ -196,7 +276,8 @@ function main() {
   mkdir --parents "${work}/bin" "${work}/report"
   printf '# report from --dir\n' > "${work}/report/README.md"
   printf '{"owner":"gh-owner"}\n' > "${work}/report/audit.json"
-  write_stub "${work}/bin" "${work}/calls.log"
+  encode_report
+  write_stub "${work}/bin" "${work}/bin/calls.log"
   printf '%s\n' 'https://github.com/gh-owner/report/pull/42' > "${work}/bin/create-output"
 
   PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
@@ -205,17 +286,17 @@ function main() {
     rc=1
   }
 
-  local want_readme want_audit
-  want_readme="readme=$(base64 --wrap=0 < "${work}/report/README.md")"
-  want_audit="audit=$(base64 --wrap=0 < "${work}/report/audit.json")"
-  if ! grep --quiet --fixed-strings -- "${want_readme}" "${work}/calls.log"; then
-    ci::log 'FAIL: the commit did not carry README.md from --dir'
-    rc=1
-  fi
-  if ! grep --quiet --fixed-strings -- "${want_audit}" "${work}/calls.log"; then
-    ci::log 'FAIL: the commit did not carry audit.json from --dir'
-    rc=1
-  fi
+  # shellcheck disable=SC2016 # $readme and $audit are jq variables, not shell
+  want_body bin '.variables.readme == $readme' 'README.md from --dir'
+  # shellcheck disable=SC2016 # $readme and $audit are jq variables, not shell
+  want_body bin '.variables.audit == $audit' 'audit.json from --dir'
+  # The query is the createCommitOnBranch mutation over exactly these
+  # variables, so the body and the query cannot drift apart.
+  want_body bin '.query | test("createCommitOnBranch")' 'the createCommitOnBranch mutation'
+  want_body bin '.variables | keys == ["audit", "branch", "oid", "readme", "repo"]' 'exactly the mutation variables'
+  # No file contents in argv: that is the limit the body file exists to avoid.
+  want_no_call bin 'readme='
+  want_no_call bin 'audit='
 
   if PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' \
     "${REPO_DIR}/.ci/refresh-pull-request" --dir "${work}/missing" > /dev/null 2>&1; then
@@ -245,6 +326,7 @@ function main() {
   test_refresh_branch_never_at_base
   test_commit_without_oid_stops_before_moving
   test_unusable_create_output_stops_before_merging
+  test_report_larger_than_one_argument_commits
 
   ((rc == 0)) && ci::log 'refresh-pull-request: every case passed'
   # A failing case is this harness's verdict, not a crash: drop the ERR trap

@@ -43,9 +43,10 @@ source "${REPO_DIR}/.ci/lib.sh"
 # @arg $2 base_sha the commit the branch is created at
 # @arg $3 base     the default branch name
 # @arg $4 file     repo-relative path of the corpus file
+# @arg $5 work     scratch directory for the request body
 # @exitcode 1 the branch could not be created, committed to, or filed
 function file_crasher() {
-  local -r repo="$1" base_sha="$2" base="$3" file="$4"
+  local -r repo="$1" base_sha="$2" base="$3" file="$4" work="$5"
 
   # internal/render/testdata/fuzz/FuzzSplice/bc1de2d73b69ddf6
   #  -> package internal/render, target FuzzSplice, input bc1de2d73b69ddf6
@@ -66,15 +67,20 @@ function file_crasher() {
     --field "ref=refs/heads/${branch}" --field "sha=${base_sha}" > '/dev/null'
 
   ci::log "committing ${file}"
+  # The file travels in a request body file, never in argv: Linux caps a
+  # single argument at 128 KiB (MAX_ARG_STRLEN), so a `--field contents=...`
+  # of a large enough file fails exec with E2BIG. base64 writes to a file that
+  # jq reads with --rawfile, and with --input gh sends that body as is.
+  base64 --wrap=0 < "${REPO_DIR}/${file}" > "${work}/contents.b64"
   # shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
-  gh api graphql \
-    --field "repo=${repo}" \
-    --field "branch=${branch}" \
-    --field "oid=${base_sha}" \
-    --field "message=${headline}" \
-    --field "path=${file}" \
-    --field "contents=$(base64 --wrap=0 < "${REPO_DIR}/${file}")" \
-    --raw-field 'query=
+  jq --null-input \
+    --arg repo "${repo}" \
+    --arg branch "${branch}" \
+    --arg oid "${base_sha}" \
+    --arg message "${headline}" \
+    --arg path "${file}" \
+    --rawfile contents "${work}/contents.b64" \
+    --arg query '
       mutation(
         $repo: String!
         $branch: String!
@@ -89,7 +95,10 @@ function file_crasher() {
           message: { headline: $message }
           fileChanges: { additions: [{ path: $path, contents: $contents }] }
         }) { commit { oid } }
-      }' > '/dev/null'
+      }' \
+    '{query: $query, variables: {repo: $repo, branch: $branch, oid: $oid, message: $message, path: $path, contents: $contents}}' \
+    > "${work}/body.json"
+  gh api graphql --input "${work}/body.json" > '/dev/null'
 
   ci::log 'opening the pull request'
   gh pr create --repo "${repo}" --base "${base}" --head "${branch}" \
@@ -134,9 +143,16 @@ function main() {
   base_sha="$(gh api "repos/${repo}/git/ref/heads/${base}" --jq '.object.sha')"
   ci::log "base ${base} at ${base_sha}"
 
+  local work
+  work="$(mktemp --directory)"
+  # Double-quoted outside, single inside, so the path is baked in now: work is
+  # local to main, and the EXIT trap fires after main's locals are gone, so a
+  # deferred expansion would evaluate empty and silently skip the cleanup.
+  # shellcheck disable=SC2064 # expand now (into the literal path), not later
+  trap "rm --recursive --force -- '${work}'" EXIT
   local rc=0 crasher
   for crasher in "${crashers[@]}"; do
-    file_crasher "${repo}" "${base_sha}" "${base}" "${crasher}" || rc=1
+    file_crasher "${repo}" "${base_sha}" "${base}" "${crasher}" "${work}" || rc=1
   done
 
   trap - ERR

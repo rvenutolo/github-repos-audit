@@ -133,16 +133,30 @@ function main() {
   ci::point_branch "${repo}" "${STAGING}" "${base_sha}"
 
   ci::log 'committing README.md and audit.json in one signed commit'
-  local commit
+  # The files travel in a request body file, never in argv or the environment:
+  # Linux caps a single argument or environment string at 128 KiB
+  # (MAX_ARG_STRLEN), and a report's audit.json passes that once base64-encoded,
+  # so a `--field audit=...` (or a jq --arg) fails exec with E2BIG. base64
+  # writes to files that jq reads with --rawfile; base64's output is ASCII, so
+  # jq's string handling cannot alter it the way it would replace invalid UTF-8
+  # in the raw file.
+  local work
+  work="$(mktemp --directory)"
+  # Double-quoted outside, single inside, so the path is baked in now: work is
+  # local to main, and the EXIT trap fires after main's locals are gone, so a
+  # deferred expansion would evaluate empty and silently skip the cleanup.
+  # shellcheck disable=SC2064 # expand now (into the literal path), not later
+  trap "rm --recursive --force -- '${work}'" EXIT
+  base64 --wrap=0 < "${readme}" > "${work}/readme.b64"
+  base64 --wrap=0 < "${audit}" > "${work}/audit.b64"
   # shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
-  commit="$(gh api graphql \
-    --field "repo=${repo}" \
-    --field "branch=${STAGING}" \
-    --field "oid=${base_sha}" \
-    --field "readme=$(base64 --wrap=0 < "${readme}")" \
-    --field "audit=$(base64 --wrap=0 < "${audit}")" \
-    --jq '.data.createCommitOnBranch.commit.oid' \
-    --raw-field 'query=
+  jq --null-input \
+    --arg repo "${repo}" \
+    --arg branch "${STAGING}" \
+    --arg oid "${base_sha}" \
+    --rawfile readme "${work}/readme.b64" \
+    --rawfile audit "${work}/audit.b64" \
+    --arg query '
       mutation($repo: String!, $branch: String!, $oid: GitObjectID!, $readme: Base64String!, $audit: Base64String!) {
         createCommitOnBranch(input: {
           branch: { repositoryNameWithOwner: $repo, branchName: $branch }
@@ -153,7 +167,15 @@ function main() {
             { path: "audit.json", contents: $audit }
           ] }
         }) { commit { oid } }
-      }')"
+      }' \
+    '{query: $query, variables: {repo: $repo, branch: $branch, oid: $oid, readme: $readme, audit: $audit}}' \
+    > "${work}/body.json"
+  local commit
+  # With --input, gh sends the file as the whole POST body and any --field
+  # would go to the URL's query string instead, so every variable is in the
+  # body.
+  commit="$(gh api graphql --input "${work}/body.json" \
+    --jq '.data.createCommitOnBranch.commit.oid')"
   if [[ ! "${commit}" =~ ^[0-9a-f]{40}$ ]]; then
     ci::log "createCommitOnBranch returned no commit: '${commit}'"
     return 1
