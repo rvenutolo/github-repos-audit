@@ -265,7 +265,7 @@ func TestClient_retryWait(t *testing.T) {
 			header:      map[string]string{"X-RateLimit-Reset": resetIn(20 * time.Second)},
 			body:        `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`,
 			attempt:     1,
-			transient:   graphQLRateLimited,
+			transient:   graphQLTransient,
 			wantVerdict: retryBackoff,
 			wantWait:    20 * time.Second,
 		},
@@ -274,7 +274,7 @@ func TestClient_retryWait(t *testing.T) {
 			status:      http.StatusOK,
 			body:        `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`,
 			attempt:     1,
-			transient:   graphQLRateLimited,
+			transient:   graphQLTransient,
 			wantVerdict: retryBackoff,
 			wantMaxWait: retryBaseDelay,
 		},
@@ -284,7 +284,7 @@ func TestClient_retryWait(t *testing.T) {
 			header:      map[string]string{"X-RateLimit-Reset": resetIn(50 * time.Minute)},
 			body:        `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`,
 			attempt:     1,
-			transient:   graphQLRateLimited,
+			transient:   graphQLTransient,
 			wantVerdict: retryTooLong,
 		},
 		{
@@ -293,7 +293,7 @@ func TestClient_retryWait(t *testing.T) {
 			header:      map[string]string{"X-RateLimit-Reset": resetIn(20 * time.Second)},
 			body:        `{"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a Repository"}]}`,
 			attempt:     1,
-			transient:   graphQLRateLimited,
+			transient:   graphQLTransient,
 			wantVerdict: retryNone,
 		},
 		{
@@ -301,7 +301,48 @@ func TestClient_retryWait(t *testing.T) {
 			status:      http.StatusOK,
 			body:        `{"errors":[{"type":"RATE_LIMITED"},{"type":"FORBIDDEN"}]}`,
 			attempt:     1,
-			transient:   graphQLRateLimited,
+			transient:   graphQLTransient,
+			wantVerdict: retryNone,
+		},
+		{
+			// GitHub stamps X-RateLimit-Reset on every answer, up to an hour
+			// out; a timeout is no rate limit, so that reset must not be read
+			// as one and turn the retry into a refusal.
+			name:        "a graphql timeout backs off like a 5xx",
+			status:      http.StatusOK,
+			header:      map[string]string{"X-RateLimit-Remaining": "4000", "X-RateLimit-Reset": resetIn(50 * time.Minute)},
+			body:        timeoutBody,
+			attempt:     1,
+			transient:   graphQLTransient,
+			wantVerdict: retryBackoff,
+			wantMaxWait: retryBaseDelay,
+		},
+		{
+			// The limit is the reason to wait, so its reset is honoured.
+			name:   "a rate limit beside a timeout waits for the reset",
+			status: http.StatusOK,
+			header: map[string]string{"X-RateLimit-Reset": resetIn(20 * time.Second)},
+			body: `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"},` +
+				`{"message":"This may be the result of a timeout"}]}`,
+			attempt:     1,
+			transient:   graphQLTransient,
+			wantVerdict: retryBackoff,
+			wantWait:    20 * time.Second,
+		},
+		{
+			name:        "a timeout mixed with another error is fatal",
+			status:      http.StatusOK,
+			body:        timeoutAndForbiddenBody,
+			attempt:     1,
+			transient:   graphQLTransient,
+			wantVerdict: retryNone,
+		},
+		{
+			name:        "a type-less error that is not a timeout is fatal",
+			status:      http.StatusOK,
+			body:        `{"errors":[{"message":"Field 'nope' doesn't exist on type 'Repository'"}]}`,
+			attempt:     1,
+			transient:   graphQLTransient,
 			wantVerdict: retryNone,
 		},
 		{
@@ -309,7 +350,7 @@ func TestClient_retryWait(t *testing.T) {
 			status:      http.StatusOK,
 			body:        `{"data":{"repository":{}}}`,
 			attempt:     1,
-			transient:   graphQLRateLimited,
+			transient:   graphQLTransient,
 			wantVerdict: retryNone,
 		},
 		{
@@ -543,6 +584,18 @@ func TestClient_do_resendsTheBody(t *testing.T) {
 // a 200, and the news in the body.
 const rateLimitedBody = `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`
 
+// timeoutBody is how GitHub's GraphQL endpoint answers a query that ran out of
+// execution time: a 200, no data, and an error with no type whose message
+// names a timeout as one possible cause.
+const timeoutBody = `{"data":null,"errors":[{"message":"Something went wrong while executing your query. ` +
+	`This may be the result of a timeout, or it could be a GitHub bug. ` +
+	`Please include ` + "`0000:0000:0000000:0000000:00000000`" + ` when reporting this issue."}]}`
+
+// timeoutAndForbiddenBody is a timeout beside an error no wait can clear.
+const timeoutAndForbiddenBody = `{"errors":[{"message":"Something went wrong while executing your query. ` +
+	`This may be the result of a timeout, or it could be a GitHub bug."},` +
+	`{"type":"FORBIDDEN","message":"Resource not accessible by personal access token"}]}`
+
 // resetIn renders an X-RateLimit-Reset d from the pinned clock.
 func resetIn(d time.Duration) string {
 	return strconv.FormatInt(theInstant.Add(d).Unix(), 10)
@@ -586,9 +639,72 @@ func TestClient_fetchRepository_retriesAGraphQLRateLimit(t *testing.T) {
 	}
 }
 
+// TestClient_fetchRepository_retriesAGraphQLTimeout: a query that ran out of
+// execution time is as transient as the 502 the same slowness can surface as,
+// so one slow repository costs a backoff, not the whole run. The rate-limit
+// reset GitHub stamps on the answer is not what the wait is taken from.
+func TestClient_fetchRepository_retriesAGraphQLTimeout(t *testing.T) {
+	t.Parallel()
+
+	srv := newCountingServer()
+	server := httptest.NewServer(srv.handle([]scriptedResponse{
+		{
+			status: http.StatusOK,
+			header: map[string]string{"X-RateLimit-Remaining": "4000", "X-RateLimit-Reset": resetIn(50 * time.Minute)},
+			body:   timeoutBody,
+		},
+		{status: http.StatusOK, body: `{"data":{"repository":{"visibility":"PUBLIC"}}}`},
+	}))
+	t.Cleanup(server.Close)
+
+	c, rec := newRetryTestClient(t, server.URL)
+
+	repo, err := c.fetchRepository(t.Context(), "shell-scripts")
+	if err != nil {
+		t.Fatalf("fetchRepository() error = %v, want nil", err)
+	}
+	if repo.Visibility != "PUBLIC" {
+		t.Errorf("Visibility = %q, want the second answer's PUBLIC", repo.Visibility)
+	}
+	if got := srv.seen(); got != 2 {
+		t.Errorf("server saw %d requests, want 2", got)
+	}
+	waits := rec.recorded()
+	if len(waits) != 1 {
+		t.Fatalf("waited %d times, want 1", len(waits))
+	}
+	if waits[0] > retryBaseDelay {
+		t.Errorf("wait = %v, want a backoff of at most %v", waits[0], retryBaseDelay)
+	}
+}
+
+// TestClient_fetchRepository_givesUpOnAPersistentTimeout: a query that times
+// out on every attempt fails as a GraphQL error, not as a rate limit, so a
+// reader of the failed run looks at the query rather than the token's quota.
+func TestClient_fetchRepository_givesUpOnAPersistentTimeout(t *testing.T) {
+	t.Parallel()
+
+	srv := newCountingServer()
+	server := httptest.NewServer(srv.handle([]scriptedResponse{{status: http.StatusOK, body: timeoutBody}}))
+	t.Cleanup(server.Close)
+
+	c, _ := newRetryTestClient(t, server.URL)
+
+	_, err := c.fetchRepository(t.Context(), "shell-scripts")
+	if !errors.Is(err, errGraphQL) {
+		t.Fatalf("fetchRepository() error = %v, want errGraphQL", err)
+	}
+	if errors.Is(err, ErrRateLimited) {
+		t.Errorf("error = %q, want it not to blame a rate limit", err)
+	}
+	if got := srv.seen(); got != maxAttempts {
+		t.Errorf("server saw %d requests, want %d", got, maxAttempts)
+	}
+}
+
 // TestClient_fetchRepository_doesNotRetryAnotherGraphQLError is the body-level
-// discriminator: only a rate limit is worth asking again for, because a
-// NOT_FOUND answers the same however many times it is asked.
+// discriminator: only a rate limit or a timeout is worth asking again for,
+// because a NOT_FOUND answers the same however many times it is asked.
 func TestClient_fetchRepository_doesNotRetryAnotherGraphQLError(t *testing.T) {
 	t.Parallel()
 
@@ -601,9 +717,19 @@ func TestClient_fetchRepository_doesNotRetryAnotherGraphQLError(t *testing.T) {
 			body: `{"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a Repository"}]}`,
 		},
 		{
-			// A mixed array is final; see graphQLRateLimited.
+			// A mixed array is final; see graphQLTransient.
 			name: "a rate limit alongside another error",
 			body: `{"errors":[{"type":"RATE_LIMITED","message":"slow down"},{"type":"FORBIDDEN","message":"no"}]}`,
+		},
+		{
+			// Waiting could let the query finish but never grant the permission.
+			name: "a timeout alongside another error",
+			body: timeoutAndForbiddenBody,
+		},
+		{
+			// No type and no timeout: nothing says asking again would help.
+			name: "a type-less error that is not a timeout",
+			body: `{"errors":[{"message":"Field 'nope' doesn't exist on type 'Repository'"}]}`,
 		},
 	}
 	for _, tc := range tests {

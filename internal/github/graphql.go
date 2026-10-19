@@ -564,7 +564,7 @@ func (c *Client) postGraphQL(ctx context.Context, query string, vars map[string]
 		return fmt.Errorf("encode graphql request: %w", err)
 	}
 
-	resp, err := c.doRetrying(ctx, http.MethodPost, c.baseURL+graphQLPath, body, graphQLRateLimited)
+	resp, err := c.doRetrying(ctx, http.MethodPost, c.baseURL+graphQLPath, body, graphQLTransient)
 	if err != nil {
 		return fmt.Errorf("%s: %w", graphQLPath, err)
 	}
@@ -593,32 +593,56 @@ func (c *Client) postGraphQL(ctx context.Context, query string, vars map[string]
 // answer will not change".
 const rateLimitedType = "RATE_LIMITED"
 
-// graphQLRateLimited reports whether a 200 body is nothing but a rate limit.
+// timeoutMessage is the part of GitHub's answer to a query that ran out of
+// execution time that names the timeout. The error carries no type, and the
+// rest of its message ("Something went wrong while executing your query.",
+// then a request id) is the same for a genuine GitHub bug, so this phrase is
+// the only thing that tells a slow query apart.
+const timeoutMessage = "This may be the result of a timeout"
+
+// errGraphQLTimeout is a query GitHub gave up executing. It is a GraphQL
+// error, so a run that fails on it reads as one, not as a spent quota.
+var errGraphQLTimeout = fmt.Errorf("%w: the query timed out", errGraphQL)
+
+// graphQLTransient returns nil when a 200 body is an answer or a final
+// failure, and the kind of transient failure it is otherwise: ErrRateLimited
+// when any entry is a rate limit, errGraphQLTimeout when every entry is an
+// execution timeout.
 //
-// The GraphQL API has no status for a primary rate limit: it answers 200 with
-// an errors array whose entries carry RATE_LIMITED, so the retry policy cannot
-// see it from the status the way it sees a 429. Every other error type is
-// final on the first response, for the same reason a bare 403 is (see
-// retryWait): NOT_FOUND and FORBIDDEN answer the same however many times they
-// are asked. An array mixing a rate limit with one of those is final too —
-// waiting could clear the limit but never the rest, so the run would spend
-// its whole budget to fail anyway.
-func graphQLRateLimited(body []byte) bool {
+// The GraphQL API has no status for either. A primary rate limit is a 200
+// with RATE_LIMITED entries, so the retry policy cannot see it from the
+// status the way it sees a 429. A query that ran too long is a 200 with a
+// type-less timeout entry, where the same slowness one layer out is a 502
+// that is already retried; failing the whole nightly run over one slow
+// repository would treat the two differently for no reason. Every other
+// error is final on the first response, for the same reason a bare 403 is
+// (see retryWait): NOT_FOUND and FORBIDDEN answer the same however many
+// times they are asked. An array mixing a transient entry with one of those
+// is final too — waiting could clear the limit or let the query finish but
+// never fix the rest, so the run would spend its whole budget to fail anyway.
+func graphQLTransient(body []byte) error {
 	var decoded struct {
 		Errors []graphQLError `json:"errors"`
 	}
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		return false
+	// A body that does not decode is not transient: it goes back to
+	// postGraphQL as it stands, which reports it as the failure it is.
+	if json.Unmarshal(body, &decoded) != nil || len(decoded.Errors) == 0 {
+		return nil //nolint:nilerr // nil means "not transient", not "no error"; postGraphQL reports the bad body
 	}
-	if len(decoded.Errors) == 0 {
-		return false
-	}
+	limited := false
 	for _, e := range decoded.Errors {
-		if e.Type != rateLimitedType {
-			return false
+		switch {
+		case e.Type == rateLimitedType:
+			limited = true
+		case e.Type == "" && strings.Contains(e.Message, timeoutMessage):
+		default:
+			return nil
 		}
 	}
-	return true
+	if limited {
+		return ErrRateLimited
+	}
+	return errGraphQLTimeout
 }
 
 // joinGraphQLErrors renders every message GitHub returned, because the first

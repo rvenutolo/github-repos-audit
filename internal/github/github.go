@@ -24,8 +24,9 @@
 // the unattended nightly refresh comes back for the answer rather than going
 // red for a reason that has nothing to do with the code. A rate limit on
 // /graphql arrives as a 200 whose body carries a RATE_LIMITED error rather
-// than as a status, so that one endpoint hands the retry loop a way to read
-// its body; the wait it earns is the same one a 429 earns.
+// than as a status, and so does a query that ran out of execution time, so
+// that one endpoint hands the retry loop a way to read its body; a rate limit
+// earns the wait a 429 earns, and a timeout the backoff a 5xx earns.
 package github
 
 import (
@@ -113,12 +114,15 @@ const retryBaseDelay = time.Second
 // and letting the next run refresh the report.
 const maxRetryWait = 2 * time.Minute
 
-// transientBody reports whether a 200 body is a transient answer rather than a
-// usable one. It is the seam GitHub's GraphQL rate limit needs: that limit is
-// reported as a 200 carrying a RATE_LIMITED error, so the status the rest of
-// the policy keys on cannot see it. A nil transientBody means every 200 is an
-// answer, which is what every REST call passes.
-type transientBody func([]byte) bool
+// transientBody reads a 200 body and returns nil when it is an answer, or the
+// kind of transient failure it is: ErrRateLimited, waited out like a 429, or
+// any other error, backed off like a 5xx and reported if the budget runs out.
+// It is the seam GitHub's GraphQL endpoint needs: a rate limit and an
+// execution timeout both arrive there as a 200 carrying an errors array, so
+// the status the rest of the policy keys on cannot see them. A nil
+// transientBody means every 200 is an answer, which is what every REST call
+// passes.
+type transientBody func([]byte) error
 
 // retryVerdict is what the retry policy made of one answer.
 type retryVerdict int
@@ -295,12 +299,13 @@ func (c *Client) doRetrying(
 			if sendErr != nil {
 				return nil, fmt.Errorf("%s %s: after %d attempts: %w", method, rawURL, attempt, sendErr)
 			}
-			// The only 200 that reaches the budget is one transient called a
-			// limit, and reporting that as an unexpected status 200 would send
-			// a reader of a failed nightly run looking for the wrong thing.
+			// The only 200 that reaches the budget is one transient called
+			// transient, so transient is set and names what kept failing;
+			// reporting it as an unexpected status 200 would send a reader of
+			// a failed nightly run looking for the wrong thing.
 			if resp.status == http.StatusOK {
 				return nil, fmt.Errorf("%s %s: %w after %d attempts: %s",
-					method, rawURL, ErrRateLimited, attempt, snippet(resp.body))
+					method, rawURL, transient(resp.body), attempt, snippet(resp.body))
 			}
 			return nil, fmt.Errorf("%s %s: %w %d after %d attempts: %s",
 				method, rawURL, ErrUnexpectedStatus, resp.status, attempt, snippet(resp.body))
@@ -381,13 +386,22 @@ func (c *Client) send(ctx context.Context, req *http.Request, body []byte) (*res
 func (c *Client) retryWait(resp *response, attempt int, transient transientBody) (time.Duration, retryVerdict) {
 	switch resp.status {
 	case http.StatusOK:
-		// A 200 is an answer unless the caller can read one that is not. The
-		// GraphQL rate limit is the only one there is, and it carries the same
-		// headers a 429 does, so it earns the same wait.
-		if transient == nil || !transient(resp.body) {
+		// A 200 is an answer unless the caller can read one that is not. A
+		// GraphQL rate limit carries the same headers a 429 does, so it earns
+		// the same wait. Anything else transient is waited out like a 5xx: it
+		// carries the X-RateLimit-Reset every answer does, and reading that as
+		// a limit would wait for, or refuse over, a quota that is not spent.
+		if transient == nil {
 			return 0, retryNone
 		}
-		return c.rateLimitWait(resp.header, attempt)
+		switch cause := transient(resp.body); {
+		case cause == nil:
+			return 0, retryNone
+		case errors.Is(cause, ErrRateLimited):
+			return c.rateLimitWait(resp.header, attempt)
+		default:
+			return c.backoff(attempt), retryBackoff
+		}
 	case http.StatusInternalServerError, http.StatusBadGateway,
 		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return c.backoff(attempt), retryBackoff
