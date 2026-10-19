@@ -202,21 +202,30 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
 ` + ciFields
 
 // The CI page sizes. ciCommitsPage is how many merged pull requests and how
-// many default-branch commits are read: three times the five the report
-// averages over, so that leaving out bot-authored pull requests, commits no
-// check ran on and commits still running normally leaves five to average.
+// many default-branch commits are read: twice the five the report averages
+// over, so that leaving out bot-authored pull requests, commits no check ran
+// on and commits still running usually leaves five to average. A repository
+// whose merges are mostly bot pull requests can come up short of five human
+// ones; the mean then averages what exists, which the README documents.
 // ciSuitesPage and ciRunsPage bound one commit's suites and each suite's runs;
 // a commit that overflows either is recorded as incomplete rather than
 // measured short. A commit carries one suite per workflow its push triggered
 // plus one per app that subscribes to checks, which can pass ten, and a page
 // too small for that would quietly make every commit incomplete.
 //
-// GitHub refuses a query whose worst case exceeds 500,000 nodes, and the
-// worst case multiplies along each path: two lists of 15 commits × 20 suites
-// × 30 runs is 18,000 nodes, far inside the limit and far above anything the
-// CI of a personal repository produces.
+// The binding constraint is not the documented 500,000-node ceiling, which
+// these pages stay far inside, but GitHub's per-query resource limit. That
+// limit depends on the data behind the nodes, not on their count: the same
+// query answers for one repository and comes back as a 200 carrying
+// RESOURCE_LIMITS_EXCEEDED for another whose commits each carry a dozen or
+// more suites, and postGraphQL treats any such error as fatal to the run.
+// So the pages are sized to the worst case measured against real accounts,
+// and the cut falls on the commit lists rather than the suite or run pages:
+// fewer commits only thins the sample, while a smaller suite page would mark
+// every commit of a many-workflow repository incomplete and leave it no
+// timing at all. Raising any of these needs that measurement repeated.
 const (
-	ciCommitsPage = "15"
+	ciCommitsPage = "10"
 	ciSuitesPage  = "20"
 	ciRunsPage    = "30"
 )
