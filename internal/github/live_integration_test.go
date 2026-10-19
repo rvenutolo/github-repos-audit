@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -362,6 +363,34 @@ func TestLive_rollupNeedsNoChecksPermission(t *testing.T) {
 	if repos[0].CIState == "" {
 		t.Errorf("%s has a null rollup on %s; the token may have lost visibility of its check runs",
 			repos[0].Name, repos[0].HeadOID)
+	}
+}
+
+// fullOID is a whole commit oid, which is what every CI entry must carry for
+// the report to name the commit it timed.
+var fullOID = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// TestLive_ciSelectionDecodes reads the check suites and runs of both
+// fixtures' recent commits. That the query is accepted at all is most of the
+// point: GitHub refuses a selection whose worst-case node count is too large,
+// and a field renamed or withdrawn from the token's reach fails the whole
+// query. Beyond that only shape is asserted, never timings or a count of
+// commits, since what has run on the fixtures lately is not this suite's to
+// decide.
+func TestLive_ciSelectionDecodes(t *testing.T) {
+	t.Parallel()
+
+	c, lt := liveClient(t)
+	repos, err := c.Collect(t.Context(), []string{lt.publicRepo, lt.privateRepo})
+	if err != nil {
+		t.Fatalf("Collect() error = %v, want nil", err)
+	}
+	for _, r := range repos {
+		for i, commit := range slices.Concat(r.CI.PullRequests, r.CI.DefaultBranch) {
+			if !fullOID.MatchString(commit.OID) {
+				t.Errorf("%s CI entry %d has oid %q, want forty hex characters", r.Name, i, commit.OID)
+			}
+		}
 	}
 }
 

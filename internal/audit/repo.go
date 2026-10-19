@@ -111,6 +111,9 @@ type Repo struct {
 	// FAILURE, PENDING, ERROR or EXPECTED. Empty when the rollup was null,
 	// which means no check has run on that commit.
 	CIState string `json:"ci_state,omitzero"`
+	// CI is the timing of the repository's recent CI, commit by commit. Zero
+	// for a repository with no merged pull requests and no commits.
+	CI CI `json:"ci,omitzero"`
 	// Releases summarises the repository's releases.
 	Releases Releases `json:"releases"`
 	// Rulesets is every ruleset defined on the repository.
@@ -213,6 +216,62 @@ type Files struct {
 	PRTemplate string `json:"pr_template,omitzero"`
 	// ClaudeMD is the Claude Code memory file.
 	ClaudeMD string `json:"claude_md,omitzero"`
+}
+
+// CI is the timing of a repository's recent CI, as recorded per commit. It
+// carries no means and makes no selection: which commits a figure is taken
+// over, and what an incomplete or bot-authored one contributes, is
+// internal/rules' decision. Both lists are longer than any sample the report
+// takes, so a decision that skips some entries still has enough left.
+type CI struct {
+	// PullRequests is the head commit of each of the latest merged pull requests,
+	// in the order GitHub listed them (most recently updated first). That is
+	// not merge order, which is why each entry carries MergedAt.
+	PullRequests []CICommit `json:"pull_requests,omitzero"`
+	// DefaultBranch is the most recent default-branch commits, newest first,
+	// whether or not any check ran on them. Empty for an empty repository.
+	DefaultBranch []CICommit `json:"default_branch,omitzero"`
+}
+
+// CICommit is one commit's checks, reduced to timestamp arithmetic. A check
+// suite with no check runs is not counted at all: an app that subscribes to
+// checks but never posts one leaves a suite queued forever, and counting it
+// would hold every commit open.
+type CICommit struct {
+	// OID is the commit, all forty characters.
+	OID string `json:"oid"`
+	// PRNumber is the pull request this commit was the head of. Zero for a
+	// default-branch entry.
+	PRNumber int `json:"pr_number,omitzero"`
+	// MergedAt is when that pull request merged, in UTC. Zero for a
+	// default-branch entry.
+	MergedAt time.Time `json:"merged_at,omitzero"`
+	// AuthorBot is whether the pull request's author is a GitHub App's bot
+	// account. False for a default-branch entry and for a deleted author.
+	AuthorBot bool `json:"author_bot,omitzero"`
+	// Complete is whether the commit's checks are a finished whole: at least
+	// one counted check run, every counted run COMPLETED, and no suite or run
+	// list cut short by the query's page size. A truncated list might hide
+	// the run that finished last, so it is never read as complete.
+	Complete bool `json:"complete"`
+	// WaitSeconds is the latest completion over the counted runs minus the
+	// earliest creation over the counted suites: how long a push waited for
+	// every check, queue time included and parallel workflows counted once.
+	// Zero unless Complete.
+	WaitSeconds int64 `json:"wait_seconds,omitzero"`
+	// Jobs is every counted run that completed with both timestamps, in the
+	// order GitHub listed them.
+	Jobs []CIJob `json:"jobs,omitzero"`
+}
+
+// CIJob is one check run's duration.
+type CIJob struct {
+	// Label is "<workflow> / <run>" for a GitHub Actions run and
+	// "<app> / <run>" for any other app's.
+	Label string `json:"label"`
+	// Seconds is the run's completion minus its start: time on a runner, not
+	// time queued for one.
+	Seconds int64 `json:"seconds"`
 }
 
 // Releases summarises a repository's releases.

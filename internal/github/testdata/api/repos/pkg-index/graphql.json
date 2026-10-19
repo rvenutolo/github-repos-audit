@@ -12,6 +12,9 @@
       "open_pull_requests": {
         "total_count": 0
       },
+      "merged_pull_requests": {
+        "nodes": []
+      },
       "branches": {
         "total_count": 1
       },
@@ -49,6 +52,9 @@
                 }
               }
             ]
+          },
+          "recent_commits": {
+            "nodes": []
           }
         }
       },

@@ -72,6 +72,44 @@ func wantShellScripts(t *testing.T) audit.Repo {
 			},
 		},
 		CIState: "SUCCESS",
+		// Every shape the CI fixtures carry, recorded as it is: the empty
+		// Renovate suite is not counted, so the first pull request's wait
+		// starts at the Actions suite; the bot's pull request is marked, not dropped; and a run
+		// still going, a commit no check ran on and a truncated run list are
+		// each recorded as incomplete, with whatever finished runs they have.
+		CI: audit.CI{
+			PullRequests: []audit.CICommit{
+				{
+					OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c01", PRNumber: 12, MergedAt: at(t, "2025-09-04T18:00:00Z"),
+					Complete: true, WaitSeconds: 405,
+					Jobs: []audit.CIJob{
+						{Label: "ci / check", Seconds: 240},
+						{Label: "ci / test", Seconds: 360},
+						{Label: "Codecov / codecov/patch", Seconds: 5},
+					},
+				},
+				{
+					OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c02", PRNumber: 11, MergedAt: at(t, "2025-09-03T12:00:00Z"),
+					AuthorBot: true, Complete: true, WaitSeconds: 190,
+					Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 180}},
+				},
+				{
+					OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c03", PRNumber: 10, MergedAt: at(t, "2025-09-02T12:00:00Z"),
+					Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}},
+				},
+			},
+			DefaultBranch: []audit.CICommit{
+				{
+					OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c", Complete: true, WaitSeconds: 255,
+					Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 240}},
+				},
+				{OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c04"},
+				{
+					OID:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c05",
+					Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 60}},
+				},
+			},
+		},
 		Rulesets: []audit.Ruleset{
 			{
 				Name:        "ruleset-01",
@@ -158,6 +196,17 @@ func wantWebApp(t *testing.T) audit.Repo {
 			{Name: "Patrick Example", Email: "patrick@example.org"},
 		},
 		Files: audit.Files{RenovateConfig: "renovate.json", Workflows: []string{"workflow-33.yml"}},
+		CI: audit.CI{
+			PullRequests: []audit.CICommit{{
+				OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11", PRNumber: 3, MergedAt: at(t, "2025-09-01T09:00:00Z"),
+				Complete: true, WaitSeconds: 150,
+				Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}},
+			}},
+			DefaultBranch: []audit.CICommit{{
+				OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014", Complete: true, WaitSeconds: 140,
+				Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}},
+			}},
+		},
 		// Inherited from the in-account preset; config:best-practices is a
 		// built-in, which sets nothing this tool can read.
 		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store"},
