@@ -250,7 +250,9 @@ type CICommit struct {
 	AuthorBot bool `json:"author_bot,omitzero"`
 	// Complete is whether the commit's runs are a finished whole: at least
 	// one workflow run, every run and every job completed with a known
-	// completion time, and no jobs list cut short by its page size. A
+	// completion time, no jobs list cut short by its page size, and at least
+	// one job finished. A run that ended without starting a job (a startup
+	// failure) leaves no completion to end the wait at. A
 	// truncated list might hide the job that finished last, so it is never
 	// read as complete.
 	Complete bool `json:"complete"`

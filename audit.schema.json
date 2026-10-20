@@ -568,7 +568,7 @@
           "const": true
         },
         "complete": {
-          "description": "At least one workflow run, every run and every job completed with a known completion time, and no jobs list cut short by its page size.",
+          "description": "At least one workflow run, every run and every job completed with a known completion time, no jobs list cut short by its page size, and at least one job finished.",
           "type": "boolean"
         },
         "wait_seconds": {
