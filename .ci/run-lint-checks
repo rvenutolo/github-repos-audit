@@ -183,12 +183,12 @@ function main() {
   # dir and scan that.
   local scan_dir
   scan_dir="$(mktemp --directory)"
-  # Double-quoted outside, single inside, so the path is baked in at install
-  # time: scan_dir is local to main, and on every exit path the shell's EXIT
+  # Expanded now, %q-quoted, so the path is baked in safely whatever TMPDIR
+  # holds: scan_dir is local to main, and on every exit path the shell's EXIT
   # trap fires only after main's locals are gone, so a deferred expansion
   # would evaluate empty and silently no-op instead of cleaning up.
   # shellcheck disable=SC2064 # expand now (into the literal path), not later
-  trap "rm --recursive --force -- '${scan_dir}'" EXIT
+  trap "rm --recursive --force -- $(printf '%q' "${scan_dir}")" EXIT
   ci::log "gitleaks paths below are relative to ${scan_dir}"
   if git ls-files -z | xargs --null --no-run-if-empty --max-args=500 cp --parents --target-directory="${scan_dir}"; then
     gitleaks dir "${scan_dir}" --redact --no-banner || rc=1
