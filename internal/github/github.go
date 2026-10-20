@@ -261,10 +261,11 @@ func (c *Client) do(ctx context.Context, method, rawURL string, body []byte) (*r
 }
 
 // doRetrying is do with one addition: transient, when it is not nil, decides
-// whether a 200 is an answer or a limit to wait out. It is one loop rather
-// than a second one at the caller because the budget and the backoff are the
-// policy, and a caller looping over a call that already retries would quietly
-// multiply both.
+// whether a 200 is an answer, a rate limit to wait out, or another transient
+// failure (a GraphQL execution timeout) to back off from. It is one loop
+// rather than a second one at the caller because the budget and the backoff
+// are the policy, and a caller looping over a call that already retries would
+// quietly multiply both.
 func (c *Client) doRetrying(
 	ctx context.Context, method, rawURL string, body []byte, transient transientBody,
 ) (*response, error) {

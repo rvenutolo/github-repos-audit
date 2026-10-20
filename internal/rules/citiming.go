@@ -18,11 +18,11 @@ const ciSampleSize = 5
 // least one sampled commit, the slowest pull request mean first.
 //
 // The pull request sample is the latest ciSampleSize merged pull requests
-// whose head commit finished its checks and was not opened by a bot. A bot's
-// pull request (a dependency bump) runs a different, usually narrower set of
-// checks than the work a person waits on, so counting it would make a
+// whose head commit finished its workflow runs and was not opened by a bot. A
+// bot's pull request (a dependency bump) runs a different, usually narrower
+// set of jobs than the work a person waits on, so counting it would make a
 // repository look faster than it feels. The main sample is the newest
-// ciSampleSize default-branch commits that finished. A commit whose checks are
+// ciSampleSize default-branch commits that finished. A commit whose jobs are
 // still running or were cut short has no honest duration, so it is skipped
 // rather than counted short.
 //
@@ -32,9 +32,9 @@ const ciSampleSize = 5
 //
 // The slowest job is chosen from the jobs of the sampled commits only, so it
 // describes the same runs the means do. A job that ran for zero seconds was
-// skipped (the collector floors a skipped run's negative duration at zero),
+// skipped (the collector floors a skipped job's negative duration at zero),
 // and averaging it in would make a job that is sometimes skipped read faster
-// than it runs; such runs are left out of that job's mean.
+// than it runs; such jobs are left out of that job's mean.
 func ciTimingLines(repos []RepoReport) []CITimingLine {
 	var out []CITimingLine
 	for _, r := range repos {

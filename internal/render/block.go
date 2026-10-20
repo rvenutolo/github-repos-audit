@@ -290,7 +290,7 @@ func activitySection(rep *rules.Report, at time.Time) string {
 // ciTimingSection renders rep.CITiming in the order the rules package gave it,
 // and is omitted when no repository has a sampled commit. A column with no
 // sample is n/a rather than 0s: a zero would read as a repository whose CI is
-// instant. The slowest job's label comes from workflow and check names, which
+// instant. The slowest job's label comes from workflow and job names, which
 // the repository's owner chose, so it is escaped like any free-text cell.
 func ciTimingSection(rep *rules.Report) string {
 	if len(rep.CITiming) == 0 {
