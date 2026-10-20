@@ -29,14 +29,19 @@ source "${REPO_DIR}/.ci/lib.sh"
 # @arg $2 log file each call is appended to
 function write_stub() {
   local -r dir="$1" log="$2"
+  # The stub bakes paths in as it is written; %q keeps one holding a quote
+  # (a TMPDIR with a ') from breaking the stub.
+  local q_dir q_log
+  q_dir="$(printf '%q' "${dir}")"
+  q_log="$(printf '%q' "${log}")"
   cat > "${dir}/gh" << STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >> '${log}'
+printf '%s\n' "\$*" >> ${q_log}
 case "\$*" in
   'api repos/gh-owner/report --jq .default_branch') echo main ;;
   'api repos/gh-owner/report/git/ref/heads/main --jq .object.sha') echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001 ;;
   'api repos/gh-owner/report/git/ref/heads/build/gremlins-0.6.0') exit 1 ;;
-  pr\ create*) if [[ -f '${dir}/create-output' ]]; then cat '${dir}/create-output'; fi ;;
+  pr\ create*) if [[ -f ${q_dir}/create-output ]]; then cat ${q_dir}/create-output; fi ;;
   *) : ;;
 esac
 STUB

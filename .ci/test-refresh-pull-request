@@ -46,10 +46,15 @@ readonly COMMIT='c0ffeec0ffeec0ffeec0ffeec0ffeec0ffee0001'
 # @arg $2 log file each call is appended to
 function write_stub() {
   local -r dir="$1" log="$2"
+  # The stub bakes paths in as it is written; %q keeps one holding a quote
+  # (a TMPDIR with a ') from breaking the stub.
+  local q_dir q_log
+  q_dir="$(printf '%q' "${dir}")"
+  q_log="$(printf '%q' "${log}")"
   printf '[]\n' > "${dir}/pr-list.json"
   cat > "${dir}/gh" << STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >> '${log}'
+printf '%s\n' "\$*" >> ${q_log}
 case "\$*" in
   'api repos/gh-owner/report --jq .default_branch') echo main ;;
   'api repos/gh-owner/report/git/ref/heads/main --jq .object.sha') echo '${BASE}' ;;
@@ -58,15 +63,15 @@ case "\$*" in
   api\ graphql*)
     for arg in "\$@"; do
       if [[ "\${arg}" == [a-z]*=@* ]]; then
-        cp -- "\${arg#*=@}" '${dir}/field-'"\${arg%%=@*}"
-        printf '%s\n' "\${arg#*=@}" > '${dir}/field-'"\${arg%%=@*}.path"
+        cp -- "\${arg#*=@}" ${q_dir}/field-"\${arg%%=@*}"
+        printf '%s\n' "\${arg#*=@}" > ${q_dir}/field-"\${arg%%=@*}.path"
       fi
     done
-    if [[ -f '${dir}/graphql-fails' ]]; then exit 1; fi
-    if [[ -f '${dir}/commit-oid' ]]; then cat '${dir}/commit-oid'; else echo '${COMMIT}'; fi
+    if [[ -f ${q_dir}/graphql-fails ]]; then exit 1; fi
+    if [[ -f ${q_dir}/commit-oid ]]; then cat ${q_dir}/commit-oid; else echo '${COMMIT}'; fi
     ;;
-  pr\ list*) jq --raw-output "\${!#}" '${dir}/pr-list.json' ;;
-  pr\ create*) if [[ -f '${dir}/create-output' ]]; then cat '${dir}/create-output'; fi ;;
+  pr\ list*) jq --raw-output "\${!#}" ${q_dir}/pr-list.json ;;
+  pr\ create*) if [[ -f ${q_dir}/create-output ]]; then cat ${q_dir}/create-output; fi ;;
   *) : ;;
 esac
 STUB

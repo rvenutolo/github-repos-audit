@@ -186,6 +186,10 @@ function write_dist() {
 # @arg $1 dir directory to put the stand-ins and their files in
 function write_stubs() {
   local -r dir="$1"
+  # The stub bakes paths in as it is written; %q keeps one holding a quote
+  # (a TMPDIR with a ') from breaking the stub.
+  local q_dir
+  q_dir="$(printf '%q' "${dir}")"
   mkdir --parents "${dir}/bin"
   : > "${dir}/calls.log"
   : > "${dir}/cosign.log"
@@ -197,14 +201,14 @@ function write_stubs() {
   printf '{"assets":[%s]}\n' "${assets}" > "${dir}/assets.json"
   cat > "${dir}/bin/gh" << STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >> '${dir}/calls.log'
+printf '%s\n' "\$*" >> ${q_dir}/calls.log
 case "\$*" in
   '${READ_STATE}')
-    if [[ ! -e '${dir}/release-state' || (-e '${dir}/deleted' && ! -e '${dir}/draft-sticks') ]]; then
+    if [[ ! -e ${q_dir}/release-state || (-e ${q_dir}/deleted && ! -e ${q_dir}/draft-sticks) ]]; then
       echo 'release not found' >&2
       exit 1
     fi
-    case "\$(< '${dir}/release-state')" in
+    case "\$(< ${q_dir}/release-state)" in
       draft) echo true ;;
       published) echo false ;;
       *)
@@ -214,31 +218,31 @@ case "\$*" in
     esac
     ;;
   '${READ_HEAD}')
-    if [[ ! -e '${dir}/default-head' ]]; then
-      git -C '${dir}/..' rev-parse --verify --quiet refs/heads/main
-    elif [[ "\$(< '${dir}/default-head')" == 'unreachable' ]]; then
+    if [[ ! -e ${q_dir}/default-head ]]; then
+      git -C ${q_dir}/.. rev-parse --verify --quiet refs/heads/main
+    elif [[ "\$(< ${q_dir}/default-head)" == 'unreachable' ]]; then
       echo 'gh: Bad Gateway (HTTP 502)' >&2
       exit 1
     else
-      cat '${dir}/default-head'
+      cat ${q_dir}/default-head
     fi
     ;;
   '${WRITE_DELETE}')
-    if [[ -e '${dir}/delete-fails' ]]; then
+    if [[ -e ${q_dir}/delete-fails ]]; then
       echo 'gh: Bad Gateway (HTTP 502)' >&2
       exit 1
     fi
-    : > '${dir}/deleted'
+    : > ${q_dir}/deleted
     ;;
   'release create ${VERSION} --repo gh-owner/tool --draft '*)
-    if [[ -e '${dir}/create-fails' ]]; then
+    if [[ -e ${q_dir}/create-fails ]]; then
       echo 'gh: Bad Gateway (HTTP 502)' >&2
       exit 1
     fi
     # The notes are a file, gone once the script exits; keep what it held.
     while ((\$# > 1)); do
       if [[ "\$1" == '--notes-file' ]]; then
-        cat -- "\$2" > '${dir}/notes.md'
+        cat -- "\$2" > ${q_dir}/notes.md
       fi
       shift
     done
@@ -246,29 +250,29 @@ case "\$*" in
   'release view ${VERSION} --repo gh-owner/tool --json assets --jq '*)
     # The script's own filter, the last argument, is run over the answer,
     # so which assets it counts is the script's doing and not the stub's.
-    jq --raw-output "\${!#}" '${dir}/assets.json'
+    jq --raw-output "\${!#}" ${q_dir}/assets.json
     ;;
-  '${WRITE_EDIT}') : > '${dir}/published' ;;
+  '${WRITE_EDIT}') : > ${q_dir}/published ;;
   '${READ_TAG}')
-    if [[ -e '${dir}/remote-tag' ]]; then
-      if [[ "\$(< '${dir}/remote-tag')" == 'unreachable' ]]; then
+    if [[ -e ${q_dir}/remote-tag ]]; then
+      if [[ "\$(< ${q_dir}/remote-tag)" == 'unreachable' ]]; then
         echo 'gh: Bad Gateway (HTTP 502)' >&2
         exit 1
       fi
-      cat '${dir}/remote-tag'
+      cat ${q_dir}/remote-tag
       exit 0
     fi
     misses=0
-    if [[ -e '${dir}/published' ]]; then
-      echo read >> '${dir}/tag-reads'
-      if [[ -e '${dir}/tag-misses' ]]; then
-        misses="\$(< '${dir}/tag-misses')"
+    if [[ -e ${q_dir}/published ]]; then
+      echo read >> ${q_dir}/tag-reads
+      if [[ -e ${q_dir}/tag-misses ]]; then
+        misses="\$(< ${q_dir}/tag-misses)"
       fi
     fi
-    if [[ -e '${dir}/published' && -e '${dir}/tag-sha' ]] \\
-      && ((\$(wc --lines < '${dir}/tag-reads') > misses)); then
-      cat '${dir}/tag-sha'
-    elif [[ -e '${dir}/published' && -e '${dir}/tag-miss-status' ]]; then
+    if [[ -e ${q_dir}/published && -e ${q_dir}/tag-sha ]] \\
+      && ((\$(wc --lines < ${q_dir}/tag-reads) > misses)); then
+      cat ${q_dir}/tag-sha
+    elif [[ -e ${q_dir}/published && -e ${q_dir}/tag-miss-status ]]; then
       echo 'gh: Bad Gateway (HTTP 502)' >&2
       exit 1
     else
@@ -286,11 +290,11 @@ esac
 STUB
   cat > "${dir}/bin/cosign" << STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >> '${dir}/cosign.log'
+printf '%s\n' "\$*" >> ${q_dir}/cosign.log
 case "\$1" in
   sign-blob) ;;
   verify-blob)
-    if [[ -e '${dir}/verify-fails' ]]; then
+    if [[ -e ${q_dir}/verify-fails ]]; then
       echo 'Error: stub cosign: none of the expected identities matched' >&2
       exit 1
     fi
@@ -302,7 +306,7 @@ case "\$1" in
     ;;
 esac
 while ((\$# > 1)); do
-  if [[ "\$1" == '--bundle' && ! -e '${dir}/cosign-writes-nothing' ]]; then
+  if [[ "\$1" == '--bundle' && ! -e ${q_dir}/cosign-writes-nothing ]]; then
     printf 'STUB_BUNDLE\n' > "\$2"
   fi
   shift
@@ -310,7 +314,7 @@ done
 STUB
   cat > "${dir}/bin/sleep" << STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >> '${dir}/sleep.log'
+printf '%s\n' "\$*" >> ${q_dir}/sleep.log
 STUB
   : > "${dir}/sleep.log"
   chmod +x "${dir}/bin/gh" "${dir}/bin/cosign" "${dir}/bin/sleep"

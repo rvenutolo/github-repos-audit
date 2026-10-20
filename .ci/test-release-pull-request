@@ -126,47 +126,51 @@ function make_repo() {
 # @arg $1 dir directory to put the stub and its files in
 function write_stub() {
   local -r dir="$1"
+  # The stub bakes paths in as it is written; %q keeps one holding a quote
+  # (a TMPDIR with a ') from breaking the stub.
+  local q_dir
+  q_dir="$(printf '%q' "${dir}")"
   mkdir --parents "${dir}/bin"
   : > "${dir}/calls.log"
   printf '[]\n' > "${dir}/pr-list.json"
   cat > "${dir}/bin/gh" << STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >> '${dir}/calls.log'
+printf '%s\n' "\$*" >> ${q_dir}/calls.log
 case "\$*" in
   'api repos/gh-owner/report --jq .default_branch') echo main ;;
   'api repos/gh-owner/report/git/ref/heads/main --jq .object.sha')
-    if [[ -f '${dir}/main-sha' ]]; then
-      cat '${dir}/main-sha'
+    if [[ -f ${q_dir}/main-sha ]]; then
+      cat ${q_dir}/main-sha
     else
       git rev-parse HEAD
     fi
     ;;
-  'api repos/gh-owner/report/git/ref/heads/chore/release') [[ -e '${dir}/branch-exists' ]] ;;
-  'api repos/gh-owner/report/git/ref/heads/chore/release-staging') [[ -e '${dir}/staging-exists' ]] ;;
+  'api repos/gh-owner/report/git/ref/heads/chore/release') [[ -e ${q_dir}/branch-exists ]] ;;
+  'api repos/gh-owner/report/git/ref/heads/chore/release-staging') [[ -e ${q_dir}/staging-exists ]] ;;
   'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq '*)
     # The script's own filter, the last argument, is run over the list, so
     # which pull request it picks is the script's doing and not the stub's.
-    jq --raw-output "\${!#}" '${dir}/pr-list.json'
+    jq --raw-output "\${!#}" ${q_dir}/pr-list.json
     ;;
-  'pr view ${PR} --repo gh-owner/report --json title --jq .title') cat '${dir}/pr-title' ;;
+  'pr view ${PR} --repo gh-owner/report --json title --jq .title') cat ${q_dir}/pr-title ;;
   'api --method PATCH '* | 'api --method POST '* | 'api --method DELETE '*) : ;;
   'api graphql '*)
     # The changelog is handed over as a file to read, as gh's own
     # \`--field name=@file\` takes it; keep what the file held.
     for arg in "\$@"; do
       if [[ "\${arg}" == 'changelog=@'* ]]; then
-        cat -- "\${arg#changelog=@}" > '${dir}/changelog.b64'
+        cat -- "\${arg#changelog=@}" > ${q_dir}/changelog.b64
       fi
     done
-    if [[ -f '${dir}/commit-oid' ]]; then
-      cat '${dir}/commit-oid'
+    if [[ -f ${q_dir}/commit-oid ]]; then
+      cat ${q_dir}/commit-oid
     else
       echo '${COMMIT}'
     fi
     ;;
   'pr edit '* | 'pr create '*)
     # The body is a file too, gone once the script exits.
-    cat -- "\${!#}" > '${dir}/body.md'
+    cat -- "\${!#}" > ${q_dir}/body.md
     ;;
   *)
     printf 'stub gh: unexpected call: %s\n' "\$*" >&2
