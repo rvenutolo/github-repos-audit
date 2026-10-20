@@ -4,6 +4,13 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v4.0.5
+
+### Fixes
+
+- drop the Nix store cache and fix the Go cache
+- build with Go 1.26.9 for standard-library security fixes
+
 ## v4.0.4
 
 ### Fixes
