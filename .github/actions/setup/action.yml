@@ -1,30 +1,38 @@
 name: setup
 # Caller must run harden-runner and actions/checkout before this composite: a
 # local action cannot perform its own initial checkout.
-description: Install Nix, restore the Nix store cache and restore the Go caches.
+description: Install Nix and restore the Go caches.
 runs:
   using: composite
   steps:
+    # No Nix store cache. `nix develop` substitutes the devShell from
+    # cache.nixos.org on first use, fetching paths in parallel, and that is
+    # faster than restoring a store archive: such an archive holds the whole
+    # closure, plus every path a restore-by-prefix carries forward from older
+    # lock files, and unpacking it is slower than the substitution it would
+    # replace.
     - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
-    - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
-      with:
-        primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
-        restore-prefixes-first-match: nix-${{ runner.os }}-
     # .ci/in-devshell keeps HOME but no GO* variables, so the module cache
     # resolves under ~/go, and the build cache where flake.nix's shellHook
     # puts it: one directory per toolchain under
-    # ~/.cache/github-repos-audit/go-build. cache-nix-action covers the Nix
-    # store and not those, so they are cached here or every run re-downloads
-    # the module graph and recompiles the standard library.
+    # ~/.cache/github-repos-audit/go-build. Without them every run
+    # re-downloads the module graph and recompiles the standard library.
     #
-    # flake.lock is in the key AND in the restore prefix because it is what
-    # selects the toolchain. A build cache restored across a lock change
-    # holds only directories no toolchain in the new lock reads, and each
-    # save would carry them forward.
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    # Restore only. The one save is ci.yml's, after a passing gate on main,
+    # because a save from any job that builds nothing records an empty cache,
+    # and actions/cache never overwrites a key that exists. That save keys on
+    # the run id, so the newest entry for this go.sum wins, then the newest
+    # for this flake.lock. The paths must match ci.yml's save step.
+    #
+    # flake.lock is in the prefix because it is what selects the toolchain. A
+    # build cache restored across a lock change holds only directories no
+    # toolchain in the new lock reads, and each save would carry them forward.
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/go/pkg/mod
           ~/.cache/github-repos-audit/go-build
-        key: go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('go.sum') }}
-        restore-keys: go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-
+        key: go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+        restore-keys: |
+          go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('go.sum') }}-
+          go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-

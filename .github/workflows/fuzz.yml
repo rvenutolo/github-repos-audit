@@ -75,10 +75,10 @@ jobs:
       # The generated corpus lives at $GOCACHE/fuzz. GOCACHE is a directory
       # per toolchain, but flake.nix's shellHook links every one's fuzz
       # directory to the single path cached here, so the corpus outlives a
-      # toolchain change. The setup action's Go cache covers this path too,
-      # but it is keyed on flake.lock and go.sum, so while both are unchanged
-      # it is an exact hit and never saves; without this pair the corpus
-      # would reset to the seeds every run. restore/save rather than
+      # toolchain change. The setup action restores this path too, but only
+      # ci.yml's gate saves those caches, so this job's corpus would never be
+      # kept; without this pair it would reset to the seeds every run.
+      # restore/save rather than
       # actions/cache, because the latter skips its save when the job fails,
       # which is exactly the run whose corpus is worth keeping.
       - name: Restore the fuzz corpus

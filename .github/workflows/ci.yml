@@ -90,6 +90,22 @@ jobs:
         # read. lychee needs no token either; see the lychee comment in
         # .ci/run-lint-checks.
         run: ./.ci/in-devshell ./run-all-checks
+      # The only save of the Go caches the setup action restores; see its
+      # comment for why no other job saves. Never from a pull request: main's
+      # newest entry is what every pull request restores, and one saved from a
+      # PR ref would be visible to that PR alone. After a passing gate only,
+      # so the cache holds a complete build. The run id makes every save a
+      # new entry, and GitHub evicts the entries used longest ago when the
+      # repository's cache quota is full. The paths must match the setup
+      # action's restore step.
+      - name: Save the Go caches
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/github-repos-audit/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
       # Reporting only: .ci/check-coverage inside the gate is the source of
       # truth, and Codecov adds history and a per-line PR view on top of it.
       # This sits outside run-all-checks because that is what a contributor
