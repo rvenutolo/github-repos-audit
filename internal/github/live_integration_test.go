@@ -370,13 +370,16 @@ func TestLive_rollupNeedsNoChecksPermission(t *testing.T) {
 // audit.json to identify the commit it timed.
 var fullOID = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-// TestLive_ciSelectionDecodes reads the workflow runs and jobs of both
-// fixtures' recent commits. That the Actions endpoints answer the token at all
-// is most of the point: a token without Actions (read) is refused there, and a
-// field renamed or withdrawn fails the decode. Beyond that only shape is
-// asserted, never timings or a count of commits, since what has run on the
-// fixtures lately is not this suite's to decide.
-func TestLive_ciSelectionDecodes(t *testing.T) {
+// TestLive_ciTimingDecodes reads the workflow runs and jobs of both fixtures'
+// recent commits. That the Actions endpoints answer the token at all is most
+// of the point: a token without Actions (read) is refused there, and a field
+// renamed or withdrawn fails the decode. Each fixture must also yield at least
+// one complete default-branch commit with a timed job, because an empty CI
+// section would pass every shape check while the token reads nothing: each
+// fixture keeps a push workflow whose run on its default branch's head is that
+// commit. Timings and the number of commits are never asserted, since what
+// else has run on the fixtures lately is not this suite's to decide.
+func TestLive_ciTimingDecodes(t *testing.T) {
 	t.Parallel()
 
 	c, lt := liveClient(t)
@@ -389,6 +392,11 @@ func TestLive_ciSelectionDecodes(t *testing.T) {
 			if !fullOID.MatchString(commit.OID) {
 				t.Errorf("%s CI entry %d has oid %q, want forty hex characters", r.Name, i, commit.OID)
 			}
+		}
+		if !slices.ContainsFunc(r.CI.DefaultBranch, func(e audit.CICommit) bool {
+			return e.Complete && len(e.Jobs) > 0
+		}) {
+			t.Errorf("%s has no complete default-branch commit with a timed job, want at least one", r.Name)
 		}
 	}
 }

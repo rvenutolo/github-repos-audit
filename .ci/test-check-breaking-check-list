@@ -106,6 +106,10 @@ function expect_with_failing_git() {
   local -r repo="$1" base="$2" broken="$3" want="$4" needle="$5" name="$6"
   local real bin
   real="$(command -v git)"
+  # The stub bakes paths in as it is written; %q keeps one holding a quote
+  # (a TMPDIR with a ') from breaking the stub.
+  local q_real
+  q_real="$(printf '%q' "${real}")"
   bin="$(mktemp --directory --tmpdir="${work}")"
   cat > "${bin}/git" << STUB
 #!/usr/bin/env bash
@@ -113,7 +117,7 @@ if [[ " \$* " == *' ls-tree '* && " \$* " == *' ${broken} '* ]]; then
   echo 'fatal: stub git: cannot read the tree' >&2
   exit 128
 fi
-exec '${real}' "\$@"
+exec ${q_real} "\$@"
 STUB
   chmod +x "${bin}/git"
   PATH="${bin}:${PATH}" expect_run "${repo}" "${want}" "${needle}" "${name}" --range "${base}..HEAD"
