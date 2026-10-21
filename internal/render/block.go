@@ -327,12 +327,14 @@ func repoListSection[T any](title string, lists []rules.RepoList[T], item func(T
 // pathItem renders a file path, or a "<workflow file> / <job id>" pair, as
 // inline code. An "unreadable <path>" entry keeps its word outside the code
 // span, so it reads as what was found about the path rather than as part of
-// it.
+// it. A file name is the owner's choice and may hold a line break, which
+// would end the bullet, so the value is put on one line as cacheItem's key
+// is.
 func pathItem(s string) string {
 	if path, ok := strings.CutPrefix(s, "unreadable "); ok {
-		return "unreadable " + code(path)
+		return "unreadable " + code(oneLine(path))
 	}
-	return code(s)
+	return code(oneLine(s))
 }
 
 // cacheItem renders a cache entry as `key` (size, ref), the key as inline
@@ -358,7 +360,9 @@ func listText(s string) string {
 	).Replace(oneLine(s))
 }
 
-// oneLine replaces each line break in s with a space.
+// oneLine replaces each line break in s with a space, a CRLF pair counting
+// as one break. Table cells (escape) and list items share it, so the two
+// cannot disagree on what a line break is.
 func oneLine(s string) string {
 	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
 }

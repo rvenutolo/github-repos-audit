@@ -352,6 +352,47 @@ func TestBlock_escapesAPipeInADescription(t *testing.T) {
 	}
 }
 
+// TestBlock_lineBreaksInADescription: a line break would end the table row,
+// so each becomes one space, a CRLF pair included, the same rule the lists
+// under the tables follow.
+func TestBlock_lineBreaksInADescription(t *testing.T) {
+	t.Parallel()
+
+	r := baseRepo("alpha", "tools")
+	r.Description = "one\r\ntwo\nthree\rfour"
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if !strings.Contains(got, "one two three four") {
+		t.Errorf("want each line break as one space in:\n%s", got)
+	}
+}
+
+// TestBlock_listPathsAreOneLine: a workflow file name is the owner's
+// choice and may hold a line break, which would end the bullet, so a path
+// in the lists under a table is put on one line, unreadable or not.
+func TestBlock_listPathsAreOneLine(t *testing.T) {
+	t.Parallel()
+
+	rep := &rules.Report{
+		Owner: "gh-owner", Repos: []rules.RepoReport{{Repo: audit.Repo{Name: "alpha"}}},
+		CancelMissing: []rules.RepoList[string]{{Repo: "alpha", Items: []string{
+			".github/workflows/a\nb.yml", "unreadable .github/workflows/c\r\nd.yml",
+		}}},
+	}
+	got, err := render.Block(rep, clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	want := "- **alpha** — `.github/workflows/a b.yml`, unreadable `.github/workflows/c d.yml`\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("Block() lacks %q:\n%s", want, got)
+	}
+}
+
 // TestBlock_naCellCarryingAScalar is the "an n/a cell still shows a value it
 // has" decision, seen from the renderer's side.
 func TestBlock_naCellCarryingAScalar(t *testing.T) {
