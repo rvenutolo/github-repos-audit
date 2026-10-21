@@ -115,6 +115,18 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 - **github-repos-audit** — `workflow-02.yml / lint`
 
+### Unrecognised caches
+
+- **github-repos-audit** — `custom-1e2f` (2 MB), `custom-5c6d` (3 MB)
+
+### Action-owned caches
+
+- **github-repos-audit** — `trivy-3a4b` (61 MB)
+
+### Pull-request caches
+
+- **mixedCase-flake** — 1 cache · 900 B
+
 ## Policy
 
 | Repository                                                           | Direct push | Signed | Identity  | CI workflows | Required checks | Tag ruleset  | Secret scanning | Vuln. reporting |

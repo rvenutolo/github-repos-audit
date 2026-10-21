@@ -264,7 +264,9 @@ func fullSnapshot() *audit.Snapshot {
 		},
 	}
 	// Its Nix cache has outgrown the ceiling, and the newest of its Go caches
-	// is empty, whatever the older one holds.
+	// is empty, whatever the older one holds. Beside them sit an action's
+	// own cache and two caches under a key no check covers, one saved from a
+	// pull request, which the cache lists show unjudged.
 	tools.Files.GoMod = true
 	tools.CI.LastDefaultBranchRun = at(2026, time.September, 5)
 	tools.Storage = audit.ActionsStorage{
@@ -272,8 +274,11 @@ func fullSnapshot() *audit.Snapshot {
 			{Key: "go-Linux-8e9f", Ref: "refs/heads/main", SizeBytes: 120_000_000, CreatedAt: at(2026, time.September, 2)},
 			{Key: "go-Linux-a0b1", Ref: "refs/heads/main", SizeBytes: 430, CreatedAt: at(2026, time.September, 5)},
 			{Key: "nix-Linux-6a7b", Ref: "refs/heads/main", SizeBytes: 2_200_000_000, CreatedAt: at(2026, time.September, 5)},
+			{Key: "trivy-3a4b", Ref: "refs/heads/main", SizeBytes: 61_000_000, CreatedAt: at(2026, time.September, 5)},
+			{Key: "custom-5c6d", Ref: "refs/pull/12/merge", SizeBytes: 3_000_000, CreatedAt: at(2026, time.September, 4)},
+			{Key: "custom-1e2f", Ref: "refs/heads/main", SizeBytes: 2_000_000, CreatedAt: at(2026, time.September, 5)},
 		},
-		CacheUsageBytes: 2_320_000_430,
+		CacheUsageBytes: 2_386_000_430,
 		CacheLimitBytes: 10_000_000_000,
 	}
 	// Neither of its pull-request workflows cancels superseded runs: one

@@ -95,6 +95,8 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 	rep.CITiming = ciTimingLines(rep.Repos)
 	rep.CancelMissing = failingLists(rep.Repos, CheckCICancelSuperseded, cancelMissing)
 	rep.TimeoutMissing = failingLists(rep.Repos, CheckJobTimeouts, timeoutMissing)
+	rep.UnrecognisedCaches, rep.ActionOwnedCaches = cacheLists(rep.Repos)
+	rep.PRCaches = prCaches(rep.Repos)
 	rep.Overrides = collectOverrides(rep.Repos)
 	rep.Exceptions, rep.NoConsensus = modalExceptions(snap.Repos)
 	markDeviations(rep.Repos)

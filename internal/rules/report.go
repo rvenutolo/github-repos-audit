@@ -157,6 +157,18 @@ type Report struct {
 	// TimeoutMissing is, for each repository failing job_timeouts in report
 	// order, the jobs that fail it; see timeoutMissing and failingLists.
 	TimeoutMissing []RepoList
+	// UnrecognisedCaches is, for each repository in report order holding a
+	// cache under neither the tool's prefixes nor an action's, those caches;
+	// see cacheLists. Shown, never judged.
+	UnrecognisedCaches []RepoList
+	// ActionOwnedCaches is, for each repository in report order holding a
+	// cache under one of actionOwnedPrefixes, those caches; see cacheLists.
+	// Shown, never judged.
+	ActionOwnedCaches []RepoList
+	// PRCaches is, for each repository in report order holding Go or Nix
+	// caches saved from pull-request refs, their count and total size; see
+	// prCaches. Shown, never judged.
+	PRCaches []RepoList
 }
 
 // RepoList is one repository's entries in a list the report gives under a

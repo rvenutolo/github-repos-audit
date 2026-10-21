@@ -276,6 +276,11 @@ func nixSection(rep *rules.Report, at time.Time) string {
 // the caches they share storage with. The workflows and jobs behind a
 // count go in lists under the table, as the Git identities section does,
 // since a cell holding every path would stretch the table past reading.
+// After them come three lists no check judges, shown for every repository
+// with an entry whatever its cells say: the caches under keys no check
+// covers, the caches common actions keep for themselves, and the Go and Nix
+// caches pull requests saved, all of which share the storage the checked
+// caches need.
 func ciEfficiencySection(rep *rules.Report) string {
 	t := newTable("Repository", "Go cache", "Cache use", "Cancel superseded", "Timeouts", "Artifacts")
 	for i := range rep.Repos {
@@ -294,7 +299,10 @@ func ciEfficiencySection(rep *rules.Report) string {
 		return ""
 	}
 	return s + repoListSection("Workflows without cancel-in-progress", rep.CancelMissing, pathItem) +
-		repoListSection("Jobs without timeouts", rep.TimeoutMissing, pathItem)
+		repoListSection("Jobs without timeouts", rep.TimeoutMissing, pathItem) +
+		repoListSection("Unrecognised caches", rep.UnrecognisedCaches, cacheItem) +
+		repoListSection("Action-owned caches", rep.ActionOwnedCaches, cacheItem) +
+		repoListSection("Pull-request caches", rep.PRCaches, plainItem)
 }
 
 // repoListSection renders a list under a section's table: a subheading,
@@ -326,6 +334,31 @@ func pathItem(s string) string {
 	}
 	return code(s)
 }
+
+// cacheItem renders a "<key> (<size>)" item with the key as inline code.
+// The key is whatever a workflow passed to a cache action, so it is free
+// text: code widens its fence around any backtick, and a line break, which
+// would end the bullet, becomes a space. Nothing else needs escaping inside
+// a code span in a list, and escape's table rules would show there: a "\|"
+// renders as both characters outside a table. The size is everything after
+// the last " (", which a size never contains, so a key holding " (" is not
+// split inside it.
+func cacheItem(s string) string {
+	i := strings.LastIndex(s, " (")
+	if i < 0 {
+		return code(oneLine(s))
+	}
+	return code(oneLine(s[:i])) + s[i:]
+}
+
+// oneLine replaces each line break in s with a space.
+func oneLine(s string) string {
+	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
+}
+
+// plainItem renders an item the rules package wrote whole, such as a count
+// and a size, as it is.
+func plainItem(s string) string { return s }
 
 func policySection(rep *rules.Report) string {
 	t := newTable("Repository", "Direct push", "Signed", "Identity", "CI workflows", "Required checks",

@@ -478,6 +478,29 @@ in `/`. The File paths section of the report marks a path that differs from
 the one most of the account uses for the same check; with no single most
 common path, nothing is marked.
 
+## Cache lists
+
+Under its table, after the lists behind the ci_cancel_superseded and
+job_timeouts counts, the report's CI efficiency section lists the Actions
+caches no check judges. Like `artifact_storage` they are plain facts: every
+repository with an entry is listed, whatever its cells say, one bullet per
+repository in report order, and a list with no entries is left out.
+
+- **Unrecognised caches** — caches under a key that starts with neither
+  `go-` nor `nix-` and is not action-owned, saved from any ref, each as
+  `` `key` (size) `` in decimal units, sorted by key. Nothing checks that
+  such a cache holds anything or stays bounded, and it shares the cache
+  storage limit with the caches that are checked.
+- **Action-owned caches** — caches common actions save for themselves,
+  under a key starting `harden-runner-cacheKey`,
+  `determinatesystem-nix-installer-`, `gitleaks-` or `trivy-`, listed the
+  same way. Their size is the action's doing, not the workflow's.
+- **Pull-request caches** — how many `go-` and `nix-` caches pull-request
+  refs saved, and their total size (`3 caches · 302 MB`). A pull request's
+  cache never serves the default branch, which is why go_cache and
+  nix_cache leave it out, but it counts against the same storage limit
+  until GitHub evicts it.
+
 ## CI timing
 
 The CI timing section of the report shows how long CI takes, one row per

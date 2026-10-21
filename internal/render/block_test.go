@@ -181,9 +181,55 @@ func TestBlock_ciEfficiencySection(t *testing.T) {
 	lists := "\n### Workflows without cancel-in-progress\n\n" +
 		"- **github-repos-audit** — `.github/workflows/ci.yml`, `.github/workflows/workflow-02.yml`\n" +
 		"\n### Jobs without timeouts\n\n" +
-		"- **github-repos-audit** — `workflow-02.yml / lint`\n"
+		"- **github-repos-audit** — `workflow-02.yml / lint`\n" +
+		"\n### Unrecognised caches\n\n" +
+		"- **github-repos-audit** — `custom-1e2f` (2 MB), `custom-5c6d` (3 MB)\n" +
+		"\n### Action-owned caches\n\n" +
+		"- **github-repos-audit** — `trivy-3a4b` (61 MB)\n" +
+		"\n### Pull-request caches\n\n" +
+		"- **mixedCase-flake** — 1 cache · 900 B\n"
 	if !strings.HasSuffix(section, lists+"\n") {
-		t.Errorf("CI efficiency section does not end with the cancel-in-progress and timeout lists %q:\n%s", lists, section)
+		t.Errorf("CI efficiency section does not end with the cancel-in-progress, timeout and cache lists %q:\n%s", lists, section)
+	}
+}
+
+// TestBlock_cacheListKeysAreFreeText: a cache key is whatever a workflow
+// passed to a cache action, so it is rendered as inline code that a
+// backtick cannot close and a line break cannot end the bullet of, and a
+// key holding " (" keeps it inside the code span. An item with no size is
+// rendered whole as code.
+func TestBlock_cacheListKeysAreFreeText(t *testing.T) {
+	t.Parallel()
+
+	rep := &rules.Report{Owner: "gh-owner", Repos: []rules.RepoReport{{Repo: audit.Repo{Name: "alpha"}}}, UnrecognisedCaches: []rules.RepoList{{Repo: "alpha", Items: []string{
+		"a`b (1 KB)", "line\r\nbreak\nhere (2 B)", "x (y) (3 MB)", "a|b (4 B)", "no-size",
+	}}}}
+	got, err := render.Block(rep, clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	want := "\n### Unrecognised caches\n\n" +
+		"- **alpha** — `` a`b `` (1 KB), `line break here` (2 B), `x (y)` (3 MB), `a|b` (4 B), `no-size`\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("Block() lacks %q:\n%s", want, got)
+	}
+}
+
+// TestBlock_cacheListsOmittedWhenEmpty: with no entries, none of the three
+// cache lists has a subheading.
+func TestBlock_cacheListsOmittedWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	a := baseRepo("alpha", "tools")
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a}}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	for _, h := range []string{"### Unrecognised caches", "### Action-owned caches", "### Pull-request caches"} {
+		if strings.Contains(got, h) {
+			t.Errorf("Block() has %q with no cache to list:\n%s", h, got)
+		}
 	}
 }
 

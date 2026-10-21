@@ -473,9 +473,12 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.ci\.pull_requests\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
 	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.label$`), matches(`^ci / (check|test|lint|docs)$`), "a generic job label"},
 	{regexp.MustCompile(`^repos\[\]\.ci\.last_default_branch_run$`), matches(timestamp), "a timestamp"},
-	// Recorded cache entries: a generic "<prefix>-<os>-<hex>" key, saved from
-	// main or a pull request, at a timestamp.
-	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.key$`), matches(`^(go|nix)-(Linux|macOS)-[0-9a-f]+$`), "a generic cache key"},
+	// Recorded cache entries: a generic "<prefix>-<os>-<hex>" key, a Trivy
+	// key or a synthetic "custom-<hex>" key with nothing after its prefix
+	// but hex, saved from main or a pull request, at a timestamp. A real
+	// action-owned or unrecognised key is whatever a workflow wrote, so only
+	// these fixed shapes are admitted.
+	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.key$`), matches(`^((go|nix)-(Linux|macOS)-|trivy-|custom-)[0-9a-f]+$`), "a generic or synthetic cache key"},
 	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.ref$`), matches(`^refs/(heads/main|pull/[0-9]+/merge)$`), "main or a pull request ref"},
 	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.created_at$`), matches(timestamp), "a timestamp"},
 	// Recorded workflow facts: a synthetic workflow file under
@@ -952,6 +955,27 @@ func TestCheck_rejectsAForeignIdentityStandard(t *testing.T) {
 	fixture := `{"identity": {"canonical": "Pat Example <pat@example.com>", "match": " Example <", "accepted": ["Pat Example <12345+pat@users.noreply.github.com>"]}}`
 	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
 		t.Errorf("check(the fixture standard) = %q, want no problem", got)
+	}
+}
+
+// TestCheck_rejectsAFreeTextCacheKey: a golden audit.json may record only
+// the generic and synthetic cache-key shapes. A real key past a familiar
+// prefix is whatever a workflow wrote, and may name the repository it came
+// from.
+func TestCheck_rejectsAFreeTextCacheKey(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []string{"trivy-real-repo-db", "custom-real-repo", "node-cache-0a1b", "gitleaks-0a1b"} {
+		doc := `{"repos": [{"actions_storage": {"caches": [{"key": "` + key + `"}]}}]}`
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
+			t.Errorf("check(%s) found no problem, want one", doc)
+		}
+	}
+	for _, key := range []string{"go-Linux-0a1b", "nix-macOS-0a1b", "trivy-3a4b", "custom-1e2f"} {
+		doc := `{"repos": [{"actions_storage": {"caches": [{"key": "` + key + `"}]}}]}`
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) != 0 {
+			t.Errorf("check(%s) = %q, want no problem", doc, got)
+		}
 	}
 }
 
