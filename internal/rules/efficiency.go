@@ -228,8 +228,8 @@ func countOf(n int, noun string) string {
 // A repository that passes, or that is n/a, whether the check does not
 // apply or a not_required type or override excuses it, is left off even
 // when items would name something for it.
-func detailLists(repos []RepoReport, c Check, items func(audit.Repo) ([]string, bool)) []RepoList {
-	var out []RepoList
+func detailLists(repos []RepoReport, c Check, items func(audit.Repo) ([]string, bool)) []RepoList[string] {
+	var out []RepoList[string]
 	for _, r := range repos {
 		verdict := r.Cell(c).Verdict
 		if verdict != Fail && verdict != Info {
@@ -239,7 +239,7 @@ func detailLists(repos []RepoReport, c Check, items func(audit.Repo) ([]string, 
 		if verdict == Info && len(missing) == 0 {
 			continue
 		}
-		out = append(out, RepoList{Repo: r.Repo.Name, Items: missing})
+		out = append(out, RepoList[string]{Repo: r.Repo.Name, Items: missing})
 	}
 	return out
 }

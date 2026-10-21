@@ -131,22 +131,23 @@ func actionOwned(key string) bool {
 // caches that are checked. Both lists are shown and never judged: whatever
 // any check concluded about the repository, its caches are listed.
 //
-// Each item is "<key> (<size>)", sorted by key and then by ref, so a key
-// saved from two refs is listed twice, once per entry. The renderer reads
-// the size back from after the last " (", which a size never contains, so a
-// key holding " (" itself is still split in the right place.
-func cacheLists(repos []RepoReport) (unrecognised, owned []RepoList) {
+// Each item is one entry, with its size and the ref it was saved from,
+// sorted by key and then by ref, so a key saved from two refs, or saved
+// twice from one, is listed once per entry, the ref telling the entries
+// apart. The sort is stable, so entries alike in both keep the order the
+// collector recorded them in, oldest first.
+func cacheLists(repos []RepoReport) (unrecognised, owned []RepoList[CacheItem]) {
 	for _, r := range repos {
 		caches := slices.Clone(r.Repo.Storage.Caches)
-		slices.SortFunc(caches, func(a, b audit.Cache) int {
+		slices.SortStableFunc(caches, func(a, b audit.Cache) int {
 			if c := strings.Compare(a.Key, b.Key); c != 0 {
 				return c
 			}
 			return strings.Compare(a.Ref, b.Ref)
 		})
-		var u, o []string
+		var u, o []CacheItem
 		for _, c := range caches {
-			item := c.Key + " (" + formatBytes(c.SizeBytes) + ")"
+			item := CacheItem{Key: c.Key, Size: formatBytes(c.SizeBytes), Ref: refLabel(c.Ref)}
 			switch {
 			case toolCache(c.Key):
 			case actionOwned(c.Key):
@@ -156,13 +157,31 @@ func cacheLists(repos []RepoReport) (unrecognised, owned []RepoList) {
 			}
 		}
 		if u != nil {
-			unrecognised = append(unrecognised, RepoList{Repo: r.Repo.Name, Items: u})
+			unrecognised = append(unrecognised, RepoList[CacheItem]{Repo: r.Repo.Name, Items: u})
 		}
 		if o != nil {
-			owned = append(owned, RepoList{Repo: r.Repo.Name, Items: o})
+			owned = append(owned, RepoList[CacheItem]{Repo: r.Repo.Name, Items: o})
 		}
 	}
 	return unrecognised, owned
+}
+
+// refLabel is how a cache list names the ref an entry was saved from: a
+// branch by its name ("main"), a pull request's merge or head ref as
+// "PR <n>", and any other ref, a tag say, whole as GitHub gave it, since
+// shortening a shape this tool does not expect could make two refs read
+// alike.
+func refLabel(ref string) string {
+	if branch, ok := strings.CutPrefix(ref, "refs/heads/"); ok && branch != "" {
+		return branch
+	}
+	if rest, ok := strings.CutPrefix(ref, "refs/pull/"); ok {
+		n, kind, _ := strings.Cut(rest, "/")
+		if _, err := strconv.ParseUint(n, 10, 64); err == nil && (kind == "merge" || kind == "head") {
+			return "PR " + n
+		}
+	}
+	return ref
 }
 
 // prCaches is, for each repository in report order with any, how many Go and
@@ -174,8 +193,8 @@ func cacheLists(repos []RepoReport) (unrecognised, owned []RepoList) {
 // the default branch restores. Only the tool's prefixes are counted, since
 // those are the caches a workflow chose to save; an action's own state saved
 // from a pull request is the action's doing. Shown and never judged.
-func prCaches(repos []RepoReport) []RepoList {
-	var out []RepoList
+func prCaches(repos []RepoReport) []RepoList[string] {
+	var out []RepoList[string]
 	for _, r := range repos {
 		var n int
 		var size int64
@@ -186,7 +205,7 @@ func prCaches(repos []RepoReport) []RepoList {
 			}
 		}
 		if n > 0 {
-			out = append(out, RepoList{Repo: r.Repo.Name, Items: []string{countOf(n, "cache") + " · " + formatBytes(size)}})
+			out = append(out, RepoList[string]{Repo: r.Repo.Name, Items: []string{countOf(n, "cache") + " · " + formatBytes(size)}})
 		}
 	}
 	return out

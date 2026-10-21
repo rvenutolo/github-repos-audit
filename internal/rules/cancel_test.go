@@ -138,7 +138,7 @@ func TestEvaluate_cancelSuperseded_unreadableWorkflowFails(t *testing.T) {
 
 	rep := cancelReport(t, audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "invalid YAML"})
 	wantCell(t, rep.Repos[0].Cell(rules.CheckCICancelSuperseded), rules.Fail, "1 workflow")
-	want := []rules.RepoList{{Repo: "alpha", Items: []string{"unreadable .github/workflows/broken.yml"}}}
+	want := []rules.RepoList[string]{{Repo: "alpha", Items: []string{"unreadable .github/workflows/broken.yml"}}}
 	if diff := cmp.Diff(want, rep.CancelMissing); diff != "" {
 		t.Errorf("CancelMissing differs (-want +got):\n%s", diff)
 	}
@@ -157,7 +157,7 @@ func TestEvaluate_cancelSuperseded_list(t *testing.T) {
 		prWorkflow(".github/workflows/a.yml", cancelling("false"), audit.Job{ID: "check"}),
 	)
 	wantCell(t, rep.Repos[0].Cell(rules.CheckCICancelSuperseded), rules.Fail, "3 workflows")
-	want := []rules.RepoList{{Repo: "alpha", Items: []string{
+	want := []rules.RepoList[string]{{Repo: "alpha", Items: []string{
 		".github/workflows/a.yml", "unreadable .github/workflows/b.yml", ".github/workflows/z.yml",
 	}}}
 	if diff := cmp.Diff(want, rep.CancelMissing); diff != "" {
@@ -193,7 +193,7 @@ func TestEvaluate_cancelSuperseded_listedWhenFailingOrInfo(t *testing.T) {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
 	wantCell(t, rep.Repos[3].Cell(rules.CheckCICancelSuperseded), rules.Info, "1 workflow")
-	want := []rules.RepoList{
+	want := []rules.RepoList[string]{
 		{Repo: "delta", Items: []string{".github/workflows/ci.yml"}},
 		{Repo: "echo", Items: []string{".github/workflows/ci.yml"}},
 	}

@@ -183,9 +183,9 @@ func TestBlock_ciEfficiencySection(t *testing.T) {
 		"\n### Jobs without timeouts\n\n" +
 		"- **github-repos-audit** — `workflow-02.yml / lint`\n" +
 		"\n### Unrecognised caches\n\n" +
-		"- **github-repos-audit** — `custom-1e2f` (2 MB), `custom-5c6d` (3 MB)\n" +
+		"- **github-repos-audit** — `custom-1e2f` (2 MB, main), `custom-5c6d` (3 MB, PR 12)\n" +
 		"\n### Action-owned caches\n\n" +
-		"- **github-repos-audit** — `trivy-3a4b` (61 MB)\n" +
+		"- **github-repos-audit** — `trivy-3a4b` (61 MB, main)\n" +
 		"\n### Pull-request caches\n\n" +
 		"- **mixedCase-flake** — 1 cache · 900 B\n"
 	if !strings.HasSuffix(section, lists+"\n") {
@@ -196,20 +196,25 @@ func TestBlock_ciEfficiencySection(t *testing.T) {
 // TestBlock_cacheListKeysAreFreeText: a cache key is whatever a workflow
 // passed to a cache action, so it is rendered as inline code that a
 // backtick cannot close and a line break cannot end the bullet of, and a
-// key holding " (" keeps it inside the code span. An item with no size is
-// rendered whole as code.
+// key holding " (" keeps it inside the code span. The size and ref follow
+// in parentheses, the ref outside the code span with markdown's own
+// characters escaped, since a branch name is the owner's choice too.
 func TestBlock_cacheListKeysAreFreeText(t *testing.T) {
 	t.Parallel()
 
-	rep := &rules.Report{Owner: "gh-owner", Repos: []rules.RepoReport{{Repo: audit.Repo{Name: "alpha"}}}, UnrecognisedCaches: []rules.RepoList{{Repo: "alpha", Items: []string{
-		"a`b (1 KB)", "line\r\nbreak\nhere (2 B)", "x (y) (3 MB)", "a|b (4 B)", "no-size",
+	rep := &rules.Report{Owner: "gh-owner", Repos: []rules.RepoReport{{Repo: audit.Repo{Name: "alpha"}}}, UnrecognisedCaches: []rules.RepoList[rules.CacheItem]{{Repo: "alpha", Items: []rules.CacheItem{
+		{Key: "a`b", Size: "1 KB", Ref: "main"},
+		{Key: "line\r\nbreak\nhere", Size: "2 B", Ref: "PR 12"},
+		{Key: "x (y)", Size: "3 MB", Ref: "my_branch*<b>"},
+		{Key: "a|b", Size: "4 B", Ref: "a`b\nc"},
 	}}}}
 	got, err := render.Block(rep, clock(renderedAt))
 	if err != nil {
 		t.Fatalf("Block() error = %v, want nil", err)
 	}
 	want := "\n### Unrecognised caches\n\n" +
-		"- **alpha** — `` a`b `` (1 KB), `line break here` (2 B), `x (y)` (3 MB), `a|b` (4 B), `no-size`\n"
+		"- **alpha** — `` a`b `` (1 KB, main), `line break here` (2 B, PR 12), " +
+		"`x (y)` (3 MB, my\\_branch\\*\\<b\\>), `a|b` (4 B, a\\`b c)\n"
 	if !strings.Contains(got, want) {
 		t.Errorf("Block() lacks %q:\n%s", want, got)
 	}

@@ -308,7 +308,7 @@ func ciEfficiencySection(rep *rules.Report) string {
 // repoListSection renders a list under a section's table: a subheading,
 // then one bullet per repository naming its items, each formatted by item.
 // An empty list renders nothing, subheading included.
-func repoListSection(title string, lists []rules.RepoList, item func(string) string) string {
+func repoListSection[T any](title string, lists []rules.RepoList[T], item func(T) string) string {
 	if len(lists) == 0 {
 		return ""
 	}
@@ -335,20 +335,27 @@ func pathItem(s string) string {
 	return code(s)
 }
 
-// cacheItem renders a "<key> (<size>)" item with the key as inline code.
-// The key is whatever a workflow passed to a cache action, so it is free
-// text: code widens its fence around any backtick, and a line break, which
-// would end the bullet, becomes a space. Nothing else needs escaping inside
-// a code span in a list, and escape's table rules would show there: a "\|"
-// renders as both characters outside a table. The size is everything after
-// the last " (", which a size never contains, so a key holding " (" is not
-// split inside it.
-func cacheItem(s string) string {
-	i := strings.LastIndex(s, " (")
-	if i < 0 {
-		return code(oneLine(s))
-	}
-	return code(oneLine(s[:i])) + s[i:]
+// cacheItem renders a cache entry as `key` (size, ref), the key as inline
+// code. The key is whatever a workflow passed to a cache action, so it is
+// free text: code widens its fence around any backtick, and a line break,
+// which would end the bullet, becomes a space. Nothing else needs escaping
+// inside a code span in a list, and escape's table rules would show there: a
+// "\|" renders as both characters outside a table. The ref is a branch name
+// or GitHub's own ref, shown as plain text so the parentheses read as one
+// aside; a branch name is the owner's choice, so listText keeps it from
+// being read as markup.
+func cacheItem(c rules.CacheItem) string {
+	return code(oneLine(c.Key)) + " (" + c.Size + ", " + listText(c.Ref) + ")"
+}
+
+// listText renders free text as plain text in a list item: on one line,
+// with each character that would make it read as markup escaped: emphasis,
+// a code span, a link, an HTML tag or a strike-through, and the backslash
+// that escapes them.
+func listText(s string) string {
+	return strings.NewReplacer(
+		`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "~", `\~`,
+	).Replace(oneLine(s))
 }
 
 // oneLine replaces each line break in s with a space.

@@ -100,7 +100,7 @@ func TestEvaluate_jobTimeouts_unreadable(t *testing.T) {
 
 	rep := timeoutReport(t, audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "invalid YAML"})
 	wantCell(t, rep.Repos[0].Cell(rules.CheckJobTimeouts), rules.Fail, "1 job")
-	want := []rules.RepoList{{Repo: "alpha", Items: []string{"unreadable .github/workflows/broken.yml"}}}
+	want := []rules.RepoList[string]{{Repo: "alpha", Items: []string{"unreadable .github/workflows/broken.yml"}}}
 	if diff := cmp.Diff(want, rep.TimeoutMissing); diff != "" {
 		t.Errorf("TimeoutMissing differs (-want +got):\n%s", diff)
 	}
@@ -119,7 +119,7 @@ func TestEvaluate_jobTimeouts_list(t *testing.T) {
 		jobsWorkflow(".github/workflows/a.yml", audit.Job{ID: "lint"}, audit.Job{ID: "check", TimeoutMinutes: "10"}),
 	)
 	wantCell(t, rep.Repos[0].Cell(rules.CheckJobTimeouts), rules.Fail, "4 jobs")
-	want := []rules.RepoList{{Repo: "alpha", Items: []string{
+	want := []rules.RepoList[string]{{Repo: "alpha", Items: []string{
 		"a.yml / lint", "unreadable .github/workflows/b.yml", "z.yml / test", "z.yml / check",
 	}}}
 	if diff := cmp.Diff(want, rep.TimeoutMissing); diff != "" {
@@ -155,7 +155,7 @@ func TestEvaluate_jobTimeouts_listedWhenFailingOrInfo(t *testing.T) {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
 	wantCell(t, rep.Repos[3].Cell(rules.CheckJobTimeouts), rules.Info, "1 job")
-	want := []rules.RepoList{
+	want := []rules.RepoList[string]{
 		{Repo: "delta", Items: []string{"ci.yml / check"}},
 		{Repo: "echo", Items: []string{"ci.yml / check"}},
 	}

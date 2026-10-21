@@ -111,11 +111,11 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ### Unrecognised caches
 
-- **github-repos-audit** — `custom-1e2f` (2 MB), `custom-5c6d` (3 MB)
+- **github-repos-audit** — `custom-1e2f` (2 MB, main), `custom-5c6d` (3 MB, PR 12)
 
 ### Action-owned caches
 
-- **github-repos-audit** — `trivy-3a4b` (61 MB)
+- **github-repos-audit** — `trivy-3a4b` (61 MB, main)
 
 ### Pull-request caches
 
