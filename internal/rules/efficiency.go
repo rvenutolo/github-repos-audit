@@ -16,9 +16,12 @@ import (
 // each is restored, so that is the one judged: a side job that builds nothing
 // but saves the shared key last leaves an empty newest entry behind a full
 // older one, and judging any entry would pass exactly that failure. The cell
-// names the first family below cacheFloor, by name, or else the largest
-// newest entry, or "none on main". There is no ceiling: the Go toolchain
-// trims its own build cache, so it does not grow the way a Nix store does.
+// shows the size of the first family below cacheFloor, or else of the
+// largest newest entry, or "none on main". There is no ceiling, unlike the
+// Nix cache's: the standard sets none for Go caches, and neither half grows
+// without bound the way a Nix store does. The build cache trims itself,
+// dropping entries the toolchain has not used for days, and the module
+// cache is bounded by the modules go.sum names.
 //
 // It is n/a without a root go.mod, which builds no Go module to cache, and
 // when the default branch has not run CI within the activity window, since

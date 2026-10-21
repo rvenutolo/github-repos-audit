@@ -99,8 +99,9 @@ func TestEvaluate_goCache_newestEntryJudged(t *testing.T) {
 }
 
 // TestEvaluate_goCache_floor: the newest entry must hold at least 1 MB, the
-// floor inclusive; there is no ceiling, since a Go build cache is pruned by
-// the toolchain itself.
+// floor inclusive; there is no ceiling, since the standard sets none for Go
+// caches: the build cache trims itself and the module cache is bounded by
+// go.sum.
 func TestEvaluate_goCache_floor(t *testing.T) {
 	t.Parallel()
 
