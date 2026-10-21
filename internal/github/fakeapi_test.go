@@ -92,6 +92,11 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/permissions/access", f.fixtureHandler("actions-access"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs", f.handleRuns)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs", f.handleJobs)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/caches", f.storageListHandler("actions-caches"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/cache/usage", f.fixtureHandler("actions-cache-usage"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/cache/storage-limit",
+		f.fixtureHandler("actions-cache-storage-limit"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/artifacts", f.storageListHandler("actions-artifacts"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/contents/{path...}", f.handleContents)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/git/trees/{sha}", f.handleTree)
 
@@ -331,6 +336,24 @@ func (f *fakeAPI) handleJobs(w http.ResponseWriter, r *http.Request) {
 		f.t.Errorf("jobs request for %s has filter=%q, want the latest attempt", r.URL.Path, got)
 	}
 	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), "actions-jobs-"+r.PathValue("run_id"))
+}
+
+// storageListHandler answers the caches or artifacts list from the
+// repository's fixture named base. Each fixture is one page, so no Link is
+// sent; following one is storage_internal_test.go's to pin. The page size is
+// asserted for the reason handleRuns asserts it: the API's default of thirty
+// would make every further thirty entries cost a request.
+func (f *fakeAPI) storageListHandler(base string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		f.t.Helper()
+		if owner := r.PathValue("owner"); owner != testOwner {
+			f.t.Errorf("request for owner %q, want %q", owner, testOwner)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "100" {
+			f.t.Errorf("%s request has per_page=%q, want 100", r.URL.Path, got)
+		}
+		f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), base)
+	}
 }
 
 // serve writes the fixture named base from dir. A plain <base>.json is a 200;

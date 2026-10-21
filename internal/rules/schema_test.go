@@ -277,6 +277,8 @@ var defNames = map[reflect.Type]string{
 	reflect.TypeFor[audit.CI]():               "ci",
 	reflect.TypeFor[audit.CICommit]():         "ci_commit",
 	reflect.TypeFor[audit.CIJob]():            "ci_job",
+	reflect.TypeFor[audit.ActionsStorage]():   "actions_storage",
+	reflect.TypeFor[audit.Cache]():            "cache",
 	reflect.TypeFor[audit.Releases]():         "releases",
 	reflect.TypeFor[audit.Ruleset]():          "ruleset",
 	reflect.TypeFor[audit.BranchRules]():      "branch_rules",

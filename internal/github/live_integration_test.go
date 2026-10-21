@@ -4,6 +4,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -21,10 +22,12 @@ import (
 // that can read the two fixture repositories and nothing else.
 //
 // It exists because recorded fixtures pass forever while the API drifts
-// underneath them. The entire collection is one GraphQL query (plus one per
-// further hundred commits of history), eight REST calls and one recursive tree
-// read, so a single renamed field or changed enum breaks every run — and
-// nothing offline can see it coming.
+// underneath them. Per repository the collection is two GraphQL queries, the
+// repository query (plus one page per further hundred commits of history)
+// and the file query, then eight REST calls, the CI runs and jobs reads, four
+// Actions storage reads (plus one per further hundred caches or artifacts)
+// and one recursive tree read, so a single renamed field or changed enum
+// breaks every run — and nothing offline can see it coming.
 //
 // A failure here is informational, not a broken build: it means GitHub changed
 // something and the collector needs attention before a report repository's
@@ -397,6 +400,69 @@ func TestLive_ciTimingDecodes(t *testing.T) {
 			return e.Complete && len(e.Jobs) > 0
 		}) {
 			t.Errorf("%s has no complete default-branch commit with a timed job, want at least one", r.Name)
+		}
+	}
+}
+
+// TestLive_actionsStorage reads both fixtures' Actions storage. A field
+// renamed or withdrawn would not fail the decode: it would decode as zero, an
+// empty cache key or a never-expiring artifact, and the cache checks would
+// judge that. So the first page of each list is also read raw and every entry
+// must carry every field the collector reads. The limit must be read on both
+// visibilities, since without it the usage check has nothing to measure
+// against. What is stored, and how much, is never asserted: that is whatever
+// the fixtures' CI last left there.
+func TestLive_actionsStorage(t *testing.T) {
+	t.Parallel()
+
+	c, lt := liveClient(t)
+	repos, err := c.Collect(t.Context(), []string{lt.publicRepo, lt.privateRepo}, Probe{})
+	if err != nil {
+		t.Fatalf("Collect() error = %v, want nil", err)
+	}
+	for _, r := range repos {
+		s := r.Storage
+		if s.CacheLimitBytes <= 0 {
+			t.Errorf("%s cache limit = %d, want a positive limit; storage-limit may have changed", r.Name, s.CacheLimitBytes)
+		}
+		for i, cache := range s.Caches {
+			if cache.Key == "" || !strings.HasPrefix(cache.Ref, "refs/") || cache.CreatedAt.IsZero() {
+				t.Errorf("%s cache %d = {key %t, ref %q, created %t}, want a key, a refs/ ref and a creation time",
+					r.Name, i, cache.Key != "", cache.Ref, !cache.CreatedAt.IsZero())
+			}
+		}
+	}
+
+	lists := []struct {
+		path   string
+		list   string
+		fields []string
+	}{
+		{"/actions/caches?per_page=100", "actions_caches", []string{"key", "ref", "size_in_bytes", "created_at"}},
+		{"/actions/artifacts?per_page=100", "artifacts", []string{"size_in_bytes", "expired"}},
+	}
+	for _, name := range []string{lt.publicRepo, lt.privateRepo} {
+		for _, l := range lists {
+			var page map[string]json.RawMessage
+			if _, err := c.getJSON(t.Context(), c.repoPath(name)+l.path, &page); err != nil {
+				t.Fatalf("%s error = %v, want nil", l.path, err)
+			}
+			raw, ok := page[l.list]
+			if !ok {
+				t.Errorf("%s answer has no %q list; the list key may have been renamed", l.path, l.list)
+				continue
+			}
+			var entries []map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &entries); err != nil {
+				t.Fatalf("%s %q is not a list of objects: %v", l.path, l.list, err)
+			}
+			for i, e := range entries {
+				for _, f := range l.fields {
+					if _, ok := e[f]; !ok {
+						t.Errorf("%s entry %d has no %q; the field may have been renamed", l.path, i, f)
+					}
+				}
+			}
 		}
 	}
 }

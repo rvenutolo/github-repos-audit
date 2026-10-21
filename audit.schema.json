@@ -234,6 +234,7 @@
           "enum": ["SUCCESS", "FAILURE", "PENDING", "ERROR", "EXPECTED"]
         },
         "ci": { "$ref": "#/$defs/ci" },
+        "actions_storage": { "$ref": "#/$defs/actions_storage" },
         "releases": { "$ref": "#/$defs/releases" },
         "rulesets": {
           "description": "Every ruleset defined on the repository. Absent when there are none.",
@@ -823,6 +824,68 @@
           "description": "The job's completion minus its start: time on a runner, not time queued for one.",
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "actions_storage": {
+      "description": "What the repository holds in GitHub Actions storage, sizes in bytes as GitHub reports them. Absent for an empty repository, which is not read for it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cache_usage_bytes", "artifact_count", "artifact_bytes"],
+      "properties": {
+        "caches": {
+          "description": "Every cache entry, sorted by key, then ref, then creation time. last_accessed_at is not recorded: it changes on every restore. Absent when there is none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/cache" }
+        },
+        "cache_usage_bytes": {
+          "description": "The total size of the active caches, GitHub's own usage figure.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_limit_bytes": {
+          "description": "The repository's cache storage limit: max_cache_size_gb × 1,000,000,000. Absent when no limit was read.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "artifact_count": {
+          "description": "How many artifacts have not expired.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifact_bytes": {
+          "description": "The total size of the artifacts that have not expired.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "cache": {
+      "description": "One GitHub Actions cache entry.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "ref", "size_bytes", "created_at"],
+      "properties": {
+        "key": {
+          "description": "The cache key as the saving step wrote it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "description": "The ref the cache was saved from, refs/heads/<branch> or refs/pull/<number>/merge.",
+          "type": "string",
+          "minLength": 1
+        },
+        "size_bytes": {
+          "description": "The stored size.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "created_at": {
+          "description": "When the entry was saved, in UTC.",
+          "type": "string",
+          "format": "date-time"
         }
       }
     },

@@ -125,6 +125,9 @@ type Repo struct {
 	// CI is the timing of the repository's recent CI, commit by commit. Zero
 	// for a repository with no merged pull requests and no commits.
 	CI CI `json:"ci,omitzero"`
+	// Storage is what the repository holds in GitHub Actions storage. Zero
+	// for an empty repository, which is not read for it.
+	Storage ActionsStorage `json:"actions_storage,omitzero"`
 	// Releases summarises the repository's releases.
 	Releases Releases `json:"releases"`
 	// Rulesets is every ruleset defined on the repository.

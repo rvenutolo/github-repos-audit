@@ -63,10 +63,13 @@ func (c *Client) Collect(ctx context.Context, names []string, probe Probe) ([]au
 // further hundred commits, so a large repository is the slow one to collect.
 // The CI timing costs one runs read plus one jobs read per run on a sampled
 // commit (see fetchCI), and nothing for a repository with no commits.
-// Then comes one recursive tree read at the head commit, which is where every
-// file path the report records is found, and last the second GraphQL query,
-// filesQuery, for the text of the workflow, composite-action, flake and gate
-// files; both are skipped for an empty repository, which has no files.
+// Then come the Actions storage reads, four requests plus one per further
+// hundred caches or artifacts (see fetchStorage); one recursive tree read at
+// the head commit, which is where every file path the report records is
+// found; and last the second GraphQL query, filesQuery, for the text of the
+// workflow, composite-action, flake and gate files. All three are skipped for
+// an empty repository: it has no files, and with no commit no workflow can
+// have run to store anything.
 func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache, probe Probe) (audit.Repo, error) {
 	gql, err := c.fetchRepository(ctx, name)
 	if err != nil {
@@ -91,10 +94,13 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 	if err := c.fetchCI(ctx, c.repoPath(name), &repo.CI); err != nil {
 		return audit.Repo{}, err
 	}
-	// An empty repository has no commit to list, so it costs no tree request
-	// and no file query.
+	// An empty repository has no commit to list, so it costs no storage
+	// reads, no tree request and no file query.
 	if repo.HeadOID == "" {
 		return repo, nil
+	}
+	if err := c.fetchStorage(ctx, c.repoPath(name), &repo.Storage); err != nil {
+		return audit.Repo{}, err
 	}
 	entries, err := c.fetchTree(ctx, c.repoPath(name), repo.HeadOID)
 	if err != nil {

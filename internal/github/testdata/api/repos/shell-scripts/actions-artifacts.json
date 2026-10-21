@@ -1,0 +1,29 @@
+{
+  "total_count": 3,
+  "artifacts": [
+    {
+      "id": 5000001,
+      "name": "artifact-01",
+      "size_in_bytes": 24939,
+      "expired": false,
+      "created_at": "2025-09-05T01:40:00Z",
+      "expires_at": "2025-09-12T01:40:00Z"
+    },
+    {
+      "id": 5000002,
+      "name": "artifact-02",
+      "size_in_bytes": 61,
+      "expired": false,
+      "created_at": "2025-09-05T01:40:00Z",
+      "expires_at": "2025-09-12T01:40:00Z"
+    },
+    {
+      "id": 5000003,
+      "name": "artifact-01",
+      "size_in_bytes": 5000000,
+      "expired": true,
+      "created_at": "2025-06-01T00:00:00Z",
+      "expires_at": "2025-06-08T00:00:00Z"
+    }
+  ]
+}

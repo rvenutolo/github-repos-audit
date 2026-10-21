@@ -175,6 +175,20 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		Renovate: audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: ".github/renovate.json"},
 		// flake.nix with no lock beside it.
 		Flake: audit.Flake{Inputs: []string{"github:NixOS/nixpkgs/nixos-unstable"}},
+		// Sorted by key then ref, whatever order GitHub listed them in; the
+		// expired artifact is listed but neither counted nor summed.
+		Storage: audit.ActionsStorage{
+			Caches: []audit.Cache{
+				{Key: "example-action-01", Ref: "refs/heads/main", SizeBytes: 263, CreatedAt: at(t, "2025-09-04T02:20:00Z")},
+				{Key: "go-Linux-key-01", Ref: "refs/heads/main", SizeBytes: 206000000, CreatedAt: at(t, "2025-09-04T01:00:00Z")},
+				{Key: "go-Linux-key-02", Ref: "refs/pull/3/merge", SizeBytes: 2000, CreatedAt: at(t, "2025-09-04T08:59:00Z")},
+				{Key: "nix-Linux-key-01", Ref: "refs/heads/main", SizeBytes: 812250354, CreatedAt: at(t, "2025-09-04T02:20:33Z")},
+			},
+			CacheUsageBytes: 1018252617,
+			CacheLimitBytes: 10_000_000_000,
+			ArtifactCount:   2,
+			ArtifactBytes:   25000,
+		},
 	}
 }
 
@@ -217,6 +231,8 @@ func wantWebApp(t *testing.T) audit.Repo {
 				Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}},
 			}},
 		},
+		// Nothing stored: the limit is still read.
+		Storage: audit.ActionsStorage{CacheLimitBytes: 10_000_000_000},
 		// Inherited from the in-account preset; config:best-practices is a
 		// built-in, which sets nothing this tool can read.
 		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store"},
@@ -897,11 +913,15 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 		}
 	}
 
-	// The CI reads are the newest GETs; a fixture set that stopped reaching
-	// them would leave them out of this test without failing it.
+	// The CI and storage reads are GETs a fixture set could stop reaching,
+	// which would leave them out of this test without failing it.
 	for _, path := range []string{
 		"/repos/gh-owner/shell-scripts/actions/runs",
 		"/repos/gh-owner/shell-scripts/actions/runs/4000001/jobs",
+		"/repos/gh-owner/shell-scripts/actions/caches",
+		"/repos/gh-owner/shell-scripts/actions/cache/usage",
+		"/repos/gh-owner/shell-scripts/actions/cache/storage-limit",
+		"/repos/gh-owner/shell-scripts/actions/artifacts",
 	} {
 		if api.callsTo(path) == 0 {
 			t.Errorf("no request to %s; the read-only assertion did not cover it", path)
@@ -912,7 +932,7 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 	if len(documents) == 0 {
 		t.Fatal("no GraphQL documents recorded; the assertion below would be vacuous")
 	}
-	// The file query is the newest document; it is held to the same rule.
+	// The file query is a second document, held to the same rule.
 	if !slices.ContainsFunc(documents, func(d string) bool { return strings.HasPrefix(d, "query RepoFiles") }) {
 		t.Error("no file query recorded; the assertion below did not cover it")
 	}
@@ -1307,6 +1327,10 @@ func TestClient_Collect_abortsOnAnUnreadableEndpoint(t *testing.T) {
 		base + "/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
 		base + "/actions/runs",
 		base + "/actions/runs/4000001/jobs",
+		base + "/actions/caches",
+		base + "/actions/cache/usage",
+		base + "/actions/cache/storage-limit",
+		base + "/actions/artifacts",
 	}
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {
@@ -1404,6 +1428,43 @@ func TestCollect_requestsTheTreeRecursivelyAtHead(t *testing.T) {
 	const path = "/repos/gh-owner/shell-scripts/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c"
 	if n := api.callsTo(path); n != 1 {
 		t.Errorf("%s saw %d calls, want 1", path, n)
+	}
+}
+
+// TestCollect_emptyRepoReadsNoStorage: with no commit no workflow can have
+// run, so an empty repository costs no storage reads and records none.
+func TestCollect_emptyRepoReadsNoStorage(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"blank-repo"}, github.Probe{})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	for _, c := range api.seen() {
+		if strings.Contains(c.path, "/actions/cache") || strings.HasSuffix(c.path, "/actions/artifacts") {
+			t.Errorf("called %s for an empty repository", c.path)
+		}
+	}
+	if diff := cmp.Diff(audit.ActionsStorage{}, got[0].Storage); diff != "" {
+		t.Errorf("Storage mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestClient_Collect_storageRequestBudget pins what the storage reads cost a
+// repository whose lists fit one page: one request to each endpoint.
+func TestClient_Collect_storageRequestBudget(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	base := "/repos/" + testOwner + "/shell-scripts/actions/"
+	for _, path := range []string{"caches", "cache/usage", "cache/storage-limit", "artifacts"} {
+		if n := api.callsTo(base + path); n != 1 {
+			t.Errorf("%s saw %d calls, want 1", base+path, n)
+		}
 	}
 }
 

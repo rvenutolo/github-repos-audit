@@ -344,6 +344,18 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^jobs\[\]\.name$`), matches(ciJob), "a generic job name"},
 	{regexp.MustCompile(`^jobs\[\]\.(started_at|completed_at)$`), optional(matches(timestamp)), "null or a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
+	// The Actions storage lists. A cache key is written by the workflow that
+	// saved it and can carry a hash of the repository's own files, and an
+	// artifact name is the workflow's choice, so both are synthetic; the ids
+	// identify entries on the real account and are synthetic too. A ref is a
+	// generic branch or pull-request ref.
+	{regexp.MustCompile(`^actions_caches\[\]\.id$`), matches(`^6000\d{3}$`), "a synthetic cache id"},
+	{regexp.MustCompile(`^actions_caches\[\]\.key$`), matches(`^((go|nix)-(Linux|macOS)-key-\d{2}|example-action-\d{2})$`), "a synthetic cache key"},
+	{regexp.MustCompile(`^actions_caches\[\]\.ref$`), matches(`^refs/(heads/main|pull/\d+/merge)$`), "a generic ref"},
+	{regexp.MustCompile(`^actions_caches\[\]\.last_accessed_at$`), matches(timestamp), "a timestamp"},
+	{regexp.MustCompile(`^artifacts\[\]\.id$`), matches(`^5000\d{3}$`), "a synthetic artifact id"},
+	{regexp.MustCompile(`^artifacts\[\]\.name$`), matches(`^artifact-\d{2}$`), "a synthetic artifact name"},
+	{regexp.MustCompile(`^artifacts\[\]\.expires_at$`), matches(timestamp), "a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.author\.type$`), matches(`^(User|Bot)$`), "User or Bot"},
 	keep(
 		`access_level`, `allowed_actions`, `\[\]\.archived`, `archived`, `\[\]\.disabled`, `disabled`,
@@ -375,6 +387,9 @@ var apiRules = []rule{
 		// list's total are counts and enums.
 		`data\.repository\.merged_pull_requests\.nodes\[\]\.number`,
 		`(workflow_runs|jobs)\[\]\.status`, `workflow_runs\[\]\.event`, `total_count`,
+		// Storage sizes, counts and the expired flag.
+		`(actions_caches|artifacts)\[\]\.size_in_bytes`, `artifacts\[\]\.expired`,
+		`active_caches_size_in_bytes`, `active_caches_count`, `max_cache_size_gb`,
 		// The contents API's envelope: "file" and "base64" are GitHub's words.
 		`type`, `encoding`,
 	),
