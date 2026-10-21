@@ -480,11 +480,12 @@ var snapshotRules = []rule{
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.seconds`,
 		`repos\[\]\.files\.[a-z_]+`,
-		`repos\[\]\.flake\.(has_lock|names_lint)`,
+		`repos\[\]\.flake\.(all_rev_pinned|has_lock|names_lint)`,
 		`repos\[\]\.overrides\.[a-z_]+`,
 		`repos\[\]\.releases\.(drafts|total)`,
 		// A duration such as "7 days" is never account data.
 		`repos\[\]\.renovate\.min_release_age`,
+		`repos\[\]\.renovate\.(lock_file_maintenance|nix_manager)`,
 		`repos\[\]\.rulesets\[\]\.(enforcement|include\[\]|rules\[\]|target)`,
 		`repos\[\]\.settings\.[a-z_]+`,
 		`repos\[\]\.settings\.allowed_actions\.(github_owned_allowed|verified_allowed)`,

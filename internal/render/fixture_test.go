@@ -96,8 +96,13 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			{Name: "Pat Example", Email: "pat@example.com"},
 			{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"},
 		},
-		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
-		CIState:  "SUCCESS",
+		// Renovate refreshes flake.lock: its nix manager runs, with lock-file
+		// maintenance.
+		Renovate: audit.Renovate{
+			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json",
+			NixManager: true, LockFileMaintenance: true,
+		},
+		CIState: "SUCCESS",
 		Rulesets: []audit.Ruleset{
 			{Name: "protect-tags", Target: "TAG", Enforcement: "ACTIVE", Include: []string{"refs/tags/**"}},
 			{
@@ -137,9 +142,9 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // git identities that are mixed (beside an accepted one), canonical beside
 // an accepted one, consistently non-canonical, only someone else's, and
 // absent altogether. The published software repository has declared and
-// locked the hermetic-lint flake without wiring the lint in, and the tools
-// repository's nixpkgs lock is stale, so the Nix section carries fails beside
-// the passes.
+// locked the hermetic-lint flake without wiring the lint in, and nothing
+// refreshes its lock, and the tools repository's nixpkgs lock is stale, so
+// the Nix section carries fails beside the passes.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -165,8 +170,10 @@ func fullSnapshot() *audit.Snapshot {
 	}
 	// Two repositories per commitlint spelling: a tied column names no standard.
 	soft.Files.Commitlint = ".commitlintrc.json"
-	// Its release age comes from a preset and falls short of the type's.
-	soft.Renovate = audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store"}
+	// Its release age comes from a preset and falls short of the type's, and
+	// Renovate runs the nix manager without lock-file maintenance, which on
+	// inputs not pinned by rev leaves flake.lock unrefreshed.
+	soft.Renovate = audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store", NixManager: true}
 	soft.Releases = audit.Releases{Total: 4, Drafts: 1, LastPublishedAt: at(2026, time.April, 2)}
 	soft.Settings.SecretScanning = "enabled"
 	soft.Settings.SecretScanningPushProtection = "enabled"

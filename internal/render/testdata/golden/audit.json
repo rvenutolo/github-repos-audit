@@ -32,6 +32,7 @@
       "markdownlint": "not_required",
       "mkdocs": "not_required",
       "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -81,6 +82,7 @@
       "markdownlint": "not_required",
       "mkdocs": "not_required",
       "nix_lock_age": "not_required",
+      "nix_lock_refresh": "not_required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -130,6 +132,7 @@
       "markdownlint": "not_required",
       "mkdocs": "not_required",
       "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -179,6 +182,7 @@
       "markdownlint": "not_required",
       "mkdocs": "not_required",
       "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -228,6 +232,7 @@
       "markdownlint": "not_required",
       "mkdocs": "not_required",
       "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "info",
       "prettier": "not_required",
@@ -277,6 +282,7 @@
       "markdownlint": "not_required",
       "mkdocs": "not_required",
       "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -363,7 +369,8 @@
       },
       "renovate": {
         "min_release_age": "3 days",
-        "min_release_age_source": "github>gh-owner/preset-store"
+        "min_release_age_source": "github>gh-owner/preset-store",
+        "nix_manager": true
       },
       "flake": {
         "inputs": [
@@ -645,7 +652,9 @@
       },
       "renovate": {
         "min_release_age": "7 days",
-        "min_release_age_source": "renovate.json"
+        "min_release_age_source": "renovate.json",
+        "nix_manager": true,
+        "lock_file_maintenance": true
       },
       "flake": {
         "inputs": [

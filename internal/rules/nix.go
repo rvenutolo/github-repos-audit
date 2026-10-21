@@ -75,6 +75,112 @@ func observeLockAge(r audit.Repo, now time.Time) observation {
 	return observation{at: at, ok: now.Sub(at) <= maxLockAge, mark: true, scalar: true}
 }
 
+// updateFlakeLockAction is the published action that opens a pull request
+// refreshing flake.lock, matched up to the "@" that pins its version.
+const updateFlakeLockAction = "DeterminateSystems/update-flake-lock@"
+
+// observeLockRefresh judges whether something refreshes flake.lock without a
+// person remembering to: Renovate, or a scheduled workflow. The cell names
+// each source that does, so a pass says which one to look at.
+//
+// Renovate counts only with a configuration, its nix manager running, and
+// either lock-file maintenance or every input pinned by rev. The manager
+// alone updates a rev-pinned input's digest, but opens nothing for an input
+// that follows a branch; lock-file maintenance rewrites lock files only for
+// the managers that run, so without the nix manager it never touches
+// flake.lock.
+//
+// A workflow counts only when it runs on a schedule: one run by hand or on a
+// push refreshes the lock no more often than someone thinks to. Its job must
+// run `nix flake update`, use the update-flake-lock action, or use a local
+// composite that runs `nix flake update`.
+//
+// With no source found, every workflow that could not be read, and every
+// unreadable composite a scheduled workflow uses, is named: any of them
+// might be the refresh the cell cannot see, so it fails saying where to look
+// rather than bare. n/a without a flake.lock, as there is nothing to refresh.
+func observeLockRefresh(r audit.Repo) observation {
+	if !r.Flake.HasLock {
+		return observation{unknown: true}
+	}
+	var sources []string
+	if r.Files.RenovateConfig != "" && r.Renovate.NixManager &&
+		(r.Renovate.LockFileMaintenance || r.Flake.AllRevPinned) {
+		sources = append(sources, "Renovate")
+	}
+	refreshes, unreadable := scheduledFlakeUpdate(r)
+	if refreshes {
+		sources = append(sources, "workflow")
+	}
+	if len(sources) > 0 {
+		return observation{ok: true, value: strings.Join(sources, ", "), mark: true}
+	}
+	if len(unreadable) > 0 {
+		return observation{value: strings.Join(unreadable, ", "), mark: true}
+	}
+	return observation{}
+}
+
+// scheduledFlakeUpdate reports whether a scheduled workflow refreshes
+// flake.lock (see observeLockRefresh), and, as "unreadable <path>", every
+// workflow it could not read and every composite a scheduled job uses that it
+// could not read, in the order it met them.
+func scheduledFlakeUpdate(r audit.Repo) (bool, []string) {
+	var unreadable []string
+	for _, w := range r.Workflows {
+		if w.ParseError != "" {
+			unreadable = append(unreadable, "unreadable "+w.Path)
+			continue
+		}
+		if !slices.Contains(w.Events, "schedule") {
+			continue
+		}
+		for _, j := range w.Jobs {
+			if j.FlakeUpdate {
+				return true, nil
+			}
+			for _, u := range j.Uses {
+				if strings.HasPrefix(u.Action, updateFlakeLockAction) {
+					return true, nil
+				}
+				ca, local := resolveComposite(r, u.Action)
+				switch {
+				case !local:
+				case ca.ParseError != "":
+					unreadable = append(unreadable, "unreadable "+ca.Path)
+				case ca.FlakeUpdate:
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, unreadable
+}
+
+// resolveComposite finds the composite action a step's `uses:` names, when
+// it names one in this repository. "./x" and "$/x" resolve alike, both
+// against the repository root, to the directory x, whose action.yml (or,
+// failing that, action.yaml) the collector recorded by its repository path,
+// such as ".github/actions/setup/action.yml". Anything
+// else, a published action or a Docker image, is not local, and a local path
+// with no recorded composite is not found: both report false.
+func resolveComposite(r audit.Repo, action string) (audit.CompositeAction, bool) {
+	dir, ok := strings.CutPrefix(action, "./")
+	if !ok {
+		dir, ok = strings.CutPrefix(action, "$/")
+	}
+	if !ok {
+		return audit.CompositeAction{}, false
+	}
+	for _, name := range []string{"action.yml", "action.yaml"} {
+		i := slices.IndexFunc(r.Actions, func(a audit.CompositeAction) bool { return a.Path == dir+"/"+name })
+		if i >= 0 {
+			return r.Actions[i], true
+		}
+	}
+	return audit.CompositeAction{}, false
+}
+
 // lockedRef is the form audit.Flake.LockedInputs records a flake reference
 // in: "github:<owner>/<repo>", lower-cased, without the ref, directory or
 // query flake.nix may add after it. flake.lock spells the owner and the

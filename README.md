@@ -384,6 +384,20 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `✗ 47d`). A `flake.lock` the tool could not read fails as
   `unreadable flake.lock`. n/a without a `flake.lock`, or when the root has
   no input named `nixpkgs`. The report's Nix section shows it.
+- **nix_lock_refresh** — whether something refreshes `flake.lock` without a
+  person remembering to, and the cell names each source that does
+  (`✓ Renovate`, `✓ workflow`). Renovate counts when there is a Renovate
+  configuration, its `nix` manager runs, and either `lockFileMaintenance` is
+  enabled or every `flake.lock` input is pinned by `rev` (the manager alone
+  then moves each digest), all read from the effective configuration as
+  `renovate_min_release_age` is. A workflow counts when it runs on
+  `schedule` and a job runs `nix flake update`, uses
+  `DeterminateSystems/update-flake-lock`, or uses a local composite action
+  (`./` or `$/`) that runs `nix flake update`. With neither, it fails; a
+  workflow the tool could not read, or an unreadable composite a scheduled
+  workflow uses, is then named as `unreadable <path>`, since it may be the
+  refresh the tool cannot see. n/a without a `flake.lock`. The report's Nix
+  section shows it.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches

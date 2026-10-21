@@ -254,13 +254,14 @@ func filePathsSection(rep *rules.Report) string {
 // nixSection shows how each repository uses Nix beyond having a flake.nix,
 // which the Tree section already reports.
 func nixSection(rep *rules.Report, at time.Time) string {
-	t := newTable("Repository", "Hermetic", "Lock age")
+	t := newTable("Repository", "Hermetic", "Lock age", "Lock refresh")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
 			repoLink(rep.Owner, r.Repo.Name),
 			cell(r.Cell(rules.CheckHermeticNix)),
 			markedDateCell(r.Cell(rules.CheckNixLockAge), at),
+			cell(r.Cell(rules.CheckNixLockRefresh)),
 		)
 	}
 	return heading("Nix", t)

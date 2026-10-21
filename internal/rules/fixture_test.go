@@ -73,8 +73,13 @@ func fixture(name string, typ rules.Type) audit.Repo {
 			NamesLint:           true,
 			GateFiles:           []string{"run-all-checks"},
 		},
-		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
-		CIState:  "SUCCESS",
+		// Renovate refreshes flake.lock: its nix manager runs, with lock-file
+		// maintenance.
+		Renovate: audit.Renovate{
+			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json",
+			NixManager: true, LockFileMaintenance: true,
+		},
+		CIState: "SUCCESS",
 		Releases: audit.Releases{
 			Total:           2,
 			LastPublishedAt: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC),
