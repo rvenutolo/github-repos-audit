@@ -97,8 +97,7 @@ func width(s string) int { return utf8.RuneCountInString(s) }
 // the URL stays text: a link to a third-party host would put the gate at the
 // mercy of that host being up.
 func escape(s string) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
+	s = oneLine(s)
 	s = strings.ReplaceAll(s, "|", `\|`)
 	s = bareURL.ReplaceAllString(s, "`$0`")
 	return strings.TrimSpace(s)

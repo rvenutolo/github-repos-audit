@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"net/url"
 	"slices"
 	"strconv"
 	"time"
@@ -43,13 +44,19 @@ func pushEvents() []string { return []string{"push", "merge_group"} }
 // list longer than its page marks the commit incomplete instead (see
 // timeCommit).
 //
-// The cost is one runs request per repository plus one jobs request per run
-// on a sampled commit: with twenty sampled commits and a workflow or two on
-// each, a few dozen GETs per repository, which a whole account's run spends
-// comfortably inside the 5,000 requests an hour a token is allowed.
+// The cost is one runs request per repository, plus one jobs request per run
+// on a sampled commit and one default-branch runs request: with twenty
+// sampled commits and a workflow or two on each, a few dozen GETs per
+// repository, which a whole account's run spends comfortably inside the
+// 5,000 requests an hour a token is allowed.
+//
+// ciRecencyPage is the page size of the default-branch runs read
+// (lastDefaultBranchRun): only the newest run is wanted, and the list is
+// newest first.
 const (
-	ciRunsPage = "100"
-	ciJobsPage = "100"
+	ciRunsPage    = "100"
+	ciJobsPage    = "100"
+	ciRecencyPage = "1"
 )
 
 // actionsRuns is the slice of the runs list this tool reads.
@@ -133,8 +140,16 @@ func (r *repository) ci() audit.CI {
 // head and on the default branch is judged by each list's own events.
 // Actions disabled on a repository is a 200 with no runs, which leaves every
 // commit untimed rather than failing.
-// base is the repository's /repos/{owner}/{name} path.
-func (c *Client) fetchCI(ctx context.Context, base string, ci *audit.CI) error {
+//
+// LastDefaultBranchRun comes from a read of its own (lastDefaultBranchRun),
+// not from the timing page: in a busy repository the newest hundred runs can
+// all be on other branches, and a recency read off that page would then say
+// no run happened on the default branch at all. A repository with no sampled
+// commits is an empty one, with no branch any workflow could have run on, so
+// it reads nothing and its recency stays zero.
+// base is the repository's /repos/{owner}/{name} path, and defaultBranch is
+// its live default branch name.
+func (c *Client) fetchCI(ctx context.Context, base, defaultBranch string, ci *audit.CI) error {
 	type sampledCommit struct {
 		commit *audit.CICommit
 		events []string
@@ -187,7 +202,36 @@ func (c *Client) fetchCI(ctx context.Context, base string, ci *audit.CI) error {
 		}
 		*s.commit = timeCommit(*s.commit, runs)
 	}
+	last, err := c.lastDefaultBranchRun(ctx, base, defaultBranch)
+	if err != nil {
+		return err
+	}
+	ci.LastDefaultBranchRun = last
 	return nil
+}
+
+// lastDefaultBranchRun is when the newest workflow run on defaultBranch was
+// created, of any event, since a scheduled or dispatched run keeps the
+// branch's caches as warm as a push does; zero when none has run. The runs
+// list filtered by branch is newest first, so one entry answers it exactly
+// for one request, however many runs other branches have had since. The
+// filter matches a run's head branch, which for a pull request's run is its
+// head branch, so only runs on the default branch itself are returned.
+//
+// No default branch means nothing to ask about, and costs no request.
+func (c *Client) lastDefaultBranchRun(ctx context.Context, base, defaultBranch string) (time.Time, error) {
+	if defaultBranch == "" {
+		return time.Time{}, nil
+	}
+	var list actionsRuns
+	path := base + "/actions/runs?branch=" + url.QueryEscape(defaultBranch) + "&per_page=" + ciRecencyPage
+	if _, err := c.getJSON(ctx, path, &list); err != nil {
+		return time.Time{}, err
+	}
+	if len(list.WorkflowRuns) == 0 {
+		return time.Time{}, nil
+	}
+	return list.WorkflowRuns[0].CreatedAt.UTC(), nil
 }
 
 // timeCommit reduces one commit's workflow runs to its wait and job

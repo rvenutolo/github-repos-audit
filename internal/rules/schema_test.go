@@ -267,9 +267,18 @@ var defNames = map[reflect.Type]string{
 	reflect.TypeFor[audit.Repo]():             "repo",
 	reflect.TypeFor[audit.Renovate]():         "renovate",
 	reflect.TypeFor[audit.Files]():            "files",
+	reflect.TypeFor[audit.Flake]():            "flake",
+	reflect.TypeFor[audit.Workflow]():         "workflow",
+	reflect.TypeFor[audit.Job]():              "job",
+	reflect.TypeFor[audit.Concurrency]():      "concurrency",
+	reflect.TypeFor[audit.Permissions]():      "permissions",
+	reflect.TypeFor[audit.StepUse]():          "step_use",
+	reflect.TypeFor[audit.CompositeAction]():  "composite_action",
 	reflect.TypeFor[audit.CI]():               "ci",
 	reflect.TypeFor[audit.CICommit]():         "ci_commit",
 	reflect.TypeFor[audit.CIJob]():            "ci_job",
+	reflect.TypeFor[audit.ActionsStorage]():   "actions_storage",
+	reflect.TypeFor[audit.Cache]():            "cache",
 	reflect.TypeFor[audit.Releases]():         "releases",
 	reflect.TypeFor[audit.Ruleset]():          "ruleset",
 	reflect.TypeFor[audit.BranchRules]():      "branch_rules",
@@ -277,6 +286,7 @@ var defNames = map[reflect.Type]string{
 	reflect.TypeFor[audit.AllowedActions]():   "allowed_actions",
 	reflect.TypeFor[audit.Identity]():         "identity",
 	reflect.TypeFor[audit.IdentityStandard](): "identity_standard",
+	reflect.TypeFor[audit.HermeticStandard](): "hermetic_standard",
 }
 
 // loadObjects reads the root and every $defs entry of audit.schema.json as an

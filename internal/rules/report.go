@@ -150,6 +150,48 @@ type Report struct {
 	// CITiming is one line per repository with any complete sampled commit,
 	// slowest pull request mean first; see ciTimingLines.
 	CITiming []CITimingLine
+	// CancelMissing is, for each repository in report order whose
+	// ci_cancel_superseded cell fails or is info with a count, the workflows
+	// it counts; see cancelMissing and detailLists.
+	CancelMissing []RepoList[string]
+	// TimeoutMissing is, for each repository in report order whose
+	// job_timeouts cell fails or is info with a count, the jobs it counts;
+	// see timeoutMissing and detailLists.
+	TimeoutMissing []RepoList[string]
+	// UnrecognisedCaches is, for each repository in report order holding a
+	// cache under neither the tool's prefixes nor an action's, those caches;
+	// see cacheLists. Shown, never judged.
+	UnrecognisedCaches []RepoList[CacheItem]
+	// ActionOwnedCaches is, for each repository in report order holding a
+	// cache under one of actionOwnedPrefixes, those caches; see cacheLists.
+	// Shown, never judged.
+	ActionOwnedCaches []RepoList[CacheItem]
+	// PRCaches is, for each repository in report order holding Go or Nix
+	// caches saved from pull-request refs, their count and total size; see
+	// prCaches. Shown, never judged.
+	PRCaches []RepoList[string]
+}
+
+// RepoList is one repository's entries in a list the report gives under a
+// table, for detail too long for a cell: the workflows behind a count, say.
+// An entry is a string the renderer shows as the list's builder documents,
+// or a struct where the renderer formats parts of it differently.
+type RepoList[T any] struct {
+	// Repo is the repository.
+	Repo string
+	// Items is its entries, in the order the list's builder documents.
+	Items []T
+}
+
+// CacheItem is one cache entry in a cache list, in the form the report
+// shows it.
+type CacheItem struct {
+	// Key is the cache key exactly as saved: free text a workflow chose.
+	Key string
+	// Size is the entry's size in decimal units; see formatBytes.
+	Size string
+	// Ref is the ref the entry was saved from, shortened; see refLabel.
+	Ref string
 }
 
 // CITimingLine is how long one repository's CI takes: the mean over its latest

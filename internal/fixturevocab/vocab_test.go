@@ -29,12 +29,14 @@ const fakeOwner = "gh-owner"
 // account, so internal/render/testdata/golden/clean.md — which predates the
 // account scrub and was untouched by it — carries them safely.
 // "preset-store" is the repository the API fixtures' Renovate configs extend
-// presets from; no fixture directory of its own exists.
+// presets from; no fixture directory of its own exists. "lint-flake" is the
+// flake the API fixtures' flake.nix and flake.lock name as an input; it has
+// no fixture directory either.
 var fakeRepos = []string{
 	"blank-repo", "cipher-lib", "compiler-config", "config-files", "go-linter",
 	"hook-guard", "java-demo", "media-server", "mixedCase-flake", "pkg-index",
 	"private-notes", "recipe-site", "shell-scripts", "updater", "web-app",
-	"github-repos-audit", "alpha", "bravo", "preset-store",
+	"github-repos-audit", "alpha", "bravo", "preset-store", "lint-flake",
 }
 
 // fakeIdentityNames and fakeIdentityEmails are the only git identities a
@@ -115,6 +117,78 @@ func namesOnlyFakeRepos(v any) bool {
 	return true
 }
 
+// flakeRef finds a flake reference to a GitHub repository, as flake.nix
+// writes one ("github:<owner>/<repo>"), and lockOwner and lockRepo find the
+// same two halves as flake.lock spells them, as separate JSON keys. Neither
+// form is a pair presetRef sees: a colon or a key/value split is not one of
+// its separators.
+var (
+	flakeRef  = regexp.MustCompile(`github:([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)`)
+	lockOwner = regexp.MustCompile(`"owner"\s*:\s*"([^"]*)"`)
+	lockRepo  = regexp.MustCompile(`"repo"\s*:\s*"([^"]*)"`)
+)
+
+// publicPair matches the owner/repository pairs a file fixture may name beyond
+// the fake vocabulary: nixpkgs, which every flake names and which belongs to
+// no audited account, and the synthetic actions the allowlist fixtures
+// already use.
+var publicPair = regexp.MustCompile(`^(NixOS/nixpkgs|example-org/action-\d{2})$`)
+
+// isFakeFileText holds the text of a file fixture (flake.nix, flake.lock, a
+// workflow, a composite action, a gate script) to the fake vocabulary: every
+// repository it names, in any of the ways those files name one, is gh-owner
+// and a fake repository, or one of publicPair.
+func isFakeFileText(v any) bool {
+	s, ok := str(v)
+	if !ok {
+		return false
+	}
+	allowed := func(owner, repo string) bool {
+		return (owner == fakeOwner && slices.Contains(fakeRepos, repo)) || publicPair.MatchString(owner+"/"+repo)
+	}
+	for _, re := range []*regexp.Regexp{presetRef, flakeRef} {
+		for _, m := range re.FindAllStringSubmatch(s, -1) {
+			if !allowed(m[1], m[2]) {
+				return false
+			}
+		}
+	}
+	for _, m := range lockOwner.FindAllStringSubmatch(s, -1) {
+		if m[1] != fakeOwner && m[1] != "NixOS" {
+			return false
+		}
+	}
+	for _, m := range lockRepo.FindAllStringSubmatch(s, -1) {
+		if !slices.Contains(fakeRepos, m[1]) && m[1] != "nixpkgs" {
+			return false
+		}
+	}
+	return true
+}
+
+// lockedRef is a flake reference as audit.json records one: flake.nix's
+// input URL as written, or flake.lock's GitHub node lower-cased.
+var lockedRef = regexp.MustCompile(`^github:([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)(?:/[^?#]*)?$`)
+
+// isFakeFlakeRef accepts a recorded flake reference naming gh-owner and a fake
+// repository, or nixpkgs, in any letter case: flake.lock's form is
+// lower-cased, so "github:gh-owner/mixedcase-flake" is still the fake name.
+func isFakeFlakeRef(v any) bool {
+	s, ok := str(v)
+	if !ok {
+		return false
+	}
+	m := lockedRef.FindStringSubmatch(s)
+	if m == nil {
+		return false
+	}
+	if strings.EqualFold(m[1]+"/"+m[2], "NixOS/nixpkgs") {
+		return true
+	}
+	return strings.EqualFold(m[1], fakeOwner) &&
+		slices.ContainsFunc(fakeRepos, func(r string) bool { return strings.EqualFold(r, m[2]) })
+}
+
 // pipeDescription is the one deliberate escaping fixture: a description
 // containing a pipe character, which proves the Markdown renderer escapes
 // table cells correctly. It names no account.
@@ -174,8 +248,10 @@ func optional(ok func(any) bool) func(any) bool {
 var (
 	oid       = `^(a{36}[0-9a-f]{4}|(0123456789abcdef){2}01234567)$`
 	timestamp = `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$`
-	workflow  = `^(ci\.ya?ml|workflow-\d{2}\.ya?ml)$`
-	ruleset   = `^(ruleset-\d{2}|protect-(main|tags))$`
+	// workflow also admits a README, the one file a workflows directory
+	// holds that is not a workflow, so the fixtures can show it is skipped.
+	workflow = `^(ci\.ya?ml|workflow-\d{2}\.ya?ml|README\.md)$`
+	ruleset  = `^(ruleset-\d{2}|protect-(main|tags))$`
 	// checkContext covers the API fixtures' synthetic "check-NN" contexts
 	// and the render snapshot golden's real CI job names (commitlint,
 	// gate (ubuntu-latest), merge-gate): generic job names, not account data.
@@ -210,6 +286,11 @@ func keepNil(paths ...string) rule {
 // present one is an object whose oid, text and flags are ruled separately;
 // an absent one is null.
 const renovateProbes = `(renovate_json|renovate_jsonc|renovate_json5|renovate_github_json|renovate_github_jsonc|renovate_github_json5|renovate_gitlab_json|renovate_gitlab_jsonc|renovate_gitlab_json5|renovaterc|renovaterc_json|renovaterc_jsonc|renovaterc_json5)`
+
+// fileProbes is the alternation of the file query's single-file probes. The
+// flake_nix alias is shared with the repository query, whose probe answers
+// an oid where this one answers text.
+const fileProbes = `(flake_nix|flake_lock|run_all_checks|justfile|dot_justfile|capital_justfile)`
 
 // isFakeBase64Content decodes a contents-API content field — base64 wrapped
 // with newlines, as GitHub sends it — and holds the text to namesOnlyFakeRepos.
@@ -251,6 +332,14 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^selected_actions_url$`), matches(`^https://api\.github\.com/repositories/1000\d{3}/actions/permissions/selected-actions$`), "a url with a synthetic id"},
 	{regexp.MustCompile(`rulesets\.nodes\[\]\.name$`), matches(ruleset), "a synthetic ruleset name"},
 	{regexp.MustCompile(`workflows\.entries\[\]\.name$`), matches(workflow), "a synthetic workflow file"},
+	// The file query's listings. Each entry's name is a file a real
+	// repository could be recognised by, so it is held to generic names, and
+	// each file's text to isFakeFileText.
+	{regexp.MustCompile(`^data\.repository\.ci\.entries\[\]\.name$`), matches(`^(check-\d{2}|lib\.sh)$`), "a generic .ci script name"},
+	{regexp.MustCompile(`^data\.repository\.actions\.entries\[\]\.name$`), matches(`^(setup|action-\d{2}|README\.md)$`), "a generic action directory name"},
+	{regexp.MustCompile(`^data\.repository\.actions\.entries\[\]\.object\.entries\[\]\.name$`), matches(`^(action\.ya?ml|README\.md)$`), "an action file name"},
+	{regexp.MustCompile(`^data\.repository\.` + fileProbes + `\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
+	{regexp.MustCompile(`^data\.repository\.(workflows|ci|actions\.entries\[\]\.object)\.entries\[\]\.object\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
 	{regexp.MustCompile(`required_status_checks\[\]\.context$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
@@ -275,9 +364,22 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^workflow_runs\[\]\.id$`), matches(`^4000\d{3}$`), "a synthetic run id"},
 	{regexp.MustCompile(`^workflow_runs\[\]\.name$`), matches(ciWorkflow), "a generic workflow name"},
 	{regexp.MustCompile(`^workflow_runs\[\]\.head_sha$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^workflow_runs\[\]\.head_branch$`), matches(`^main$`), "the generic default branch"},
 	{regexp.MustCompile(`^jobs\[\]\.name$`), matches(ciJob), "a generic job name"},
 	{regexp.MustCompile(`^jobs\[\]\.(started_at|completed_at)$`), optional(matches(timestamp)), "null or a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
+	// The Actions storage lists. A cache key is written by the workflow that
+	// saved it and can carry a hash of the repository's own files, and an
+	// artifact name is the workflow's choice, so both are synthetic; the ids
+	// identify entries on the real account and are synthetic too. A ref is a
+	// generic branch or pull-request ref.
+	{regexp.MustCompile(`^actions_caches\[\]\.id$`), matches(`^6000\d{3}$`), "a synthetic cache id"},
+	{regexp.MustCompile(`^actions_caches\[\]\.key$`), matches(`^((go|nix)-(Linux|macOS)-key-\d{2}|example-action-\d{2})$`), "a synthetic cache key"},
+	{regexp.MustCompile(`^actions_caches\[\]\.ref$`), matches(`^refs/(heads/main|pull/\d+/merge)$`), "a generic ref"},
+	{regexp.MustCompile(`^actions_caches\[\]\.last_accessed_at$`), matches(timestamp), "a timestamp"},
+	{regexp.MustCompile(`^artifacts\[\]\.id$`), matches(`^5000\d{3}$`), "a synthetic artifact id"},
+	{regexp.MustCompile(`^artifacts\[\]\.name$`), matches(`^artifact-\d{2}$`), "a synthetic artifact name"},
+	{regexp.MustCompile(`^artifacts\[\]\.expires_at$`), matches(timestamp), "a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.author\.type$`), matches(`^(User|Bot)$`), "User or Bot"},
 	keep(
 		`access_level`, `allowed_actions`, `\[\]\.archived`, `archived`, `\[\]\.disabled`, `disabled`,
@@ -301,11 +403,17 @@ var apiRules = []rule{
 		`data\.repository\.releases\.nodes\[\]\.is_draft`,
 		`data\.repository\.rulesets\.nodes\[\]\.(enforcement|target|conditions\.ref_name\.include\[\]|rules\.nodes\[\]\.type)`,
 		`data\.repository\.`+renovateProbes+`\.(is_truncated|is_binary)`,
+		`data\.repository\.`+fileProbes+`\.(is_truncated|is_binary)`,
+		`data\.repository\.(workflows|ci|actions\.entries\[\]\.object)\.entries\[\]\.(type|object\.is_truncated|object\.is_binary)`,
+		`data\.repository\.actions\.entries\[\]\.type`,
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
 		// A pull request number, a run's event, a run's or job's status and a
 		// list's total are counts and enums.
 		`data\.repository\.merged_pull_requests\.nodes\[\]\.number`,
 		`(workflow_runs|jobs)\[\]\.status`, `workflow_runs\[\]\.event`, `total_count`,
+		// Storage sizes, counts and the expired flag.
+		`(actions_caches|artifacts)\[\]\.size_in_bytes`, `artifacts\[\]\.expired`,
+		`active_caches_size_in_bytes`, `active_caches_count`, `max_cache_size_gb`,
 		// The contents API's envelope: "file" and "base64" are GitHub's words.
 		`type`, `encoding`,
 	),
@@ -323,6 +431,7 @@ var apiRules = []rule{
 		`data\.repository\.(contributing_root|contributing_github|contributing_docs)`,
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
 		`data\.repository\.`+renovateProbes,
+		`data\.repository\.(`+fileProbes+`|actions|ci)`,
 		// A null actor: GitHub could not resolve who wrote or committed it.
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.nodes\[\]\.(author|committer)`,
 		// A deleted account's pull request.
@@ -351,27 +460,59 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^identity\.canonical$`), func(v any) bool { return v == "Pat Example <pat@example.com>" }, "the fixture canonical identity"},
 	{regexp.MustCompile(`^identity\.match$`), func(v any) bool { return v == " Example <" }, "the fixture identity match"},
 	{regexp.MustCompile(`^identity\.accepted\[\]$`), func(v any) bool { return v == "Pat Example <12345+pat@users.noreply.github.com>" }, "the fixture accepted identity"},
+	// The [hermetic] table names the account and a repository of it in a
+	// real report, so a golden may carry only the fixture standard.
+	{regexp.MustCompile(`^hermetic\.flake$`), func(v any) bool { return v == "github:gh-owner/lint-flake" }, "the fixture hermetic flake"},
+	{regexp.MustCompile(`^hermetic\.lint$`), func(v any) bool { return v == "check-workflow-hermetic" }, "the fixture hermetic lint"},
+	{regexp.MustCompile(`^repos\[\]\.flake\.(inputs|locked_inputs)\[\]$`), isFakeFlakeRef, "github:gh-owner/<fake> or nixpkgs"},
+	{regexp.MustCompile(`^repos\[\]\.flake\.gate_files\[\]$`), matches(`^(run-all-checks|justfile|\.justfile|Justfile|\.ci/[A-Za-z0-9._-]+)$`), "a gate file path"},
+	{regexp.MustCompile(`^repos\[\]\.flake\.nixpkgs_last_modified$`), matches(timestamp), "a timestamp"},
 	// Recorded CI facts: commits carry the synthetic oid, dates are
 	// timestamps, and a job label is a generic "<workflow> / <job>" pair like
 	// the API fixtures'.
 	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.oid$`), matches(oid), "a pattern oid"},
 	{regexp.MustCompile(`^repos\[\]\.ci\.pull_requests\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
 	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.label$`), matches(`^ci / (check|test|lint|docs)$`), "a generic job label"},
+	{regexp.MustCompile(`^repos\[\]\.ci\.last_default_branch_run$`), matches(timestamp), "a timestamp"},
+	// Recorded cache entries: a generic "<prefix>-<os>-<hex>" key, a Trivy
+	// key or a synthetic "custom-<hex>" key with nothing after its prefix
+	// but hex, saved from main or a pull request, at a timestamp. A real
+	// action-owned or unrecognised key is whatever a workflow wrote, so only
+	// these fixed shapes are admitted.
+	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.key$`), matches(`^((go|nix)-(Linux|macOS)-|trivy-|custom-)[0-9a-f]+$`), "a generic or synthetic cache key"},
+	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.ref$`), matches(`^refs/(heads/main|pull/[0-9]+/merge)$`), "main or a pull request ref"},
+	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.created_at$`), matches(timestamp), "a timestamp"},
+	// Recorded workflow facts: a synthetic workflow file under
+	// .github/workflows, GitHub's own event names, generic job ids, a
+	// literal cancel-in-progress and a literal timeout in minutes. An
+	// expression is left out on purpose: in a real report it may name
+	// anything a workflow file can.
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.path$`), matches(`^\.github/workflows/(ci|workflow-\d{2})\.ya?ml$`), "a synthetic workflow path"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.events\[\]$`), matches(`^(pull_request|pull_request_target|push|schedule|workflow_dispatch)$`), "a GitHub event name"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.id$`), matches(`^(check|test|lint|docs)$`), "a generic job id"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.(jobs\[\]\.)?concurrency\.cancel_in_progress$`), matches(`^(true|false)$`), "a literal cancel-in-progress"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.timeout_minutes$`), matches(`^[0-9]+$`), "a literal timeout in minutes"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
+		`repos\[\]\.actions_storage\.(artifact_bytes|artifact_count|cache_limit_bytes|cache_usage_bytes)`,
+		`repos\[\]\.actions_storage\.caches\[\]\.size_bytes`,
 		`repos\[\]\.(branches|ci_state|default_branch|empty|license|open_pull_requests|published|topics|type|visibility)`,
 		`repos\[\]\.branch\.(known|types\[\])`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.seconds`,
 		`repos\[\]\.files\.[a-z_]+`,
+		`repos\[\]\.flake\.(all_rev_pinned|has_lock|names_lint)`,
 		`repos\[\]\.overrides\.[a-z_]+`,
 		`repos\[\]\.releases\.(drafts|total)`,
 		// A duration such as "7 days" is never account data.
 		`repos\[\]\.renovate\.min_release_age`,
+		`repos\[\]\.renovate\.(lock_file_maintenance|nix_manager)`,
 		`repos\[\]\.rulesets\[\]\.(enforcement|include\[\]|rules\[\]|target)`,
 		`repos\[\]\.settings\.[a-z_]+`,
 		`repos\[\]\.settings\.allowed_actions\.(github_owned_allowed|verified_allowed)`,
+		`repos\[\]\.workflow_facts\[\]\.(jobs\[\]\.)?concurrency\.set`,
+		`repos\[\]\.workflow_facts\[\]\.jobs\[\]\.reusable`,
 	),
 }
 
@@ -781,6 +922,11 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 		{name: "a present renovate probe with a real flag field", doc: `{"data": {"repository": {"renovate_json": {"is_huge": true}}}}`},
 		{name: "a history author outside the identity vocabulary", doc: `{"data": {"repository": {"default_branch_ref": {"target": {"history": {"nodes": [{"author": {"name": "Someone Real", "email": "pat@example.com"}}]}}}}}}`},
 		{name: "a later history page's committer email outside the vocabulary", doc: `{"data": {"repository": {"object": {"history": {"nodes": [{"committer": {"name": "Pat Example", "email": "someone@real.invalid"}}]}}}}}`},
+		{name: "flake.nix naming a real input", doc: `{"data": {"repository": {"flake_nix": {"text": "inputs.x.url = \"github:someone/real-repo\";"}}}}`},
+		{name: "flake.lock naming a real owner", doc: `{"data": {"repository": {"flake_lock": {"text": "{\"original\": {\"owner\": \"someone\", \"repo\": \"lint-flake\"}}"}}}}`},
+		{name: "flake.lock naming a real repository", doc: `{"data": {"repository": {"flake_lock": {"text": "{\"original\": {\"owner\": \"gh-owner\", \"repo\": \"real-repo\"}}"}}}}`},
+		{name: "a workflow using a real action", doc: `{"data": {"repository": {"workflows": {"entries": [{"object": {"text": "- uses: someone/real-action@v1"}}]}}}}`},
+		{name: "a gate script under a real name", doc: `{"data": {"repository": {"ci": {"entries": [{"name": "deploy-media-stack"}]}}}}`},
 		{name: "a history cursor that is not synthetic", doc: `{"data": {"repository": {"object": {"history": {"page_info": {"end_cursor": "Y3Vyc29yOnYyOpK5"}}}}}}`},
 	}
 	for _, tc := range tests {
@@ -808,6 +954,54 @@ func TestCheck_rejectsAForeignIdentityStandard(t *testing.T) {
 		}
 	}
 	fixture := `{"identity": {"canonical": "Pat Example <pat@example.com>", "match": " Example <", "accepted": ["Pat Example <12345+pat@users.noreply.github.com>"]}}`
+	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
+		t.Errorf("check(the fixture standard) = %q, want no problem", got)
+	}
+}
+
+// TestCheck_rejectsAFreeTextCacheKey: a golden audit.json may record only
+// the generic and synthetic cache-key shapes. A real key past a familiar
+// prefix is whatever a workflow wrote, and may name the repository it came
+// from.
+func TestCheck_rejectsAFreeTextCacheKey(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []string{"trivy-real-repo-db", "custom-real-repo", "node-cache-0a1b", "gitleaks-0a1b"} {
+		doc := `{"repos": [{"actions_storage": {"caches": [{"key": "` + key + `"}]}}]}`
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
+			t.Errorf("check(%s) found no problem, want one", doc)
+		}
+	}
+	for _, key := range []string{"go-Linux-0a1b", "nix-macOS-0a1b", "trivy-3a4b", "custom-1e2f"} {
+		doc := `{"repos": [{"actions_storage": {"caches": [{"key": "` + key + `"}]}}]}`
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) != 0 {
+			t.Errorf("check(%s) = %q, want no problem", doc, got)
+		}
+	}
+}
+
+// TestCheck_rejectsAForeignHermeticStandard: a golden audit.json may record
+// only the fixture [hermetic] table and flake references to the fake
+// vocabulary, never an account's own flake.
+func TestCheck_rejectsAForeignHermeticStandard(t *testing.T) {
+	t.Parallel()
+
+	for _, doc := range []string{
+		`{"hermetic": {"flake": "github:someone/real-flake", "lint": "check-workflow-hermetic"}}`,
+		`{"hermetic": {"flake": "github:gh-owner/lint-flake", "lint": "someone-lint"}}`,
+		`{"repos": [{"flake": {"inputs": ["github:someone/lint-flake"]}}]}`,
+		`{"repos": [{"flake": {"locked_inputs": ["github:gh-owner/real-repo"]}}]}`,
+		`{"repos": [{"flake": {"inputs": ["git+https://example.invalid/lint-flake"]}}]}`,
+		`{"repos": [{"flake": {"gate_files": ["scripts/real-name"]}}]}`,
+	} {
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
+			t.Errorf("check(%s) found no problem, want one", doc)
+		}
+	}
+	fixture := `{"hermetic": {"flake": "github:gh-owner/lint-flake", "lint": "check-workflow-hermetic"}, ` +
+		`"repos": [{"flake": {"inputs": ["github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"], ` +
+		`"has_lock": true, "locked_inputs": ["github:gh-owner/mixedcase-flake", "github:nixos/nixpkgs"], ` +
+		`"names_lint": true, "gate_files": [".ci/check", "run-all-checks"]}}]}`
 	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
 		t.Errorf("check(the fixture standard) = %q, want no problem", got)
 	}

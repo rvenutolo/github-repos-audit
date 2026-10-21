@@ -59,10 +59,19 @@ const (
 	CheckDirectPush
 	CheckSecretScanning
 	CheckVulnReporting
+	CheckHermeticNix
+	CheckNixLockAge
+	CheckNixLockRefresh
+	CheckNixCache
+	CheckGoCache
+	CheckCacheUsage
+	CheckCICancelSuperseded
+	CheckJobTimeouts
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
 	CheckBranches
+	CheckArtifactStorage
 )
 
 // checkNames maps each check to the identifier used in repos.toml overrides
@@ -111,10 +120,19 @@ var checkNames = [...]string{
 	CheckDirectPush:            "direct_push",
 	CheckSecretScanning:        "secret_scanning",
 	CheckVulnReporting:         "vuln_reporting",
+	CheckHermeticNix:           "hermetic_nix",
+	CheckNixLockAge:            "nix_lock_age",
+	CheckNixLockRefresh:        "nix_lock_refresh",
+	CheckNixCache:              "nix_cache",
+	CheckGoCache:               "go_cache",
+	CheckCacheUsage:            "cache_usage",
+	CheckCICancelSuperseded:    "ci_cancel_superseded",
+	CheckJobTimeouts:           "job_timeouts",
 	CheckLastReleaseAge:        "last_release_age",
 	CheckLastPush:              "last_push",
 	CheckOpenPRs:               "open_prs",
 	CheckBranches:              "branches",
+	CheckArtifactStorage:       "artifact_storage",
 }
 
 // String returns the check's identifier as it is written in repos.toml.
@@ -148,13 +166,13 @@ func ParseCheck(name string) (Check, bool) {
 }
 
 // ValueOnly reports whether a check carries a value and never a pass or a
-// fail: the last release, the last push, the open pull requests and the
-// branch count. Such a check can be shown or left out, but never required,
-// because nothing about it can be missing.
+// fail: the last release, the last push, the open pull requests, the branch
+// count and the artifact storage. Such a check can be shown or left out, but
+// never required, because nothing about it can be missing.
 func (c Check) ValueOnly() bool {
 	//nolint:exhaustive // every other check carries a pass or a fail
 	switch c {
-	case CheckLastReleaseAge, CheckLastPush, CheckOpenPRs, CheckBranches:
+	case CheckLastReleaseAge, CheckLastPush, CheckOpenPRs, CheckBranches, CheckArtifactStorage:
 		return true
 	default:
 		return false

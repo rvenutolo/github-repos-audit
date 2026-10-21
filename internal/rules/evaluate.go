@@ -78,10 +78,11 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 		return nil, fmt.Errorf("evaluate: identity: %w", err)
 	}
 
+	ev := evalContext{now: snap.GeneratedAt, hermetic: snap.Hermetic}
 	rep := &Report{GeneratedAt: snap.GeneratedAt, Owner: snap.Owner, Drift: snap.Drift}
 	rep.Repos = make([]RepoReport, 0, len(snap.Repos))
 	for _, r := range snap.Repos {
-		cells, err := evaluateRepo(r, specs, std)
+		cells, err := evaluateRepo(r, specs, std, ev)
 		if err != nil {
 			return nil, err
 		}
@@ -92,6 +93,10 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 	rep.Gaps = collectGaps(rep.Repos)
 	rep.Identities = identityLines(rep.Repos, std)
 	rep.CITiming = ciTimingLines(rep.Repos)
+	rep.CancelMissing = detailLists(rep.Repos, CheckCICancelSuperseded, cancelMissing)
+	rep.TimeoutMissing = detailLists(rep.Repos, CheckJobTimeouts, timeoutMissing)
+	rep.UnrecognisedCaches, rep.ActionOwnedCaches = cacheLists(rep.Repos)
+	rep.PRCaches = prCaches(rep.Repos)
 	rep.Overrides = collectOverrides(rep.Repos)
 	rep.Exceptions, rep.NoConsensus = modalExceptions(snap.Repos)
 	markDeviations(rep.Repos)
@@ -108,9 +113,20 @@ func compareNames(a, b string) int {
 	return strings.Compare(a, b)
 }
 
+// evalContext is what every repository is judged against beyond its own
+// facts and its type: the run's instant and the snapshot's standards.
+type evalContext struct {
+	// The run's instant: the snapshot's GeneratedAt, so the same audit.json
+	// evaluates to the same report whenever it is read.
+	now time.Time
+	// hermetic is the [hermetic] standard, zero when the snapshot declares
+	// none.
+	hermetic audit.HermeticStandard
+}
+
 // evaluateRepo produces one cell for every check. std is the compiled identity
 // standard, nil when the snapshot declares none.
-func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard) (map[Check]Cell, error) {
+func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard, ev evalContext) (map[Check]Cell, error) {
 	spec, known := specs[r.Type]
 	if !known {
 		return nil, fmt.Errorf("evaluate %s: unknown type %q", r.Name, r.Type)
@@ -174,7 +190,13 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard
 				obs = observeIdentity(r, std)
 			}
 		} else {
-			obs = observe(c, r)
+			// The same reasoning as git_identity's: config validation refuses
+			// a judged hermetic_nix without both halves of [hermetic], and an
+			// empty flake reference would fail every flake for nothing.
+			if c == CheckHermeticNix && exp != expNA && (ev.hermetic.Flake == "" || ev.hermetic.Lint == "") {
+				return nil, fmt.Errorf("evaluate %s: hermetic_nix is judged but the snapshot has no complete hermetic standard", r.Name)
+			}
+			obs = observe(c, r, ev)
 		}
 		if obs.unknown {
 			exp = expNA
@@ -253,7 +275,7 @@ func pathObservation(path string) observation {
 }
 
 //nolint:exhaustive // direct push, the release-age threshold and git_identity are handled in evaluateRepo
-func observe(c Check, r audit.Repo) observation {
+func observe(c Check, r audit.Repo, ev evalContext) observation {
 	switch c {
 	case CheckDescription:
 		return observation{ok: r.Description != ""}
@@ -298,6 +320,23 @@ func observe(c Check, r audit.Repo) observation {
 			return observation{unknown: true}
 		}
 		return observation{ok: *r.Settings.PrivateVulnerabilityReporting}
+
+	case CheckHermeticNix:
+		return observeHermetic(r, ev.hermetic)
+	case CheckNixLockAge:
+		return observeLockAge(r, ev.now)
+	case CheckNixLockRefresh:
+		return observeLockRefresh(r)
+	case CheckNixCache:
+		return observeNixCache(r, ev.now)
+	case CheckGoCache:
+		return observeGoCache(r, ev.now)
+	case CheckCacheUsage:
+		return observeCacheUsage(r)
+	case CheckCICancelSuperseded:
+		return observeCancelSuperseded(r)
+	case CheckJobTimeouts:
+		return observeJobTimeouts(r)
 
 	case CheckTopics:
 		return observation{ok: r.Topics > 0, value: strconv.Itoa(r.Topics), scalar: true}
@@ -377,6 +416,8 @@ func observe(c Check, r audit.Repo) observation {
 		// branches there are besides it. An empty repository has no branches
 		// at all, so max keeps the count off negative numbers.
 		return observation{value: strconv.Itoa(max(r.Branches-1, 0)), scalar: true}
+	case CheckArtifactStorage:
+		return observeArtifactStorage(r)
 
 	default:
 		return observation{unknown: true}

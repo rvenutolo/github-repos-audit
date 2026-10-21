@@ -37,6 +37,13 @@ func fixtureIdentity() audit.IdentityStandard {
 	}
 }
 
+// fixtureHermetic is the [hermetic] table standard-types.toml declares, which
+// every snapshot judged against those types needs once any of them judges
+// hermetic_nix, as fixtureIdentity is for git_identity.
+func fixtureHermetic() audit.HermeticStandard {
+	return audit.HermeticStandard{Flake: "github:gh-owner/lint-flake", Lint: "check-workflow-hermetic"}
+}
+
 // renderedAt is the instant every golden file is rendered against, so the
 // relative dates in them are fixed rather than tied to the clock.
 var renderedAt = time.Date(2026, 9, 5, 7, 30, 0, 0, time.UTC)
@@ -73,13 +80,29 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			PRTemplate:     ".github/pull_request_template.md",
 			Commitlint:     ".commitlintrc.yml",
 		},
+		// The fixture [hermetic] standard's flake, declared, locked, named in
+		// flake.nix and wired into the gate, with nixpkgs locked days before
+		// the render.
+		Flake: audit.Flake{
+			Inputs:              []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
+			HasLock:             true,
+			LockedInputs:        []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
+			NixpkgsLastModified: at(2026, time.September, 1),
+			NamesLint:           true,
+			GateFiles:           []string{"run-all-checks"},
+		},
 		// The canonical identity, and a bot's that is never the owner's.
 		Identities: []audit.Identity{
 			{Name: "Pat Example", Email: "pat@example.com"},
 			{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"},
 		},
-		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
-		CIState:  "SUCCESS",
+		// Renovate refreshes flake.lock: its nix manager runs, with lock-file
+		// maintenance.
+		Renovate: audit.Renovate{
+			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json",
+			NixManager: true, LockFileMaintenance: true,
+		},
+		CIState: "SUCCESS",
 		Rulesets: []audit.Ruleset{
 			{Name: "protect-tags", Target: "TAG", Enforcement: "ACTIVE", Include: []string{"refs/tags/**"}},
 			{
@@ -118,7 +141,15 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // minimum release age that falls short and another that is unresolved, and
 // git identities that are mixed (beside an accepted one), canonical beside
 // an accepted one, consistently non-canonical, only someone else's, and
-// absent altogether.
+// absent altogether. The published software repository has declared and
+// locked the hermetic-lint flake without wiring the lint in, and nothing
+// refreshes its lock, and the tools repository's nixpkgs lock is stale and
+// its Nix cache oversized, so the Nix section carries fails beside the
+// passes. Both are Go modules; the software repository's Go cache is a
+// useful size, while a side job in the tools repository saved an empty one
+// last, so the CI efficiency section carries a fail too, as it does for
+// the tools repository's pull-request workflows that run on after a newer
+// push supersedes them and for its job with no timeout.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -144,14 +175,43 @@ func fullSnapshot() *audit.Snapshot {
 	}
 	// Two repositories per commitlint spelling: a tied column names no standard.
 	soft.Files.Commitlint = ".commitlintrc.json"
-	// Its release age comes from a preset and falls short of the type's.
-	soft.Renovate = audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store"}
+	// Its release age comes from a preset and falls short of the type's, and
+	// Renovate runs the nix manager without lock-file maintenance, which on
+	// inputs not pinned by rev leaves flake.lock unrefreshed.
+	soft.Renovate = audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store", NixManager: true}
 	soft.Releases = audit.Releases{Total: 4, Drafts: 1, LastPublishedAt: at(2026, time.April, 2)}
 	soft.Settings.SecretScanning = "enabled"
 	soft.Settings.SecretScanningPushProtection = "enabled"
 	soft.Settings.PrivateVulnerabilityReporting = new(true)
 	soft.Settings.ActionsAccessLevel = ""
 	soft.Settings.HasProjects = true // the one deviation on projects
+	// It declares and locks the lint flake but has not wired the lint in yet.
+	soft.Flake.NamesLint = false
+	soft.Flake.GateFiles = nil
+	// Its default branch ran CI the day before the render, and the newest of
+	// its two Linux Nix caches, and its Go cache, are a useful size; a pull
+	// request's cache beside them serves no default-branch run.
+	soft.Files.GoMod = true
+	soft.CI.LastDefaultBranchRun = at(2026, time.September, 4)
+	soft.Storage = audit.ActionsStorage{
+		Caches: []audit.Cache{
+			{Key: "go-Linux-6c7d", Ref: "refs/heads/main", SizeBytes: 95_000_000, CreatedAt: at(2026, time.September, 4)},
+			{Key: "nix-Linux-0a1b", Ref: "refs/heads/main", SizeBytes: 180_000_000, CreatedAt: at(2026, time.September, 1)},
+			{Key: "nix-Linux-2c3d", Ref: "refs/heads/main", SizeBytes: 206_000_000, CreatedAt: at(2026, time.September, 4)},
+			{Key: "nix-Linux-4e5f", Ref: "refs/pull/11/merge", SizeBytes: 900, CreatedAt: at(2026, time.September, 3)},
+		},
+		CacheUsageBytes: 481_000_900,
+		CacheLimitBytes: 10_000_000_000,
+		ArtifactCount:   12,
+		ArtifactBytes:   206_000_000,
+	}
+	// Its pull-request workflow cancels superseded runs, and its one job
+	// bounds its run time.
+	soft.Workflows = []audit.Workflow{{
+		Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
+		Concurrency: audit.Concurrency{Set: true, CancelInProgress: "true"},
+		Jobs:        []audit.Job{{ID: "check", TimeoutMinutes: "15"}},
+	}}
 	// Its history switched identity: mixed. The noreply identity GitHub records
 	// on web-UI merges beside them is accepted and does not count toward it.
 	soft.Identities = []audit.Identity{
@@ -177,6 +237,7 @@ func fullSnapshot() *audit.Snapshot {
 	content.Files.RenovateConfig = ""
 	content.Renovate = audit.Renovate{} // no configuration, so nothing it says
 	content.Files.FlakeNix = false
+	content.Flake = audit.Flake{} // no flake.nix, so no flake.lock either
 	content.Files.Justfile = false
 	content.Files.JustfilePath = ""
 	content.Files.Workflows = nil
@@ -193,11 +254,50 @@ func fullSnapshot() *audit.Snapshot {
 	tools.CIState = "PENDING"
 	tools.Branches = 4 // three besides the default, so the cell is not a zero
 	tools.Branch.RequiredChecks = []string{"merge-gate"}
+	// Its nixpkgs was last locked well over a month ago.
+	tools.Flake.NixpkgsLastModified = at(2026, time.July, 20)
 	// Its only merged pull requests are a bot's, so PR CI has nothing to show.
 	tools.CI = audit.CI{
 		PullRequests: []audit.CICommit{ciCommit("0004", 7, at(2026, time.August, 22), true, 90, ciJob("ci / check", 60))},
 		DefaultBranch: []audit.CICommit{
 			ciCommit("0005", 0, time.Time{}, false, 3900, ciJob("ci / test", 3800)),
+		},
+	}
+	// Its Nix cache has outgrown the ceiling, and the newest of its Go caches
+	// is empty, whatever the older one holds. Beside them sit an action's
+	// own cache and two caches under a key no check covers, one saved from a
+	// pull request, which the cache lists show unjudged.
+	tools.Files.GoMod = true
+	tools.CI.LastDefaultBranchRun = at(2026, time.September, 5)
+	tools.Storage = audit.ActionsStorage{
+		Caches: []audit.Cache{
+			{Key: "go-Linux-8e9f", Ref: "refs/heads/main", SizeBytes: 120_000_000, CreatedAt: at(2026, time.September, 2)},
+			{Key: "go-Linux-a0b1", Ref: "refs/heads/main", SizeBytes: 430, CreatedAt: at(2026, time.September, 5)},
+			{Key: "nix-Linux-6a7b", Ref: "refs/heads/main", SizeBytes: 2_200_000_000, CreatedAt: at(2026, time.September, 5)},
+			{Key: "trivy-3a4b", Ref: "refs/heads/main", SizeBytes: 61_000_000, CreatedAt: at(2026, time.September, 5)},
+			{Key: "custom-5c6d", Ref: "refs/pull/12/merge", SizeBytes: 3_000_000, CreatedAt: at(2026, time.September, 4)},
+			{Key: "custom-1e2f", Ref: "refs/heads/main", SizeBytes: 2_000_000, CreatedAt: at(2026, time.September, 5)},
+		},
+		CacheUsageBytes: 2_386_000_430,
+		CacheLimitBytes: 10_000_000_000,
+	}
+	// Neither of its pull-request workflows cancels superseded runs: one
+	// sets concurrency without cancel-in-progress, and the other cancels in
+	// one job of two. Of its jobs, one sets a timeout and one does not; the
+	// third calls a reusable workflow, which carries its own, so it is not
+	// counted.
+	tools.Workflows = []audit.Workflow{
+		{
+			Path: ".github/workflows/ci.yml", Events: []string{"pull_request"},
+			Concurrency: audit.Concurrency{Set: true},
+			Jobs:        []audit.Job{{ID: "check", TimeoutMinutes: "30"}},
+		},
+		{
+			Path: ".github/workflows/workflow-02.yml", Events: []string{"pull_request_target"},
+			Jobs: []audit.Job{
+				{ID: "lint", Concurrency: audit.Concurrency{Set: true, CancelInProgress: "true"}},
+				{ID: "test", Reusable: true},
+			},
 		},
 	}
 	// Consistently the wrong identity, beside GitHub's own web-flow committer.
@@ -219,6 +319,7 @@ func fullSnapshot() *audit.Snapshot {
 	cfg.Files.Commitlint = ".commitlintrc.json"
 	cfg.Overrides = map[string]string{"flake_nix": rules.OverrideNotRequired}
 	cfg.Files.FlakeNix = false
+	cfg.Flake = audit.Flake{}
 	cfg.Settings.HasWiki = true // the one deviation on wiki
 	// A preset it extends is missing, so its release age is unresolved.
 	cfg.Renovate = audit.Renovate{MinReleaseAgeError: "preset github>gh-owner/preset-store:go: not found"}
@@ -234,6 +335,7 @@ func fullSnapshot() *audit.Snapshot {
 		Owner:       "gh-owner",
 		Types:       standardTypes(),
 		Identity:    fixtureIdentity(),
+		Hermetic:    fixtureHermetic(),
 		Repos:       []audit.Repo{soft, content, tools, empty, cfg},
 	}
 }
@@ -265,6 +367,7 @@ func driftSnapshot() *audit.Snapshot {
 		Owner:       "gh-owner",
 		Types:       standardTypes(),
 		Identity:    fixtureIdentity(),
+		Hermetic:    fixtureHermetic(),
 		Repos:       []audit.Repo{baseRepo("alpha", "tools"), baseRepo("bravo", "tools")},
 		Drift: audit.ConfigDrift{
 			Unconfigured: []string{"hook-guard"},

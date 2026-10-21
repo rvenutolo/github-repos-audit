@@ -63,7 +63,7 @@ func scriptRenovateProbes(t *testing.T, api *fakeAPI, probes map[string]any) {
 // collectFlake collects mixedCase-flake alone and returns its Renovate facts.
 func collectFlake(t *testing.T, api *fakeAPI) audit.Renovate {
 	t.Helper()
-	repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+	repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil: an unusable config is a fact, not an abort", err)
 	}
@@ -77,7 +77,7 @@ func TestCollect_presetFetchedOncePerRun(t *testing.T) {
 	api := newFakeAPI(t)
 	c := newTestClient(t, api.url())
 	// mixedCase-flake and web-app both extend github>gh-owner/preset-store.
-	if _, err := c.Collect(t.Context(), []string{"mixedCase-flake", "web-app"}); err != nil {
+	if _, err := c.Collect(t.Context(), []string{"mixedCase-flake", "web-app"}, github.Probe{}); err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
 	if n := api.callsTo(presetDefault); n != 1 {
@@ -93,7 +93,7 @@ func TestCollect_presetCacheIsPerRun(t *testing.T) {
 	api := newFakeAPI(t)
 	c := newTestClient(t, api.url())
 	for range 2 {
-		if _, err := c.Collect(t.Context(), []string{"mixedCase-flake"}); err != nil {
+		if _, err := c.Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{}); err != nil {
 			t.Fatalf("Collect() error = %v", err)
 		}
 	}
@@ -136,6 +136,25 @@ func TestCollect_presetFallbackIsRead(t *testing.T) {
 	}
 }
 
+// TestCollect_presetManagerFactsAreRead: the nix manager and lock-file
+// maintenance a preset turns on reach audit.Renovate.
+func TestCollect_presetManagerFactsAreRead(t *testing.T) {
+	t.Parallel()
+	api := newFakeAPI(t)
+	// base64 of {"minimumReleaseAge": "7 days", "nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}}
+	api.failNext(presetDefault, scriptedFailure{
+		status: http.StatusOK,
+		body:   `{"type":"file","encoding":"base64","content":"eyJtaW5pbXVtUmVsZWFzZUFnZSI6ICI3IGRheXMiLCAibml4IjogeyJlbmFibGVkIjogdHJ1ZX0sICJsb2NrRmlsZU1haW50ZW5hbmNlIjogeyJlbmFibGVkIjogdHJ1ZX19"}`,
+	})
+	want := audit.Renovate{
+		MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store",
+		NixManager: true, LockFileMaintenance: true,
+	}
+	if diff := cmp.Diff(want, collectFlake(t, api)); diff != "" {
+		t.Errorf("Renovate mismatch (-want +got):\n%s", diff)
+	}
+}
+
 // TestCollect_presetServerErrorAborts: any other status is not an answer.
 func TestCollect_presetServerErrorAborts(t *testing.T) {
 	t.Parallel()
@@ -143,7 +162,7 @@ func TestCollect_presetServerErrorAborts(t *testing.T) {
 	api.failNext(presetDefault,
 		scriptedFailure{status: http.StatusForbidden, body: `{"message":"Forbidden"}`})
 	c := newTestClient(t, api.url())
-	if _, err := c.Collect(t.Context(), []string{"mixedCase-flake"}); !errors.Is(err, github.ErrUnexpectedStatus) {
+	if _, err := c.Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{}); !errors.Is(err, github.ErrUnexpectedStatus) {
 		t.Errorf("Collect() error = %v, want ErrUnexpectedStatus", err)
 	}
 }
@@ -319,7 +338,7 @@ func TestCollect_renovateConfigFollowsRenovateLookupOrder(t *testing.T) {
 			}
 			api := newFakeAPI(t)
 			scriptRenovateProbes(t, api, probes)
-			repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+			repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{})
 			if err != nil {
 				t.Fatalf("Collect() error = %v", err)
 			}

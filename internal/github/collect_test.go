@@ -111,6 +111,9 @@ func wantShellScripts(t *testing.T) audit.Repo {
 					Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 60}},
 				},
 			},
+			// From the default-branch runs read, not the timing page: its
+			// newest run is a scheduled one.
+			LastDefaultBranchRun: at(t, "2025-09-06T01:39:30Z"),
 		},
 		Rulesets: []audit.Ruleset{
 			{
@@ -173,6 +176,22 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		// The value is set in the repository's own JSONC file, so the source is
 		// that file's path rather than a preset.
 		Renovate: audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: ".github/renovate.json"},
+		// flake.nix with no lock beside it.
+		Flake: audit.Flake{Inputs: []string{"github:NixOS/nixpkgs/nixos-unstable"}},
+		// Sorted by key then ref, whatever order GitHub listed them in; the
+		// expired artifact is listed but neither counted nor summed.
+		Storage: audit.ActionsStorage{
+			Caches: []audit.Cache{
+				{Key: "example-action-01", Ref: "refs/heads/main", SizeBytes: 263, CreatedAt: at(t, "2025-09-04T02:20:00Z")},
+				{Key: "go-Linux-key-01", Ref: "refs/heads/main", SizeBytes: 206000000, CreatedAt: at(t, "2025-09-04T01:00:00Z")},
+				{Key: "go-Linux-key-02", Ref: "refs/pull/3/merge", SizeBytes: 2000, CreatedAt: at(t, "2025-09-04T08:59:00Z")},
+				{Key: "nix-Linux-key-01", Ref: "refs/heads/main", SizeBytes: 812250354, CreatedAt: at(t, "2025-09-04T02:20:33Z")},
+			},
+			CacheUsageBytes: 1018252617,
+			CacheLimitBytes: 10_000_000_000,
+			ArtifactCount:   2,
+			ArtifactBytes:   25000,
+		},
 	}
 }
 
@@ -198,6 +217,12 @@ func wantWebApp(t *testing.T) audit.Repo {
 			{Name: "Patrick Example", Email: "patrick@example.org"},
 		},
 		Files: audit.Files{RenovateConfig: "renovate.json", Workflows: []string{"workflow-33.yml"}},
+		// GitHub cut the workflow's text short, so it is unreadable rather
+		// than parsed from what arrived.
+		Workflows: []audit.Workflow{{
+			Path:       ".github/workflows/workflow-33.yml",
+			ParseError: ".github/workflows/workflow-33.yml: too large to read in full",
+		}},
 		CI: audit.CI{
 			PullRequests: []audit.CICommit{{
 				OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0c11", PRNumber: 3, MergedAt: at(t, "2025-09-01T09:00:00Z"),
@@ -208,7 +233,10 @@ func wantWebApp(t *testing.T) audit.Repo {
 				OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014", Complete: true, WaitSeconds: 140,
 				Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}},
 			}},
+			LastDefaultBranchRun: at(t, "2025-09-02T01:45:00Z"),
 		},
+		// Nothing stored: the limit is still read.
+		Storage: audit.ActionsStorage{CacheLimitBytes: 10_000_000_000},
 		// Inherited from the in-account preset; config:best-practices is a
 		// built-in, which sets nothing this tool can read.
 		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store"},
@@ -300,7 +328,7 @@ func TestClient_Collect(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := client.Collect(t.Context(), []string{tc.name})
+			got, err := client.Collect(t.Context(), []string{tc.name}, github.Probe{})
 			if err != nil {
 				t.Fatalf("Collect(%q): %v", tc.name, err)
 			}
@@ -323,7 +351,7 @@ func TestClient_Collect_walksTheWholeHistory(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -332,8 +360,8 @@ func TestClient_Collect_walksTheWholeHistory(t *testing.T) {
 	}
 
 	vars := api.graphQLVariables()
-	if len(vars) != 3 {
-		t.Fatalf("/graphql saw %d documents for web-app, want 3: the repository query and two history pages", len(vars))
+	if len(vars) != 4 {
+		t.Fatalf("/graphql saw %d documents for web-app, want 4: the repository query, two history pages and the file query", len(vars))
 	}
 	if _, ok := vars[0]["cursor"]; ok {
 		t.Errorf("the repository query carried a cursor: %v", vars[0])
@@ -371,7 +399,7 @@ func TestClient_Collect_abortsOnAFailedHistoryPage(t *testing.T) {
 		},
 	)
 
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"}, github.Probe{})
 	if err == nil {
 		t.Fatal("Collect() error = nil, want the history page's GraphQL error")
 	}
@@ -387,8 +415,9 @@ func TestClient_Collect_abortsOnAFailedHistoryPage(t *testing.T) {
 }
 
 // TestClient_Collect_oneHistoryPage covers the ordinary case: a history that
-// fits on the first page costs no request beyond the repository query, and an
-// identity that is both author and committer is recorded once.
+// fits on the first page costs no request beyond the repository query (the
+// other document is the file query), and an identity that is both author and
+// committer is recorded once.
 func TestClient_Collect_oneHistoryPage(t *testing.T) {
 	t.Parallel()
 
@@ -397,7 +426,7 @@ func TestClient_Collect_oneHistoryPage(t *testing.T) {
 			t.Parallel()
 
 			api := newFakeAPI(t)
-			got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{name})
+			got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{name}, github.Probe{})
 			if err != nil {
 				t.Fatalf("Collect: %v", err)
 			}
@@ -405,8 +434,8 @@ func TestClient_Collect_oneHistoryPage(t *testing.T) {
 			if diff := cmp.Diff(want, got[0].Identities); diff != "" {
 				t.Errorf("Identities mismatch (-want +got):\n%s", diff)
 			}
-			if n := len(api.graphQLVariables()); n != 1 {
-				t.Errorf("/graphql saw %d documents, want 1", n)
+			if n := len(api.graphQLVariables()); n != 2 {
+				t.Errorf("/graphql saw %d documents, want 2: the repository query and the file query", n)
 			}
 		})
 	}
@@ -420,7 +449,7 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -459,6 +488,191 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 	// repo's, which is exactly what the ruleset name is collected for.
 	if repo.Rulesets[1].Name != "ruleset-02" {
 		t.Errorf("tag ruleset = %q, want ruleset-02", repo.Rulesets[1].Name)
+	}
+}
+
+// TestClient_Collect_fileFacts covers what the file query reads, end to end:
+// mixedCase-flake's flake, lock, workflows and composite action, and where
+// each repository names the hermetic lint. Only .yml and .yaml files are
+// workflows, a binary one is unreadable, and only a directory holding an
+// action file is an action.
+func TestClient_Collect_fileFacts(t *testing.T) {
+	t.Parallel()
+
+	const lint = "check-workflow-hermetic"
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	tests := []struct {
+		name      string
+		probe     github.Probe
+		flake     audit.Flake
+		workflows []audit.Workflow
+		actions   []audit.CompositeAction
+	}{
+		{
+			name:  "mixedCase-flake",
+			probe: github.Probe{Lint: lint},
+			flake: audit.Flake{
+				Inputs:              []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
+				HasLock:             true,
+				LockedInputs:        []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
+				NixpkgsLastModified: at(t, "2025-09-01T00:00:00Z"),
+				NamesLint:           true,
+				// The Justfile is a gate file too, but does not name the lint.
+				GateFiles: []string{"run-all-checks"},
+			},
+			workflows: []audit.Workflow{
+				{
+					Path:        ".github/workflows/ci.yml",
+					Events:      []string{"pull_request", "push"},
+					Concurrency: audit.Concurrency{Set: true, CancelInProgress: "true"},
+					Permissions: audit.Permissions{Set: true, Scopes: map[string]string{"contents": "read"}},
+					Jobs: []audit.Job{{
+						ID:             "check",
+						TimeoutMinutes: "15",
+						Uses: []audit.StepUse{
+							{Action: "example-org/action-08@" + sha},
+							{Action: "./.github/actions/setup"},
+						},
+					}},
+				},
+				{Path: ".github/workflows/workflow-01.yml", ParseError: ".github/workflows/workflow-01.yml: not a text file"},
+			},
+			actions: []audit.CompositeAction{{
+				Path: ".github/actions/setup/action.yml",
+				Uses: []audit.StepUse{{Action: "example-org/action-12@" + sha, With: map[string]string{"purge": "true"}}},
+			}},
+		},
+		{
+			name:  "mixedCase-flake without a lint to look for",
+			probe: github.Probe{},
+			flake: audit.Flake{
+				Inputs:              []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
+				HasLock:             true,
+				LockedInputs:        []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
+				NixpkgsLastModified: at(t, "2025-09-01T00:00:00Z"),
+			},
+		},
+		{
+			// The lint is named only by a script under .ci, which is a gate
+			// file of its own; a binary one there is passed over.
+			name:  "pkg-index",
+			probe: github.Probe{Lint: lint},
+			flake: audit.Flake{GateFiles: []string{".ci/check-01"}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := strings.Fields(tc.name)[0]
+			api := newFakeAPI(t)
+			got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{repo}, tc.probe)
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			if diff := cmp.Diff(tc.flake, got[0].Flake); diff != "" {
+				t.Errorf("Flake mismatch (-want +got):\n%s", diff)
+			}
+			if tc.workflows == nil && tc.actions == nil {
+				return
+			}
+			if diff := cmp.Diff(tc.workflows, got[0].Workflows); diff != "" {
+				t.Errorf("Workflows mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tc.actions, got[0].Actions); diff != "" {
+				t.Errorf("Actions mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestClient_Collect_truncatedWorkflowIsUnreadable: GitHub cuts a large
+// blob's text short and says so. Parsing what arrived could pass a check on
+// the half of the file that did, so the workflow is recorded as unreadable.
+func TestClient_Collect_truncatedWorkflowIsUnreadable(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"}, github.Probe{})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	want := []audit.Workflow{{
+		Path:       ".github/workflows/workflow-33.yml",
+		ParseError: ".github/workflows/workflow-33.yml: too large to read in full",
+	}}
+	if diff := cmp.Diff(want, got[0].Workflows); diff != "" {
+		t.Errorf("Workflows mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestClient_Collect_emptyRepoSkipsFilesQuery: an empty repository has no
+// files, so asking for their text would only cost a query.
+func TestClient_Collect_emptyRepoSkipsFilesQuery(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"blank-repo"}, github.Probe{Lint: "x"}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	for _, doc := range api.graphQLDocuments() {
+		if strings.Contains(doc, "query RepoFiles") {
+			t.Error("the file query was sent for an empty repository")
+		}
+	}
+}
+
+// TestClient_Collect_filesQueryFailureAborts: the file query fails the way
+// the repository query does. Every other request is passed on to the
+// fixtures, so the failure is the file query's alone.
+func TestClient_Collect_filesQueryFailureAborts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "errors array",
+			body: `{"errors":[{"type":"FORBIDDEN","path":["repository","workflows"],"message":"Resource not accessible"}]}`,
+			want: "FORBIDDEN at repository.workflows",
+		},
+		{name: "no repository", body: `{"data":{"repository":null}}`, want: "no repository in the file query's response"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			api := newFakeAPI(t)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/graphql" {
+					raw, err := io.ReadAll(r.Body)
+					if err != nil {
+						t.Errorf("read body: %v", err)
+						return
+					}
+					if strings.Contains(string(raw), "query RepoFiles") {
+						w.Header().Set("Content-Type", "application/json")
+						if _, err := w.Write([]byte(tc.body)); err != nil {
+							t.Errorf("write: %v", err)
+						}
+						return
+					}
+					r.Body = io.NopCloser(strings.NewReader(string(raw)))
+				}
+				http.Redirect(w, r, api.url()+r.URL.RequestURI(), http.StatusTemporaryRedirect)
+			}))
+			t.Cleanup(server.Close)
+
+			got, err := newTestClient(t, server.URL).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Collect() error = %v, want it to contain %q", err, tc.want)
+			}
+			if got != nil {
+				t.Errorf("Collect returned %d repositories alongside an error, want none", len(got))
+			}
+		})
 	}
 }
 
@@ -564,7 +778,7 @@ func TestClient_Collect_normalNotErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := client.Collect(t.Context(), []string{tc.repo})
+			got, err := client.Collect(t.Context(), []string{tc.repo}, github.Probe{})
 			if err != nil {
 				t.Fatalf("Collect(%q): %v", tc.repo, err)
 			}
@@ -580,7 +794,7 @@ func TestClient_Collect_skipsBranchRulesForAnEmptyRepository(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"blank-repo"}); err != nil {
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"blank-repo"}, github.Probe{}); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 
@@ -597,7 +811,7 @@ func TestClient_Collect_usesTheLiveDefaultBranch(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}); err != nil {
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{}); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 
@@ -618,7 +832,7 @@ func TestClient_Collect_keepsTheFullOID(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -634,7 +848,7 @@ func TestClient_Collect_sortsCaseInsensitively(t *testing.T) {
 
 	api := newFakeAPI(t)
 	got, err := newTestClient(t, api.url()).Collect(t.Context(),
-		[]string{"shell-scripts", "blank-repo", "mixedCase-flake", "pkg-index", "web-app"})
+		[]string{"shell-scripts", "blank-repo", "mixedCase-flake", "pkg-index", "web-app"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -654,7 +868,7 @@ func TestClient_Collect_nothingToDo(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), nil)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), nil, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -682,7 +896,7 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 		t.Fatalf("Discover: %v", err)
 	}
 	if _, err := client.Collect(t.Context(),
-		[]string{"shell-scripts", "web-app", "pkg-index", "blank-repo", "mixedCase-flake"}); err != nil {
+		[]string{"shell-scripts", "web-app", "pkg-index", "blank-repo", "mixedCase-flake"}, github.Probe{}); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 
@@ -703,11 +917,18 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 		}
 	}
 
-	// The CI reads are the newest GETs; a fixture set that stopped reaching
-	// them would leave them out of this test without failing it.
+	// The CI and storage reads are GETs a fixture set could stop reaching,
+	// which would leave them out of this test without failing it.
+	if _, recency := api.runsCalls("shell-scripts"); recency == 0 {
+		t.Error("no default-branch runs request; the read-only assertion did not cover it")
+	}
 	for _, path := range []string{
 		"/repos/gh-owner/shell-scripts/actions/runs",
 		"/repos/gh-owner/shell-scripts/actions/runs/4000001/jobs",
+		"/repos/gh-owner/shell-scripts/actions/caches",
+		"/repos/gh-owner/shell-scripts/actions/cache/usage",
+		"/repos/gh-owner/shell-scripts/actions/cache/storage-limit",
+		"/repos/gh-owner/shell-scripts/actions/artifacts",
 	} {
 		if api.callsTo(path) == 0 {
 			t.Errorf("no request to %s; the read-only assertion did not cover it", path)
@@ -717,6 +938,10 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 	documents := api.graphQLDocuments()
 	if len(documents) == 0 {
 		t.Fatal("no GraphQL documents recorded; the assertion below would be vacuous")
+	}
+	// The file query is a second document, held to the same rule.
+	if !slices.ContainsFunc(documents, func(d string) bool { return strings.HasPrefix(d, "query RepoFiles") }) {
+		t.Error("no file query recorded; the assertion below did not cover it")
 	}
 	for _, doc := range documents {
 		fields := strings.Fields(doc)
@@ -761,7 +986,7 @@ func TestClient_Collect_isLeakFree(t *testing.T) {
 		"shell-scripts", "web-app", "pkg-index", "blank-repo", "mixedCase-flake",
 		"shell-scripts", "web-app", "pkg-index", "blank-repo", "mixedCase-flake",
 	}
-	got, err := client.Collect(t.Context(), names)
+	got, err := client.Collect(t.Context(), names, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -793,7 +1018,7 @@ func TestClient_Collect_abortsOnFailure(t *testing.T) {
 	t.Cleanup(failing.Close)
 
 	got, err := newTestClient(t, failing.URL).Collect(t.Context(),
-		[]string{"shell-scripts", "web-app", "pkg-index"})
+		[]string{"shell-scripts", "web-app", "pkg-index"}, github.Probe{})
 	if !errors.Is(err, github.ErrUnexpectedStatus) {
 		t.Fatalf("Collect error = %v, want ErrUnexpectedStatus", err)
 	}
@@ -877,7 +1102,7 @@ func TestClient_Collect_graphQLErrorsAbort(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			if _, err := newTestClient(t, server.URL).Collect(t.Context(), []string{"ghost"}); err == nil {
+			if _, err := newTestClient(t, server.URL).Collect(t.Context(), []string{"ghost"}, github.Probe{}); err == nil {
 				t.Fatal("Collect accepted a GraphQL failure")
 			}
 		})
@@ -921,7 +1146,7 @@ func TestClient_Collect_graphQLErrorNamesField(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			_, err := newTestClient(t, server.URL).Collect(t.Context(), []string{"ghost"})
+			_, err := newTestClient(t, server.URL).Collect(t.Context(), []string{"ghost"}, github.Probe{})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Collect() error = %v, want it to contain %q", err, tc.want)
 			}
@@ -939,7 +1164,7 @@ func TestClient_Collect_graphQLNon200Aborts(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	_, err := newTestClient(t, server.URL).Collect(t.Context(), []string{"shell-scripts"})
+	_, err := newTestClient(t, server.URL).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{})
 	if !errors.Is(err, github.ErrUnexpectedStatus) {
 		t.Errorf("Collect error = %v, want ErrUnexpectedStatus", err)
 	}
@@ -964,7 +1189,7 @@ func TestClient_Collect_selectedActionsConflict(t *testing.T) {
 	}))
 	t.Cleanup(conflicting.Close)
 
-	got, err := newTestClient(t, conflicting.URL).Collect(t.Context(), []string{"shell-scripts"})
+	got, err := newTestClient(t, conflicting.URL).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -980,7 +1205,7 @@ func TestClient_Collect_directPushRepository(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"pkg-index"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"pkg-index"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -1021,7 +1246,7 @@ func TestClient_Collect_survivesARateLimit(t *testing.T) {
 		},
 	)
 
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -1053,7 +1278,7 @@ func TestClient_Collect_survivesAGraphQLRateLimit(t *testing.T) {
 		body: `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`,
 	})
 
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -1063,8 +1288,8 @@ func TestClient_Collect_survivesAGraphQLRateLimit(t *testing.T) {
 	if diff := cmp.Diff(wantShellScripts(t), got[0]); diff != "" {
 		t.Errorf("Collect mismatch (-want +got):\n%s", diff)
 	}
-	if n := api.callsTo("/graphql"); n != 2 {
-		t.Errorf("/graphql saw %d calls, want 2", n)
+	if n := api.callsTo("/graphql"); n != 3 {
+		t.Errorf("/graphql saw %d calls, want 3: the limited answer, its retry and the file query", n)
 	}
 }
 
@@ -1080,7 +1305,7 @@ func TestClient_Collect_failsOnANonRateLimitGraphQLError(t *testing.T) {
 		body:   `{"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a Repository"}]}`,
 	})
 
-	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}); err == nil {
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{}); err == nil {
 		t.Fatal("Collect() error = nil, want the GraphQL error")
 	}
 	if n := api.callsTo("/graphql"); n != 1 {
@@ -1109,6 +1334,10 @@ func TestClient_Collect_abortsOnAnUnreadableEndpoint(t *testing.T) {
 		base + "/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
 		base + "/actions/runs",
 		base + "/actions/runs/4000001/jobs",
+		base + "/actions/caches",
+		base + "/actions/cache/usage",
+		base + "/actions/cache/storage-limit",
+		base + "/actions/artifacts",
 	}
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {
@@ -1122,7 +1351,7 @@ func TestClient_Collect_abortsOnAnUnreadableEndpoint(t *testing.T) {
 				body:   `{"message":"Bad credentials"}`,
 			})
 
-			_, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"})
+			_, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{})
 			if err == nil {
 				t.Fatalf("Collect() error = nil, want a failure from %s", endpoint)
 			}
@@ -1145,7 +1374,7 @@ func TestCollect_justfileMatchesAnyCase(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -1163,7 +1392,7 @@ func TestCollect_recordsFilePaths(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"pkg-index"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"pkg-index"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -1200,12 +1429,49 @@ func TestCollect_requestsTheTreeRecursivelyAtHead(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}); err != nil {
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{}); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 	const path = "/repos/gh-owner/shell-scripts/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c"
 	if n := api.callsTo(path); n != 1 {
 		t.Errorf("%s saw %d calls, want 1", path, n)
+	}
+}
+
+// TestCollect_emptyRepoReadsNoStorage: with no commit no workflow can have
+// run, so an empty repository costs no storage reads and records none.
+func TestCollect_emptyRepoReadsNoStorage(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"blank-repo"}, github.Probe{})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	for _, c := range api.seen() {
+		if strings.Contains(c.path, "/actions/cache") || strings.HasSuffix(c.path, "/actions/artifacts") {
+			t.Errorf("called %s for an empty repository", c.path)
+		}
+	}
+	if diff := cmp.Diff(audit.ActionsStorage{}, got[0].Storage); diff != "" {
+		t.Errorf("Storage mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestClient_Collect_storageRequestBudget pins what the storage reads cost a
+// repository whose lists fit one page: one request to each endpoint.
+func TestClient_Collect_storageRequestBudget(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"}, github.Probe{}); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	base := "/repos/" + testOwner + "/shell-scripts/actions/"
+	for _, path := range []string{"caches", "cache/usage", "cache/storage-limit", "artifacts"} {
+		if n := api.callsTo(base + path); n != 1 {
+			t.Errorf("%s saw %d calls, want 1", base+path, n)
+		}
 	}
 }
 
@@ -1215,7 +1481,7 @@ func TestCollect_emptyRepoFetchesNoTree(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"blank-repo"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"blank-repo"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -1239,7 +1505,7 @@ func TestCollect_truncatedTreeAborts(t *testing.T) {
 	api.failNext("/repos/gh-owner/shell-scripts/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000c",
 		scriptedFailure{status: http.StatusOK, body: `{"sha":"x","tree":[],"truncated":true}`})
 
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts", "web-app"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts", "web-app"}, github.Probe{})
 	if err == nil {
 		t.Fatal("Collect() error = nil, want a failure for a truncated tree")
 	}
@@ -1252,21 +1518,24 @@ func TestCollect_truncatedTreeAborts(t *testing.T) {
 }
 
 // TestClient_Collect_ciRequestBudget pins what CI timing costs: one runs page
-// per repository that has a commit to time, and one jobs read per run on a
-// sampled commit, never one for a run on any other commit. A repository with
-// nothing sampled asks for no runs at all.
+// and one default-branch runs read per repository that has a commit to time,
+// and one jobs read per run on a sampled commit, never one for a run on any
+// other commit. A repository with nothing sampled asks for no runs at all.
 func TestClient_Collect_ciRequestBudget(t *testing.T) {
 	t.Parallel()
 
 	api := newFakeAPI(t)
-	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts", "pkg-index"}); err != nil {
+	if _, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts", "pkg-index"}, github.Probe{}); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 
+	for repo, want := range map[string]int{"shell-scripts": 1, "pkg-index": 0} {
+		if timing, recency := api.runsCalls(repo); timing != want || recency != want {
+			t.Errorf("%s: %d timing and %d default-branch runs reads, want %d of each", repo, timing, recency, want)
+		}
+	}
 	base := "/repos/" + testOwner + "/shell-scripts/actions/runs"
 	want := map[string]int{
-		base: 1,
-		"/repos/" + testOwner + "/pkg-index/actions/runs": 0,
 		// 4000008 ran on a commit outside the sample; 4000011 is a scheduled
 		// run, 4000012 a dispatched one and 4000013 a repository_dispatch one,
 		// none of which count.
@@ -1294,9 +1563,12 @@ func TestClient_Collect_actionsDisabled(t *testing.T) {
 
 	api := newFakeAPI(t)
 	runs := "/repos/" + testOwner + "/web-app/actions/runs"
-	api.failNext(runs, scriptedFailure{status: http.StatusOK, body: `{"total_count":0,"workflow_runs":[]}`})
+	// Both runs reads, the timing page and the default-branch one, answer
+	// empty.
+	none := scriptedFailure{status: http.StatusOK, body: `{"total_count":0,"workflow_runs":[]}`}
+	api.failNext(runs, none, none)
 
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -1338,7 +1610,7 @@ func collectWebAppWithRuns(t *testing.T, body, ignored string) audit.CI {
 	api := newFakeAPI(t)
 	base := "/repos/" + testOwner + "/web-app/actions/runs"
 	api.failNext(base, scriptedFailure{status: http.StatusOK, body: body})
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -1392,7 +1664,7 @@ func TestClient_Collect_ciCountsPushOnPullRequestHead(t *testing.T) {
 	api.failNext(base+"/4000097/jobs", scriptedFailure{status: http.StatusOK, body: `{"total_count":1,"jobs":[` +
 		`{"name":"docs","status":"completed","started_at":"2025-09-01T08:00:20Z","completed_at":"2025-09-01T08:05:00Z"}]}`})
 
-	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}

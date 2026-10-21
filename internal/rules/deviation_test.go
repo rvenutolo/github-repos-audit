@@ -124,7 +124,7 @@ func deviations(t *testing.T, c rules.Check, set func(*audit.Files, string), val
 		set(&r.Files, v)
 		repos = append(repos, r)
 	}
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: repos})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: repos})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
@@ -181,7 +181,7 @@ func TestDeviation_onlyPathChecks(t *testing.T) {
 	repos := []audit.Repo{fixture("a", "tools"), fixture("b", "tools"), fixture("c", "tools")}
 	repos[0].Topics, repos[1].Topics, repos[2].Topics = 1, 1, 7
 	repos[0].License, repos[1].License, repos[2].License = "MIT", "MIT", "Apache-2.0"
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: repos})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: repos})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}

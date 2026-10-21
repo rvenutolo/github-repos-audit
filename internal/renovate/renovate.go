@@ -1,12 +1,14 @@
-// Package renovate decides one fact about a Renovate configuration: the
-// effective top-level minimumReleaseAge, as Renovate itself would merge it
-// from the repository's own file and the presets it extends.
+// Package renovate decides three facts about a Renovate configuration, each as
+// Renovate itself would merge it from the repository's own file and the
+// presets it extends: the effective top-level minimumReleaseAge, whether the
+// nix manager runs, and whether lock-file maintenance is on.
 //
 // Only presets in the audited account are followed. A built-in preset lives
 // in Renovate's source rather than on GitHub, and another owner's preset is
 // outside what this tool reads, so both are treated as setting nothing — a
-// repository relying on one alone shows "none", which is conservative and is
-// fixed by stating the value explicitly.
+// repository relying on one alone shows "none" or "off" (":maintainLockFilesWeekly"
+// turns lock-file maintenance on in Renovate, but not here), which is
+// conservative and is fixed by stating the value explicitly.
 //
 // The package does no I/O: the caller supplies Fetch, and the value is
 // returned exactly as written, because turning "7 days" into a verdict is
@@ -44,18 +46,70 @@ const ProblemNotFound = "not found"
 // whole run.
 type Fetch func(ctx context.Context, p Preset) (text, problem string, err error)
 
-// Result is the effective top-level minimumReleaseAge.
+// Result is the effective configuration, as far as this tool reads it.
 type Result struct {
 	MinReleaseAge string // raw, e.g. "7 days"; empty = unset (or explicitly null)
 	Source        string // config path or preset reference as written; empty when unset
-	Unresolved    string // why it could not be decided; when set, the others are empty
+	// NixManager is nix.enabled true, with enabledManagers either unset or
+	// listing "nix": Renovate's nix manager is off by default, and an
+	// enabledManagers list that leaves it out turns it off again.
+	NixManager bool
+	// LockFileMaintenance is lockFileMaintenance.enabled true.
+	LockFileMaintenance bool
+	// Unresolved is why the configuration could not be decided; when set,
+	// the others are empty or false. A wrong-typed manager key never sets
+	// it: that leaves only its own fact false.
+	Unresolved string
 }
 
-// assignment is what one layer, presets included, says about the value.
+// layered is what one layer, presets included, says about every key this
+// package reads. Each key merges on its own: a later layer that is silent on
+// one key leaves an earlier layer's value for it standing.
+type layered struct {
+	releaseAge assignment
+	nix        flag
+	lockFile   flag
+	managers   managerList
+}
+
+// over lays o on top of l, key by key, the way a later layer overrides an
+// earlier one.
+func (l *layered) over(o layered) {
+	if o.releaseAge.set {
+		l.releaseAge = o.releaseAge
+	}
+	if o.nix.set {
+		l.nix = o.nix
+	}
+	if o.lockFile.set {
+		l.lockFile = o.lockFile
+	}
+	if o.managers.set {
+		l.managers = o.managers
+	}
+}
+
+// assignment is what one layer says about minimumReleaseAge.
 type assignment struct {
 	set    bool   // the layer assigned something, possibly null
 	value  string // "" with set means null: unset
 	source string
+}
+
+// flag is what one layer says about an object's "enabled" field. Only that
+// field is merged: Renovate merges such objects field by field, so a layer
+// that sets nix.fileMatch alone leaves an earlier nix.enabled as it was.
+type flag struct {
+	set   bool
+	value bool
+}
+
+// managerList is what one layer says about enabledManagers. Renovate replaces
+// an array wholesale rather than appending to it, so a later layer's list is
+// the whole list.
+type managerList struct {
+	set   bool
+	names []string
 }
 
 // unresolvedError carries the reason a resolution stopped; it never escapes
@@ -69,11 +123,13 @@ type resolver struct {
 	fetch Fetch
 }
 
-// Resolve returns the effective top-level minimumReleaseAge for a repository
-// whose Renovate configuration at rootPath has the text rootText.
+// Resolve returns the effective configuration (see Result: the top-level
+// minimumReleaseAge, whether the nix manager runs, and whether lock-file
+// maintenance is on) for a repository whose Renovate configuration at
+// rootPath has the text rootText.
 func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch) (Result, error) {
 	r := resolver{owner: owner, fetch: fetch}
-	a, err := r.layer(ctx, rootPath, rootText, nil)
+	l, err := r.layer(ctx, rootPath, rootText, nil)
 	if err != nil {
 		// errors.AsType, not errors.As: the modernize linter requires it.
 		if u, ok := errors.AsType[unresolvedError](err); ok {
@@ -81,73 +137,73 @@ func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch)
 		}
 		return Result{}, err
 	}
-	if !a.set || a.value == "" {
-		return Result{}, nil
+	res := Result{
+		NixManager:          l.nix.value && (!l.managers.set || slices.Contains(l.managers.names, "nix")),
+		LockFileMaintenance: l.lockFile.value,
 	}
-	return Result{MinReleaseAge: a.value, Source: a.source}, nil
+	if l.releaseAge.set && l.releaseAge.value != "" {
+		res.MinReleaseAge, res.Source = l.releaseAge.value, l.releaseAge.source
+	}
+	return res, nil
 }
 
 // layer merges one configuration file the way Renovate does: each extends
 // entry in order, later ones overriding earlier ones, then the file's own
 // keys over all of them. stack holds the presets being resolved above this
 // one, for cycle detection and the depth limit.
-func (r resolver) layer(ctx context.Context, source, text string, stack []string) (assignment, error) {
+func (r resolver) layer(ctx context.Context, source, text string, stack []string) (layered, error) {
 	var cfg map[string]any
 	if err := json5.Unmarshal([]byte(text), &cfg); err != nil {
-		return assignment{}, unresolvedError{fmt.Sprintf("%s: does not parse: %v", source, err)}
+		return layered{}, unresolvedError{fmt.Sprintf("%s: does not parse: %v", source, err)}
 	}
 	if cfg == nil {
 		// json5 decodes a bare null into a nil map without error; a
 		// config that is null is not an empty config.
-		return assignment{}, unresolvedError{source + ": not an object"}
+		return layered{}, unresolvedError{source + ": not an object"}
 	}
 
-	var out assignment
+	var out layered
 	if ext, has := cfg["extends"]; has {
 		list, ok := ext.([]any)
 		if !ok {
-			return assignment{}, unresolvedError{source + ": extends is not an array"}
+			return layered{}, unresolvedError{source + ": extends is not an array"}
 		}
 		for _, e := range list {
 			ref, ok := e.(string)
 			if !ok {
-				return assignment{}, unresolvedError{source + ": an extends entry is not a string"}
+				return layered{}, unresolvedError{source + ": an extends entry is not a string"}
 			}
-			a, err := r.preset(ctx, ref, stack)
+			l, err := r.preset(ctx, ref, stack)
 			if err != nil {
-				return assignment{}, err
+				return layered{}, err
 			}
-			if a.set {
-				out = a
-			}
+			out.over(l)
 		}
 	}
 
-	own, err := ownAssignment(source, cfg)
+	own, err := ownLayer(source, cfg)
 	if err != nil {
-		return assignment{}, err
+		return layered{}, err
 	}
-	if own.set {
-		out = own
-	}
+	out.over(own)
 	return out, nil
 }
 
 // preset resolves one extends entry.
-func (r resolver) preset(ctx context.Context, ref string, stack []string) (assignment, error) {
+func (r resolver) preset(ctx context.Context, ref string, stack []string) (layered, error) {
 	p, fallback, follow, problem := ParsePreset(ref, r.owner)
 	if !follow {
-		return assignment{}, nil
+		return layered{}, nil
 	}
 	if problem != "" {
-		return assignment{}, unresolvedError{fmt.Sprintf("preset %s: %s", ref, problem)}
+		return layered{}, unresolvedError{fmt.Sprintf("preset %s: %s", ref, problem)}
 	}
 	key := strings.ToLower(p.Repo) + "/" + p.Path + "#" + p.Ref
 	if slices.Contains(stack, key) {
-		return assignment{}, unresolvedError{fmt.Sprintf("preset %s: cycle", ref)}
+		return layered{}, unresolvedError{fmt.Sprintf("preset %s: cycle", ref)}
 	}
 	if len(stack) >= maxDepth {
-		return assignment{}, unresolvedError{fmt.Sprintf("preset %s: deeper than %d", ref, maxDepth)}
+		return layered{}, unresolvedError{fmt.Sprintf("preset %s: deeper than %d", ref, maxDepth)}
 	}
 
 	text, problem, err := r.fetch(ctx, p)
@@ -160,12 +216,73 @@ func (r resolver) preset(ctx context.Context, ref string, stack []string) (assig
 		text, problem, err = r.fetch(ctx, p)
 	}
 	if err != nil {
-		return assignment{}, fmt.Errorf("renovate preset %s: %w", ref, err)
+		return layered{}, fmt.Errorf("renovate preset %s: %w", ref, err)
 	}
 	if problem != "" {
-		return assignment{}, unresolvedError{fmt.Sprintf("preset %s: %s", ref, problem)}
+		return layered{}, unresolvedError{fmt.Sprintf("preset %s: %s", ref, problem)}
 	}
 	return r.layer(ctx, ref, text, append(slices.Clone(stack), key))
+}
+
+// ownLayer reads every key this package merges from the file's own text, not
+// its presets. Only minimumReleaseAge can make the layer unresolved: its
+// reason is published as min_release_age_error, so the manager keys must not
+// add reasons of their own to it.
+func ownLayer(source string, cfg map[string]any) (layered, error) {
+	releaseAge, err := ownAssignment(source, cfg)
+	if err != nil {
+		return layered{}, err
+	}
+	return layered{
+		releaseAge: releaseAge,
+		nix:        ownFlag(cfg, "nix"),
+		lockFile:   ownFlag(cfg, "lockFileMaintenance"),
+		managers:   ownManagers(cfg),
+	}, nil
+}
+
+// ownFlag reads key.enabled. A key that is present but not an object, or an
+// enabled that is not a boolean (null included), is a value this tool cannot
+// read the way Renovate would. It counts as this layer setting the fact
+// false: a misread can then only fail a check, never pass one.
+func ownFlag(cfg map[string]any, key string) flag {
+	v, has := cfg[key]
+	if !has {
+		return flag{}
+	}
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return flag{set: true}
+	}
+	e, has := obj["enabled"]
+	if !has {
+		return flag{}
+	}
+	b, ok := e.(bool)
+	return flag{set: true, value: ok && b}
+}
+
+// ownManagers reads enabledManagers, an array of manager names. A value that
+// is not an array of strings counts as a list naming no manager, which turns
+// the nix manager off: as with ownFlag, a misread can only fail a check.
+func ownManagers(cfg map[string]any) managerList {
+	v, has := cfg["enabledManagers"]
+	if !has {
+		return managerList{}
+	}
+	list, ok := v.([]any)
+	if !ok {
+		return managerList{set: true}
+	}
+	names := make([]string, 0, len(list))
+	for _, e := range list {
+		name, ok := e.(string)
+		if !ok {
+			return managerList{set: true}
+		}
+		names = append(names, name)
+	}
+	return managerList{set: true, names: names}
 }
 
 // ownAssignment reads the file's own minimumReleaseAge, or its legacy

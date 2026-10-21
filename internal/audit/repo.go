@@ -25,6 +25,10 @@ type Snapshot struct {
 	// which identity the history was held to. Absent when nothing judges
 	// git_identity.
 	Identity IdentityStandard `json:"identity,omitzero"`
+	// Hermetic is repos.toml's [hermetic] table, recorded so audit.json says
+	// which flake and lint hermetic_nix looked for. Absent when nothing judges
+	// hermetic_nix.
+	Hermetic HermeticStandard `json:"hermetic,omitzero"`
 	// Repos is sorted by name, case-insensitively.
 	Repos []Repo `json:"repos"`
 	// Drift is where repos.toml and the account disagree about which
@@ -107,6 +111,17 @@ type Repo struct {
 	Files Files `json:"files"`
 	// Renovate is what the Renovate configuration says, when there is one.
 	Renovate Renovate `json:"renovate,omitzero"`
+	// Flake is what flake.nix and flake.lock say, and which files name the
+	// hermetic lint. Zero when the repository has neither file and no gate
+	// file names the lint.
+	Flake Flake `json:"flake,omitzero"`
+	// Workflows is every .yml or .yaml file in .github/workflows, parsed,
+	// sorted by path. Files.Workflows is the directory's listing; this is
+	// what the files say.
+	Workflows []Workflow `json:"workflow_facts,omitzero"`
+	// Actions is every composite action in .github/actions, one per
+	// directory holding an action.yml or action.yaml, sorted by path.
+	Actions []CompositeAction `json:"composite_actions,omitzero"`
 	// CIState is the statusCheckRollup state of the head commit: SUCCESS,
 	// FAILURE, PENDING, ERROR or EXPECTED. Empty when the rollup was null,
 	// which means no check has run on that commit.
@@ -114,6 +129,9 @@ type Repo struct {
 	// CI is the timing of the repository's recent CI, commit by commit. Zero
 	// for a repository with no merged pull requests and no commits.
 	CI CI `json:"ci,omitzero"`
+	// Storage is what the repository holds in GitHub Actions storage. Zero
+	// for an empty repository, which is not read for it.
+	Storage ActionsStorage `json:"actions_storage,omitzero"`
 	// Releases summarises the repository's releases.
 	Releases Releases `json:"releases"`
 	// Rulesets is every ruleset defined on the repository.
@@ -138,6 +156,15 @@ type Renovate struct {
 	// MinReleaseAgeError is why the value could not be decided. Empty
 	// otherwise.
 	MinReleaseAgeError string `json:"min_release_age_error,omitzero"`
+	// NixManager is whether Renovate's nix manager runs: nix.enabled true
+	// after the same merge, with enabledManagers unset or listing "nix".
+	// False when off, unset, of the wrong type, or unresolved (the reason is
+	// then in MinReleaseAgeError; a wrong-typed manager key never sets it).
+	NixManager bool `json:"nix_manager,omitzero"`
+	// LockFileMaintenance is whether lockFileMaintenance.enabled is true
+	// after the same merge. False when off, unset, of the wrong type, or
+	// unresolved.
+	LockFileMaintenance bool `json:"lock_file_maintenance,omitzero"`
 }
 
 // Files records the outcome of every file-existence probe. A probe answers
@@ -216,6 +243,8 @@ type Files struct {
 	PRTemplate string `json:"pr_template,omitzero"`
 	// ClaudeMD is the Claude Code memory file.
 	ClaudeMD string `json:"claude_md,omitzero"`
+	// GoMod reports a file named exactly `go.mod` at the root.
+	GoMod bool `json:"go_mod,omitzero"`
 }
 
 // CI is the timing of a repository's recent CI, as recorded per commit. It
@@ -231,6 +260,10 @@ type CI struct {
 	// DefaultBranch is the most recent default-branch commits, newest first,
 	// whether or not any workflow ran on them. Empty for an empty repository.
 	DefaultBranch []CICommit `json:"default_branch,omitzero"`
+	// LastDefaultBranchRun is when the newest workflow run on the default
+	// branch was created, of any event, in UTC. Zero when no workflow has run
+	// on the default branch, and for an empty repository.
+	LastDefaultBranchRun time.Time `json:"last_default_branch_run,omitzero"`
 }
 
 // CICommit is one commit's GitHub Actions workflow runs, reduced to
@@ -406,4 +439,18 @@ type IdentityStandard struct {
 	// merge made in the web UI adds back, so it can never be rewritten away.
 	// Nil when nothing beyond Canonical is accepted.
 	Accepted []string `json:"accepted,omitzero"`
+}
+
+// HermeticStandard is repos.toml's [hermetic] table: the flake that carries
+// the hermetic lint, and the lint's command name. Both are configuration, not
+// constants, because the flake names an account and a repository. It is
+// recorded on the snapshot so audit.json describes the standard it was judged
+// by.
+type HermeticStandard struct {
+	// Flake is the input URL as flake.nix writes it, such as
+	// "github:<owner>/<repo>".
+	Flake string `json:"flake"`
+	// Lint is the hermetic-lint command name flake.nix and the gate files are
+	// expected to mention.
+	Lint string `json:"lint"`
 }

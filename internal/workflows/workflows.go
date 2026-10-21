@@ -1,0 +1,352 @@
+// Package workflows reads GitHub Actions workflow files and composite-action
+// files into the facts internal/audit records about them. It does no I/O and
+// judges nothing: the caller supplies the text, and whether what it says is
+// good enough is internal/rules' decision.
+//
+// The text is decoded into yaml.Node rather than into Go structs, for two
+// reasons. A struct decode turns `cancel-in-progress: true` into a bool and
+// `timeout-minutes: 030` into 30, and the record is meant to say what the file
+// says; a node keeps every scalar exactly as written. And a node knows its
+// kind, so a value in a shape GitHub would reject (a sequence where a mapping
+// belongs) is reported as such instead of being silently dropped by a lenient
+// decoder.
+//
+// A file that is not valid YAML, or is YAML in a shape GitHub would not run,
+// comes back with ParseError set and nothing else. Partial results are never
+// returned: a check that read half a file could pass on the half it missed,
+// and an unreadable file has to fail every check that depends on it.
+package workflows
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+
+	"go.yaml.in/yaml/v3"
+
+	"github.com/rvenutolo/github-repos-audit/internal/audit"
+)
+
+// flakeUpdate is the command whose presence in a `run:` marks a job or
+// composite as one that refreshes flake.lock. A substring match, because the
+// command is usually one line of a longer script and is followed by flags
+// such as --commit-lock-file.
+const flakeUpdate = "nix flake update"
+
+// ParseWorkflow returns what the workflow file at path, whose content is
+// text, says. It never fails: a file it cannot read has ParseError set.
+func ParseWorkflow(path, text string) audit.Workflow {
+	w, err := parseWorkflow(text)
+	if err != nil {
+		return audit.Workflow{Path: path, ParseError: err.Error()}
+	}
+	w.Path = path
+	return w
+}
+
+// ParseComposite returns what the composite-action file at path, whose
+// content is text, says. It never fails: a file it cannot read has ParseError
+// set. A JavaScript or Docker action is not an error; it has no steps, so it
+// comes back with nothing but Path.
+func ParseComposite(path, text string) audit.CompositeAction {
+	c, err := parseComposite(text)
+	if err != nil {
+		return audit.CompositeAction{Path: path, ParseError: err.Error()}
+	}
+	c.Path = path
+	return c
+}
+
+func parseWorkflow(text string) (audit.Workflow, error) {
+	var w audit.Workflow
+	top, err := document(text)
+	if err != nil {
+		return w, err
+	}
+	if w.Events, err = events(lookup(top, "on")); err != nil {
+		return w, err
+	}
+	if w.Concurrency, err = concurrency(lookup(top, "concurrency"), "concurrency"); err != nil {
+		return w, err
+	}
+	if w.Permissions, err = permissions(lookup(top, "permissions"), "permissions"); err != nil {
+		return w, err
+	}
+	jobs, err := pairs(lookup(top, "jobs"), "jobs")
+	if err != nil {
+		return w, err
+	}
+	for _, p := range jobs {
+		j, err := job(p.key, p.value)
+		if err != nil {
+			return w, err
+		}
+		w.Jobs = append(w.Jobs, j)
+	}
+	return w, nil
+}
+
+func parseComposite(text string) (audit.CompositeAction, error) {
+	var c audit.CompositeAction
+	top, err := document(text)
+	if err != nil {
+		return c, err
+	}
+	runs := lookup(top, "runs")
+	if _, err := pairs(runs, "runs"); err != nil {
+		return c, err
+	}
+	c.Uses, c.FlakeUpdate, err = steps(lookup(runs, "steps"), "runs.steps")
+	return c, err
+}
+
+func job(id string, n *yaml.Node) (audit.Job, error) {
+	j := audit.Job{ID: id}
+	where := "jobs." + id
+	if _, err := pairs(n, where); err != nil {
+		return j, err
+	}
+	uses, err := scalar(lookup(n, "uses"), where+".uses")
+	if err != nil {
+		return j, err
+	}
+	j.Reusable = uses != ""
+	if j.TimeoutMinutes, err = scalar(lookup(n, "timeout-minutes"), where+".timeout-minutes"); err != nil {
+		return j, err
+	}
+	if j.Concurrency, err = concurrency(lookup(n, "concurrency"), where+".concurrency"); err != nil {
+		return j, err
+	}
+	if j.Permissions, err = permissions(lookup(n, "permissions"), where+".permissions"); err != nil {
+		return j, err
+	}
+	j.Uses, j.FlakeUpdate, err = steps(lookup(n, "steps"), where+".steps")
+	return j, err
+}
+
+// steps reads a `steps:` sequence, shared by workflow jobs and composite
+// actions, which spell a step the same way.
+func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
+	var (
+		uses   []audit.StepUse
+		update bool
+	)
+	items, err := sequence(n, where)
+	if err != nil {
+		return nil, false, err
+	}
+	for i, s := range items {
+		at := fmt.Sprintf("%s[%d]", where, i)
+		if _, err := pairs(s, at); err != nil {
+			return nil, false, err
+		}
+		action, err := scalar(lookup(s, "uses"), at+".uses")
+		if err != nil {
+			return nil, false, err
+		}
+		with, err := stringMap(lookup(s, "with"), at+".with")
+		if err != nil {
+			return nil, false, err
+		}
+		if action != "" {
+			uses = append(uses, audit.StepUse{Action: action, With: with})
+		}
+		run, err := scalar(lookup(s, "run"), at+".run")
+		if err != nil {
+			return nil, false, err
+		}
+		update = update || strings.Contains(run, flakeUpdate)
+	}
+	return uses, update, nil
+}
+
+// events reduces the three forms of `on:` (one name, a list of names, a map
+// keyed by name) to the sorted, distinct names.
+func events(n *yaml.Node) ([]string, error) {
+	var names []string
+	switch {
+	case absent(n):
+		return nil, nil
+	case n.Kind == yaml.ScalarNode:
+		names = []string{n.Value}
+	case n.Kind == yaml.SequenceNode:
+		for i, item := range n.Content {
+			name, err := scalar(deref(item), fmt.Sprintf("on[%d]", i))
+			if err != nil {
+				return nil, err
+			}
+			names = append(names, name)
+		}
+	default:
+		// lookup has followed any alias, so what is left is a mapping.
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			names = append(names, deref(n.Content[i]).Value)
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
+}
+
+func concurrency(n *yaml.Node, where string) (audit.Concurrency, error) {
+	if absent(n) {
+		return audit.Concurrency{}, nil
+	}
+	if n.Kind == yaml.ScalarNode {
+		return audit.Concurrency{Set: true}, nil
+	}
+	if _, err := pairs(n, where); err != nil {
+		return audit.Concurrency{}, err
+	}
+	cancel, err := scalar(lookup(n, "cancel-in-progress"), where+".cancel-in-progress")
+	return audit.Concurrency{Set: true, CancelInProgress: cancel}, err
+}
+
+func permissions(n *yaml.Node, where string) (audit.Permissions, error) {
+	if absent(n) {
+		return audit.Permissions{}, nil
+	}
+	if n.Kind == yaml.ScalarNode {
+		return audit.Permissions{Set: true, All: n.Value}, nil
+	}
+	scopes, err := stringMap(n, where)
+	if err != nil {
+		return audit.Permissions{}, err
+	}
+	// stringMap leaves an empty mapping nil, but `permissions: {}` is a
+	// setting of its own (it grants nothing) and has to stay distinguishable
+	// from the key being absent.
+	if scopes == nil {
+		scopes = map[string]string{}
+	}
+	return audit.Permissions{Set: true, Scopes: scopes}, nil
+}
+
+// document decodes text and returns its top-level mapping. Only the first
+// YAML document is read; GitHub reads no further either.
+func document(text string) (*yaml.Node, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
+		return nil, err
+	}
+	// An empty or comment-only file decodes to a node with no content.
+	if len(doc.Content) == 0 {
+		return nil, errors.New("the document is empty, not a mapping")
+	}
+	top := deref(doc.Content[0])
+	if top.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("line %d: the document is a %s, not a mapping", top.Line, kind(top))
+	}
+	return top, nil
+}
+
+type pair struct {
+	key   string
+	value *yaml.Node
+}
+
+// pairs returns a mapping's entries in file order. An absent node has none.
+func pairs(n *yaml.Node, where string) ([]pair, error) {
+	if absent(n) {
+		return nil, nil
+	}
+	if n.Kind != yaml.MappingNode {
+		return nil, shapeError(n, where, "a mapping")
+	}
+	ps := make([]pair, 0, len(n.Content)/2)
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		ps = append(ps, pair{key: deref(n.Content[i]).Value, value: deref(n.Content[i+1])})
+	}
+	return ps, nil
+}
+
+// sequence returns a sequence's items. An absent node has none.
+func sequence(n *yaml.Node, where string) ([]*yaml.Node, error) {
+	if absent(n) {
+		return nil, nil
+	}
+	if n.Kind != yaml.SequenceNode {
+		return nil, shapeError(n, where, "a sequence")
+	}
+	items := make([]*yaml.Node, len(n.Content))
+	for i, item := range n.Content {
+		items[i] = deref(item)
+	}
+	return items, nil
+}
+
+// scalar returns a scalar exactly as written. An absent node is "".
+func scalar(n *yaml.Node, where string) (string, error) {
+	if absent(n) {
+		return "", nil
+	}
+	if n.Kind != yaml.ScalarNode {
+		return "", shapeError(n, where, "a scalar")
+	}
+	return n.Value, nil
+}
+
+// stringMap reads a mapping of scalars, such as `with:` or the map form of
+// `permissions:`. It is nil when the mapping is absent or empty.
+func stringMap(n *yaml.Node, where string) (map[string]string, error) {
+	ps, err := pairs(n, where)
+	if err != nil || len(ps) == 0 {
+		return nil, err
+	}
+	m := make(map[string]string, len(ps))
+	for _, p := range ps {
+		v, err := scalar(p.value, where+"."+p.key)
+		if err != nil {
+			return nil, err
+		}
+		m[p.key] = v
+	}
+	return m, nil
+}
+
+// lookup returns the value of key in mapping n, or nil when n is not a
+// mapping or has no such key. A missing key and a non-mapping parent both
+// read as absent here; the caller has already rejected the parent's shape.
+func lookup(n *yaml.Node, key string) *yaml.Node {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if deref(n.Content[i]).Value == key {
+			return deref(n.Content[i+1])
+		}
+	}
+	return nil
+}
+
+// deref follows an alias to its anchor, so `*steps` reads as the sequence it
+// names. GitHub accepts anchors and aliases in workflow files.
+func deref(n *yaml.Node) *yaml.Node {
+	if n != nil && n.Kind == yaml.AliasNode {
+		return n.Alias
+	}
+	return n
+}
+
+// absent is a missing key or an explicit null, which YAML also spells as an
+// empty value (`workflow_dispatch:`): both mean the setting is not there.
+func absent(n *yaml.Node) bool {
+	return n == nil || (n.Kind == yaml.ScalarNode && n.Tag == "!!null")
+}
+
+func shapeError(n *yaml.Node, where, want string) error {
+	return fmt.Errorf("line %d: %s is a %s, not %s", n.Line, where, kind(n), want)
+}
+
+// kind names a node's kind for an error message. Only the three value kinds
+// reach it: deref has followed every alias, and a document node never sits
+// below the top.
+func kind(n *yaml.Node) string {
+	if n.Kind == yaml.MappingNode {
+		return "mapping"
+	}
+	if n.Kind == yaml.SequenceNode {
+		return "sequence"
+	}
+	return "scalar"
+}

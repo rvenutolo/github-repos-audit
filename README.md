@@ -160,7 +160,7 @@ and the generated report. These steps describe how that repository is wired up.
 
 ## `repos.toml` reference
 
-`repos.toml` is the only file you hand-maintain. It has three kinds of table,
+`repos.toml` is the only file you hand-maintain. It has four kinds of table,
 and needs at least one `[types.<name>]` and one `[repos.<name>]`. A key the
 tool does not know, anywhere in the file, is an error rather than ignored, so
 a misspelling such as `publish = true` cannot pass unnoticed.
@@ -176,9 +176,9 @@ lists every check the tool knows, each set to one of:
 | `public_published` | expected only when the repository is public and published |
 | `info`             | shown, never judged                                       |
 
-`direct_push` takes `blocked` or `allowed` instead, and the four value-only
-checks — `last_release_age`, `last_push`, `open_prs` and `branches` — take
-only `info` or `not_required`. `renovate_min_release_age` takes a duration
+`direct_push` takes `blocked` or `allowed` instead, and the five value-only
+checks — `last_release_age`, `last_push`, `open_prs`, `branches` and
+`artifact_storage` — take only `info` or `not_required`. `renovate_min_release_age` takes a duration
 instead — `"7 days"`, `"48 hours"`, `"1 week"` (a positive whole number with
 no leading zero, a single space, then minute, hour, day or week, singular or
 plural) — or `not_required` or `info`; an
@@ -225,6 +225,26 @@ The table is required once any type or override judges `git_identity` (with
 any word but `not_required`), and refused when nothing does, for the same
 reason a dead override is.
 
+`[hermetic]` declares the hermetic-lint standard, for the `hermetic_nix`
+check:
+
+```toml
+[hermetic]
+flake = "github:gh-owner/lint-flake"
+lint = "check-workflow-hermetic"
+```
+
+- `flake` is the flake that provides the lint, written as `flake.nix` writes
+  the input's `url`. Only a `github:<owner>/<repo>` reference can be found in
+  `flake.lock`, since the tool records only flake.lock's GitHub-type nodes;
+  any other kind (`git+https:`, say) is always reported `not locked`.
+- `lint` is the lint's command name, looked for in `flake.nix` and the gate
+  files.
+
+Both keys are required and must not be empty. Like `[identity]`, the table is
+required once any type or override judges `hermetic_nix`, and refused when
+nothing does.
+
 An override that names an unknown check is an error, and so is an override
 that agrees with what the repository's type already derives — a dead
 override is deleted rather than left to rot. `required` is never accepted on
@@ -232,7 +252,9 @@ a value-only check, and an override with an empty value is an error.
 `examples/repos.invalid.toml` is a worked example of the
 dead-override error: it is a copy of `examples/repos.toml` with one override
 restated — and with `git_identity` judged by no type, so it needs no
-`[identity]` table — and `github-repos-audit validate` is expected to reject it.
+`[identity]` table (neither file judges `hermetic_nix`, so neither has a
+`[hermetic]` table) — and `github-repos-audit validate` is expected to reject
+it.
 
 ## The checks
 
@@ -341,6 +363,112 @@ Grouped by theme here; the report lists them in the fixed worklist order
   identity; see `accepted` above.
 - **secret_scanning**, **vuln_reporting** — the two security features
   GitHub can enable on a repository.
+- **hermetic_nix** — whether the repository runs the hermetic lint named in
+  `[hermetic]`. It passes when all of these hold, and otherwise names each
+  one that does not: `flake.nix` declares an input whose `url` is
+  `[hermetic].flake` exactly (`no input`); `flake.lock` has a node for it,
+  matched on `github:<owner>/<repo>` without regard to case, so a `git+https:`
+  or other non-GitHub input is never found (`not locked`); `flake.nix`
+  mentions `[hermetic].lint`, a text stand-in for the default devShell
+  carrying it, since the tool never evaluates Nix (`not in devShell`); and
+  `run-all-checks`, a file directly under `.ci/`, or the `justfile` mentions
+  it (`not in gate`). The gate part shows the wiring exists, not that the
+  call is reachable. A `flake.nix` the tool could not read records nothing,
+  so it reads as `no input` and `not in devShell`. n/a without a `flake.nix`,
+  which the flake_nix row already reports. The report's Nix section shows it.
+- **nix_lock_age** — how long ago `flake.lock` locked nixpkgs: the
+  `lastModified` of the node the root's `nixpkgs` input resolves to,
+  following `follows`, so a lock that names it `nixpkgs_2` is still found.
+  It passes at 30 days or less, measured to the second against the
+  snapshot's `generated_at`, and the cell shows the age beside its mark
+  (`✓ 4d`, `✗ 47d`). A `flake.lock` the tool could not read fails as
+  `unreadable flake.lock`. n/a without a `flake.lock`, or when the root has
+  no input named `nixpkgs`. The report's Nix section shows it.
+- **nix_lock_refresh** — whether something refreshes `flake.lock` without a
+  person remembering to, and the cell names each source that does
+  (`✓ Renovate`, `✓ workflow`). Renovate counts when there is a Renovate
+  configuration, its `nix` manager runs, and either `lockFileMaintenance` is
+  enabled or every `flake.lock` input is pinned by `rev` (the manager alone
+  then moves each digest), all read from the effective configuration as
+  `renovate_min_release_age` is. A workflow counts when it runs on
+  `schedule` and a job runs `nix flake update`, uses
+  `DeterminateSystems/update-flake-lock`, or uses a local composite action
+  (`./` or `$/`) that runs `nix flake update`. With neither, it fails; a
+  workflow the tool could not read, or an unreadable composite a scheduled
+  workflow uses, is then named as `unreadable <path>`, since it may be the
+  refresh the tool cannot see. n/a without a `flake.lock`. The report's Nix
+  section shows it.
+- **nix_cache** — whether the default branch's Nix store is cached at a
+  useful size by a `nix-community/cache-nix-action` set up to stay bounded.
+  Caches are grouped into families by the first two `-`-separated segments of
+  their key (`nix-Linux`, `nix-macOS`), counting only caches saved from the
+  default branch, and the newest entry of each family must hold between
+  1 MB and 1.5 GB (decimal units). The cell shows the size of the first
+  family out of range, or else the largest (`✓ 206 MB`, `✗ 2.2 GB`,
+  `✗ empty (430 B)`), or `none on main`. Every `cache-nix-action` step a job
+  runs, directly or through a local composite action, is then read, and the
+  cell names each problem once: `no gc-max-store-size` (none of
+  `gc-max-store-size`, `-linux` or `-macos`), `no purge` (`purge` is not
+  `true` in any case), `no purge selector` (none of `purge-prefixes`,
+  `purge-created`, `purge-last-accessed` or `purge-primary-key`), and
+  `no actions: write` (the job's `permissions:`, else the workflow's, else
+  the repository's default workflow permissions, do not grant it;
+  `write-all` does). A workflow, or a composite a job uses, that the tool
+  could not read is named as `unreadable <path>`. It passes only with every
+  size in range and no problem. n/a without a `flake.nix`, or when no workflow has run on the
+  default branch in the last 7 days, since GitHub evicts a cache nothing has
+  restored for that long. The report's Nix section shows it.
+- **go_cache** — whether the default branch's Go cache holds something.
+  Caches whose key starts `go-` are grouped into families as for nix_cache
+  (`go-Linux`, `go-macOS`), counting only caches saved from the default
+  branch, and the newest entry of each family must hold at least 1 MB
+  (decimal units): the newest is the one the next run restores, so a job
+  that built nothing but saved last fails it however full the older entries
+  are. There is no upper bound. The cell shows the first family below the
+  floor (`✗ empty (430 B)`), or else the largest (`✓ 206 MB`), or
+  `none on main`. n/a without a root `go.mod`, or when no workflow has run
+  on the default branch in the last 7 days. The report's CI efficiency
+  section shows it.
+- **cache_usage** — whether the repository's Actions caches stay at or
+  below 80% of the cache storage limit GitHub reports for it. Past the limit
+  GitHub evicts the entries restored longest ago to make room for each new
+  save, so caches push each other out and runs miss the caches they
+  expected. The cell shows the usage in decimal units (`✓ 2.3 GB`); the
+  comparison is exact, so a byte over 80% fails even where the size reads
+  the same. n/a when no limit was read, as for an empty repository. The
+  report's CI efficiency section shows it.
+- **ci_cancel_superseded** — whether every workflow triggered by
+  `pull_request` or `pull_request_target` cancels the run a newer push to
+  the same pull request supersedes, so a run whose result nobody will read
+  does not hold a runner. A workflow passes with a workflow-level
+  `concurrency` that sets `cancel-in-progress`, or when every one of its
+  jobs sets it in a job-level `concurrency`; an expression counts as set,
+  a literal `false`, in any case, does not. A workflow file that does not parse fails it
+  as unreadable. The cell counts the workflows that fail
+  (`✗ 2 workflows`), and the report's CI efficiency section lists them per
+  repository under _Workflows without cancel-in-progress_, for every
+  repository whose cell fails or, under `info`, shows a count; a
+  `not_required` repository is never listed. n/a when no workflow is
+  triggered by a pull request.
+- **job_timeouts** — whether every workflow job sets `timeout-minutes`, so a
+  job that hangs is stopped well before GitHub's six-hour default rather
+  than holding its runner, and every run queued behind it, for that long.
+  An expression counts as set. A job that calls a reusable workflow (a
+  job-level `uses:`) is left out, since GitHub does not accept the setting
+  there and the called workflow's own jobs carry it. A workflow file that
+  does not parse fails it as unreadable, and counts as one entry in the
+  job count, since its jobs cannot be told apart. The cell counts the jobs
+  that fail (`✗ 3 jobs`), and the report's CI efficiency section lists them
+  per repository under _Jobs without timeouts_, as
+  `<workflow file> / <job id>` (`ci.yml / build`), for every repository
+  whose cell fails or, under `info`, shows a count; a `not_required`
+  repository is never listed. n/a when no workflow holds a job of its own.
+- **artifact_storage** — a plain fact, always shown and never judged: how
+  many unexpired Actions artifacts the repository holds and their total
+  size in decimal units (`12 · 206 MB`), or `0` with none. Artifacts share
+  the account's Actions storage with every other repository, so the figure
+  sits beside the caches in the report's CI efficiency section. It takes
+  only `info` or `not_required`.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches
@@ -354,6 +482,31 @@ with a directory is a repository-relative path, and a directory match ends
 in `/`. The File paths section of the report marks a path that differs from
 the one most of the account uses for the same check; with no single most
 common path, nothing is marked.
+
+## Cache lists
+
+Under its table, after the lists behind the ci_cancel_superseded and
+job_timeouts counts, the report's CI efficiency section lists the Actions
+caches no check judges. Like `artifact_storage` they are plain facts: every
+repository with an entry is listed, whatever its cells say, one bullet per
+repository in report order, and a list with no entries is left out.
+
+- **Unrecognised caches** — caches under a key that starts with neither
+  `go-` nor `nix-` and is not action-owned, saved from any ref, each as
+  `` `key` (size, ref) ``, the size in decimal units and the ref shortened
+  to a branch name (`main`) or a pull request (`PR <n>`), sorted by key, then
+  ref. Nothing checks that such a cache holds anything or stays bounded,
+  and it shares the cache storage limit with the caches that are checked.
+- **Action-owned caches** — caches common actions save for themselves,
+  under a key starting `harden-runner-cacheKey`,
+  `determinatesystem-nix-installer-`, `gitleaks-`, `cache-trivy-` or
+  `trivy-`, listed the same way. Their size is the action's doing, not the
+  workflow's.
+- **Pull-request caches** — how many `go-` and `nix-` caches pull-request
+  refs saved, and their total size (`3 caches · 302 MB`). A pull request's
+  cache never serves the default branch, which is why go_cache and
+  nix_cache leave it out, but it counts against the same storage limit
+  until GitHub evicts it.
 
 ## CI timing
 

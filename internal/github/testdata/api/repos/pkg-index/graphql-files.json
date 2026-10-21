@@ -1,0 +1,53 @@
+{
+  "data": {
+    "repository": {
+      "flake_nix": null,
+      "flake_lock": null,
+      "run_all_checks": {
+        "text": "#!/usr/bin/env bash\nset -Eeuo pipefail\nexec .ci/check-01\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "justfile": {
+        "text": "check:\n    ./run-all-checks\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "dot_justfile": null,
+      "capital_justfile": null,
+      "workflows": null,
+      "actions": null,
+      "ci": {
+        "entries": [
+          {
+            "name": "check-01",
+            "type": "blob",
+            "object": {
+              "text": "#!/usr/bin/env bash\ncheck-workflow-hermetic\n",
+              "is_truncated": false,
+              "is_binary": false
+            }
+          },
+          {
+            "name": "check-02",
+            "type": "blob",
+            "object": {
+              "text": null,
+              "is_truncated": false,
+              "is_binary": true
+            }
+          },
+          {
+            "name": "lib.sh",
+            "type": "blob",
+            "object": {
+              "text": "set -Eeuo pipefail\n",
+              "is_truncated": false,
+              "is_binary": false
+            }
+          }
+        ]
+      }
+    }
+  }
+}

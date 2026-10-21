@@ -93,7 +93,7 @@ func TestBlock_nothingWrong(t *testing.T) {
 
 	a := baseRepo("alpha", "tools")
 	b := baseRepo("bravo", "tools")
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{a, b}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a, b}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -105,7 +105,156 @@ func TestBlock_nothingWrong(t *testing.T) {
 	if strings.Contains(got, "## Overrides") {
 		t.Error("an account with no overrides should render no Overrides section")
 	}
+	if strings.Contains(got, "### Workflows without cancel-in-progress") {
+		t.Error("an account with nothing to list should render no cancel-in-progress list")
+	}
+	if strings.Contains(got, "### Jobs without timeouts") {
+		t.Error("an account with nothing to list should render no timeout list")
+	}
 	golden(t, "clean.md", got)
+}
+
+// TestBlock_nixSection: the Nix section sits after File paths and before
+// Policy, carries a column per Nix check, and a hermetic_nix fail names every
+// missing part beside its mark.
+func TestBlock_nixSection(t *testing.T) {
+	t.Parallel()
+
+	got, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	nix := strings.Index(got, "## Nix\n")
+	if nix < 0 || nix < strings.Index(got, "## File paths\n") || nix > strings.Index(got, "## Policy\n") {
+		t.Fatalf("Block() has no Nix section between File paths and Policy:\n%s", got)
+	}
+	section := got[nix:strings.Index(got, "## Policy\n")]
+	for _, col := range []string{"| Repository ", "| Hermetic ", "| Lock age ", "| Lock refresh ", "| Nix cache "} {
+		if !strings.Contains(section, col) {
+			t.Errorf("Nix section header lacks %q:\n%s", col, section)
+		}
+	}
+	if !strings.Contains(section, "✗ not in devShell, not in gate") {
+		t.Errorf("Nix section lacks the software repository's fail:\n%s", section)
+	}
+}
+
+// TestBlock_ciEfficiencySection: the CI efficiency section sits right after
+// the Nix section and before Policy, carries Go cache, Cache use, Cancel
+// superseded, Timeouts and Artifacts columns, a go_cache fail shows the size
+// it found beside its mark, a cache_usage pass shows the usage it measured,
+// artifact_storage shows its count and size with no mark, and the
+// workflows behind a ci_cancel_superseded count, then the jobs behind a
+// job_timeouts count, are listed under the table.
+func TestBlock_ciEfficiencySection(t *testing.T) {
+	t.Parallel()
+
+	got, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	ci, nix, policy := strings.Index(got, "## CI efficiency\n"), strings.Index(got, "## Nix\n"), strings.Index(got, "## Policy\n")
+	if ci < 0 || nix < 0 || policy < 0 || ci < nix || ci > policy {
+		t.Fatalf("Block() has no CI efficiency section between Nix and Policy:\n%s", got)
+	}
+	section := got[ci:policy]
+	for _, col := range []string{"| Repository ", "| Go cache ", "| Cache use ", "| Cancel superseded ", "| Timeouts ", "| Artifacts "} {
+		if !strings.Contains(section, col) {
+			t.Errorf("CI efficiency section header lacks %q:\n%s", col, section)
+		}
+	}
+	if !strings.Contains(section, "✗ empty (430 B)") {
+		t.Errorf("CI efficiency section lacks the tools repository's fail:\n%s", section)
+	}
+	if !strings.Contains(section, "✓ 2.3 GB") {
+		t.Errorf("CI efficiency section lacks the tools repository's cache usage:\n%s", section)
+	}
+	if !strings.Contains(section, "✗ 2 workflows") {
+		t.Errorf("CI efficiency section lacks the tools repository's cancel count:\n%s", section)
+	}
+	if !strings.Contains(section, "| 12 · 206 MB ") {
+		t.Errorf("CI efficiency section lacks the software repository's artifacts:\n%s", section)
+	}
+	if !strings.Contains(section, "✗ 1 job ") {
+		t.Errorf("CI efficiency section lacks the tools repository's timeout count:\n%s", section)
+	}
+	lists := "\n### Workflows without cancel-in-progress\n\n" +
+		"- **github-repos-audit** — `.github/workflows/ci.yml`, `.github/workflows/workflow-02.yml`\n" +
+		"\n### Jobs without timeouts\n\n" +
+		"- **github-repos-audit** — `workflow-02.yml / lint`\n" +
+		"\n### Unrecognised caches\n\n" +
+		"- **github-repos-audit** — `custom-1e2f` (2 MB, main), `custom-5c6d` (3 MB, PR 12)\n" +
+		"\n### Action-owned caches\n\n" +
+		"- **github-repos-audit** — `trivy-3a4b` (61 MB, main)\n" +
+		"\n### Pull-request caches\n\n" +
+		"- **mixedCase-flake** — 1 cache · 900 B\n"
+	if !strings.HasSuffix(section, lists+"\n") {
+		t.Errorf("CI efficiency section does not end with the cancel-in-progress, timeout and cache lists %q:\n%s", lists, section)
+	}
+}
+
+// TestBlock_cacheListKeysAreFreeText: a cache key is whatever a workflow
+// passed to a cache action, so it is rendered as inline code that a
+// backtick cannot close and a line break cannot end the bullet of, and a
+// key holding " (" keeps it inside the code span. The size and ref follow
+// in parentheses, the ref outside the code span with markdown's own
+// characters escaped, since a branch name is the owner's choice too.
+func TestBlock_cacheListKeysAreFreeText(t *testing.T) {
+	t.Parallel()
+
+	rep := &rules.Report{Owner: "gh-owner", Repos: []rules.RepoReport{{Repo: audit.Repo{Name: "alpha"}}}, UnrecognisedCaches: []rules.RepoList[rules.CacheItem]{{Repo: "alpha", Items: []rules.CacheItem{
+		{Key: "a`b", Size: "1 KB", Ref: "main"},
+		{Key: "line\r\nbreak\nhere", Size: "2 B", Ref: "PR 12"},
+		{Key: "x (y)", Size: "3 MB", Ref: "my_branch*<b>"},
+		{Key: "a|b", Size: "4 B", Ref: "a`b\nc"},
+	}}}}
+	got, err := render.Block(rep, clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	want := "\n### Unrecognised caches\n\n" +
+		"- **alpha** — `` a`b `` (1 KB, main), `line break here` (2 B, PR 12), " +
+		"`x (y)` (3 MB, my\\_branch\\*\\<b\\>), `a|b` (4 B, a\\`b c)\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("Block() lacks %q:\n%s", want, got)
+	}
+}
+
+// TestBlock_cacheListsOmittedWhenEmpty: with no entries, none of the three
+// cache lists has a subheading.
+func TestBlock_cacheListsOmittedWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	a := baseRepo("alpha", "tools")
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a}}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	for _, h := range []string{"### Unrecognised caches", "### Action-owned caches", "### Pull-request caches"} {
+		if strings.Contains(got, h) {
+			t.Errorf("Block() has %q with no cache to list:\n%s", h, got)
+		}
+	}
+}
+
+// TestBlock_cancelMissingUnreadable: an unreadable workflow is listed with
+// its word outside the code span, so the path reads as a path and the word
+// as what was found about it.
+func TestBlock_cancelMissingUnreadable(t *testing.T) {
+	t.Parallel()
+
+	a := baseRepo("alpha", "tools")
+	a.Workflows = []audit.Workflow{{Path: ".github/workflows/broken.yml", ParseError: "invalid YAML"}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a}}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	want := "- **alpha** — unreadable `.github/workflows/broken.yml`\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("Block() lacks %q:\n%s", want, got)
+	}
 }
 
 func TestBlock_rejectsNilArguments(t *testing.T) {
@@ -174,7 +323,7 @@ func TestBlock_relativeDates(t *testing.T) {
 
 			r := baseRepo("alpha", "tools")
 			r.PushedAt = tc.pushed
-			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
+			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
 			got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 			if err != nil {
 				t.Fatalf("Block() error = %v, want nil", err)
@@ -191,7 +340,7 @@ func TestBlock_escapesAPipeInADescription(t *testing.T) {
 
 	r := baseRepo("alpha", "tools")
 	r.Description = "before | after"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -200,6 +349,47 @@ func TestBlock_escapesAPipeInADescription(t *testing.T) {
 	// An unescaped pipe would end the cell and shift every column after it.
 	if !strings.Contains(got, `before \| after`) {
 		t.Errorf("want the pipe escaped in:\n%s", got)
+	}
+}
+
+// TestBlock_lineBreaksInADescription: a line break would end the table row,
+// so each becomes one space, a CRLF pair included, the same rule the lists
+// under the tables follow.
+func TestBlock_lineBreaksInADescription(t *testing.T) {
+	t.Parallel()
+
+	r := baseRepo("alpha", "tools")
+	r.Description = "one\r\ntwo\nthree\rfour"
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if !strings.Contains(got, "one two three four") {
+		t.Errorf("want each line break as one space in:\n%s", got)
+	}
+}
+
+// TestBlock_listPathsAreOneLine: a workflow file name is the owner's
+// choice and may hold a line break, which would end the bullet, so a path
+// in the lists under a table is put on one line, unreadable or not.
+func TestBlock_listPathsAreOneLine(t *testing.T) {
+	t.Parallel()
+
+	rep := &rules.Report{
+		Owner: "gh-owner", Repos: []rules.RepoReport{{Repo: audit.Repo{Name: "alpha"}}},
+		CancelMissing: []rules.RepoList[string]{{Repo: "alpha", Items: []string{
+			".github/workflows/a\nb.yml", "unreadable .github/workflows/c\r\nd.yml",
+		}}},
+	}
+	got, err := render.Block(rep, clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	want := "- **alpha** — `.github/workflows/a b.yml`, unreadable `.github/workflows/c d.yml`\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("Block() lacks %q:\n%s", want, got)
 	}
 }
 
@@ -212,7 +402,7 @@ func TestBlock_naCellCarryingAScalar(t *testing.T) {
 	r := baseRepo("cipher-lib", "content")
 	r.Visibility = "public"
 	r.Topics = 6
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -235,7 +425,7 @@ func TestBlock_backticksABareURLInADescription(t *testing.T) {
 
 	r := baseRepo("config-files", "environment")
 	r.Description = "Config files managed by chezmoi - https://www.chezmoi.io/"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -275,7 +465,7 @@ func TestBlock_widensTheFenceAroundABacktick(t *testing.T) {
 
 	r := baseRepo("alpha", "tools")
 	r.Files.RenovateConfig = "re``no`vate.json"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -299,7 +489,7 @@ func TestBlock_noConsensusWithoutExceptions(t *testing.T) {
 	a := baseRepo("alpha", "tools")
 	b := baseRepo("bravo", "tools")
 	b.Settings.HasWiki = true
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{a, b}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a, b}}
 
 	rep := evaluate(t, snap)
 	if len(rep.Exceptions) != 0 {
@@ -404,7 +594,7 @@ func TestBlock_gitIdentities(t *testing.T) {
 	echo := baseRepo("echo", "tools")
 	echo.Identities = []audit.Identity{patNoreply}
 	snap := &audit.Snapshot{
-		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
 		Repos: []audit.Repo{alpha, bravo, charlie, delta, echo},
 	}
 
@@ -473,7 +663,7 @@ func TestBlock_noIdentitiesSectionWithoutAStandard(t *testing.T) {
 	r.Identities = []audit.Identity{patOther}
 	snap := &audit.Snapshot{
 		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord(rules.OverrideNotRequired),
-		Repos: []audit.Repo{r},
+		Hermetic: fixtureHermetic(), Repos: []audit.Repo{r},
 	}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -496,7 +686,7 @@ func TestBlock_identityInfoCells(t *testing.T) {
 	accepted := baseRepo("charlie", "tools")
 	accepted.Identities = []audit.Identity{patNoreply}
 	snap := &audit.Snapshot{
-		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord("info"), Identity: fixtureIdentity(),
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord("info"), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
 		Repos: []audit.Repo{fine, wrong, accepted},
 	}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
@@ -523,7 +713,7 @@ func TestBlock_widensTheFenceAroundABacktickInAnIdentity(t *testing.T) {
 	r.Identities = []audit.Identity{{Name: "Pat `Example", Email: "pat@example.com"}}
 	std := fixtureIdentity()
 	std.Match = "Example <" // " Example <" would not see past the backtick
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: std, Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: std, Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
 		t.Fatalf("Block() error = %v, want nil", err)
@@ -835,5 +1025,64 @@ func TestCITimingSection_naCells(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// nixRow renders snap and returns the Nix section's row for the named
+// repository.
+func nixRow(t *testing.T, snap *audit.Snapshot, name string) string {
+	t.Helper()
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	start := strings.Index(got, "## Nix\n")
+	end := strings.Index(got, "## Policy\n")
+	if start < 0 || end < start {
+		t.Fatalf("Block() has no Nix section before Policy:\n%s", got)
+	}
+	for l := range strings.SplitSeq(got[start:end], "\n") {
+		if strings.HasPrefix(l, "| ["+name+"]") {
+			return l
+		}
+	}
+	t.Fatalf("Nix section has no row for %s:\n%s", name, got[start:end])
+	return ""
+}
+
+// TestMarkedDateCell: the lock-age cell shows the age beside its mark, so a
+// stale lock reads "✗ 47d" rather than a bare cross; a type that does not
+// judge the check still shows the age it found; a lock with nothing to date
+// is n/a; and an unreadable lock says so.
+func TestMarkedDateCell(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		typ    rules.Type
+		mutate func(*audit.Flake)
+		want   string
+	}{
+		{"fresh", "tools", func(f *audit.Flake) { f.NixpkgsLastModified = renderedAt.Add(-4 * 24 * time.Hour) }, "✓ 4d"},
+		{"stale", "tools", func(f *audit.Flake) { f.NixpkgsLastModified = renderedAt.Add(-47 * 24 * time.Hour) }, "✗ 47d"},
+		{"not judged", "content", func(f *audit.Flake) { f.NixpkgsLastModified = renderedAt.Add(-47 * 24 * time.Hour) }, "47d"},
+		{"no nixpkgs", "tools", func(f *audit.Flake) { f.NixpkgsLastModified = time.Time{} }, "n/a"},
+		{"unreadable", "tools", func(f *audit.Flake) { *f = audit.Flake{HasLock: true, LockError: "flake.lock: invalid JSON"} }, "✗ unreadable flake.lock"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := baseRepo("alpha", tc.typ)
+			tc.mutate(&r.Flake)
+			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+			row := nixRow(t, snap, "alpha")
+			cols := strings.Split(row, "|")
+			// "| repo | Hermetic | Lock age |…": the lock age is the third
+			// cell, after the empty string before the first pipe.
+			if len(cols) < 4 || strings.TrimSpace(cols[3]) != tc.want {
+				t.Errorf("Nix row = %q, want a Lock age cell %q", row, tc.want)
+			}
+		})
 	}
 }

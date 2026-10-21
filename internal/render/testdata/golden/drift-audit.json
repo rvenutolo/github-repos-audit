@@ -3,8 +3,11 @@
   "owner": "gh-owner",
   "types": {
     "config": {
+      "artifact_storage": "info",
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -21,7 +24,10 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
+      "hermetic_nix": "not_required",
       "homepage": "public_published",
+      "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
       "last_release_age": "not_required",
@@ -30,6 +36,9 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
+      "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -50,8 +59,11 @@
       "zizmor": "not_required"
     },
     "content": {
+      "artifact_storage": "info",
       "branches": "info",
+      "cache_usage": "not_required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "not_required",
       "ci_green": "not_required",
       "ci_workflows": "not_required",
       "claude_md": "not_required",
@@ -68,7 +80,10 @@
       "git_cliff": "not_required",
       "git_identity": "not_required",
       "gitignore": "required",
+      "go_cache": "not_required",
+      "hermetic_nix": "not_required",
       "homepage": "public_published",
+      "job_timeouts": "not_required",
       "justfile": "not_required",
       "last_push": "info",
       "last_release_age": "not_required",
@@ -77,6 +92,9 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "not_required",
+      "nix_lock_age": "not_required",
+      "nix_lock_refresh": "not_required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -97,8 +115,11 @@
       "zizmor": "not_required"
     },
     "environment": {
+      "artifact_storage": "info",
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -115,7 +136,10 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
+      "hermetic_nix": "not_required",
       "homepage": "public_published",
+      "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
       "last_release_age": "not_required",
@@ -124,6 +148,9 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
+      "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -144,8 +171,11 @@
       "zizmor": "not_required"
     },
     "infra": {
+      "artifact_storage": "info",
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -162,7 +192,10 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
+      "hermetic_nix": "not_required",
       "homepage": "public_published",
+      "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
       "last_release_age": "not_required",
@@ -171,6 +204,9 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
+      "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -191,8 +227,11 @@
       "zizmor": "not_required"
     },
     "software": {
+      "artifact_storage": "info",
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -209,7 +248,10 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
+      "hermetic_nix": "required",
       "homepage": "public_published",
+      "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
       "last_release_age": "info",
@@ -218,6 +260,9 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
+      "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "info",
       "prettier": "not_required",
@@ -238,8 +283,11 @@
       "zizmor": "not_required"
     },
     "tools": {
+      "artifact_storage": "info",
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -256,7 +304,10 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
+      "hermetic_nix": "required",
       "homepage": "public_published",
+      "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
       "last_release_age": "not_required",
@@ -265,6 +316,9 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
+      "nix_lock_age": "required",
+      "nix_lock_refresh": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -291,6 +345,10 @@
     "accepted": [
       "Pat Example <12345+pat@users.noreply.github.com>"
     ]
+  },
+  "hermetic": {
+    "flake": "github:gh-owner/lint-flake",
+    "lint": "check-workflow-hermetic"
   },
   "repos": [
     {
@@ -337,7 +395,25 @@
       },
       "renovate": {
         "min_release_age": "7 days",
-        "min_release_age_source": "renovate.json"
+        "min_release_age_source": "renovate.json",
+        "nix_manager": true,
+        "lock_file_maintenance": true
+      },
+      "flake": {
+        "inputs": [
+          "github:NixOS/nixpkgs/nixos-unstable",
+          "github:gh-owner/lint-flake"
+        ],
+        "has_lock": true,
+        "locked_inputs": [
+          "github:gh-owner/lint-flake",
+          "github:nixos/nixpkgs"
+        ],
+        "nixpkgs_last_modified": "2026-09-01T12:00:00Z",
+        "names_lint": true,
+        "gate_files": [
+          "run-all-checks"
+        ]
       },
       "ci_state": "SUCCESS",
       "releases": {
@@ -449,7 +525,25 @@
       },
       "renovate": {
         "min_release_age": "7 days",
-        "min_release_age_source": "renovate.json"
+        "min_release_age_source": "renovate.json",
+        "nix_manager": true,
+        "lock_file_maintenance": true
+      },
+      "flake": {
+        "inputs": [
+          "github:NixOS/nixpkgs/nixos-unstable",
+          "github:gh-owner/lint-flake"
+        ],
+        "has_lock": true,
+        "locked_inputs": [
+          "github:gh-owner/lint-flake",
+          "github:nixos/nixpkgs"
+        ],
+        "nixpkgs_last_modified": "2026-09-01T12:00:00Z",
+        "names_lint": true,
+        "gate_files": [
+          "run-all-checks"
+        ]
       },
       "ci_state": "SUCCESS",
       "releases": {

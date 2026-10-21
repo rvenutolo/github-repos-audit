@@ -43,7 +43,7 @@ func ciRepo(name string, prs, main []audit.CICommit) audit.Repo {
 
 func ciLines(t *testing.T, repos ...audit.Repo) []rules.CITimingLine {
 	t.Helper()
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: repos})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: repos})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}

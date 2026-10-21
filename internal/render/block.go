@@ -51,6 +51,8 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	writeSection(&b, metadataSection(rep))
 	writeSection(&b, treeSection(rep))
 	writeSection(&b, filePathsSection(rep))
+	writeSection(&b, nixSection(rep, at))
+	writeSection(&b, ciEfficiencySection(rep))
 	writeSection(&b, policySection(rep))
 	writeSection(&b, activitySection(rep, at))
 	writeSection(&b, ciTimingSection(rep))
@@ -249,6 +251,125 @@ func filePathsSection(rep *rules.Report) string {
 	}
 	return "## File paths\n\n" + filePathsIntro + "\n\n" + strings.TrimSuffix(b.String(), "\n")
 }
+
+// nixSection shows how each repository uses Nix beyond having a flake.nix,
+// which the Tree section already reports.
+func nixSection(rep *rules.Report, at time.Time) string {
+	t := newTable("Repository", "Hermetic", "Lock age", "Lock refresh", "Nix cache")
+	for i := range rep.Repos {
+		r := &rep.Repos[i]
+		t.add(
+			repoLink(rep.Owner, r.Repo.Name),
+			cell(r.Cell(rules.CheckHermeticNix)),
+			markedDateCell(r.Cell(rules.CheckNixLockAge), at),
+			cell(r.Cell(rules.CheckNixLockRefresh)),
+			cell(r.Cell(rules.CheckNixCache)),
+		)
+	}
+	return heading("Nix", t)
+}
+
+// ciEfficiencySection shows whether each repository's CI spends its time and
+// storage well: caches saved with something in them, nothing left to pile
+// up, no run kept going once a newer one supersedes it, and no job left to
+// hang until GitHub's own six-hour limit, with the artifacts held beside
+// the caches they share storage with. The workflows and jobs behind a
+// count go in lists under the table, as the Git identities section does,
+// since a cell holding every path would stretch the table past reading.
+// After them come three lists no check judges, shown for every repository
+// with an entry whatever its cells say: the caches under keys no check
+// covers, the caches common actions keep for themselves, and the Go and Nix
+// caches pull requests saved, all of which share the storage the checked
+// caches need.
+func ciEfficiencySection(rep *rules.Report) string {
+	t := newTable("Repository", "Go cache", "Cache use", "Cancel superseded", "Timeouts", "Artifacts")
+	for i := range rep.Repos {
+		r := &rep.Repos[i]
+		t.add(
+			repoLink(rep.Owner, r.Repo.Name),
+			cell(r.Cell(rules.CheckGoCache)),
+			cell(r.Cell(rules.CheckCacheUsage)),
+			cell(r.Cell(rules.CheckCICancelSuperseded)),
+			cell(r.Cell(rules.CheckJobTimeouts)),
+			cell(r.Cell(rules.CheckArtifactStorage)),
+		)
+	}
+	s := heading("CI efficiency", t)
+	if s == "" {
+		return ""
+	}
+	return s + repoListSection("Workflows without cancel-in-progress", rep.CancelMissing, pathItem) +
+		repoListSection("Jobs without timeouts", rep.TimeoutMissing, pathItem) +
+		repoListSection("Unrecognised caches", rep.UnrecognisedCaches, cacheItem) +
+		repoListSection("Action-owned caches", rep.ActionOwnedCaches, cacheItem) +
+		repoListSection("Pull-request caches", rep.PRCaches, plainItem)
+}
+
+// repoListSection renders a list under a section's table: a subheading,
+// then one bullet per repository naming its items, each formatted by item.
+// An empty list renders nothing, subheading included.
+func repoListSection[T any](title string, lists []rules.RepoList[T], item func(T) string) string {
+	if len(lists) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n### " + title + "\n\n")
+	for _, l := range lists {
+		parts := make([]string, 0, len(l.Items))
+		for _, it := range l.Items {
+			parts = append(parts, item(it))
+		}
+		fmt.Fprintf(&b, "- **%s** — %s\n", l.Repo, strings.Join(parts, ", "))
+	}
+	return b.String()
+}
+
+// pathItem renders a file path, or a "<workflow file> / <job id>" pair, as
+// inline code. An "unreadable <path>" entry keeps its word outside the code
+// span, so it reads as what was found about the path rather than as part of
+// it. A file name is the owner's choice and may hold a line break, which
+// would end the bullet, so the value is put on one line as cacheItem's key
+// is.
+func pathItem(s string) string {
+	if path, ok := strings.CutPrefix(s, "unreadable "); ok {
+		return "unreadable " + code(oneLine(path))
+	}
+	return code(oneLine(s))
+}
+
+// cacheItem renders a cache entry as `key` (size, ref), the key as inline
+// code. The key is whatever a workflow passed to a cache action, so it is
+// free text: code widens its fence around any backtick, and a line break,
+// which would end the bullet, becomes a space. Nothing else needs escaping
+// inside a code span in a list, and escape's table rules would show there: a
+// "\|" renders as both characters outside a table. The ref is a branch name
+// or GitHub's own ref, shown as plain text so the parentheses read as one
+// aside; a branch name is the owner's choice, so listText keeps it from
+// being read as markup.
+func cacheItem(c rules.CacheItem) string {
+	return code(oneLine(c.Key)) + " (" + c.Size + ", " + listText(c.Ref) + ")"
+}
+
+// listText renders free text as plain text in a list item: on one line,
+// with each character that would make it read as markup escaped: emphasis,
+// a code span, a link, an HTML tag or a strike-through, and the backslash
+// that escapes them.
+func listText(s string) string {
+	return strings.NewReplacer(
+		`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "~", `\~`,
+	).Replace(oneLine(s))
+}
+
+// oneLine replaces each line break in s with a space, a CRLF pair counting
+// as one break. Table cells (escape) and list items share it, so the two
+// cannot disagree on what a line break is.
+func oneLine(s string) string {
+	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
+}
+
+// plainItem renders an item the rules package wrote whole, such as a count
+// and a size, as it is.
+func plainItem(s string) string { return s }
 
 func policySection(rep *rules.Report) string {
 	t := newTable("Repository", "Direct push", "Signed", "Identity", "CI workflows", "Required checks",
@@ -486,6 +607,26 @@ func dateCell(c rules.Cell, at time.Time) string {
 	}
 	if c.At.IsZero() {
 		return "never"
+	}
+	return age(c.At, at)
+}
+
+// markedDateCell renders a judged instant as its age beside the verdict's
+// mark, "✓ 4d" or "✗ 47d": the age alone would hide whether it is too old,
+// and the mark alone would hide by how much. A cell that is not judged shows
+// the bare age it found, as a scalar does on n/a; a cell with no instant is
+// whatever cell makes of it, which is n/a or the reason it has none, such as
+// an unreadable file.
+func markedDateCell(c rules.Cell, at time.Time) string {
+	if c.At.IsZero() {
+		return cell(c)
+	}
+	switch c.Verdict {
+	case rules.Pass:
+		return markPass + " " + age(c.At, at)
+	case rules.Fail:
+		return markFail + " " + age(c.At, at)
+	case rules.NA, rules.Info:
 	}
 	return age(c.At, at)
 }

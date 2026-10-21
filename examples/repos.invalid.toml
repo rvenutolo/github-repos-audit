@@ -4,22 +4,28 @@
 #
 # The defect is the dead override on [repos.config-files] below. Everything
 # else is a copy of repos.toml in this directory, except that no type judges
-# git_identity, so it needs no [identity] table: the dead override stays the
-# one thing wrong with it.
+# git_identity, so it needs no [identity] table; no type judges hermetic_nix
+# in either file, so neither has a [hermetic] table. The dead override stays
+# the one thing wrong with it.
 #
 # [types.<name>] a category of repository and what it is expected to have.
 #                Every type lists every check, each set to required,
 #                not_required, public, public_published or info; direct_push
 #                takes blocked or allowed, renovate_min_release_age takes a
 #                duration such as "7 days", not_required or info, and
-#                last_release_age, last_push, open_prs and branches take only
-#                info or not_required.
+#                last_release_age, last_push, open_prs, branches and
+#                artifact_storage take only info or not_required.
 #                A type no repository uses is allowed.
 #
 # [identity]     your git identity, for git_identity: canonical is the one
 #                identity your commits should carry, match says which
 #                identities are yours. Required once any type or override
 #                judges git_identity, and refused when nothing does.
+#
+# [hermetic]     the hermetic-lint standard, for hermetic_nix: flake is the
+#                input URL flake.nix declares and lint the lint's command
+#                name. Required once any type or override judges
+#                hermetic_nix, and refused when nothing does.
 #
 # [repos.<name>]
 # type      which [types.*] table the repository is judged against
@@ -73,10 +79,19 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
+nix_lock_age = "required"
+nix_lock_refresh = "required"
+nix_cache = "required"
+go_cache = "required"
+cache_usage = "required"
+ci_cancel_superseded = "required"
+job_timeouts = "required"
 last_release_age = "info"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.infra]
 readme = "required"
@@ -120,10 +135,19 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
+nix_lock_age = "required"
+nix_lock_refresh = "required"
+nix_cache = "required"
+go_cache = "required"
+cache_usage = "required"
+ci_cancel_superseded = "required"
+job_timeouts = "required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.environment]
 readme = "required"
@@ -167,10 +191,19 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
+nix_lock_age = "required"
+nix_lock_refresh = "required"
+nix_cache = "required"
+go_cache = "required"
+cache_usage = "required"
+ci_cancel_superseded = "required"
+job_timeouts = "required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.config]
 readme = "required"
@@ -214,10 +247,19 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "not_required"
+hermetic_nix = "not_required"
+nix_lock_age = "required"
+nix_lock_refresh = "required"
+nix_cache = "required"
+go_cache = "required"
+cache_usage = "required"
+ci_cancel_superseded = "required"
+job_timeouts = "required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 # Content is data edited by hand: no tooling rows, and direct push allowed.
 [types.content]
@@ -262,10 +304,19 @@ tag_ruleset = "required"
 direct_push = "allowed"
 secret_scanning = "public"
 vuln_reporting = "not_required"
+hermetic_nix = "not_required"
+nix_lock_age = "not_required"
+nix_lock_refresh = "not_required"
+nix_cache = "not_required"
+go_cache = "not_required"
+cache_usage = "not_required"
+ci_cancel_superseded = "not_required"
+job_timeouts = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.tools]
 readme = "required"
@@ -309,10 +360,19 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
+nix_lock_age = "required"
+nix_lock_refresh = "required"
+nix_cache = "required"
+go_cache = "required"
+cache_usage = "required"
+ci_cancel_superseded = "required"
+job_timeouts = "required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [repos.shell-scripts]
 type = "tools"

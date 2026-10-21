@@ -19,14 +19,15 @@
 // it as a gap would invent one.
 //
 // Two conditions are neither answers nor failures and are waited out instead:
-// a rate limit, which a six-wide fan-out issuing nine calls per repository is
-// built to trigger, and a 5xx. Both are resent a few times with backoff, so
-// the unattended nightly refresh comes back for the answer rather than going
-// red for a reason that has nothing to do with the code. A rate limit on
-// /graphql arrives as a 200 whose body carries a RATE_LIMITED error rather
-// than as a status, and so does a query that ran out of execution time, so
-// that one endpoint hands the retry loop a way to read its body; a rate limit
-// earns the wait a 429 earns, and a timeout the backoff a 5xx earns.
+// a rate limit, which a six-wide fan-out issuing dozens of calls per
+// repository is built to trigger, and a 5xx. Both are resent a few times with
+// backoff, so the unattended nightly refresh comes back for the answer rather
+// than going red for a reason that has nothing to do with the code. A rate
+// limit on /graphql arrives as a 200 whose body carries a RATE_LIMITED error
+// rather than as a status, and so does a query that ran out of execution
+// time, so that one endpoint hands the retry loop a way to read its body; a
+// rate limit earns the wait a 429 earns, and a timeout the backoff a 5xx
+// earns.
 package github
 
 import (

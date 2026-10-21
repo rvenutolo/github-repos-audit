@@ -53,6 +53,14 @@ var gapLabels = map[Check]string{
 	CheckTagRuleset:            "No tag ruleset",
 	CheckSecretScanning:        "Secret scanning off",
 	CheckVulnReporting:         "Private vulnerability reporting off",
+	CheckHermeticNix:           "Hermetic lint not wired in",
+	CheckNixLockAge:            "nixpkgs locked more than 30 days ago",
+	CheckNixLockRefresh:        "No automated flake.lock refresh",
+	CheckNixCache:              "Nix cache missing, empty, oversized or misconfigured",
+	CheckGoCache:               "Go cache missing or empty on the default branch",
+	CheckCacheUsage:            "Actions cache above 80% of its limit",
+	CheckCICancelSuperseded:    "Pull-request workflows without cancel-in-progress",
+	CheckJobTimeouts:           "Jobs without timeout-minutes",
 }
 
 // communityFiles names the three community health files, in the order the

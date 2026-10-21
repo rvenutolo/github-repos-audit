@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -92,6 +93,11 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/permissions/access", f.fixtureHandler("actions-access"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs", f.handleRuns)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs", f.handleJobs)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/caches", f.storageListHandler("actions-caches"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/cache/usage", f.fixtureHandler("actions-cache-usage"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/cache/storage-limit",
+		f.fixtureHandler("actions-cache-storage-limit"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/artifacts", f.storageListHandler("actions-artifacts"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/contents/{path...}", f.handleContents)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/git/trees/{sha}", f.handleTree)
 
@@ -170,6 +176,26 @@ func (f *fakeAPI) callsTo(path string) int {
 	return n
 }
 
+// runsCalls counts repo's runs-list requests in two: the timing reads,
+// unfiltered, and the default-branch recency reads, filtered by branch. Both
+// share one path, so callsTo alone cannot tell them apart.
+func (f *fakeAPI) runsCalls(repo string) (timing, recency int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	path := "/repos/" + testOwner + "/" + repo + "/actions/runs"
+	for _, c := range f.calls {
+		if c.path != path {
+			continue
+		}
+		if q, err := url.ParseQuery(c.rawQuery); err == nil && q.Has("branch") {
+			recency++
+		} else {
+			timing++
+		}
+	}
+	return timing, recency
+}
+
 // seen returns every request the server was handed.
 func (f *fakeAPI) seen() []call {
 	f.mu.Lock()
@@ -228,6 +254,12 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 	dir := filepath.Join(fixtureRoot, "repos", body.Variables["name"])
 	if cursor := body.Variables["cursor"]; cursor != "" {
 		f.serve(w, dir, "graphql-history-"+cursor)
+		return
+	}
+	// The file query carries the same variables as the repository query, so
+	// only its operation name tells the two apart.
+	if strings.Contains(body.Query, "query RepoFiles") {
+		f.serve(w, dir, "graphql-files")
 		return
 	}
 	f.serve(w, dir, "graphql")
@@ -296,15 +328,32 @@ func (f *fakeAPI) handleTree(w http.ResponseWriter, r *http.Request) {
 // actions-runs fixture. The page size is asserted rather than ignored: the
 // API's default is thirty, and a commit outside a page that small would read
 // as one no workflow ran on.
+//
+// A request filtered by branch is the default-branch recency read, answered
+// from actions-runs-default-branch instead: GitHub filters that list server
+// side, so it is a separate recording, and only its newest run is wanted, so
+// its page size is one. Every fixture repository's default branch is main.
 func (f *fakeAPI) handleRuns(w http.ResponseWriter, r *http.Request) {
 	f.t.Helper()
 	if owner := r.PathValue("owner"); owner != testOwner {
 		f.t.Errorf("request for owner %q, want %q", owner, testOwner)
 	}
-	if got := r.URL.Query().Get("per_page"); got != "100" {
+	dir := filepath.Join(fixtureRoot, "repos", r.PathValue("repo"))
+	query := r.URL.Query()
+	if query.Has("branch") {
+		if got := query.Get("branch"); got != "main" {
+			f.t.Errorf("runs request for %s has branch=%q, want main", r.URL.Path, got)
+		}
+		if got := query.Get("per_page"); got != "1" {
+			f.t.Errorf("default-branch runs request for %s has per_page=%q, want 1", r.URL.Path, got)
+		}
+		f.serve(w, dir, "actions-runs-default-branch")
+		return
+	}
+	if got := query.Get("per_page"); got != "100" {
 		f.t.Errorf("runs request for %s has per_page=%q, want 100", r.URL.Path, got)
 	}
-	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), "actions-runs")
+	f.serve(w, dir, "actions-runs")
 }
 
 // handleJobs answers one run's jobs list from actions-jobs-<run id>, flat for
@@ -325,6 +374,24 @@ func (f *fakeAPI) handleJobs(w http.ResponseWriter, r *http.Request) {
 		f.t.Errorf("jobs request for %s has filter=%q, want the latest attempt", r.URL.Path, got)
 	}
 	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), "actions-jobs-"+r.PathValue("run_id"))
+}
+
+// storageListHandler answers the caches or artifacts list from the
+// repository's fixture named base. Each fixture is one page, so no Link is
+// sent; following one is storage_internal_test.go's to pin. The page size is
+// asserted for the reason handleRuns asserts it: the API's default of thirty
+// would make every further thirty entries cost a request.
+func (f *fakeAPI) storageListHandler(base string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		f.t.Helper()
+		if owner := r.PathValue("owner"); owner != testOwner {
+			f.t.Errorf("request for owner %q, want %q", owner, testOwner)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "100" {
+			f.t.Errorf("%s request has per_page=%q, want 100", r.URL.Path, got)
+		}
+		f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), base)
+	}
 }
 
 // serve writes the fixture named base from dir. A plain <base>.json is a 200;

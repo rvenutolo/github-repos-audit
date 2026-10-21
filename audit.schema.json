@@ -34,6 +34,10 @@
       "description": "repos.toml's [identity] table: the identity git_identity holds the account holder's commits to. Absent when nothing judges git_identity, which is also the only case repos.toml may omit the table.",
       "$ref": "#/$defs/identity_standard"
     },
+    "hermetic": {
+      "description": "repos.toml's [hermetic] table: the flake and lint hermetic_nix looked for. Absent when nothing judges hermetic_nix, which is also the only case repos.toml may omit the table.",
+      "$ref": "#/$defs/hermetic_standard"
+    },
     "config_drift": {
       "description": "Where repos.toml and the account disagree about which repositories exist. Absent when they agree.",
       "$ref": "#/$defs/config_drift"
@@ -140,10 +144,19 @@
               "direct_push",
               "secret_scanning",
               "vuln_reporting",
+              "hermetic_nix",
+              "nix_lock_age",
+              "nix_lock_refresh",
+              "nix_cache",
+              "go_cache",
+              "cache_usage",
+              "ci_cancel_superseded",
+              "job_timeouts",
               "last_release_age",
               "last_push",
               "open_prs",
-              "branches"
+              "branches",
+              "artifact_storage"
             ]
           },
           "additionalProperties": {
@@ -215,12 +228,26 @@
         },
         "files": { "$ref": "#/$defs/files" },
         "renovate": { "$ref": "#/$defs/renovate" },
+        "flake": { "$ref": "#/$defs/flake" },
+        "workflow_facts": {
+          "description": "Every .yml or .yaml file in .github/workflows, parsed, sorted by path. Absent when there is none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/workflow" }
+        },
+        "composite_actions": {
+          "description": "Every composite action in .github/actions, one per directory holding an action.yml or action.yaml, sorted by path. Absent when there is none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/composite_action" }
+        },
         "ci_state": {
           "description": "The statusCheckRollup state of the head commit. Absent when the rollup was null, which means no check has run on that commit.",
           "type": "string",
           "enum": ["SUCCESS", "FAILURE", "PENDING", "ERROR", "EXPECTED"]
         },
         "ci": { "$ref": "#/$defs/ci" },
+        "actions_storage": { "$ref": "#/$defs/actions_storage" },
         "releases": { "$ref": "#/$defs/releases" },
         "rulesets": {
           "description": "Every ruleset defined on the repository. Absent when there are none.",
@@ -278,10 +305,19 @@
         "direct_push",
         "secret_scanning",
         "vuln_reporting",
+        "hermetic_nix",
+        "nix_lock_age",
+        "nix_lock_refresh",
+        "nix_cache",
+        "go_cache",
+        "cache_usage",
+        "ci_cancel_superseded",
+        "job_timeouts",
         "last_release_age",
         "last_push",
         "open_prs",
-        "branches"
+        "branches",
+        "artifact_storage"
       ],
       "properties": {
         "readme": { "$ref": "#/$defs/expectation" },
@@ -325,10 +361,19 @@
         "direct_push": { "$ref": "#/$defs/direct_push" },
         "secret_scanning": { "$ref": "#/$defs/expectation" },
         "vuln_reporting": { "$ref": "#/$defs/expectation" },
+        "hermetic_nix": { "$ref": "#/$defs/expectation" },
+        "nix_lock_age": { "$ref": "#/$defs/expectation" },
+        "nix_lock_refresh": { "$ref": "#/$defs/expectation" },
+        "nix_cache": { "$ref": "#/$defs/expectation" },
+        "go_cache": { "$ref": "#/$defs/expectation" },
+        "cache_usage": { "$ref": "#/$defs/expectation" },
+        "ci_cancel_superseded": { "$ref": "#/$defs/expectation" },
+        "job_timeouts": { "$ref": "#/$defs/expectation" },
         "last_release_age": { "$ref": "#/$defs/info_expectation" },
         "last_push": { "$ref": "#/$defs/info_expectation" },
         "open_prs": { "$ref": "#/$defs/info_expectation" },
-        "branches": { "$ref": "#/$defs/info_expectation" }
+        "branches": { "$ref": "#/$defs/info_expectation" },
+        "artifact_storage": { "$ref": "#/$defs/info_expectation" }
       }
     },
     "expectation": {
@@ -369,9 +414,19 @@
           "minLength": 1
         },
         "min_release_age_error": {
-          "description": "Why the value could not be decided: a missing or unparsable preset, a cycle, a template.",
+          "description": "Why the configuration could not be decided: a missing or unparsable preset, a cycle, a template, a malformed minimumReleaseAge or stabilityDays. When set, nix_manager and lock_file_maintenance are absent too.",
           "type": "string",
           "minLength": 1
+        },
+        "nix_manager": {
+          "description": "Whether Renovate's nix manager runs: nix.enabled true after the same merge, with enabledManagers unset or listing \"nix\". Absent when off, unset, of the wrong type or unresolved.",
+          "type": "boolean",
+          "const": true
+        },
+        "lock_file_maintenance": {
+          "description": "Whether lockFileMaintenance.enabled is true after the same merge. Absent when off, unset, of the wrong type or unresolved.",
+          "type": "boolean",
+          "const": true
         }
       }
     },
@@ -518,6 +573,217 @@
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
+        },
+        "go_mod": {
+          "description": "A file named exactly go.mod at the root. Absent when there is none.",
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "flake": {
+      "description": "What flake.nix and flake.lock say, and which files name the configured hermetic-lint command. Absent when the repository has neither file and no gate file names the lint.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "inputs": {
+          "description": "Every `url = \"…\"` flake.nix binds, as written, sorted and without repeats. flake.nix is read as text, not evaluated.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "has_lock": {
+          "description": "flake.lock exists.",
+          "type": "boolean",
+          "const": true
+        },
+        "locked_inputs": {
+          "description": "\"github:<owner>/<repo>\", lower-cased, for every GitHub-type node of flake.lock, from the node's `original`, sorted and without repeats.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "nixpkgs_last_modified": {
+          "description": "locked.lastModified of the node the root's nixpkgs input resolves to, in UTC. Absent when there is no lock or no input named nixpkgs.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "all_rev_pinned": {
+          "description": "Every non-root node's `original` carries `rev`. Absent when false, which includes a lock with no inputs.",
+          "type": "boolean",
+          "const": true
+        },
+        "lock_error": {
+          "description": "Why flake.lock could not be read. When present none of the other lock facts is.",
+          "type": "string",
+          "minLength": 1
+        },
+        "names_lint": {
+          "description": "flake.nix's text contains the configured hermetic-lint command name.",
+          "type": "boolean",
+          "const": true
+        },
+        "gate_files": {
+          "description": "The gate files (run-all-checks, the justfile, each file directly under .ci) whose text contains the configured hermetic-lint command name, by path, sorted.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "workflow": {
+      "description": "What one GitHub Actions workflow file says, values kept as written.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "description": "The file's path in the repository, such as \".github/workflows/ci.yml\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "parse_error": {
+          "description": "Why the file could not be read as a workflow: invalid YAML, a shape GitHub would not run, or a blob that is binary or too large to read in full. When present nothing but path is.",
+          "type": "string",
+          "minLength": 1
+        },
+        "events": {
+          "description": "The trigger names under `on:`, sorted and without repeats.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "concurrency": { "$ref": "#/$defs/concurrency" },
+        "permissions": { "$ref": "#/$defs/permissions" },
+        "jobs": {
+          "description": "Every job, in file order.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/job" }
+        }
+      }
+    },
+    "job": {
+      "description": "One entry under `jobs:`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "description": "The job's key under `jobs:`.",
+          "type": "string"
+        },
+        "reusable": {
+          "description": "The job calls a reusable workflow with a job-level `uses:`.",
+          "type": "boolean",
+          "const": true
+        },
+        "timeout_minutes": {
+          "description": "`timeout-minutes:` as written, an expression included. Absent when the key is.",
+          "type": "string"
+        },
+        "concurrency": { "$ref": "#/$defs/concurrency" },
+        "permissions": { "$ref": "#/$defs/permissions" },
+        "uses": {
+          "description": "Every step's `uses:`, in step order.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/step_use" }
+        },
+        "flake_update": {
+          "description": "Some step's `run:` contains \"nix flake update\".",
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "concurrency": {
+      "description": "A `concurrency:` setting, at workflow or job level.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["set"],
+      "properties": {
+        "set": {
+          "description": "`concurrency:` is present in either form; an explicit null is not presence.",
+          "type": "boolean"
+        },
+        "cancel_in_progress": {
+          "description": "`cancel-in-progress:` exactly as written: \"true\", \"false\" or an expression. Absent when the key is, and always for the string form.",
+          "type": "string"
+        }
+      }
+    },
+    "permissions": {
+      "description": "A `permissions:` setting, at workflow or job level.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["set"],
+      "properties": {
+        "set": {
+          "description": "`permissions:` is present in either form; an explicit null is not presence.",
+          "type": "boolean"
+        },
+        "all": {
+          "description": "The string form, such as \"read-all\".",
+          "type": "string"
+        },
+        "scopes": {
+          "description": "The map form, scope name to access as written. Empty for `permissions: {}`, which grants nothing.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "step_use": {
+      "description": "One step that runs an action.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "description": "`uses:` as written, such as \"owner/action@<sha>\" or \"./.github/actions/setup\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "with": {
+          "description": "The step's `with:` inputs, every value a scalar kept as written. Absent when there are none.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "composite_action": {
+      "description": "What one composite action's action.yml or action.yaml says.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "description": "The file's path in the repository, such as \".github/actions/setup/action.yml\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "parse_error": {
+          "description": "As a workflow's parse_error: when present nothing but path is.",
+          "type": "string",
+          "minLength": 1
+        },
+        "uses": {
+          "description": "Every step's `uses:` under runs.steps, in step order. Absent for a JavaScript or Docker action.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/step_use" }
+        },
+        "flake_update": {
+          "description": "Some step's `run:` contains \"nix flake update\".",
+          "type": "boolean",
+          "const": true
         }
       }
     },
@@ -538,6 +804,11 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/ci_commit" }
+        },
+        "last_default_branch_run": {
+          "description": "When the newest workflow run on the default branch was created, of any event, in UTC. Absent when no workflow has run on the default branch, and for an empty repository.",
+          "type": "string",
+          "format": "date-time"
         }
       }
     },
@@ -602,6 +873,68 @@
         }
       }
     },
+    "actions_storage": {
+      "description": "What the repository holds in GitHub Actions storage, sizes in bytes as GitHub reports them. Absent for an empty repository, which is not read for it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cache_usage_bytes", "artifact_count", "artifact_bytes"],
+      "properties": {
+        "caches": {
+          "description": "Every cache entry, sorted by key, then ref, then creation time. last_accessed_at is not recorded: it changes on every restore. Absent when there is none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/cache" }
+        },
+        "cache_usage_bytes": {
+          "description": "The total size of the active caches, GitHub's own usage figure.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_limit_bytes": {
+          "description": "The repository's cache storage limit: max_cache_size_gb × 1,000,000,000. Absent when no limit was read.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "artifact_count": {
+          "description": "How many artifacts have not expired.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifact_bytes": {
+          "description": "The total size of the artifacts that have not expired.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "cache": {
+      "description": "One GitHub Actions cache entry.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "ref", "size_bytes", "created_at"],
+      "properties": {
+        "key": {
+          "description": "The cache key as the saving step wrote it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "description": "The ref the cache was saved from, refs/heads/<branch> or refs/pull/<number>/merge.",
+          "type": "string",
+          "minLength": 1
+        },
+        "size_bytes": {
+          "description": "The stored size.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "created_at": {
+          "description": "When the entry was saved, in UTC.",
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "releases": {
       "description": "A summary of the repository's releases.",
       "type": "object",
@@ -648,6 +981,16 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         }
+      }
+    },
+    "hermetic_standard": {
+      "description": "The hermetic-lint standard. flake is the input URL as flake.nix writes it, such as \"github:<owner>/<repo>\"; lint is the lint's command name, which flake.nix and a gate file are expected to mention.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flake", "lint"],
+      "properties": {
+        "flake": { "type": "string", "minLength": 1 },
+        "lint": { "type": "string", "minLength": 1 }
       }
     },
     "ruleset": {

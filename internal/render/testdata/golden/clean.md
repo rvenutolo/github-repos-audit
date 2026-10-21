@@ -37,6 +37,20 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [alpha](https://github.com/gh-owner/alpha) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 | [bravo](https://github.com/gh-owner/bravo) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 
+## Nix
+
+| Repository                                 | Hermetic | Lock age | Lock refresh | Nix cache |
+| ------------------------------------------ | -------- | -------- | ------------ | --------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓        | ✓ 3d     | ✓ Renovate   | n/a       |
+| [bravo](https://github.com/gh-owner/bravo) | ✓        | ✓ 3d     | ✓ Renovate   | n/a       |
+
+## CI efficiency
+
+| Repository                                 | Go cache | Cache use | Cancel superseded | Timeouts | Artifacts |
+| ------------------------------------------ | -------- | --------- | ----------------- | -------- | --------- |
+| [alpha](https://github.com/gh-owner/alpha) | n/a      | n/a       | n/a               | n/a      | 0         |
+| [bravo](https://github.com/gh-owner/bravo) | n/a      | n/a       | n/a               | n/a      | 0         |
+
 ## Policy
 
 | Repository                                 | Direct push | Signed | Identity | CI workflows | Required checks | Tag ruleset | Secret scanning | Vuln. reporting |

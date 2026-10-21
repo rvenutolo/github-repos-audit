@@ -20,12 +20,15 @@ type Entry struct {
 // Paths is where each file was found; "" means absent. The path is reported
 // as it appears in the tree (so case-insensitive matches keep their spelling),
 // and a directory match carries a trailing slash. Compose lists the distinct
-// compose file base names found at any depth, sorted.
+// compose file base names found at any depth, sorted. GoMod reports a root
+// file named exactly go.mod: the module a root `go` command builds, which a
+// nested module or a directory of that name is not.
 type Paths struct {
 	Justfile, Commitlint, GitCliff, Treefmt                                                       string
 	Compose                                                                                       []string
 	Typos, Yamllint, Markdownlint, Prettier, EditorconfigChecker, Lychee, Zizmor, Codecov, MkDocs string
 	LicenseFile, SecurityPolicy, Codeowners, PRTemplate, ClaudeMD                                 string
+	GoMod                                                                                         bool
 }
 
 // Every table below is in lookup order: when several accepted names exist the
@@ -143,6 +146,9 @@ func prTemplateDirs() []string { return []string{".github/", "", "docs/"} }
 func claudeMDNames() []string { return []string{"CLAUDE.md", ".claude/CLAUDE.md"} }
 
 const (
+	// goModName: the Go command's module file, matched exactly; Go itself
+	// reads no other spelling.
+	goModName      = "go.mod"
 	prTemplateName = "pull_request_template"
 	licensesDir    = "LICENSES"
 )
@@ -171,6 +177,7 @@ func Find(entries []Entry) Paths {
 		Codeowners:          idx.first(codeownersNames(), false),
 		PRTemplate:          idx.prTemplate(),
 		ClaudeMD:            idx.first(claudeMDNames(), false),
+		GoMod:               idx.file(goModName, false) != "",
 	}
 }
 
