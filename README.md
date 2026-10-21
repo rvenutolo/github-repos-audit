@@ -379,9 +379,9 @@ Grouped by theme here; the report lists them in the fixed worklist order
 - **nix_lock_age** — how long ago `flake.lock` locked nixpkgs: the
   `lastModified` of the node the root's `nixpkgs` input resolves to,
   following `follows`, so a lock that names it `nixpkgs_2` is still found.
-  It passes at 30 days or less, measured to the second against the moment
-  the audit was read, and the cell shows the age beside its mark (`✓ 4d`,
-  `✗ 47d`). A `flake.lock` the tool could not read fails as
+  It passes at 30 days or less, measured to the second against the
+  snapshot's `generated_at`, and the cell shows the age beside its mark
+  (`✓ 4d`, `✗ 47d`). A `flake.lock` the tool could not read fails as
   `unreadable flake.lock`. n/a without a `flake.lock`, or when the root has
   no input named `nixpkgs`. The report's Nix section shows it.
 - **nix_lock_refresh** — whether something refreshes `flake.lock` without a
@@ -456,12 +456,13 @@ Grouped by theme here; the report lists them in the fixed worklist order
   An expression counts as set. A job that calls a reusable workflow (a
   job-level `uses:`) is left out, since GitHub does not accept the setting
   there and the called workflow's own jobs carry it. A workflow file that
-  does not parse fails it as unreadable. The cell counts the jobs that fail
-  (`✗ 3 jobs`), and the report's CI efficiency section lists them per
-  repository under _Jobs without timeouts_, as `<workflow file> / <job id>`
-  (`ci.yml / build`), for every repository whose cell fails or, under
-  `info`, shows a count; a `not_required` repository is never listed. n/a
-  when no workflow holds a job of its own.
+  does not parse fails it as unreadable, and counts as one entry in the
+  job count, since its jobs cannot be told apart. The cell counts the jobs
+  that fail (`✗ 3 jobs`), and the report's CI efficiency section lists them
+  per repository under _Jobs without timeouts_, as
+  `<workflow file> / <job id>` (`ci.yml / build`), for every repository
+  whose cell fails or, under `info`, shows a count; a `not_required`
+  repository is never listed. n/a when no workflow holds a job of its own.
 - **artifact_storage** — a plain fact, always shown and never judged: how
   many unexpired Actions artifacts the repository holds and their total
   size in decimal units (`12 · 206 MB`), or `0` with none. Artifacts share
