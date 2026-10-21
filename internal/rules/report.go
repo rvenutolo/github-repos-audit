@@ -150,6 +150,18 @@ type Report struct {
 	// CITiming is one line per repository with any complete sampled commit,
 	// slowest pull request mean first; see ciTimingLines.
 	CITiming []CITimingLine
+	// CancelMissing is, for each repository failing ci_cancel_superseded in
+	// report order, the workflows that fail it; see cancelLists.
+	CancelMissing []RepoList
+}
+
+// RepoList is one repository's entries in a list the report gives under a
+// table, for detail too long for a cell: the workflows behind a count, say.
+type RepoList struct {
+	// Repo is the repository.
+	Repo string
+	// Items is its entries, in the order the list's builder documents.
+	Items []string
 }
 
 // CITimingLine is how long one repository's CI takes: the mean over its latest

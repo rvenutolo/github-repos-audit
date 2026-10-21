@@ -6,6 +6,7 @@
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -59,6 +60,7 @@
       "branches": "info",
       "cache_usage": "not_required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "not_required",
       "ci_green": "not_required",
       "ci_workflows": "not_required",
       "claude_md": "not_required",
@@ -112,6 +114,7 @@
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -165,6 +168,7 @@
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -218,6 +222,7 @@
       "branches": "info",
       "cache_usage": "required",
       "changelog": "required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -271,6 +276,7 @@
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
+      "ci_cancel_superseded": "required",
       "ci_green": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
@@ -403,6 +409,24 @@
         ],
         "nixpkgs_last_modified": "2026-09-01T12:00:00Z"
       },
+      "workflow_facts": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "events": [
+            "pull_request",
+            "push"
+          ],
+          "concurrency": {
+            "set": true,
+            "cancel_in_progress": "true"
+          },
+          "jobs": [
+            {
+              "id": "check"
+            }
+          ]
+        }
+      ],
       "ci_state": "SUCCESS",
       "ci": {
         "pull_requests": [
@@ -725,6 +749,40 @@
           "run-all-checks"
         ]
       },
+      "workflow_facts": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "events": [
+            "pull_request"
+          ],
+          "concurrency": {
+            "set": true
+          },
+          "jobs": [
+            {
+              "id": "check"
+            }
+          ]
+        },
+        {
+          "path": ".github/workflows/workflow-02.yml",
+          "events": [
+            "pull_request_target"
+          ],
+          "jobs": [
+            {
+              "id": "lint",
+              "concurrency": {
+                "set": true,
+                "cancel_in_progress": "true"
+              }
+            },
+            {
+              "id": "test"
+            }
+          ]
+        }
+      ],
       "ci_state": "PENDING",
       "ci": {
         "pull_requests": [

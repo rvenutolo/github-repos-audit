@@ -437,6 +437,17 @@ Grouped by theme here; the report lists them in the fixed worklist order
   comparison is exact, so a byte over 80% fails even where the size reads
   the same. n/a when no limit was read, as for an empty repository. The
   report's CI efficiency section shows it.
+- **ci_cancel_superseded** — whether every workflow triggered by
+  `pull_request` or `pull_request_target` cancels the run a newer push to
+  the same pull request supersedes, so a run whose result nobody will read
+  does not hold a runner. A workflow passes with a workflow-level
+  `concurrency` that sets `cancel-in-progress`, or when every one of its
+  jobs sets it in a job-level `concurrency`; an expression counts as set,
+  a literal `false` does not. A workflow file that does not parse fails it
+  as unreadable. The cell counts the workflows that fail
+  (`✗ 2 workflows`), and the report's CI efficiency section lists them per
+  repository under _Workflows without cancel-in-progress_. n/a when no
+  workflow is triggered by a pull request.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches

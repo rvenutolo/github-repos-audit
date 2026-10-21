@@ -270,19 +270,56 @@ func nixSection(rep *rules.Report, at time.Time) string {
 }
 
 // ciEfficiencySection shows whether each repository's CI spends its time and
-// storage well: caches saved with something in them, and nothing left to
-// pile up.
+// storage well: caches saved with something in them, nothing left to pile
+// up, and no run kept going once a newer one supersedes it. The workflows
+// behind a count go in a list under the table, as the Git identities section
+// does, since a cell holding every path would stretch the table past
+// reading.
 func ciEfficiencySection(rep *rules.Report) string {
-	t := newTable("Repository", "Go cache", "Cache use")
+	t := newTable("Repository", "Go cache", "Cache use", "Cancel superseded")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
 			repoLink(rep.Owner, r.Repo.Name),
 			cell(r.Cell(rules.CheckGoCache)),
 			cell(r.Cell(rules.CheckCacheUsage)),
+			cell(r.Cell(rules.CheckCICancelSuperseded)),
 		)
 	}
-	return heading("CI efficiency", t)
+	s := heading("CI efficiency", t)
+	if s == "" {
+		return ""
+	}
+	return s + repoListSection("Workflows without cancel-in-progress", rep.CancelMissing, pathItem)
+}
+
+// repoListSection renders a list under a section's table: a subheading,
+// then one bullet per repository naming its items, each formatted by item.
+// An empty list renders nothing, subheading included.
+func repoListSection(title string, lists []rules.RepoList, item func(string) string) string {
+	if len(lists) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n### " + title + "\n\n")
+	for _, l := range lists {
+		parts := make([]string, 0, len(l.Items))
+		for _, it := range l.Items {
+			parts = append(parts, item(it))
+		}
+		fmt.Fprintf(&b, "- **%s** — %s\n", l.Repo, strings.Join(parts, ", "))
+	}
+	return b.String()
+}
+
+// pathItem renders a file path as inline code. An "unreadable <path>" entry
+// keeps its word outside the code span, so it reads as what was found about
+// the path rather than as part of it.
+func pathItem(s string) string {
+	if path, ok := strings.CutPrefix(s, "unreadable "); ok {
+		return "unreadable " + code(path)
+	}
+	return code(s)
 }
 
 func policySection(rep *rules.Report) string {

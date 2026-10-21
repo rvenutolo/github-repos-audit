@@ -147,7 +147,9 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // its Nix cache oversized, so the Nix section carries fails beside the
 // passes. Both are Go modules; the software repository's Go cache is a
 // useful size, while a side job in the tools repository saved an empty one
-// last, so the CI efficiency section carries a fail too.
+// last, so the CI efficiency section carries a fail too, as it does for
+// the tools repository's pull-request workflows that run on after a newer
+// push supersedes them.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -201,6 +203,12 @@ func fullSnapshot() *audit.Snapshot {
 		CacheUsageBytes: 481_000_900,
 		CacheLimitBytes: 10_000_000_000,
 	}
+	// Its pull-request workflow cancels superseded runs.
+	soft.Workflows = []audit.Workflow{{
+		Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
+		Concurrency: audit.Concurrency{Set: true, CancelInProgress: "true"},
+		Jobs:        []audit.Job{{ID: "check"}},
+	}}
 	// Its history switched identity: mixed. The noreply identity GitHub records
 	// on web-UI merges beside them is accepted and does not count toward it.
 	soft.Identities = []audit.Identity{
@@ -264,6 +272,23 @@ func fullSnapshot() *audit.Snapshot {
 		},
 		CacheUsageBytes: 2_320_000_430,
 		CacheLimitBytes: 10_000_000_000,
+	}
+	// Neither of its pull-request workflows cancels superseded runs: one
+	// sets concurrency without cancel-in-progress, and the other cancels in
+	// one job of two.
+	tools.Workflows = []audit.Workflow{
+		{
+			Path: ".github/workflows/ci.yml", Events: []string{"pull_request"},
+			Concurrency: audit.Concurrency{Set: true},
+			Jobs:        []audit.Job{{ID: "check"}},
+		},
+		{
+			Path: ".github/workflows/workflow-02.yml", Events: []string{"pull_request_target"},
+			Jobs: []audit.Job{
+				{ID: "lint", Concurrency: audit.Concurrency{Set: true, CancelInProgress: "true"}},
+				{ID: "test"},
+			},
+		},
 	}
 	// Consistently the wrong identity, beside GitHub's own web-flow committer.
 	tools.Identities = []audit.Identity{

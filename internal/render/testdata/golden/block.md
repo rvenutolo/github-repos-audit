@@ -24,6 +24,7 @@
 - **No automated flake.lock refresh** (1) — mixedCase-flake
 - **Nix cache missing, empty, oversized or misconfigured** (1) — github-repos-audit
 - **Go cache missing or empty on the default branch** (1) — github-repos-audit
+- **Pull-request workflows without cancel-in-progress** (1) — github-repos-audit
 
 ## Metadata
 
@@ -91,13 +92,17 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## CI efficiency
 
-| Repository                                                           | Go cache        | Cache use |
-| -------------------------------------------------------------------- | --------------- | --------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a             | n/a       |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✓ 2.3 GB  |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a       |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓ 481 MB  |
-| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       |
+| Repository                                                           | Go cache        | Cache use | Cancel superseded |
+| -------------------------------------------------------------------- | --------------- | --------- | ----------------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a             | n/a       | n/a               |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✓ 2.3 GB  | ✗ 2 workflows     |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a       | n/a               |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓ 481 MB  | ✓                 |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       | n/a               |
+
+### Workflows without cancel-in-progress
+
+- **github-repos-audit** — `.github/workflows/ci.yml`, `.github/workflows/workflow-02.yml`
 
 ## Policy
 

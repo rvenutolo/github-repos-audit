@@ -59,6 +59,7 @@ var gapLabels = map[Check]string{
 	CheckNixCache:              "Nix cache missing, empty, oversized or misconfigured",
 	CheckGoCache:               "Go cache missing or empty on the default branch",
 	CheckCacheUsage:            "Actions cache above 80% of its limit",
+	CheckCICancelSuperseded:    "Pull-request workflows without cancel-in-progress",
 }
 
 // communityFiles names the three community health files, in the order the
