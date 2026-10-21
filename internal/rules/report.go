@@ -151,8 +151,12 @@ type Report struct {
 	// slowest pull request mean first; see ciTimingLines.
 	CITiming []CITimingLine
 	// CancelMissing is, for each repository failing ci_cancel_superseded in
-	// report order, the workflows that fail it; see cancelLists.
+	// report order, the workflows that fail it; see cancelMissing and
+	// failingLists.
 	CancelMissing []RepoList
+	// TimeoutMissing is, for each repository failing job_timeouts in report
+	// order, the jobs that fail it; see timeoutMissing and failingLists.
+	TimeoutMissing []RepoList
 }
 
 // RepoList is one repository's entries in a list the report gives under a

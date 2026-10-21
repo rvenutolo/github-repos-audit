@@ -66,6 +66,7 @@ const (
 	CheckGoCache
 	CheckCacheUsage
 	CheckCICancelSuperseded
+	CheckJobTimeouts
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
@@ -125,6 +126,7 @@ var checkNames = [...]string{
 	CheckGoCache:               "go_cache",
 	CheckCacheUsage:            "cache_usage",
 	CheckCICancelSuperseded:    "ci_cancel_superseded",
+	CheckJobTimeouts:           "job_timeouts",
 	CheckLastReleaseAge:        "last_release_age",
 	CheckLastPush:              "last_push",
 	CheckOpenPRs:               "open_prs",

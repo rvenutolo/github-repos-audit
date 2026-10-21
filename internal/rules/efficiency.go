@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -78,11 +79,7 @@ func observeCancelSuperseded(r audit.Repo) observation {
 	case len(missing) == 0:
 		return observation{ok: true}
 	}
-	noun := " workflows"
-	if len(missing) == 1 {
-		noun = " workflow"
-	}
-	return observation{value: strconv.Itoa(len(missing)) + noun, mark: true}
+	return observation{value: countOf(len(missing), "workflow"), mark: true}
 }
 
 // cancelMissing names, in path order, every pull-request workflow that does
@@ -139,18 +136,85 @@ func cancelSet(c audit.Concurrency) bool {
 	return c.CancelInProgress != "" && c.CancelInProgress != "false"
 }
 
-// cancelLists builds Report.CancelMissing: for each repository whose
-// ci_cancel_superseded cell fails, in report order, the workflows that fail
-// it. The list is the detail behind the cell's count, so a repository that
-// passes, or whose type or override does not judge the check, is left off
-// even when it has such workflows.
-func cancelLists(repos []RepoReport) []RepoList {
-	var out []RepoList
-	for _, r := range repos {
-		if r.Cell(CheckCICancelSuperseded).Verdict != Fail {
+// observeJobTimeouts judges whether every job bounds its own run time with
+// timeout-minutes. Without it a job that hangs, on a stuck network call or a
+// test waiting on itself, holds its runner for GitHub's six-hour default
+// before anything stops it, and every run queued behind it waits that long.
+// The cell counts the jobs timeoutMissing names; a pass carries no count,
+// since there is nothing missing to count.
+//
+// It is n/a when no workflow holds a job of its own and none is unreadable:
+// there is then no run time to bound.
+func observeJobTimeouts(r audit.Repo) observation {
+	missing, judged := timeoutMissing(r)
+	switch {
+	case !judged:
+		return observation{unknown: true}
+	case len(missing) == 0:
+		return observation{ok: true}
+	}
+	return observation{value: countOf(len(missing), "job"), mark: true}
+}
+
+// timeoutMissing names every job without timeout-minutes as "<workflow file
+// name> / <job id>", and every workflow it could not read as "unreadable
+// <path>": an unreadable file may hold such jobs, so it fails the check
+// rather than passing unseen. Workflows go in path order and jobs in file
+// order within each, so the list reads in the order a reader opening the
+// files meets them. The file name stands for the workflow because every
+// workflow lives in the one .github/workflows directory, so the directory
+// adds nothing but width. It also reports whether anything was judged at
+// all, which is what makes the check apply.
+//
+// A job that calls a reusable workflow (a job-level `uses:`) is left out:
+// GitHub does not accept timeout-minutes on such a job, and its steps run in
+// the called workflow, whose own jobs carry the bound. Any value counts as
+// set, an expression included: an expression, such as one giving a slower
+// runner longer, is a deliberate bound, and it cannot be evaluated without
+// the run anyway.
+func timeoutMissing(r audit.Repo) (missing []string, judged bool) {
+	ws := slices.Clone(r.Workflows)
+	slices.SortFunc(ws, func(a, b audit.Workflow) int { return strings.Compare(a.Path, b.Path) })
+	for _, w := range ws {
+		if w.ParseError != "" {
+			missing = append(missing, "unreadable "+w.Path)
+			judged = true
 			continue
 		}
-		missing, _ := cancelMissing(r.Repo)
+		for _, j := range w.Jobs {
+			if j.Reusable {
+				continue
+			}
+			judged = true
+			if j.TimeoutMinutes == "" {
+				missing = append(missing, path.Base(w.Path)+" / "+j.ID)
+			}
+		}
+	}
+	return missing, judged
+}
+
+// countOf is a count of n things, the noun made plural unless n is 1: "1
+// job", "3 jobs".
+func countOf(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return strconv.Itoa(n) + " " + noun + "s"
+}
+
+// failingLists builds a list the report gives under a table: for each
+// repository whose cell for c fails, in report order, the entries items
+// names for it. The list is the detail behind the cell's count, so a
+// repository that passes, or whose type or override does not judge the
+// check, is left off even when items would name something for it.
+func failingLists(repos []RepoReport, c Check, items func(audit.Repo) ([]string, bool)) []RepoList {
+	var out []RepoList
+	for _, r := range repos {
+		if r.Cell(c).Verdict != Fail {
+			continue
+		}
+		missing, _ := items(r.Repo)
 		out = append(out, RepoList{Repo: r.Repo.Name, Items: missing})
 	}
 	return out

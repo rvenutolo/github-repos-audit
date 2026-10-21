@@ -93,7 +93,8 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 	rep.Gaps = collectGaps(rep.Repos)
 	rep.Identities = identityLines(rep.Repos, std)
 	rep.CITiming = ciTimingLines(rep.Repos)
-	rep.CancelMissing = cancelLists(rep.Repos)
+	rep.CancelMissing = failingLists(rep.Repos, CheckCICancelSuperseded, cancelMissing)
+	rep.TimeoutMissing = failingLists(rep.Repos, CheckJobTimeouts, timeoutMissing)
 	rep.Overrides = collectOverrides(rep.Repos)
 	rep.Exceptions, rep.NoConsensus = modalExceptions(snap.Repos)
 	markDeviations(rep.Repos)
@@ -332,6 +333,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observeCacheUsage(r)
 	case CheckCICancelSuperseded:
 		return observeCancelSuperseded(r)
+	case CheckJobTimeouts:
+		return observeJobTimeouts(r)
 
 	case CheckTopics:
 		return observation{ok: r.Topics > 0, value: strconv.Itoa(r.Topics), scalar: true}

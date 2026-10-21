@@ -448,6 +448,16 @@ Grouped by theme here; the report lists them in the fixed worklist order
   (`✗ 2 workflows`), and the report's CI efficiency section lists them per
   repository under _Workflows without cancel-in-progress_. n/a when no
   workflow is triggered by a pull request.
+- **job_timeouts** — whether every workflow job sets `timeout-minutes`, so a
+  job that hangs is stopped well before GitHub's six-hour default rather
+  than holding its runner, and every run queued behind it, for that long.
+  An expression counts as set. A job that calls a reusable workflow (a
+  job-level `uses:`) is left out, since GitHub does not accept the setting
+  there and the called workflow's own jobs carry it. A workflow file that
+  does not parse fails it as unreadable. The cell counts the jobs that fail
+  (`✗ 3 jobs`), and the report's CI efficiency section lists them per
+  repository under _Jobs without timeouts_, as `<workflow file> / <job id>`
+  (`ci.yml / build`). n/a when no workflow holds a job of its own.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches

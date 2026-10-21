@@ -479,13 +479,15 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.ref$`), matches(`^refs/(heads/main|pull/[0-9]+/merge)$`), "main or a pull request ref"},
 	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.created_at$`), matches(timestamp), "a timestamp"},
 	// Recorded workflow facts: a synthetic workflow file under
-	// .github/workflows, GitHub's own event names, generic job ids, and a
-	// literal cancel-in-progress. An expression is left out on purpose: in a
-	// real report it may name anything a workflow file can.
+	// .github/workflows, GitHub's own event names, generic job ids, a
+	// literal cancel-in-progress and a literal timeout in minutes. An
+	// expression is left out on purpose: in a real report it may name
+	// anything a workflow file can.
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.path$`), matches(`^\.github/workflows/(ci|workflow-\d{2})\.ya?ml$`), "a synthetic workflow path"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.events\[\]$`), matches(`^(pull_request|pull_request_target|push|schedule|workflow_dispatch)$`), "a GitHub event name"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.id$`), matches(`^(check|test|lint|docs)$`), "a generic job id"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.(jobs\[\]\.)?concurrency\.cancel_in_progress$`), matches(`^(true|false)$`), "a literal cancel-in-progress"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.timeout_minutes$`), matches(`^[0-9]+$`), "a literal timeout in minutes"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
@@ -506,6 +508,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.settings\.[a-z_]+`,
 		`repos\[\]\.settings\.allowed_actions\.(github_owned_allowed|verified_allowed)`,
 		`repos\[\]\.workflow_facts\[\]\.(jobs\[\]\.)?concurrency\.set`,
+		`repos\[\]\.workflow_facts\[\]\.jobs\[\]\.reusable`,
 	),
 }
 
