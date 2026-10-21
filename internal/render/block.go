@@ -52,6 +52,7 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	writeSection(&b, treeSection(rep))
 	writeSection(&b, filePathsSection(rep))
 	writeSection(&b, nixSection(rep, at))
+	writeSection(&b, ciEfficiencySection(rep))
 	writeSection(&b, policySection(rep))
 	writeSection(&b, activitySection(rep, at))
 	writeSection(&b, ciTimingSection(rep))
@@ -266,6 +267,21 @@ func nixSection(rep *rules.Report, at time.Time) string {
 		)
 	}
 	return heading("Nix", t)
+}
+
+// ciEfficiencySection shows whether each repository's CI spends its time and
+// storage well: caches saved with something in them, and nothing left to
+// pile up.
+func ciEfficiencySection(rep *rules.Report) string {
+	t := newTable("Repository", "Go cache")
+	for i := range rep.Repos {
+		r := &rep.Repos[i]
+		t.add(
+			repoLink(rep.Owner, r.Repo.Name),
+			cell(r.Cell(rules.CheckGoCache)),
+		)
+	}
+	return heading("CI efficiency", t)
 }
 
 func policySection(rep *rules.Report) string {

@@ -16,6 +16,13 @@ import (
 // report the idleness instead.
 const activityWindow = 7 * 24 * time.Hour
 
+// cacheFloor is the least the newest entry of a cache family must hold, for
+// Go and Nix caches alike. Below it the entry holds nothing worth restoring:
+// a save that ran before anything was built, a side job that built nothing
+// but saved the shared key first, or a store garbage-collected to nothing.
+// Restoring such an entry costs a run its cache while looking like a hit.
+const cacheFloor = 1_000_000
+
 // recentDefaultRun reports whether a workflow ran on the default branch
 // within activityWindow of now, the snapshot's instant. A repository with no
 // default-branch run recorded has none within it.

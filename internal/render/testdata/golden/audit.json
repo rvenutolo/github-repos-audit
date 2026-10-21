@@ -21,6 +21,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
       "hermetic_nix": "not_required",
       "homepage": "public_published",
       "justfile": "required",
@@ -72,6 +73,7 @@
       "git_cliff": "not_required",
       "git_identity": "not_required",
       "gitignore": "required",
+      "go_cache": "not_required",
       "hermetic_nix": "not_required",
       "homepage": "public_published",
       "justfile": "not_required",
@@ -123,6 +125,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
       "hermetic_nix": "not_required",
       "homepage": "public_published",
       "justfile": "required",
@@ -174,6 +177,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
       "hermetic_nix": "not_required",
       "homepage": "public_published",
       "justfile": "required",
@@ -225,6 +229,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
       "hermetic_nix": "required",
       "homepage": "public_published",
       "justfile": "required",
@@ -276,6 +281,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "go_cache": "required",
       "hermetic_nix": "required",
       "homepage": "public_published",
       "justfile": "required",
@@ -371,7 +377,8 @@
         "commitlint": ".commitlintrc.json",
         "license_file": "LICENSE",
         "security_policy": "SECURITY.md",
-        "pr_template": ".github/pull_request_template.md"
+        "pr_template": ".github/pull_request_template.md",
+        "go_mod": true
       },
       "renovate": {
         "min_release_age": "3 days",
@@ -450,6 +457,12 @@
       "actions_storage": {
         "caches": [
           {
+            "key": "go-Linux-6c7d",
+            "ref": "refs/heads/main",
+            "size_bytes": 95000000,
+            "created_at": "2026-09-04T12:00:00Z"
+          },
+          {
             "key": "nix-Linux-0a1b",
             "ref": "refs/heads/main",
             "size_bytes": 180000000,
@@ -468,7 +481,7 @@
             "created_at": "2026-09-03T12:00:00Z"
           }
         ],
-        "cache_usage_bytes": 386000900,
+        "cache_usage_bytes": 481000900,
         "cache_limit_bytes": 10000000000,
         "artifact_count": 0,
         "artifact_bytes": 0
@@ -681,7 +694,8 @@
         "commitlint": ".commitlintrc.yml",
         "license_file": "LICENSE",
         "security_policy": "SECURITY.md",
-        "pr_template": ".github/pull_request_template.md"
+        "pr_template": ".github/pull_request_template.md",
+        "go_mod": true
       },
       "renovate": {
         "min_release_age": "7 days",
@@ -741,13 +755,25 @@
       "actions_storage": {
         "caches": [
           {
+            "key": "go-Linux-8e9f",
+            "ref": "refs/heads/main",
+            "size_bytes": 120000000,
+            "created_at": "2026-09-02T12:00:00Z"
+          },
+          {
+            "key": "go-Linux-a0b1",
+            "ref": "refs/heads/main",
+            "size_bytes": 430,
+            "created_at": "2026-09-05T12:00:00Z"
+          },
+          {
             "key": "nix-Linux-6a7b",
             "ref": "refs/heads/main",
             "size_bytes": 2200000000,
             "created_at": "2026-09-05T12:00:00Z"
           }
         ],
-        "cache_usage_bytes": 2200000000,
+        "cache_usage_bytes": 2320000430,
         "cache_limit_bytes": 10000000000,
         "artifact_count": 0,
         "artifact_bytes": 0

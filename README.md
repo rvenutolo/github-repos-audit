@@ -418,6 +418,17 @@ Grouped by theme here; the report lists them in the fixed worklist order
   no problem. n/a without a `flake.nix`, or when no workflow has run on the
   default branch in the last 7 days, since GitHub evicts a cache nothing has
   restored for that long. The report's Nix section shows it.
+- **go_cache** — whether the default branch's Go cache holds something.
+  Caches whose key starts `go-` are grouped into families as for nix_cache
+  (`go-Linux`, `go-macOS`), counting only caches saved from the default
+  branch, and the newest entry of each family must hold at least 1 MB
+  (decimal units): the newest is the one the next run restores, so a job
+  that built nothing but saved last fails it however full the older entries
+  are. There is no upper bound. The cell shows the first family below the
+  floor (`✗ empty (430 B)`), or else the largest (`✓ 206 MB`), or
+  `none on main`. n/a without a root `go.mod`, or when no workflow has run
+  on the default branch in the last 7 days. The report's CI efficiency
+  section shows it.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches

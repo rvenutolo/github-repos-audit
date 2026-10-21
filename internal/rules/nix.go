@@ -157,15 +157,11 @@ func scheduledFlakeUpdate(r audit.Repo) (bool, []string) {
 	return false, unreadable
 }
 
-// Bounds on the newest Nix cache entry of each family. Below the floor the
-// entry holds no store worth restoring: a save that ran before anything was
-// built, or a store garbage-collected to nothing. Above the ceiling, every
-// run spends longer downloading and unpacking it than a cache is meant to
-// save, and it crowds the repository's other caches out of its storage.
-const (
-	nixCacheFloor   = 1_000_000
-	nixCacheCeiling = 1_500_000_000
-)
+// nixCacheCeiling bounds the newest Nix cache entry of each family from
+// above, as cacheFloor does from below. Past it, every run spends longer
+// downloading and unpacking the store than a cache is meant to save, and it
+// crowds the repository's other caches out of its storage.
+const nixCacheCeiling = 1_500_000_000
 
 // cacheNixAction is the action that saves and restores the Nix store,
 // matched up to the "@" that pins its version.
@@ -195,14 +191,14 @@ func observeNixCache(r audit.Repo, now time.Time) observation {
 	worst, inRange := families[0].Newest.SizeBytes, true
 	for _, f := range families {
 		size := f.Newest.SizeBytes
-		if size < nixCacheFloor || size > nixCacheCeiling {
+		if size < cacheFloor || size > nixCacheCeiling {
 			worst, inRange = size, false
 			break
 		}
 		worst = max(worst, size)
 	}
 	value := formatBytes(worst)
-	if worst < nixCacheFloor {
+	if worst < cacheFloor {
 		value = "empty (" + value + ")"
 	}
 	return observation{

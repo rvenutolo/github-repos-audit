@@ -51,6 +51,13 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [alpha](https://github.com/gh-owner/alpha) | ✓        | ✓ 3d     | ✓ Renovate   | n/a       |
 | [bravo](https://github.com/gh-owner/bravo) | ✓        | ✓ 3d     | ✓ Renovate   | n/a       |
 
+## CI efficiency
+
+| Repository                                 | Go cache |
+| ------------------------------------------ | -------- |
+| [alpha](https://github.com/gh-owner/alpha) | n/a      |
+| [bravo](https://github.com/gh-owner/bravo) | n/a      |
+
 ## Policy
 
 | Repository                                 | Direct push | Signed | Identity | CI workflows | Required checks | Tag ruleset | Secret scanning | Vuln. reporting |

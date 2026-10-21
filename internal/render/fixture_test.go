@@ -145,7 +145,9 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // locked the hermetic-lint flake without wiring the lint in, and nothing
 // refreshes its lock, and the tools repository's nixpkgs lock is stale and
 // its Nix cache oversized, so the Nix section carries fails beside the
-// passes.
+// passes. Both are Go modules; the software repository's Go cache is a
+// useful size, while a side job in the tools repository saved an empty one
+// last, so the CI efficiency section carries a fail too.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -185,16 +187,18 @@ func fullSnapshot() *audit.Snapshot {
 	soft.Flake.NamesLint = false
 	soft.Flake.GateFiles = nil
 	// Its default branch ran CI the day before the render, and the newest of
-	// its two Linux Nix caches is a useful size; a pull request's cache
-	// beside them serves no default-branch run.
+	// its two Linux Nix caches, and its Go cache, are a useful size; a pull
+	// request's cache beside them serves no default-branch run.
+	soft.Files.GoMod = true
 	soft.CI.LastDefaultBranchRun = at(2026, time.September, 4)
 	soft.Storage = audit.ActionsStorage{
 		Caches: []audit.Cache{
+			{Key: "go-Linux-6c7d", Ref: "refs/heads/main", SizeBytes: 95_000_000, CreatedAt: at(2026, time.September, 4)},
 			{Key: "nix-Linux-0a1b", Ref: "refs/heads/main", SizeBytes: 180_000_000, CreatedAt: at(2026, time.September, 1)},
 			{Key: "nix-Linux-2c3d", Ref: "refs/heads/main", SizeBytes: 206_000_000, CreatedAt: at(2026, time.September, 4)},
 			{Key: "nix-Linux-4e5f", Ref: "refs/pull/11/merge", SizeBytes: 900, CreatedAt: at(2026, time.September, 3)},
 		},
-		CacheUsageBytes: 386_000_900,
+		CacheUsageBytes: 481_000_900,
 		CacheLimitBytes: 10_000_000_000,
 	}
 	// Its history switched identity: mixed. The noreply identity GitHub records
@@ -248,11 +252,17 @@ func fullSnapshot() *audit.Snapshot {
 			ciCommit("0005", 0, time.Time{}, false, 3900, ciJob("ci / test", 3800)),
 		},
 	}
-	// Its Nix cache has outgrown the ceiling.
+	// Its Nix cache has outgrown the ceiling, and the newest of its Go caches
+	// is empty, whatever the older one holds.
+	tools.Files.GoMod = true
 	tools.CI.LastDefaultBranchRun = at(2026, time.September, 5)
 	tools.Storage = audit.ActionsStorage{
-		Caches:          []audit.Cache{{Key: "nix-Linux-6a7b", Ref: "refs/heads/main", SizeBytes: 2_200_000_000, CreatedAt: at(2026, time.September, 5)}},
-		CacheUsageBytes: 2_200_000_000,
+		Caches: []audit.Cache{
+			{Key: "go-Linux-8e9f", Ref: "refs/heads/main", SizeBytes: 120_000_000, CreatedAt: at(2026, time.September, 2)},
+			{Key: "go-Linux-a0b1", Ref: "refs/heads/main", SizeBytes: 430, CreatedAt: at(2026, time.September, 5)},
+			{Key: "nix-Linux-6a7b", Ref: "refs/heads/main", SizeBytes: 2_200_000_000, CreatedAt: at(2026, time.September, 5)},
+		},
+		CacheUsageBytes: 2_320_000_430,
 		CacheLimitBytes: 10_000_000_000,
 	}
 	// Consistently the wrong identity, beside GitHub's own web-flow committer.

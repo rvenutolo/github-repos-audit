@@ -325,6 +325,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observeLockRefresh(r)
 	case CheckNixCache:
 		return observeNixCache(r, ev.now)
+	case CheckGoCache:
+		return observeGoCache(r, ev.now)
 
 	case CheckTopics:
 		return observation{ok: r.Topics > 0, value: strconv.Itoa(r.Topics), scalar: true}
