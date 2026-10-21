@@ -365,3 +365,80 @@ func TestToAudit_ciEmptyRepo(t *testing.T) {
 		}
 	}
 }
+
+// ciBase is the repository path fetchCI is handed in these tests.
+const ciBase = "/repos/gh-owner/web-app"
+
+// branchRun renders one workflow_runs entry on branch, on a commit no sample
+// names, so fetchCI reads no jobs for it and only its recency is in play.
+func branchRun(id int, branch, event, createdAt string) string {
+	return `{"id":` + strconv.Itoa(id) + `,"name":"ci","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb00c1",` +
+		`"head_branch":"` + branch + `","event":"` + event + `","status":"completed","created_at":"` + createdAt + `"}`
+}
+
+// TestFetchCI_lastDefaultBranchRun: the newest run on the default branch is
+// recorded whatever its event, and a newer run on another branch is not,
+// because it says nothing about whether the default branch's caches are kept
+// warm.
+func TestFetchCI_lastDefaultBranchRun(t *testing.T) {
+	t.Parallel()
+
+	c, seen := newStorageClient(t, map[string]storagePage{
+		ciBase + "/actions/runs": {body: `{"total_count":4,"workflow_runs":[` + strings.Join([]string{
+			branchRun(4000004, "feature", "pull_request", "2026-10-20T09:00:00Z"),
+			branchRun(4000003, "main", "schedule", "2026-10-19T06:00:00Z"),
+			branchRun(4000002, "main", "push", "2026-10-18T12:00:00Z"),
+			branchRun(4000001, "main", "push", "2026-10-19T05:00:00Z"),
+		}, ",") + `]}`},
+	})
+	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
+
+	if err := c.fetchCI(t.Context(), ciBase, "main", &ci); err != nil {
+		t.Fatalf("fetchCI() error = %v, want nil", err)
+	}
+
+	if want := time.Date(2026, 10, 19, 6, 0, 0, 0, time.UTC); !ci.LastDefaultBranchRun.Equal(want) {
+		t.Errorf("LastDefaultBranchRun = %v, want %v", ci.LastDefaultBranchRun, want)
+	}
+	if n := seen(ciBase + "/actions/runs"); n != 1 {
+		t.Errorf("runs list read %d times, want once", n)
+	}
+}
+
+// TestFetchCI_noDefaultBranchRuns: a runs list with nothing on the default
+// branch leaves the recency zero, which the JSON then omits.
+func TestFetchCI_noDefaultBranchRuns(t *testing.T) {
+	t.Parallel()
+
+	c, _ := newStorageClient(t, map[string]storagePage{
+		ciBase + "/actions/runs": {body: `{"total_count":1,"workflow_runs":[` +
+			branchRun(4000001, "feature", "push", "2026-10-20T09:00:00Z") + `]}`},
+	})
+	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
+
+	if err := c.fetchCI(t.Context(), ciBase, "main", &ci); err != nil {
+		t.Fatalf("fetchCI() error = %v, want nil", err)
+	}
+
+	if !ci.LastDefaultBranchRun.IsZero() {
+		t.Errorf("LastDefaultBranchRun = %v, want zero", ci.LastDefaultBranchRun)
+	}
+}
+
+// TestFetchCI_emptyRepoReadsNoRuns: a repository with no commits has none
+// sampled and no branch a workflow could have run on, so it costs no runs
+// request (the fake answers nothing) and records no recency.
+func TestFetchCI_emptyRepoReadsNoRuns(t *testing.T) {
+	t.Parallel()
+
+	c, _ := newStorageClient(t, map[string]storagePage{})
+	var ci audit.CI
+
+	if err := c.fetchCI(t.Context(), ciBase, "", &ci); err != nil {
+		t.Fatalf("fetchCI() error = %v, want nil", err)
+	}
+
+	if !ci.LastDefaultBranchRun.IsZero() {
+		t.Errorf("LastDefaultBranchRun = %v, want zero", ci.LastDefaultBranchRun)
+	}
+}

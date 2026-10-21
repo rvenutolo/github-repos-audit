@@ -62,7 +62,8 @@ func (c *Client) Collect(ctx context.Context, names []string, probe Probe) ([]au
 // arrive with the repository query; a longer history costs one more request per
 // further hundred commits, so a large repository is the slow one to collect.
 // The CI timing costs one runs read plus one jobs read per run on a sampled
-// commit (see fetchCI), and nothing for a repository with no commits.
+// commit, and that runs read also gives the latest default-branch run (see
+// fetchCI); a repository with no commits costs neither.
 // Then come the Actions storage reads, four requests plus one per further
 // hundred caches or artifacts (see fetchStorage); one recursive tree read at
 // the head commit, which is where every file path the report records is
@@ -91,7 +92,7 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 	if err := c.fetchREST(ctx, name, &repo); err != nil {
 		return audit.Repo{}, err
 	}
-	if err := c.fetchCI(ctx, c.repoPath(name), &repo.CI); err != nil {
+	if err := c.fetchCI(ctx, c.repoPath(name), repo.DefaultBranch, &repo.CI); err != nil {
 		return audit.Repo{}, err
 	}
 	// An empty repository has no commit to list, so it costs no storage

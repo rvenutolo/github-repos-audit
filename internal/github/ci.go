@@ -57,16 +57,19 @@ type actionsRuns struct {
 	WorkflowRuns []actionsRun `json:"workflow_runs"`
 }
 
-// actionsRun is one workflow run. Name is the workflow's name. CreatedAt is
+// actionsRun is one workflow run. Name is the workflow's name. HeadBranch is
+// the branch the run was on, which for a pull request's run is its head
+// branch, so only a run on the default branch itself names it. CreatedAt is
 // when the run was triggered, and a re-run keeps it, which is what lets a
 // re-run extend the wait instead of starting a new one.
 type actionsRun struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	HeadSHA   string    `json:"head_sha"`
-	Event     string    `json:"event"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         int64     `json:"id"`
+	Name       string    `json:"name"`
+	HeadSHA    string    `json:"head_sha"`
+	HeadBranch string    `json:"head_branch"`
+	Event      string    `json:"event"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // actionsJobs is one run's jobs list. TotalCount is how many jobs the run
@@ -133,8 +136,16 @@ func (r *repository) ci() audit.CI {
 // head and on the default branch is judged by each list's own events.
 // Actions disabled on a repository is a 200 with no runs, which leaves every
 // commit untimed rather than failing.
-// base is the repository's /repos/{owner}/{name} path.
-func (c *Client) fetchCI(ctx context.Context, base string, ci *audit.CI) error {
+//
+// The same runs page also gives LastDefaultBranchRun: the newest creation
+// among its runs on defaultBranch, of any event, since a scheduled or
+// dispatched run keeps the branch's caches as warm as a push does. It costs
+// no request of its own. A repository with no sampled commits is an empty
+// one, with no branch any workflow could have run on, so it reads nothing
+// and its recency stays zero.
+// base is the repository's /repos/{owner}/{name} path, and defaultBranch is
+// its live default branch name.
+func (c *Client) fetchCI(ctx context.Context, base, defaultBranch string, ci *audit.CI) error {
 	type sampledCommit struct {
 		commit *audit.CICommit
 		events []string
@@ -168,6 +179,9 @@ func (c *Client) fetchCI(ctx context.Context, base string, ci *audit.CI) error {
 	// sampled entries share its commit.
 	bySHA := map[string][]ciRun{}
 	for _, run := range list.WorkflowRuns {
+		if run.HeadBranch == defaultBranch && run.CreatedAt.After(ci.LastDefaultBranchRun) {
+			ci.LastDefaultBranchRun = run.CreatedAt.UTC()
+		}
 		if !counts(run.HeadSHA, run.Event) {
 			continue
 		}

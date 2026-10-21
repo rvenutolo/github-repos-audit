@@ -763,6 +763,11 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/ci_commit" }
+        },
+        "last_default_branch_run": {
+          "description": "When the newest workflow run on the default branch was created, of any event, in UTC. Read from the one page of the repository's newest runs the timing reads, so absent when no run on that page is on the default branch.",
+          "type": "string",
+          "format": "date-time"
         }
       }
     },
