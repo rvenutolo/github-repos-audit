@@ -335,40 +335,54 @@ func TestResolve_managerFactsKeepMinReleaseAge(t *testing.T) {
 	}
 }
 
-func TestResolve_managerFactsUnresolved(t *testing.T) {
+// TestResolve_wrongTypedManagerKeysAreFalse: a manager key of the wrong type
+// leaves only its own fact false, even over a preset that set it true, and
+// leaves the release-age result exactly as it would be without the key:
+// min_release_age_error is a public key and must not gain reasons from keys
+// it does not describe.
+func TestResolve_wrongTypedManagerKeysAreFalse(t *testing.T) {
 	t.Parallel()
 
 	store := files{"preset-store/both.json@": `{"nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}}`}
+	ext := `"extends": ["github>gh-owner/preset-store:both"], "minimumReleaseAge": "7 days", `
 	tests := []struct {
-		name     string
-		root     string
-		contains string
+		name    string
+		root    string
+		wantNix bool
+		wantLFM bool
 	}{
-		{"nix is not an object", `{"nix": true}`, "nix is not an object"},
-		{"nix.enabled is not a boolean", `{"nix": {"enabled": "yes"}}`, "nix.enabled is not a boolean"},
-		{"lockFileMaintenance is not an object", `{"lockFileMaintenance": null}`, "lockFileMaintenance is not an object"},
-		{
-			"lockFileMaintenance.enabled is not a boolean", `{"lockFileMaintenance": {"enabled": null}}`,
-			"lockFileMaintenance.enabled is not a boolean",
-		},
-		{"enabledManagers is not an array", `{"enabledManagers": "nix"}`, "enabledManagers is not an array"},
-		{"an enabledManagers entry is not a string", `{"enabledManagers": [7]}`, "enabledManagers entry is not a string"},
-		{
-			"a bad key after presets that set both",
-			`{"extends": ["github>gh-owner/preset-store:both"], "enabledManagers": {}}`,
-			"enabledManagers",
-		},
+		{"nix is not an object", `{` + ext + `"nix": true}`, false, true},
+		{"nix is null", `{` + ext + `"nix": null}`, false, true},
+		{"nix.enabled is not a boolean", `{` + ext + `"nix": {"enabled": "yes"}}`, false, true},
+		{"lockFileMaintenance is not an object", `{` + ext + `"lockFileMaintenance": null}`, true, false},
+		{"lockFileMaintenance.enabled is null", `{` + ext + `"lockFileMaintenance": {"enabled": null}}`, true, false},
+		{"enabledManagers is not an array", `{` + ext + `"enabledManagers": "nix"}`, false, true},
+		{"enabledManagers is an object", `{` + ext + `"enabledManagers": {}}`, false, true},
+		{"an enabledManagers entry is not a string", `{` + ext + `"enabledManagers": ["nix", 7]}`, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := resolve(t, tt.root, store)
-			if !strings.Contains(got.Unresolved, tt.contains) {
-				t.Errorf("Resolve().Unresolved = %q, want it to mention %q", got.Unresolved, tt.contains)
+			want := renovate.Result{
+				MinReleaseAge: "7 days", Source: "renovate.json",
+				NixManager: tt.wantNix, LockFileMaintenance: tt.wantLFM,
 			}
-			if got.NixManager || got.LockFileMaintenance || got.MinReleaseAge != "" {
-				t.Errorf("Resolve() = %+v, want only Unresolved set", got)
+			if got != want {
+				t.Errorf("Resolve() = %+v, want %+v", got, want)
 			}
 		})
+	}
+}
+
+// TestResolve_unresolvedLeavesManagerFactsFalse: when the release age cannot
+// be decided, nothing about the configuration is reported, so the manager
+// facts a readable key set are not reported either.
+func TestResolve_unresolvedLeavesManagerFactsFalse(t *testing.T) {
+	t.Parallel()
+
+	got := resolve(t, `{"nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}, "minimumReleaseAge": 7}`, nil)
+	if got.Unresolved == "" || got.NixManager || got.LockFileMaintenance {
+		t.Errorf("Resolve() = %+v, want only Unresolved set", got)
 	}
 }

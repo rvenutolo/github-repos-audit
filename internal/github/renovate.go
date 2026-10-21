@@ -13,12 +13,11 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/renovate"
 )
 
-// renovateFacts reads the Renovate facts — minimum release age, nix manager,
-// lock-file maintenance — for one repository
-// whose config at path answered blob. Everything short of an unexpected
-// status is a fact: a bad config in one repository must not stop the report.
-// Merging the file with its presets is internal/renovate's; this only feeds it
-// the text and the fetches.
+// renovateFacts reads the Renovate facts (minimum release age, nix manager,
+// lock-file maintenance) for one repository whose config at path answered
+// blob. Everything short of an unexpected status is a fact: a bad config in
+// one repository must not stop the report. Merging the file with its presets
+// is internal/renovate's; this only feeds it the text and the fetches.
 func (c *Client) renovateFacts(
 	ctx context.Context, path string, blob *renovateBlob, presets *presetCache,
 ) (audit.Renovate, error) {

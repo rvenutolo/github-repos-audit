@@ -154,11 +154,12 @@ type Renovate struct {
 	MinReleaseAgeError string `json:"min_release_age_error,omitzero"`
 	// NixManager is whether Renovate's nix manager runs: nix.enabled true
 	// after the same merge, with enabledManagers unset or listing "nix".
-	// False when off, unset, or unresolved (the reason is in
-	// MinReleaseAgeError, which covers the whole configuration).
+	// False when off, unset, of the wrong type, or unresolved (the reason is
+	// then in MinReleaseAgeError; a wrong-typed manager key never sets it).
 	NixManager bool `json:"nix_manager,omitzero"`
 	// LockFileMaintenance is whether lockFileMaintenance.enabled is true
-	// after the same merge. False when off, unset, or unresolved.
+	// after the same merge. False when off, unset, of the wrong type, or
+	// unresolved.
 	LockFileMaintenance bool `json:"lock_file_maintenance,omitzero"`
 }
 

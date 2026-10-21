@@ -56,7 +56,10 @@ type Result struct {
 	NixManager bool
 	// LockFileMaintenance is lockFileMaintenance.enabled true.
 	LockFileMaintenance bool
-	Unresolved          string // why it could not be decided; when set, the others are empty or false
+	// Unresolved is why the configuration could not be decided; when set,
+	// the others are empty or false. A wrong-typed manager key never sets
+	// it: that leaves only its own fact false.
+	Unresolved string
 }
 
 // layered is what one layer, presets included, says about every key this
@@ -120,8 +123,10 @@ type resolver struct {
 	fetch Fetch
 }
 
-// Resolve returns the effective top-level minimumReleaseAge for a repository
-// whose Renovate configuration at rootPath has the text rootText.
+// Resolve returns the effective configuration (see Result: the top-level
+// minimumReleaseAge, whether the nix manager runs, and whether lock-file
+// maintenance is on) for a repository whose Renovate configuration at
+// rootPath has the text rootText.
 func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch) (Result, error) {
 	r := resolver{owner: owner, fetch: fetch}
 	l, err := r.layer(ctx, rootPath, rootText, nil)
@@ -220,70 +225,64 @@ func (r resolver) preset(ctx context.Context, ref string, stack []string) (layer
 }
 
 // ownLayer reads every key this package merges from the file's own text, not
-// its presets.
+// its presets. Only minimumReleaseAge can make the layer unresolved: its
+// reason is published as min_release_age_error, so the manager keys must not
+// add reasons of their own to it.
 func ownLayer(source string, cfg map[string]any) (layered, error) {
 	releaseAge, err := ownAssignment(source, cfg)
 	if err != nil {
 		return layered{}, err
 	}
-	nix, err := ownFlag(source, cfg, "nix")
-	if err != nil {
-		return layered{}, err
-	}
-	lockFile, err := ownFlag(source, cfg, "lockFileMaintenance")
-	if err != nil {
-		return layered{}, err
-	}
-	managers, err := ownManagers(source, cfg)
-	if err != nil {
-		return layered{}, err
-	}
-	return layered{releaseAge: releaseAge, nix: nix, lockFile: lockFile, managers: managers}, nil
+	return layered{
+		releaseAge: releaseAge,
+		nix:        ownFlag(cfg, "nix"),
+		lockFile:   ownFlag(cfg, "lockFileMaintenance"),
+		managers:   ownManagers(cfg),
+	}, nil
 }
 
 // ownFlag reads key.enabled. A key that is present but not an object, or an
-// enabled that is not a boolean (null included), is a config this tool
-// cannot read the way Renovate would, so it is unresolved rather than
-// guessed at, as a malformed minimumReleaseAge is.
-func ownFlag(source string, cfg map[string]any, key string) (flag, error) {
+// enabled that is not a boolean (null included), is a value this tool cannot
+// read the way Renovate would. It counts as this layer setting the fact
+// false: a misread can then only fail a check, never pass one.
+func ownFlag(cfg map[string]any, key string) flag {
 	v, has := cfg[key]
 	if !has {
-		return flag{}, nil
+		return flag{}
 	}
 	obj, ok := v.(map[string]any)
 	if !ok {
-		return flag{}, unresolvedError{source + ": " + key + " is not an object"}
+		return flag{set: true}
 	}
 	e, has := obj["enabled"]
 	if !has {
-		return flag{}, nil
+		return flag{}
 	}
 	b, ok := e.(bool)
-	if !ok {
-		return flag{}, unresolvedError{source + ": " + key + ".enabled is not a boolean"}
-	}
-	return flag{set: true, value: b}, nil
+	return flag{set: true, value: ok && b}
 }
 
-// ownManagers reads enabledManagers, an array of manager names.
-func ownManagers(source string, cfg map[string]any) (managerList, error) {
+// ownManagers reads enabledManagers, an array of manager names. A value that
+// is not an array of strings counts as a list naming no manager, which turns
+// the nix manager off: as with ownFlag, a misread can only fail a check.
+func ownManagers(cfg map[string]any) managerList {
 	v, has := cfg["enabledManagers"]
 	if !has {
-		return managerList{}, nil
+		return managerList{}
 	}
 	list, ok := v.([]any)
 	if !ok {
-		return managerList{}, unresolvedError{source + ": enabledManagers is not an array"}
+		return managerList{set: true}
 	}
 	names := make([]string, 0, len(list))
 	for _, e := range list {
 		name, ok := e.(string)
 		if !ok {
-			return managerList{}, unresolvedError{source + ": an enabledManagers entry is not a string"}
+			return managerList{set: true}
 		}
 		names = append(names, name)
 	}
-	return managerList{set: true, names: names}, nil
+	return managerList{set: true, names: names}
 }
 
 // ownAssignment reads the file's own minimumReleaseAge, or its legacy
