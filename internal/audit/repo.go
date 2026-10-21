@@ -261,10 +261,8 @@ type CI struct {
 	// whether or not any workflow ran on them. Empty for an empty repository.
 	DefaultBranch []CICommit `json:"default_branch,omitzero"`
 	// LastDefaultBranchRun is when the newest workflow run on the default
-	// branch was created, of any event, in UTC. It is read from the same one
-	// page of the repository's newest runs the timing reads, so a default
-	// branch whose last run is older than that whole page reads as zero, as
-	// does one no workflow has run on and an empty repository.
+	// branch was created, of any event, in UTC. Zero when no workflow has run
+	// on the default branch, and for an empty repository.
 	LastDefaultBranchRun time.Time `json:"last_default_branch_run,omitzero"`
 }
 

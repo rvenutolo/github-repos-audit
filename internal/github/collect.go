@@ -62,8 +62,8 @@ func (c *Client) Collect(ctx context.Context, names []string, probe Probe) ([]au
 // arrive with the repository query; a longer history costs one more request per
 // further hundred commits, so a large repository is the slow one to collect.
 // The CI timing costs one runs read plus one jobs read per run on a sampled
-// commit, and that runs read also gives the latest default-branch run (see
-// fetchCI); a repository with no commits costs neither.
+// commit, and the latest default-branch run one more runs read, filtered by
+// branch (see fetchCI); a repository with no commits costs none of them.
 // Then come the Actions storage reads, four requests plus one per further
 // hundred caches or artifacts (see fetchStorage); one recursive tree read at
 // the head commit, which is where every file path the report records is

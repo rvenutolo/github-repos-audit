@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -175,6 +176,26 @@ func (f *fakeAPI) callsTo(path string) int {
 	return n
 }
 
+// runsCalls counts repo's runs-list requests in two: the timing reads,
+// unfiltered, and the default-branch recency reads, filtered by branch. Both
+// share one path, so callsTo alone cannot tell them apart.
+func (f *fakeAPI) runsCalls(repo string) (timing, recency int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	path := "/repos/" + testOwner + "/" + repo + "/actions/runs"
+	for _, c := range f.calls {
+		if c.path != path {
+			continue
+		}
+		if q, err := url.ParseQuery(c.rawQuery); err == nil && q.Has("branch") {
+			recency++
+		} else {
+			timing++
+		}
+	}
+	return timing, recency
+}
+
 // seen returns every request the server was handed.
 func (f *fakeAPI) seen() []call {
 	f.mu.Lock()
@@ -307,15 +328,32 @@ func (f *fakeAPI) handleTree(w http.ResponseWriter, r *http.Request) {
 // actions-runs fixture. The page size is asserted rather than ignored: the
 // API's default is thirty, and a commit outside a page that small would read
 // as one no workflow ran on.
+//
+// A request filtered by branch is the default-branch recency read, answered
+// from actions-runs-default-branch instead: GitHub filters that list server
+// side, so it is a separate recording, and only its newest run is wanted, so
+// its page size is one. Every fixture repository's default branch is main.
 func (f *fakeAPI) handleRuns(w http.ResponseWriter, r *http.Request) {
 	f.t.Helper()
 	if owner := r.PathValue("owner"); owner != testOwner {
 		f.t.Errorf("request for owner %q, want %q", owner, testOwner)
 	}
-	if got := r.URL.Query().Get("per_page"); got != "100" {
+	dir := filepath.Join(fixtureRoot, "repos", r.PathValue("repo"))
+	query := r.URL.Query()
+	if query.Has("branch") {
+		if got := query.Get("branch"); got != "main" {
+			f.t.Errorf("runs request for %s has branch=%q, want main", r.URL.Path, got)
+		}
+		if got := query.Get("per_page"); got != "1" {
+			f.t.Errorf("default-branch runs request for %s has per_page=%q, want 1", r.URL.Path, got)
+		}
+		f.serve(w, dir, "actions-runs-default-branch")
+		return
+	}
+	if got := query.Get("per_page"); got != "100" {
 		f.t.Errorf("runs request for %s has per_page=%q, want 100", r.URL.Path, got)
 	}
-	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), "actions-runs")
+	f.serve(w, dir, "actions-runs")
 }
 
 // handleJobs answers one run's jobs list from actions-jobs-<run id>, flat for

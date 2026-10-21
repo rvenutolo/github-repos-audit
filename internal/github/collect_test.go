@@ -111,6 +111,9 @@ func wantShellScripts(t *testing.T) audit.Repo {
 					Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 60}},
 				},
 			},
+			// From the default-branch runs read, not the timing page: its
+			// newest run is a scheduled one.
+			LastDefaultBranchRun: at(t, "2025-09-06T01:39:30Z"),
 		},
 		Rulesets: []audit.Ruleset{
 			{
@@ -230,6 +233,7 @@ func wantWebApp(t *testing.T) audit.Repo {
 				OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014", Complete: true, WaitSeconds: 140,
 				Jobs: []audit.CIJob{{Label: "ci / check", Seconds: 120}},
 			}},
+			LastDefaultBranchRun: at(t, "2025-09-02T01:45:00Z"),
 		},
 		// Nothing stored: the limit is still read.
 		Storage: audit.ActionsStorage{CacheLimitBytes: 10_000_000_000},
@@ -915,6 +919,9 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 
 	// The CI and storage reads are GETs a fixture set could stop reaching,
 	// which would leave them out of this test without failing it.
+	if _, recency := api.runsCalls("shell-scripts"); recency == 0 {
+		t.Error("no default-branch runs request; the read-only assertion did not cover it")
+	}
 	for _, path := range []string{
 		"/repos/gh-owner/shell-scripts/actions/runs",
 		"/repos/gh-owner/shell-scripts/actions/runs/4000001/jobs",
@@ -1511,9 +1518,9 @@ func TestCollect_truncatedTreeAborts(t *testing.T) {
 }
 
 // TestClient_Collect_ciRequestBudget pins what CI timing costs: one runs page
-// per repository that has a commit to time, and one jobs read per run on a
-// sampled commit, never one for a run on any other commit. A repository with
-// nothing sampled asks for no runs at all.
+// and one default-branch runs read per repository that has a commit to time,
+// and one jobs read per run on a sampled commit, never one for a run on any
+// other commit. A repository with nothing sampled asks for no runs at all.
 func TestClient_Collect_ciRequestBudget(t *testing.T) {
 	t.Parallel()
 
@@ -1522,10 +1529,13 @@ func TestClient_Collect_ciRequestBudget(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
+	for repo, want := range map[string]int{"shell-scripts": 1, "pkg-index": 0} {
+		if timing, recency := api.runsCalls(repo); timing != want || recency != want {
+			t.Errorf("%s: %d timing and %d default-branch runs reads, want %d of each", repo, timing, recency, want)
+		}
+	}
 	base := "/repos/" + testOwner + "/shell-scripts/actions/runs"
 	want := map[string]int{
-		base: 1,
-		"/repos/" + testOwner + "/pkg-index/actions/runs": 0,
 		// 4000008 ran on a commit outside the sample; 4000011 is a scheduled
 		// run, 4000012 a dispatched one and 4000013 a repository_dispatch one,
 		// none of which count.
@@ -1553,7 +1563,10 @@ func TestClient_Collect_actionsDisabled(t *testing.T) {
 
 	api := newFakeAPI(t)
 	runs := "/repos/" + testOwner + "/web-app/actions/runs"
-	api.failNext(runs, scriptedFailure{status: http.StatusOK, body: `{"total_count":0,"workflow_runs":[]}`})
+	// Both runs reads, the timing page and the default-branch one, answer
+	// empty.
+	none := scriptedFailure{status: http.StatusOK, body: `{"total_count":0,"workflow_runs":[]}`}
+	api.failNext(runs, none, none)
 
 	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"web-app"}, github.Probe{})
 	if err != nil {

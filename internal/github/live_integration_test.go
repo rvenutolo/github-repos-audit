@@ -24,10 +24,11 @@ import (
 // It exists because recorded fixtures pass forever while the API drifts
 // underneath them. Per repository the collection is two GraphQL queries, the
 // repository query (plus one page per further hundred commits of history)
-// and the file query, then eight REST calls, the CI runs and jobs reads, four
-// Actions storage reads (plus one per further hundred caches or artifacts)
-// and one recursive tree read, so a single renamed field or changed enum
-// breaks every run — and nothing offline can see it coming.
+// and the file query, then eight REST calls, the CI runs and jobs reads and
+// the default-branch runs read, four Actions storage reads (plus one per
+// further hundred caches or artifacts) and one recursive tree read, so a
+// single renamed field or changed enum breaks every run — and nothing
+// offline can see it coming.
 //
 // A failure here is informational, not a broken build: it means GitHub changed
 // something and the collector needs attention before a report repository's

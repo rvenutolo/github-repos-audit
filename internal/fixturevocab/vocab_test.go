@@ -364,6 +364,7 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^workflow_runs\[\]\.id$`), matches(`^4000\d{3}$`), "a synthetic run id"},
 	{regexp.MustCompile(`^workflow_runs\[\]\.name$`), matches(ciWorkflow), "a generic workflow name"},
 	{regexp.MustCompile(`^workflow_runs\[\]\.head_sha$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^workflow_runs\[\]\.head_branch$`), matches(`^main$`), "the generic default branch"},
 	{regexp.MustCompile(`^jobs\[\]\.name$`), matches(ciJob), "a generic job name"},
 	{regexp.MustCompile(`^jobs\[\]\.(started_at|completed_at)$`), optional(matches(timestamp)), "null or a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.merged_at$`), matches(timestamp), "a timestamp"},

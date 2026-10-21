@@ -39,11 +39,13 @@ func emptyStorage() map[string]storagePage {
 	}
 }
 
-// newStorageClient serves pages keyed by request path, with the query's page
-// number appended as "#<page>" for any page after the first, and fails the
-// test on any request it has no answer for or on a list read without the
-// API's largest page size. It counts requests by path so a test can say what
-// was asked for.
+// newStorageClient serves pages keyed by request path, with the query's
+// branch filter appended as "?branch=<branch>" (decoded, so a branch the
+// client failed to escape arrives cut short and finds no page) and its page
+// number as "#<page>" for any page after the first, and fails the test on
+// any request it has no answer for or on a list read without the API's
+// largest page size. It counts requests by key so a test can say what was
+// asked for.
 func newStorageClient(t *testing.T, pages map[string]storagePage) (*Client, func(string) int) {
 	t.Helper()
 
@@ -51,6 +53,9 @@ func newStorageClient(t *testing.T, pages map[string]storagePage) (*Client, func
 	counts := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Path
+		if b := r.URL.Query().Get("branch"); b != "" {
+			key += "?branch=" + b
+		}
 		if p := r.URL.Query().Get("page"); p != "" && p != "1" {
 			key += "#" + p
 		}

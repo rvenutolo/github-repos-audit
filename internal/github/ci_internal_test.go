@@ -2,8 +2,12 @@ package github
 
 import (
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -376,20 +380,27 @@ func branchRun(id int, branch, event, createdAt string) string {
 		`"head_branch":"` + branch + `","event":"` + event + `","status":"completed","created_at":"` + createdAt + `"}`
 }
 
-// TestFetchCI_lastDefaultBranchRun: the newest run on the default branch is
-// recorded whatever its event, and a newer run on another branch is not,
-// because it says nothing about whether the default branch's caches are kept
-// warm.
+// runsList renders a workflow_runs list of the given entries.
+func runsList(runs ...string) storagePage {
+	return storagePage{body: `{"total_count":` + strconv.Itoa(len(runs)) + `,"workflow_runs":[` + strings.Join(runs, ",") + `]}`}
+}
+
+// TestFetchCI_lastDefaultBranchRun: the recency is the newest run the
+// branch-filtered list answers, whatever its event, read with one request of
+// its own. The timing page here is a busy repository's, its whole page on
+// another branch, which is exactly the case a recency read off that page
+// would miss.
 func TestFetchCI_lastDefaultBranchRun(t *testing.T) {
 	t.Parallel()
 
 	c, seen := newStorageClient(t, map[string]storagePage{
-		ciBase + "/actions/runs": {body: `{"total_count":4,"workflow_runs":[` + strings.Join([]string{
+		ciBase + "/actions/runs": runsList(
 			branchRun(4000004, "feature", "pull_request", "2026-10-20T09:00:00Z"),
-			branchRun(4000003, "main", "schedule", "2026-10-19T06:00:00Z"),
-			branchRun(4000002, "main", "push", "2026-10-18T12:00:00Z"),
-			branchRun(4000001, "main", "push", "2026-10-19T05:00:00Z"),
-		}, ",") + `]}`},
+			branchRun(4000003, "feature", "push", "2026-10-20T08:00:00Z"),
+		),
+		ciBase + "/actions/runs?branch=main": runsList(
+			branchRun(4000002, "main", "schedule", "2026-10-19T06:00:00+02:00"),
+		),
 	})
 	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
 
@@ -397,22 +408,67 @@ func TestFetchCI_lastDefaultBranchRun(t *testing.T) {
 		t.Fatalf("fetchCI() error = %v, want nil", err)
 	}
 
-	if want := time.Date(2026, 10, 19, 6, 0, 0, 0, time.UTC); !ci.LastDefaultBranchRun.Equal(want) {
-		t.Errorf("LastDefaultBranchRun = %v, want %v", ci.LastDefaultBranchRun, want)
+	want := time.Date(2026, 10, 19, 4, 0, 0, 0, time.UTC)
+	if !ci.LastDefaultBranchRun.Equal(want) || ci.LastDefaultBranchRun.Location() != time.UTC {
+		t.Errorf("LastDefaultBranchRun = %v, want %v in UTC", ci.LastDefaultBranchRun, want)
 	}
 	if n := seen(ciBase + "/actions/runs"); n != 1 {
-		t.Errorf("runs list read %d times, want once", n)
+		t.Errorf("timing runs list read %d times, want once", n)
+	}
+	if n := seen(ciBase + "/actions/runs?branch=main"); n != 1 {
+		t.Errorf("default-branch runs list read %d times, want once", n)
 	}
 }
 
-// TestFetchCI_noDefaultBranchRuns: a runs list with nothing on the default
-// branch leaves the recency zero, which the JSON then omits.
+// TestFetchCI_lastDefaultBranchRunAsksForOneEscapedRun: the branch filter is
+// query-escaped, so a branch name holding characters a query gives meaning
+// to still names the whole branch, and only one run is asked for, since only
+// the newest is wanted.
+func TestFetchCI_lastDefaultBranchRunAsksForOneEscapedRun(t *testing.T) {
+	t.Parallel()
+
+	const branch = "release/1.0+x&y=z #1"
+	var mu sync.Mutex
+	var gotBranch, gotPerPage string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if q := r.URL.Query(); q.Has("branch") {
+			mu.Lock()
+			gotBranch, gotPerPage = q.Get("branch"), q.Get("per_page")
+			mu.Unlock()
+		}
+		if _, err := w.Write([]byte(`{"workflow_runs":[]}`)); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(Options{Owner: "gh-owner", Token: "token", BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
+
+	if err := c.fetchCI(t.Context(), ciBase, branch, &ci); err != nil {
+		t.Fatalf("fetchCI() error = %v, want nil", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if gotBranch != branch {
+		t.Errorf("branch filter = %q, want %q", gotBranch, branch)
+	}
+	if gotPerPage != "1" {
+		t.Errorf("per_page = %q, want 1", gotPerPage)
+	}
+}
+
+// TestFetchCI_noDefaultBranchRuns: a default-branch runs list with nothing
+// in it leaves the recency zero, which the JSON then omits.
 func TestFetchCI_noDefaultBranchRuns(t *testing.T) {
 	t.Parallel()
 
 	c, _ := newStorageClient(t, map[string]storagePage{
-		ciBase + "/actions/runs": {body: `{"total_count":1,"workflow_runs":[` +
-			branchRun(4000001, "feature", "push", "2026-10-20T09:00:00Z") + `]}`},
+		ciBase + "/actions/runs":             runsList(branchRun(4000001, "feature", "push", "2026-10-20T09:00:00Z")),
+		ciBase + "/actions/runs?branch=main": runsList(),
 	})
 	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
 
@@ -422,6 +478,41 @@ func TestFetchCI_noDefaultBranchRuns(t *testing.T) {
 
 	if !ci.LastDefaultBranchRun.IsZero() {
 		t.Errorf("LastDefaultBranchRun = %v, want zero", ci.LastDefaultBranchRun)
+	}
+}
+
+// TestFetchCI_noDefaultBranchAsksNothing: with no default branch name there
+// is no branch to filter on, so no recency read is made (the fake answers
+// only the timing list) and the recency stays zero.
+func TestFetchCI_noDefaultBranchAsksNothing(t *testing.T) {
+	t.Parallel()
+
+	c, _ := newStorageClient(t, map[string]storagePage{ciBase + "/actions/runs": runsList()})
+	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
+
+	if err := c.fetchCI(t.Context(), ciBase, "", &ci); err != nil {
+		t.Fatalf("fetchCI() error = %v, want nil", err)
+	}
+
+	if !ci.LastDefaultBranchRun.IsZero() {
+		t.Errorf("LastDefaultBranchRun = %v, want zero", ci.LastDefaultBranchRun)
+	}
+}
+
+// TestFetchCI_defaultBranchRunsFailureAborts: the recency read is held to
+// the same rule as every other read, so an unexpected status aborts rather
+// than reading as a branch nothing ran on.
+func TestFetchCI_defaultBranchRunsFailureAborts(t *testing.T) {
+	t.Parallel()
+
+	c, _ := newStorageClient(t, map[string]storagePage{
+		ciBase + "/actions/runs":             runsList(),
+		ciBase + "/actions/runs?branch=main": {status: http.StatusUnauthorized, body: `{"message":"Bad credentials"}`},
+	})
+	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
+
+	if err := c.fetchCI(t.Context(), ciBase, "main", &ci); !errors.Is(err, ErrUnexpectedStatus) {
+		t.Errorf("fetchCI() error = %v, want it to wrap ErrUnexpectedStatus", err)
 	}
 }
 
