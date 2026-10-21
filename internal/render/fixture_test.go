@@ -202,6 +202,8 @@ func fullSnapshot() *audit.Snapshot {
 		},
 		CacheUsageBytes: 481_000_900,
 		CacheLimitBytes: 10_000_000_000,
+		ArtifactCount:   12,
+		ArtifactBytes:   206_000_000,
 	}
 	// Its pull-request workflow cancels superseded runs, and its one job
 	// bounds its run time.

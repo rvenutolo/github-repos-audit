@@ -272,11 +272,12 @@ func nixSection(rep *rules.Report, at time.Time) string {
 // ciEfficiencySection shows whether each repository's CI spends its time and
 // storage well: caches saved with something in them, nothing left to pile
 // up, no run kept going once a newer one supersedes it, and no job left to
-// hang until GitHub's own six-hour limit. The workflows and jobs behind a
+// hang until GitHub's own six-hour limit, with the artifacts held beside
+// the caches they share storage with. The workflows and jobs behind a
 // count go in lists under the table, as the Git identities section does,
 // since a cell holding every path would stretch the table past reading.
 func ciEfficiencySection(rep *rules.Report) string {
-	t := newTable("Repository", "Go cache", "Cache use", "Cancel superseded", "Timeouts")
+	t := newTable("Repository", "Go cache", "Cache use", "Cancel superseded", "Timeouts", "Artifacts")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
@@ -285,6 +286,7 @@ func ciEfficiencySection(rep *rules.Report) string {
 			cell(r.Cell(rules.CheckCacheUsage)),
 			cell(r.Cell(rules.CheckCICancelSuperseded)),
 			cell(r.Cell(rules.CheckJobTimeouts)),
+			cell(r.Cell(rules.CheckArtifactStorage)),
 		)
 	}
 	s := heading("CI efficiency", t)

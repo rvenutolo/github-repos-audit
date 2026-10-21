@@ -71,6 +71,7 @@ const (
 	CheckLastPush
 	CheckOpenPRs
 	CheckBranches
+	CheckArtifactStorage
 )
 
 // checkNames maps each check to the identifier used in repos.toml overrides
@@ -131,6 +132,7 @@ var checkNames = [...]string{
 	CheckLastPush:              "last_push",
 	CheckOpenPRs:               "open_prs",
 	CheckBranches:              "branches",
+	CheckArtifactStorage:       "artifact_storage",
 }
 
 // String returns the check's identifier as it is written in repos.toml.
@@ -164,13 +166,13 @@ func ParseCheck(name string) (Check, bool) {
 }
 
 // ValueOnly reports whether a check carries a value and never a pass or a
-// fail: the last release, the last push, the open pull requests and the
-// branch count. Such a check can be shown or left out, but never required,
-// because nothing about it can be missing.
+// fail: the last release, the last push, the open pull requests, the branch
+// count and the artifact storage. Such a check can be shown or left out, but
+// never required, because nothing about it can be missing.
 func (c Check) ValueOnly() bool {
 	//nolint:exhaustive // every other check carries a pass or a fail
 	switch c {
-	case CheckLastReleaseAge, CheckLastPush, CheckOpenPRs, CheckBranches:
+	case CheckLastReleaseAge, CheckLastPush, CheckOpenPRs, CheckBranches, CheckArtifactStorage:
 		return true
 	default:
 		return false

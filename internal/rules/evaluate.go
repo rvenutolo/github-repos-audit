@@ -414,6 +414,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		// branches there are besides it. An empty repository has no branches
 		// at all, so max keeps the count off negative numbers.
 		return observation{value: strconv.Itoa(max(r.Branches-1, 0)), scalar: true}
+	case CheckArtifactStorage:
+		return observeArtifactStorage(r)
 
 	default:
 		return observation{unknown: true}

@@ -93,13 +93,13 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## CI efficiency
 
-| Repository                                                           | Go cache        | Cache use | Cancel superseded | Timeouts |
-| -------------------------------------------------------------------- | --------------- | --------- | ----------------- | -------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a             | n/a       | n/a               | n/a      |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✓ 2.3 GB  | ✗ 2 workflows     | ✗ 1 job  |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a       | n/a               | n/a      |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓ 481 MB  | ✓                 | ✓        |
-| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       | n/a               | n/a      |
+| Repository                                                           | Go cache        | Cache use | Cancel superseded | Timeouts | Artifacts   |
+| -------------------------------------------------------------------- | --------------- | --------- | ----------------- | -------- | ----------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a             | n/a       | n/a               | n/a      | 0           |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✓ 2.3 GB  | ✗ 2 workflows     | ✗ 1 job  | 0           |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a       | n/a               | n/a      | 0           |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓ 481 MB  | ✓                 | ✓        | 12 · 206 MB |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       | n/a               | n/a      | 0           |
 
 ### Workflows without cancel-in-progress
 

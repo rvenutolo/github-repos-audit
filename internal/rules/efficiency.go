@@ -62,6 +62,22 @@ func observeCacheUsage(r audit.Repo) observation {
 	return observation{ok: usage*10 <= limit*8, value: formatBytes(usage), mark: true, scalar: true}
 }
 
+// observeArtifactStorage shows what the repository's unexpired artifacts
+// hold: how many, and their total size. It is a plain fact and never judged:
+// whether a build's outputs are worth keeping until they expire is the
+// workflow's choice, and no size is wrong in itself, but artifacts share the
+// account's Actions storage with every other repository, so the figure is
+// worth seeing beside the caches. With no artifacts there is no size to
+// show, so the cell is the bare count, which also covers a repository whose
+// storage was not read.
+func observeArtifactStorage(r audit.Repo) observation {
+	count := r.Storage.ArtifactCount
+	if count == 0 {
+		return observation{value: "0", scalar: true}
+	}
+	return observation{value: strconv.Itoa(count) + " · " + formatBytes(r.Storage.ArtifactBytes), scalar: true}
+}
+
 // observeCancelSuperseded judges whether every pull-request workflow cancels
 // the run a newer push to the same pull request supersedes. Without it each
 // push to an open pull request queues another full run beside the one still

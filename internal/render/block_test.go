@@ -141,8 +141,9 @@ func TestBlock_nixSection(t *testing.T) {
 
 // TestBlock_ciEfficiencySection: the CI efficiency section sits right after
 // the Nix section and before Policy, carries Go cache, Cache use, Cancel
-// superseded and Timeouts columns, a go_cache fail shows the size it found
-// beside its mark, a cache_usage pass shows the usage it measured, and the
+// superseded, Timeouts and Artifacts columns, a go_cache fail shows the size
+// it found beside its mark, a cache_usage pass shows the usage it measured,
+// artifact_storage shows its count and size with no mark, and the
 // workflows behind a ci_cancel_superseded count, then the jobs behind a
 // job_timeouts count, are listed under the table.
 func TestBlock_ciEfficiencySection(t *testing.T) {
@@ -157,7 +158,7 @@ func TestBlock_ciEfficiencySection(t *testing.T) {
 		t.Fatalf("Block() has no CI efficiency section between Nix and Policy:\n%s", got)
 	}
 	section := got[ci:policy]
-	for _, col := range []string{"| Repository ", "| Go cache ", "| Cache use ", "| Cancel superseded ", "| Timeouts "} {
+	for _, col := range []string{"| Repository ", "| Go cache ", "| Cache use ", "| Cancel superseded ", "| Timeouts ", "| Artifacts "} {
 		if !strings.Contains(section, col) {
 			t.Errorf("CI efficiency section header lacks %q:\n%s", col, section)
 		}
@@ -170,6 +171,9 @@ func TestBlock_ciEfficiencySection(t *testing.T) {
 	}
 	if !strings.Contains(section, "✗ 2 workflows") {
 		t.Errorf("CI efficiency section lacks the tools repository's cancel count:\n%s", section)
+	}
+	if !strings.Contains(section, "| 12 · 206 MB ") {
+		t.Errorf("CI efficiency section lacks the software repository's artifacts:\n%s", section)
 	}
 	if !strings.Contains(section, "✗ 1 job ") {
 		t.Errorf("CI efficiency section lacks the tools repository's timeout count:\n%s", section)

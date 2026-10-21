@@ -176,9 +176,9 @@ lists every check the tool knows, each set to one of:
 | `public_published` | expected only when the repository is public and published |
 | `info`             | shown, never judged                                       |
 
-`direct_push` takes `blocked` or `allowed` instead, and the four value-only
-checks — `last_release_age`, `last_push`, `open_prs` and `branches` — take
-only `info` or `not_required`. `renovate_min_release_age` takes a duration
+`direct_push` takes `blocked` or `allowed` instead, and the five value-only
+checks — `last_release_age`, `last_push`, `open_prs`, `branches` and
+`artifact_storage` — take only `info` or `not_required`. `renovate_min_release_age` takes a duration
 instead — `"7 days"`, `"48 hours"`, `"1 week"` (a positive whole number with
 no leading zero, a single space, then minute, hour, day or week, singular or
 plural) — or `not_required` or `info`; an
@@ -458,6 +458,12 @@ Grouped by theme here; the report lists them in the fixed worklist order
   (`✗ 3 jobs`), and the report's CI efficiency section lists them per
   repository under _Jobs without timeouts_, as `<workflow file> / <job id>`
   (`ci.yml / build`). n/a when no workflow holds a job of its own.
+- **artifact_storage** — a plain fact, always shown and never judged: how
+  many unexpired Actions artifacts the repository holds and their total
+  size in decimal units (`12 · 206 MB`), or `0` with none. Artifacts share
+  the account's Actions storage with every other repository, so the figure
+  sits beside the caches in the report's CI efficiency section. It takes
+  only `info` or `not_required`.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches

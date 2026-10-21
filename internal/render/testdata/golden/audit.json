@@ -3,6 +3,7 @@
   "owner": "gh-owner",
   "types": {
     "config": {
+      "artifact_storage": "info",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
@@ -58,6 +59,7 @@
       "zizmor": "not_required"
     },
     "content": {
+      "artifact_storage": "info",
       "branches": "info",
       "cache_usage": "not_required",
       "changelog": "not_required",
@@ -113,6 +115,7 @@
       "zizmor": "not_required"
     },
     "environment": {
+      "artifact_storage": "info",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
@@ -168,6 +171,7 @@
       "zizmor": "not_required"
     },
     "infra": {
+      "artifact_storage": "info",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
@@ -223,6 +227,7 @@
       "zizmor": "not_required"
     },
     "software": {
+      "artifact_storage": "info",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "required",
@@ -278,6 +283,7 @@
       "zizmor": "not_required"
     },
     "tools": {
+      "artifact_storage": "info",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
@@ -520,8 +526,8 @@
         ],
         "cache_usage_bytes": 481000900,
         "cache_limit_bytes": 10000000000,
-        "artifact_count": 0,
-        "artifact_bytes": 0
+        "artifact_count": 12,
+        "artifact_bytes": 206000000
       },
       "releases": {
         "total": 4,

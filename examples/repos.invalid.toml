@@ -13,8 +13,8 @@
 #                not_required, public, public_published or info; direct_push
 #                takes blocked or allowed, renovate_min_release_age takes a
 #                duration such as "7 days", not_required or info, and
-#                last_release_age, last_push, open_prs and branches take only
-#                info or not_required.
+#                last_release_age, last_push, open_prs, branches and
+#                artifact_storage take only info or not_required.
 #                A type no repository uses is allowed.
 #
 # [identity]     your git identity, for git_identity: canonical is the one
@@ -91,6 +91,7 @@ last_release_age = "info"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.infra]
 readme = "required"
@@ -146,6 +147,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.environment]
 readme = "required"
@@ -201,6 +203,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.config]
 readme = "required"
@@ -256,6 +259,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 # Content is data edited by hand: no tooling rows, and direct push allowed.
 [types.content]
@@ -312,6 +316,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.tools]
 readme = "required"
@@ -367,6 +372,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [repos.shell-scripts]
 type = "tools"

@@ -121,6 +121,46 @@ func TestParse_acceptsAThresholdOverride(t *testing.T) {
 	}
 }
 
+// TestParse_artifactStorageRejectsRequired: artifact_storage is a plain
+// fact with nothing that can be missing, so neither a type nor an override
+// may require it; a type may only show it or leave it out.
+func TestParse_artifactStorageRejectsRequired(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		in       string
+		contains string
+	}{
+		{
+			name:     "a type",
+			in:       typeTable("tools", map[string]string{"artifact_storage": rules.OverrideRequired}) + "[repos.alpha]\ntype = \"tools\"\n",
+			contains: `types.tools: artifact_storage = "required" (want info or not_required)`,
+		},
+		{
+			name:     "an override",
+			in:       toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { artifact_storage = \"required\" }\n",
+			contains: `alpha: override artifact_storage = "required" names a value-only check (want not_required)`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Parse(strings.NewReader(tc.in))
+			if err == nil || !strings.Contains(err.Error(), tc.contains) {
+				t.Errorf("Parse() error = %v, want one containing %q", err, tc.contains)
+			}
+		})
+	}
+	for _, word := range []string{"info", rules.OverrideNotRequired} {
+		in := typeTable("tools", map[string]string{"artifact_storage": word}) + "[repos.alpha]\ntype = \"tools\"\n"
+		if _, err := config.Parse(strings.NewReader(in)); err != nil {
+			t.Errorf("Parse() with artifact_storage = %q error = %v, want nil", word, err)
+		}
+	}
+}
+
 // identityTable is the fixture [identity] table, the vocabulary
 // internal/fixturevocab allows.
 const identityTable = "[identity]\ncanonical = \"Pat Example <pat@example.com>\"\n" +

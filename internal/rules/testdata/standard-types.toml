@@ -58,6 +58,7 @@ last_release_age = "info"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.infra]
 readme = "required"
@@ -113,6 +114,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.environment]
 readme = "required"
@@ -168,6 +170,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.config]
 readme = "required"
@@ -223,6 +226,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 # Content is data edited by hand: no tooling rows, and direct push allowed.
 [types.content]
@@ -279,6 +283,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 [types.tools]
 readme = "required"
@@ -334,6 +339,7 @@ last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
 branches = "info"
+artifact_storage = "info"
 
 # The account holder's identity, for git_identity. Fake, like every fixture
 # value: the names and addresses internal/fixturevocab allows. The accepted

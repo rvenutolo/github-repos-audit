@@ -155,7 +155,8 @@
               "last_release_age",
               "last_push",
               "open_prs",
-              "branches"
+              "branches",
+              "artifact_storage"
             ]
           },
           "additionalProperties": {
@@ -315,7 +316,8 @@
         "last_release_age",
         "last_push",
         "open_prs",
-        "branches"
+        "branches",
+        "artifact_storage"
       ],
       "properties": {
         "readme": { "$ref": "#/$defs/expectation" },
@@ -370,7 +372,8 @@
         "last_release_age": { "$ref": "#/$defs/info_expectation" },
         "last_push": { "$ref": "#/$defs/info_expectation" },
         "open_prs": { "$ref": "#/$defs/info_expectation" },
-        "branches": { "$ref": "#/$defs/info_expectation" }
+        "branches": { "$ref": "#/$defs/info_expectation" },
+        "artifact_storage": { "$ref": "#/$defs/info_expectation" }
       }
     },
     "expectation": {
