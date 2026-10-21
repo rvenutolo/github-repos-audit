@@ -39,8 +39,6 @@ type cacheFamily struct {
 	// Newest is the most recently created entry, the one the next run
 	// restores; on a tie, the first in key order.
 	Newest audit.Cache
-	// Count is how many entries the family holds.
-	Count int
 }
 
 // cacheFamilies groups the default branch's caches whose key starts with
@@ -60,10 +58,9 @@ func cacheFamilies(r audit.Repo, prefix string) []cacheFamily {
 		name := familyName(c.Key)
 		i := slices.IndexFunc(out, func(f cacheFamily) bool { return f.Name == name })
 		if i < 0 {
-			out = append(out, cacheFamily{Name: name, Newest: c, Count: 1})
+			out = append(out, cacheFamily{Name: name, Newest: c})
 			continue
 		}
-		out[i].Count++
 		if c.CreatedAt.After(out[i].Newest.CreatedAt) {
 			out[i].Newest = c
 		}
