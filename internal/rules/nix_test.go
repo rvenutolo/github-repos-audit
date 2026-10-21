@@ -430,6 +430,8 @@ func TestEvaluate_lockRefresh_scheduledWorkflow(t *testing.T) {
 	}{
 		{"a run step", audit.Job{ID: "update", FlakeUpdate: true}, nil},
 		{"the update action", uses("DeterminateSystems/update-flake-lock@0123456789abcdef0123456789abcdef01234567"), nil},
+		// GitHub matches owner and repository names in any case.
+		{"the update action in another case", uses("determinatesystems/Update-Flake-Lock@v24"), nil},
 		{"a ./ composite", uses("./.github/actions/update"), composite(".github/actions/update/action.yml")},
 		{"a $/ composite", uses("$/.github/actions/update"), composite(".github/actions/update/action.yml")},
 		{"an action.yaml composite", uses("./.github/actions/update"), composite(".github/actions/update/action.yaml")},
@@ -490,6 +492,8 @@ func TestEvaluate_lockRefresh_unscheduledFlakeUpdateDoesNotCount(t *testing.T) {
 			[]audit.CompositeAction{{Path: "gh-owner/preset-store/.github/actions/update/action.yml", FlakeUpdate: true}},
 		},
 		{"a lookalike action", scheduled(".github/workflows/update.yml", uses("someone/DeterminateSystems/update-flake-lock@v1")), nil},
+		{"a longer repository name", scheduled(".github/workflows/update.yml", uses("DeterminateSystems/update-flake-lock-fork@v1")), nil},
+		{"no version", scheduled(".github/workflows/update.yml", uses("DeterminateSystems/update-flake-lock")), nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -526,6 +530,29 @@ func TestEvaluate_lockRefresh_unreadableWorkflowIsNamed(t *testing.T) {
 	r.Renovate.NixManager, r.Renovate.LockFileMaintenance = true, true
 	if got := lockRefresh(t, r); got.Verdict != rules.Pass || got.Value != "Renovate" {
 		t.Errorf("with Renovate: cell = %v %q, want a pass %q", got.Verdict, got.Value, "Renovate")
+	}
+}
+
+// TestEvaluate_lockRefresh_unreadableCompositeNamedOnce: an unreadable
+// composite that several scheduled jobs use is one thing to look at, so it
+// is named once, where it was first met.
+func TestEvaluate_lockRefresh_unreadableCompositeNamedOnce(t *testing.T) {
+	t.Parallel()
+
+	update := audit.StepUse{Action: "./.github/actions/update"}
+	r := withoutRenovateRefresh(fixture("alpha", "tools"))
+	r.Workflows = []audit.Workflow{
+		{
+			Path: ".github/workflows/a.yml", Events: []string{"schedule"},
+			Jobs: []audit.Job{{ID: "one", Uses: []audit.StepUse{update}}, {ID: "two", Uses: []audit.StepUse{update}}},
+		},
+		{Path: ".github/workflows/b.yml", ParseError: "invalid YAML"},
+		scheduled(".github/workflows/c.yml", audit.Job{ID: "three", Uses: []audit.StepUse{update}}),
+	}
+	r.Actions = []audit.CompositeAction{{Path: ".github/actions/update/action.yml", ParseError: "invalid YAML"}}
+	want := "unreadable .github/actions/update/action.yml, unreadable .github/workflows/b.yml"
+	if got := lockRefresh(t, r); got.Verdict != rules.Fail || got.Value != want || !got.Mark {
+		t.Errorf("cell = %v %q mark=%t, want a marked fail %q", got.Verdict, got.Value, got.Mark, want)
 	}
 }
 

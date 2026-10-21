@@ -87,15 +87,18 @@ func TestEvaluate_cancelSuperseded_everyJobLevel(t *testing.T) {
 }
 
 // TestEvaluate_cancelSuperseded_literalFalseFails: cancel-in-progress: false
-// is written but cancels nothing, at either level.
+// is written but cancels nothing, at either level, in any case YAML reads
+// as the same boolean.
 func TestEvaluate_cancelSuperseded_literalFalseFails(t *testing.T) {
 	t.Parallel()
 
-	wf := prWorkflow(".github/workflows/ci.yml", cancelling("false"), audit.Job{ID: "check"})
-	wantCell(t, cancelCell(t, wf), rules.Fail, "1 workflow")
+	for _, v := range []string{"false", "False", "FALSE"} {
+		wf := prWorkflow(".github/workflows/ci.yml", cancelling(v), audit.Job{ID: "check"})
+		wantCell(t, cancelCell(t, wf), rules.Fail, "1 workflow")
 
-	job := prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check", Concurrency: cancelling("false")})
-	wantCell(t, cancelCell(t, job), rules.Fail, "1 workflow")
+		job := prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check", Concurrency: cancelling(v)})
+		wantCell(t, cancelCell(t, job), rules.Fail, "1 workflow")
+	}
 }
 
 // TestEvaluate_cancelSuperseded_expressionCounts: an expression, typically

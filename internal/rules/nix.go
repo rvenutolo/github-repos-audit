@@ -76,8 +76,20 @@ func observeLockAge(r audit.Repo, now time.Time) observation {
 }
 
 // updateFlakeLockAction is the published action that opens a pull request
-// refreshing flake.lock, matched up to the "@" that pins its version.
-const updateFlakeLockAction = "DeterminateSystems/update-flake-lock@"
+// refreshing flake.lock, matched by usesAction.
+const updateFlakeLockAction = "DeterminateSystems/update-flake-lock"
+
+// usesAction reports whether a step's `uses:` names the published action
+// ownerRepo at some version: the part before the "@" that pins it is
+// ownerRepo, in any case, since GitHub matches owner and repository names
+// without regard to case. The version after the "@" is not compared. A path
+// inside the repository ("owner/repo/sub@v1") is a different action, and a
+// reference with no "@" names no version, which GitHub refuses, so neither
+// matches.
+func usesAction(uses, ownerRepo string) bool {
+	name, _, pinned := strings.Cut(uses, "@")
+	return pinned && strings.EqualFold(name, ownerRepo)
+}
 
 // observeLockRefresh judges whether something refreshes flake.lock without a
 // person remembering to: Renovate, or a scheduled workflow. The cell names
@@ -124,12 +136,18 @@ func observeLockRefresh(r audit.Repo) observation {
 // scheduledFlakeUpdate reports whether a scheduled workflow refreshes
 // flake.lock (see observeLockRefresh), and, as "unreadable <path>", every
 // workflow it could not read and every composite a scheduled job uses that it
-// could not read, in the order it met them.
+// could not read, each once, in the order it first met them: a composite
+// several jobs use is still one file to look at.
 func scheduledFlakeUpdate(r audit.Repo) (bool, []string) {
 	var unreadable []string
+	note := func(path string) {
+		if item := "unreadable " + path; !slices.Contains(unreadable, item) {
+			unreadable = append(unreadable, item)
+		}
+	}
 	for _, w := range r.Workflows {
 		if w.ParseError != "" {
-			unreadable = append(unreadable, "unreadable "+w.Path)
+			note(w.Path)
 			continue
 		}
 		if !slices.Contains(w.Events, "schedule") {
@@ -140,14 +158,14 @@ func scheduledFlakeUpdate(r audit.Repo) (bool, []string) {
 				return true, nil
 			}
 			for _, u := range j.Uses {
-				if strings.HasPrefix(u.Action, updateFlakeLockAction) {
+				if usesAction(u.Action, updateFlakeLockAction) {
 					return true, nil
 				}
 				ca, local := resolveComposite(r, u.Action)
 				switch {
 				case !local:
 				case ca.ParseError != "":
-					unreadable = append(unreadable, "unreadable "+ca.Path)
+					note(ca.Path)
 				case ca.FlakeUpdate:
 					return true, nil
 				}
@@ -164,8 +182,8 @@ func scheduledFlakeUpdate(r audit.Repo) (bool, []string) {
 const nixCacheCeiling = 1_500_000_000
 
 // cacheNixAction is the action that saves and restores the Nix store,
-// matched up to the "@" that pins its version.
-const cacheNixAction = "nix-community/cache-nix-action@"
+// matched by usesAction.
+const cacheNixAction = "nix-community/cache-nix-action"
 
 // observeNixCache judges whether the default branch's Nix store is cached,
 // at a useful size, by a cache-nix-action configured not to grow without
@@ -228,11 +246,12 @@ func cacheNixProblems(r audit.Repo) []string {
 	var noGC, noPurge, noSelector, noWrite bool
 	var unreadable []string
 	judge := func(u audit.StepUse, write bool) {
-		if !strings.HasPrefix(u.Action, cacheNixAction) {
+		if !usesAction(u.Action, cacheNixAction) {
 			return
 		}
 		noGC = noGC || !anySet(u.With, "gc-max-store-size", "gc-max-store-size-linux", "gc-max-store-size-macos")
-		noPurge = noPurge || u.With["purge"] != "true"
+		// YAML reads True and TRUE as the same boolean as true.
+		noPurge = noPurge || !strings.EqualFold(u.With["purge"], "true")
 		noSelector = noSelector || !anySet(u.With, "purge-prefixes", "purge-created", "purge-last-accessed", "purge-primary-key")
 		noWrite = noWrite || !write
 	}

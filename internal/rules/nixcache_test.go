@@ -211,6 +211,9 @@ func TestEvaluate_nixCache_eachSetting(t *testing.T) {
 		{"no store bound", map[string]string{"purge": "true", "purge-prefixes": "nix-"}, "206 MB, no gc-max-store-size"},
 		{"an empty store bound", map[string]string{"gc-max-store-size": "", "purge": "true", "purge-prefixes": "nix-"}, "206 MB, no gc-max-store-size"},
 		{"purge off", map[string]string{"gc-max-store-size": "1G", "purge": "false", "purge-prefixes": "nix-"}, "206 MB, no purge"},
+		// YAML reads True and TRUE as the same boolean as true.
+		{"purge in capitals", map[string]string{"gc-max-store-size": "1G", "purge": "TRUE", "purge-prefixes": "nix-"}, "206 MB"},
+		{"purge capitalised", map[string]string{"gc-max-store-size": "1G", "purge": "True", "purge-prefixes": "nix-"}, "206 MB"},
 		{"nothing", nil, "206 MB, no gc-max-store-size, no purge, no purge selector"},
 	}
 	for _, tc := range tests {
@@ -221,6 +224,35 @@ func TestEvaluate_nixCache_eachSetting(t *testing.T) {
 			step := audit.StepUse{Action: cacheNixAction, With: tc.with}
 			// Two lacking steps name each problem once.
 			r.Workflows = []audit.Workflow{cacheWorkflow(audit.Permissions{}, actionsWrite(), step, step)}
+			verdict := rules.Fail
+			if tc.want == "206 MB" {
+				verdict = rules.Pass
+			}
+			wantCell(t, nixCache(t, r), verdict, tc.want)
+		})
+	}
+}
+
+// TestEvaluate_nixCache_actionNameAnyCase: GitHub matches an action's owner
+// and repository in any case, so a step naming cache-nix-action in other
+// capitals is the same action and is judged; a longer repository name, or a
+// path inside the repository, is a different action and is not.
+func TestEvaluate_nixCache_actionNameAnyCase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		action, want string
+	}{
+		{"Nix-Community/Cache-Nix-Action@v6", "206 MB, no gc-max-store-size, no purge, no purge selector"},
+		{"nix-community/cache-nix-action-fork@v6", "206 MB"},
+		{"nix-community/cache-nix-action/restore@v6", "206 MB"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.action, func(t *testing.T) {
+			t.Parallel()
+
+			r := cachedFixture(mainCache("nix-Linux-abc", 206_000_000, cacheNow.Add(-time.Hour)))
+			r.Workflows = []audit.Workflow{cacheWorkflow(audit.Permissions{}, actionsWrite(), audit.StepUse{Action: tc.action})}
 			verdict := rules.Fail
 			if tc.want == "206 MB" {
 				verdict = rules.Pass

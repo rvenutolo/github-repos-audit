@@ -150,9 +150,9 @@ func cancelsSuperseded(w audit.Workflow) bool {
 }
 
 // cancelSet reports whether a concurrency setting sets cancel-in-progress to
-// anything but the literal "false".
+// anything but the literal false, in any case YAML reads as that boolean.
 func cancelSet(c audit.Concurrency) bool {
-	return c.CancelInProgress != "" && c.CancelInProgress != "false"
+	return c.CancelInProgress != "" && !strings.EqualFold(c.CancelInProgress, "false")
 }
 
 // observeJobTimeouts judges whether every job bounds its own run time with

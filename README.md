@@ -409,13 +409,13 @@ Grouped by theme here; the report lists them in the fixed worklist order
   runs, directly or through a local composite action, is then read, and the
   cell names each problem once: `no gc-max-store-size` (none of
   `gc-max-store-size`, `-linux` or `-macos`), `no purge` (`purge` is not
-  `true`), `no purge selector` (none of `purge-prefixes`, `purge-created`,
-  `purge-last-accessed` or `purge-primary-key`), and `no actions: write`
-  (the job's `permissions:`, else the workflow's, else the repository's
-  default workflow permissions, do not grant it; `write-all` does). A
-  workflow, or a composite a job uses, that the tool could not read is
-  named as `unreadable <path>`. It passes only with every size in range and
-  no problem. n/a without a `flake.nix`, or when no workflow has run on the
+  `true` in any case), `no purge selector` (none of `purge-prefixes`,
+  `purge-created`, `purge-last-accessed` or `purge-primary-key`), and
+  `no actions: write` (the job's `permissions:`, else the workflow's, else
+  the repository's default workflow permissions, do not grant it;
+  `write-all` does). A workflow, or a composite a job uses, that the tool
+  could not read is named as `unreadable <path>`. It passes only with every
+  size in range and no problem. n/a without a `flake.nix`, or when no workflow has run on the
   default branch in the last 7 days, since GitHub evicts a cache nothing has
   restored for that long. The report's Nix section shows it.
 - **go_cache** — whether the default branch's Go cache holds something.
@@ -443,7 +443,7 @@ Grouped by theme here; the report lists them in the fixed worklist order
   does not hold a runner. A workflow passes with a workflow-level
   `concurrency` that sets `cancel-in-progress`, or when every one of its
   jobs sets it in a job-level `concurrency`; an expression counts as set,
-  a literal `false` does not. A workflow file that does not parse fails it
+  a literal `false`, in any case, does not. A workflow file that does not parse fails it
   as unreadable. The cell counts the workflows that fail
   (`✗ 2 workflows`), and the report's CI efficiency section lists them per
   repository under _Workflows without cancel-in-progress_, for every
