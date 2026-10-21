@@ -231,3 +231,144 @@ func TestResolve_skippedPresetsAreNeverFetched(t *testing.T) {
 		t.Errorf("Resolve() fetched %v, err %v; want no fetches and no error", fetched, err)
 	}
 }
+
+func TestResolve_nixManagerFromPreset(t *testing.T) {
+	t.Parallel()
+
+	store := files{"preset-store/nix.json@": `{"nix": {"enabled": true}}`}
+	got := resolve(t, `{"extends": ["github>gh-owner/preset-store:nix"]}`, store)
+	if !got.NixManager {
+		t.Errorf("Resolve().NixManager = false, want true from the preset; got %+v", got)
+	}
+}
+
+func TestResolve_enabledManagersExcludesNix(t *testing.T) {
+	t.Parallel()
+
+	got := resolve(t, `{"nix": {"enabled": true}, "enabledManagers": ["github-actions"]}`, nil)
+	if got.NixManager {
+		t.Errorf("Resolve().NixManager = true, want false: enabledManagers leaves nix out")
+	}
+}
+
+func TestResolve_rootOverridesPresetLockFileMaintenance(t *testing.T) {
+	t.Parallel()
+
+	store := files{"preset-store/lfm.json@": `{"lockFileMaintenance": {"enabled": true}}`}
+	got := resolve(t, `{"extends": ["github>gh-owner/preset-store:lfm"], "lockFileMaintenance": {"enabled": false}}`, store)
+	if got.LockFileMaintenance {
+		t.Errorf("Resolve().LockFileMaintenance = true, want false: the root's own setting wins")
+	}
+}
+
+// TestResolve_managerFacts pins the merge for the two boolean facts: each key
+// is merged on its own, an object without "enabled" sets nothing, and
+// enabledManagers is replaced whole by a later layer rather than unioned.
+func TestResolve_managerFacts(t *testing.T) {
+	t.Parallel()
+
+	store := files{
+		"preset-store/nix.json@":      `{"nix": {"enabled": true}, "minimumReleaseAge": "7 days"}`,
+		"preset-store/lfm.json@":      `{"lockFileMaintenance": {"enabled": true}}`,
+		"preset-store/managers.json@": `{"enabledManagers": ["github-actions"]}`,
+		"preset-store/both.json@":     `{"nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}}`,
+	}
+	tests := []struct {
+		name    string
+		root    string
+		wantNix bool
+		wantLFM bool
+	}{
+		{"neither set", `{}`, false, false},
+		{"own values", `{"nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}}`, true, true},
+		{"explicitly disabled", `{"nix": {"enabled": false}, "lockFileMaintenance": {"enabled": false}}`, false, false},
+		{"enabledManagers lists nix", `{"nix": {"enabled": true}, "enabledManagers": ["nix", "github-actions"]}`, true, false},
+		{"enabledManagers alone does not enable nix", `{"enabledManagers": ["nix"]}`, false, false},
+		{"empty enabledManagers", `{"nix": {"enabled": true}, "enabledManagers": []}`, false, false},
+		{
+			"an object without enabled sets nothing",
+			`{"extends": ["github>gh-owner/preset-store:both"], "nix": {"fileMatch": ["x"]}, "lockFileMaintenance": {"schedule": ["weekly"]}}`,
+			true, true,
+		},
+		{
+			"keys merge independently across presets",
+			`{"extends": ["github>gh-owner/preset-store:nix", "github>gh-owner/preset-store:lfm"]}`,
+			true, true,
+		},
+		{
+			"a preset's enabledManagers applies to the root's nix",
+			`{"extends": ["github>gh-owner/preset-store:managers"], "nix": {"enabled": true}}`,
+			false, false,
+		},
+		{
+			"the root's enabledManagers replaces a preset's",
+			`{"extends": ["github>gh-owner/preset-store:managers"], "nix": {"enabled": true}, "enabledManagers": ["nix"]}`,
+			true, false,
+		},
+		{
+			"a later preset's disable wins",
+			`{"extends": ["github>gh-owner/preset-store:both"], "nix": {"enabled": false}}`,
+			false, true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := resolve(t, tt.root, store)
+			if got.NixManager != tt.wantNix || got.LockFileMaintenance != tt.wantLFM {
+				t.Errorf("Resolve() = %+v, want NixManager %v, LockFileMaintenance %v", got, tt.wantNix, tt.wantLFM)
+			}
+		})
+	}
+}
+
+// TestResolve_managerFactsKeepMinReleaseAge: the new keys do not disturb the
+// minimumReleaseAge merge they ride along with.
+func TestResolve_managerFactsKeepMinReleaseAge(t *testing.T) {
+	t.Parallel()
+
+	store := files{"preset-store/nix.json@": `{"nix": {"enabled": true}, "minimumReleaseAge": "7 days"}`}
+	got := resolve(t, `{"extends": ["github>gh-owner/preset-store:nix"]}`, store)
+	want := renovate.Result{MinReleaseAge: "7 days", Source: "github>gh-owner/preset-store:nix", NixManager: true}
+	if got != want {
+		t.Errorf("Resolve() = %+v, want %+v", got, want)
+	}
+}
+
+func TestResolve_managerFactsUnresolved(t *testing.T) {
+	t.Parallel()
+
+	store := files{"preset-store/both.json@": `{"nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}}`}
+	tests := []struct {
+		name     string
+		root     string
+		contains string
+	}{
+		{"nix is not an object", `{"nix": true}`, "nix is not an object"},
+		{"nix.enabled is not a boolean", `{"nix": {"enabled": "yes"}}`, "nix.enabled is not a boolean"},
+		{"lockFileMaintenance is not an object", `{"lockFileMaintenance": null}`, "lockFileMaintenance is not an object"},
+		{
+			"lockFileMaintenance.enabled is not a boolean", `{"lockFileMaintenance": {"enabled": null}}`,
+			"lockFileMaintenance.enabled is not a boolean",
+		},
+		{"enabledManagers is not an array", `{"enabledManagers": "nix"}`, "enabledManagers is not an array"},
+		{"an enabledManagers entry is not a string", `{"enabledManagers": [7]}`, "enabledManagers entry is not a string"},
+		{
+			"a bad key after presets that set both",
+			`{"extends": ["github>gh-owner/preset-store:both"], "enabledManagers": {}}`,
+			"enabledManagers",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := resolve(t, tt.root, store)
+			if !strings.Contains(got.Unresolved, tt.contains) {
+				t.Errorf("Resolve().Unresolved = %q, want it to mention %q", got.Unresolved, tt.contains)
+			}
+			if got.NixManager || got.LockFileMaintenance || got.MinReleaseAge != "" {
+				t.Errorf("Resolve() = %+v, want only Unresolved set", got)
+			}
+		})
+	}
+}

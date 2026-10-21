@@ -136,6 +136,25 @@ func TestCollect_presetFallbackIsRead(t *testing.T) {
 	}
 }
 
+// TestCollect_presetManagerFactsAreRead: the nix manager and lock-file
+// maintenance a preset turns on reach audit.Renovate.
+func TestCollect_presetManagerFactsAreRead(t *testing.T) {
+	t.Parallel()
+	api := newFakeAPI(t)
+	// base64 of {"minimumReleaseAge": "7 days", "nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}}
+	api.failNext(presetDefault, scriptedFailure{
+		status: http.StatusOK,
+		body:   `{"type":"file","encoding":"base64","content":"eyJtaW5pbXVtUmVsZWFzZUFnZSI6ICI3IGRheXMiLCAibml4IjogeyJlbmFibGVkIjogdHJ1ZX0sICJsb2NrRmlsZU1haW50ZW5hbmNlIjogeyJlbmFibGVkIjogdHJ1ZX19"}`,
+	})
+	want := audit.Renovate{
+		MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store",
+		NixManager: true, LockFileMaintenance: true,
+	}
+	if diff := cmp.Diff(want, collectFlake(t, api)); diff != "" {
+		t.Errorf("Renovate mismatch (-want +got):\n%s", diff)
+	}
+}
+
 // TestCollect_presetServerErrorAborts: any other status is not an answer.
 func TestCollect_presetServerErrorAborts(t *testing.T) {
 	t.Parallel()

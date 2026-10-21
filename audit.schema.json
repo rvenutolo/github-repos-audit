@@ -383,9 +383,17 @@
           "minLength": 1
         },
         "min_release_age_error": {
-          "description": "Why the value could not be decided: a missing or unparsable preset, a cycle, a template.",
+          "description": "Why the configuration could not be decided: a missing or unparsable preset, a cycle, a template, a key of the wrong type. When set, nix_manager and lock_file_maintenance are absent too.",
           "type": "string",
           "minLength": 1
+        },
+        "nix_manager": {
+          "description": "Whether Renovate's nix manager runs: nix.enabled true after the same merge, with enabledManagers unset or listing \"nix\". Absent when off, unset or unresolved.",
+          "const": true
+        },
+        "lock_file_maintenance": {
+          "description": "Whether lockFileMaintenance.enabled is true after the same merge. Absent when off, unset or unresolved.",
+          "const": true
         }
       }
     },
