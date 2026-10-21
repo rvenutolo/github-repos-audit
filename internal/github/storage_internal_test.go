@@ -3,8 +3,10 @@ package github
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -261,23 +263,72 @@ func TestFetchStorage_unexpectedStatusAborts(t *testing.T) {
 
 // TestFetchStorage_stopsRunawayPaging: a Link header that never runs out is
 // a paging fault, not a repository with endless storage, and it is an error
-// rather than a loop or a silently partial sum.
+// rather than a loop or a silently partial sum. Each list stops at its own
+// cap: artifacts accumulate for as long as their retention allows, so theirs
+// is the larger.
 func TestFetchStorage_stopsRunawayPaging(t *testing.T) {
 	t.Parallel()
 
-	pages := emptyStorage()
-	pages[storageBase+"/actions/artifacts"] = storagePage{
-		link: `<https://api.github.com` + storageBase + `/actions/artifacts?per_page=100>; rel="next"`,
-		body: `{"total_count":1,"artifacts":[{"size_in_bytes":1,"expired":false}]}`,
+	for _, tc := range []struct {
+		list, body string
+		cap        int
+	}{
+		{"caches", `{"total_count":1,"actions_caches":[{"key":"go-Linux-0a","ref":"refs/heads/main","size_in_bytes":1}]}`, maxCachePages},
+		{"artifacts", `{"total_count":1,"artifacts":[{"size_in_bytes":1,"expired":false}]}`, maxArtifactPages},
+	} {
+		t.Run(tc.list, func(t *testing.T) {
+			t.Parallel()
+
+			path := storageBase + "/actions/" + tc.list
+			pages := emptyStorage()
+			pages[path] = storagePage{
+				link: `<https://api.github.com` + path + `?per_page=100>; rel="next"`,
+				body: tc.body,
+			}
+			c, seen := newStorageClient(t, pages)
+
+			var got audit.ActionsStorage
+			err := c.fetchStorage(t.Context(), storageBase, &got)
+			if err == nil {
+				t.Fatal("fetchStorage() error = nil, want a paging error")
+			}
+			if want := fmt.Sprintf("more than %d pages", tc.cap); !strings.Contains(err.Error(), want) {
+				t.Errorf("fetchStorage() error = %q, want it to say %q", err, want)
+			}
+			if n := seen(path); n != tc.cap {
+				t.Errorf("%s asked for %d times, want %d", tc.list, n, tc.cap)
+			}
+		})
 	}
-	c, seen := newStorageClient(t, pages)
+}
+
+// TestFetchStorage_artifactsPastTheCacheCap: an artifacts list longer than
+// the caches' cap is an ordinary answer, summed over every page, not a
+// paging fault.
+func TestFetchStorage_artifactsPastTheCacheCap(t *testing.T) {
+	t.Parallel()
+
+	path := storageBase + "/actions/artifacts"
+	pages := emptyStorage()
+	last := maxCachePages + 1
+	for page := 1; page <= last; page++ {
+		key := path
+		if page > 1 {
+			key += "#" + strconv.Itoa(page)
+		}
+		p := storagePage{body: `{"total_count":1,"artifacts":[{"size_in_bytes":2,"expired":false}]}`}
+		if page < last {
+			p.link = `<https://api.github.com` + path + `?per_page=100&page=` + strconv.Itoa(page+1) + `>; rel="next"`
+		}
+		pages[key] = p
+	}
+	c, _ := newStorageClient(t, pages)
 
 	var got audit.ActionsStorage
-	err := c.fetchStorage(t.Context(), storageBase, &got)
-	if err == nil {
-		t.Fatal("fetchStorage() error = nil, want a paging error")
+	if err := c.fetchStorage(t.Context(), storageBase, &got); err != nil {
+		t.Fatalf("fetchStorage() error = %v, want nil", err)
 	}
-	if n := seen(storageBase + "/actions/artifacts"); n != maxStoragePages {
-		t.Errorf("artifacts asked for %d times, want %d", n, maxStoragePages)
+	if got.ArtifactCount != last || got.ArtifactBytes != int64(2*last) {
+		t.Errorf("artifacts = %d, %d B, want %d, %d B", got.ArtifactCount, got.ArtifactBytes, last, 2*last)
 	}
 }

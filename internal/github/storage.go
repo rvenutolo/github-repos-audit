@@ -15,12 +15,24 @@ import (
 // API's maximum, so most repositories answer each list in one request.
 const storagePageSize = "100"
 
-// maxStoragePages stops a paging fault from looping forever. At the page size
-// above it is ten thousand entries, far past what a repository's 10 GB cache
-// limit holds and past any artifact retention this account uses; a list that
-// long is an error rather than a sum taken over the pages read so far, which
-// would be a smaller figure presented as the whole.
-const maxStoragePages = 100
+// maxCachePages and maxArtifactPages stop a paging fault from looping
+// forever. A list longer than its cap is an error rather than a sum taken
+// over the pages read so far, which would be a smaller figure presented as
+// the whole, so each cap sits well past any real list, and the two differ
+// because the lists grow differently.
+//
+// Caches are bounded by the repository's cache storage limit: GitHub evicts
+// past it, so ten thousand entries at the page size above is far more than a
+// 10 GB limit holds. Artifacts are bounded only by their retention period,
+// and a repository whose CI uploads on every run accumulates them by the
+// thousand, so their cap is a hundred thousand. Reaching it costs a thousand
+// requests for that one repository, a fifth of a token's hourly allowance,
+// which is still the better answer than aborting an account's whole run over
+// one busy repository.
+const (
+	maxCachePages    = 100
+	maxArtifactPages = 1000
+)
 
 // bytesPerGB converts the storage limit, which GitHub gives in gigabytes, to
 // bytes. Decimal, as every size this tool reports is.
@@ -77,7 +89,7 @@ type actionsArtifact struct {
 // usage of zero.
 func (c *Client) fetchStorage(ctx context.Context, base string, s *audit.ActionsStorage) error {
 	var caches []audit.Cache
-	err := getPages(ctx, c, base+"/actions/caches?per_page="+storagePageSize, func(p *actionsCaches) {
+	err := getPages(ctx, c, base+"/actions/caches?per_page="+storagePageSize, maxCachePages, func(p *actionsCaches) {
 		for _, e := range p.ActionsCaches {
 			caches = append(caches, audit.Cache{
 				Key: e.Key, Ref: e.Ref, SizeBytes: e.SizeInBytes, CreatedAt: e.CreatedAt.UTC(),
@@ -112,7 +124,7 @@ func (c *Client) fetchStorage(ctx context.Context, base string, s *audit.Actions
 	}
 	s.CacheLimitBytes = limit.MaxCacheSizeGB * bytesPerGB
 
-	return getPages(ctx, c, base+"/actions/artifacts?per_page="+storagePageSize, func(p *actionsArtifacts) {
+	return getPages(ctx, c, base+"/actions/artifacts?per_page="+storagePageSize, maxArtifactPages, func(p *actionsArtifacts) {
 		for _, a := range p.Artifacts {
 			if a.Expired {
 				continue
@@ -124,15 +136,15 @@ func (c *Client) fetchStorage(ctx context.Context, base string, s *audit.Actions
 }
 
 // getPages reads path and every page its Link header leads to, handing each
-// decoded page to visit. The Link GitHub sends for these lists names the
+// decoded page to visit, and fails rather than read past maxPages. The Link GitHub sends for these lists names the
 // repository by numeric id (/repositories/{id}/…) rather than by owner and
 // name; nextPage keeps that path and drops the host, so the request still
 // goes to the client's own base URL.
-func getPages[P any](ctx context.Context, c *Client, path string, visit func(*P)) error {
+func getPages[P any](ctx context.Context, c *Client, path string, maxPages int, visit func(*P)) error {
 	first := path
 	for page := 1; path != ""; page++ {
-		if page > maxStoragePages {
-			return fmt.Errorf("%s: more than %d pages", first, maxStoragePages)
+		if page > maxPages {
+			return fmt.Errorf("%s: more than %d pages", first, maxPages)
 		}
 		var p P
 		resp, err := c.getJSON(ctx, path, &p)
