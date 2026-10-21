@@ -99,13 +99,15 @@ func formatBytes(b int64) string {
 
 // actionOwnedPrefixes are the key prefixes common actions save their own
 // state under: harden-runner's egress policy cache, the Determinate Nix
-// installer's download, and the gitleaks and Trivy databases. They are
-// neither the tool's Go and Nix caches nor something a workflow author named,
-// so they are listed apart from the unrecognised caches: their size is set by
-// the action, and the only lever over it is whether the action runs at all.
+// installer's download, and the gitleaks and Trivy databases, the latter
+// under both "cache-trivy-", as trivy-action saves them, and "trivy-". They
+// are neither the tool's Go and Nix caches nor something a workflow author
+// named, so they are listed apart from the unrecognised caches: their size
+// is set by the action, and the only lever over it is whether the action
+// runs at all.
 // A function rather than a variable, so nothing can append to the list.
 func actionOwnedPrefixes() []string {
-	return []string{"harden-runner-cacheKey", "determinatesystem-nix-installer-", "gitleaks-", "trivy-"}
+	return []string{"harden-runner-cacheKey", "determinatesystem-nix-installer-", "gitleaks-", "cache-trivy-", "trivy-"}
 }
 
 // toolCache reports whether a key is under one of the prefixes the go_cache

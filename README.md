@@ -497,8 +497,8 @@ repository in report order, and a list with no entries is left out.
   storage limit with the caches that are checked.
 - **Action-owned caches** — caches common actions save for themselves,
   under a key starting `harden-runner-cacheKey`,
-  `determinatesystem-nix-installer-`, `gitleaks-` or `trivy-`, listed the
-  same way. Their size is the action's doing, not the workflow's.
+  `determinatesystem-nix-installer-`, `gitleaks-`, `cache-trivy-` or
+  `trivy-`, listed the same way. Their size is the action's doing, not the workflow's.
 - **Pull-request caches** — how many `go-` and `nix-` caches pull-request
   refs saved, and their total size (`3 caches · 302 MB`). A pull request's
   cache never serves the default branch, which is why go_cache and

@@ -73,6 +73,29 @@ func TestCacheLists_classifiesByPrefix(t *testing.T) {
 	}
 }
 
+// TestCacheLists_trivyActionKeys: trivy-action saves its databases under
+// keys starting "cache-trivy-", which are action-owned like the shorter
+// "trivy-" form, not unrecognised.
+func TestCacheLists_trivyActionKeys(t *testing.T) {
+	t.Parallel()
+
+	alpha := fixture("alpha", "tools")
+	alpha.Storage.Caches = []audit.Cache{
+		mainCache("cache-trivy-01", 61_000_000, cacheNow),
+		mainCache("cache-other-01", 1_000, cacheNow),
+	}
+
+	rep := cacheListsReport(t, alpha)
+	wantOwned := []rules.RepoList{{Repo: "alpha", Items: []string{"cache-trivy-01 (61 MB)"}}}
+	if diff := cmp.Diff(wantOwned, rep.ActionOwnedCaches); diff != "" {
+		t.Errorf("ActionOwnedCaches differs (-want +got):\n%s", diff)
+	}
+	wantUnrecognised := []rules.RepoList{{Repo: "alpha", Items: []string{"cache-other-01 (1 KB)"}}}
+	if diff := cmp.Diff(wantUnrecognised, rep.UnrecognisedCaches); diff != "" {
+		t.Errorf("UnrecognisedCaches differs (-want +got):\n%s", diff)
+	}
+}
+
 // TestCacheLists_noCachesNoLists: a repository with no caches outside the
 // tool's prefixes is on neither key list, and none at all leaves every list
 // empty.
