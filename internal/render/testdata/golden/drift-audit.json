@@ -21,6 +21,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "hermetic_nix": "not_required",
       "homepage": "public_published",
       "justfile": "required",
       "last_push": "info",
@@ -68,6 +69,7 @@
       "git_cliff": "not_required",
       "git_identity": "not_required",
       "gitignore": "required",
+      "hermetic_nix": "not_required",
       "homepage": "public_published",
       "justfile": "not_required",
       "last_push": "info",
@@ -115,6 +117,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "hermetic_nix": "not_required",
       "homepage": "public_published",
       "justfile": "required",
       "last_push": "info",
@@ -162,6 +165,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "hermetic_nix": "not_required",
       "homepage": "public_published",
       "justfile": "required",
       "last_push": "info",
@@ -209,6 +213,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "hermetic_nix": "required",
       "homepage": "public_published",
       "justfile": "required",
       "last_push": "info",
@@ -256,6 +261,7 @@
       "git_cliff": "not_required",
       "git_identity": "required",
       "gitignore": "required",
+      "hermetic_nix": "required",
       "homepage": "public_published",
       "justfile": "required",
       "last_push": "info",
@@ -291,6 +297,10 @@
     "accepted": [
       "Pat Example <12345+pat@users.noreply.github.com>"
     ]
+  },
+  "hermetic": {
+    "flake": "github:gh-owner/lint-flake",
+    "lint": "check-workflow-hermetic"
   },
   "repos": [
     {
@@ -338,6 +348,21 @@
       "renovate": {
         "min_release_age": "7 days",
         "min_release_age_source": "renovate.json"
+      },
+      "flake": {
+        "inputs": [
+          "github:NixOS/nixpkgs/nixos-unstable",
+          "github:gh-owner/lint-flake"
+        ],
+        "has_lock": true,
+        "locked_inputs": [
+          "github:gh-owner/lint-flake",
+          "github:nixos/nixpkgs"
+        ],
+        "names_lint": true,
+        "gate_files": [
+          "run-all-checks"
+        ]
       },
       "ci_state": "SUCCESS",
       "releases": {
@@ -450,6 +475,21 @@
       "renovate": {
         "min_release_age": "7 days",
         "min_release_age_source": "renovate.json"
+      },
+      "flake": {
+        "inputs": [
+          "github:NixOS/nixpkgs/nixos-unstable",
+          "github:gh-owner/lint-flake"
+        ],
+        "has_lock": true,
+        "locked_inputs": [
+          "github:gh-owner/lint-flake",
+          "github:nixos/nixpkgs"
+        ],
+        "names_lint": true,
+        "gate_files": [
+          "run-all-checks"
+        ]
       },
       "ci_state": "SUCCESS",
       "releases": {

@@ -25,6 +25,7 @@ Hand-written prose.
 - **Direct push to the default branch allowed** (1) — go-linter
 - **Direct push to the default branch blocked** (1) — cipher-lib
 - **Secret scanning off** (1) — cipher-lib
+- **Hermetic lint not wired in** (1) — mixedCase-flake
 
 ## Metadata
 
@@ -79,6 +80,16 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [go-linter](https://github.com/gh-owner/go-linter)                   | n/a       | n/a           | n/a        | n/a                                | n/a       |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 | [web-app](https://github.com/gh-owner/web-app)                       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+
+## Nix
+
+| Repository                                                           | Hermetic                       |
+| -------------------------------------------------------------------- | ------------------------------ |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a                            |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓                              |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a                            |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✗ not in devShell, not in gate |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a                            |
 
 ## Policy
 

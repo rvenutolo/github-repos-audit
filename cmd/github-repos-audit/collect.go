@@ -98,7 +98,7 @@ func collect(
 	}
 	warnDrift(ctx, logger, drift)
 
-	repos, err := client.Collect(ctx, configured, github.Probe{})
+	repos, err := client.Collect(ctx, configured, github.Probe{Lint: cfg.Hermetic.Lint})
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +119,7 @@ func collect(
 		Owner:       client.Owner(),
 		Types:       cfg.Types,
 		Identity:    cfg.Identity,
+		Hermetic:    cfg.Hermetic,
 		Repos:       repos,
 		Drift:       drift,
 	}

@@ -20,11 +20,12 @@ import (
 
 // typeTable writes one complete [types.<name>] table: every check at a word it
 // accepts — required, blocked for direct push, info for the value-only checks,
-// "7 days" for the release-age threshold, not_required for git_identity —
-// with set replacing words (a key that is not a check is written too) and drop
-// leaving checks out. git_identity defaults to not_required because most cases
-// are about something else, and a judged git_identity would make each of them
-// carry an [identity] table it has no interest in.
+// "7 days" for the release-age threshold, not_required for git_identity and
+// hermetic_nix — with set replacing words (a key that is not a check is
+// written too) and drop leaving checks out. git_identity and hermetic_nix
+// default to not_required because most cases are about something else, and a
+// judged one would make each of them carry an [identity] or [hermetic] table
+// it has no interest in.
 func typeTable(name string, set map[string]string, drop ...string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[types.%s]\n", name)
@@ -41,7 +42,7 @@ func typeTable(name string, set map[string]string, drop ...string) string {
 			word = "info"
 		case c.Threshold():
 			word = "7 days"
-		case c == rules.CheckGitIdentity:
+		case c == rules.CheckGitIdentity, c == rules.CheckHermeticNix:
 			word = rules.OverrideNotRequired
 		}
 		if w, ok := set[key]; ok {
@@ -203,6 +204,103 @@ func TestParse_anEmptyIdentityTableIsPresent(t *testing.T) {
 	}
 }
 
+// hermeticTable is the fixture [hermetic] table: a flake name
+// internal/fixturevocab allows, and the contract's lint command name.
+const hermeticTable = "[hermetic]\nflake = \"github:gh-owner/lint-flake\"\nlint = \"check-workflow-hermetic\"\n\n"
+
+// hermeticTools is a tools type that judges hermetic_nix.
+var hermeticTools = typeTable("tools", map[string]string{"hermetic_nix": rules.OverrideRequired})
+
+func TestParse_keepsTheHermeticStandard(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Parse(strings.NewReader(hermeticTools + hermeticTable + "[repos.alpha]\ntype = \"tools\"\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v, want nil", err)
+	}
+	want := audit.HermeticStandard{Flake: "github:gh-owner/lint-flake", Lint: "check-workflow-hermetic"}
+	if diff := cmp.Diff(want, cfg.Hermetic); diff != "" {
+		t.Errorf("Parse() hermetic mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestParse_hermeticRequiredWhenJudged: any word but not_required judges
+// hermetic_nix, info included, and so does an override on one repository;
+// each needs the [hermetic] table, and with it parses.
+func TestParse_hermeticRequiredWhenJudged(t *testing.T) {
+	t.Parallel()
+
+	for name, in := range map[string]string{
+		"required": hermeticTools + "[repos.alpha]\ntype = \"tools\"\n",
+		"info":     typeTable("tools", map[string]string{"hermetic_nix": "info"}) + "[repos.alpha]\ntype = \"tools\"\n",
+		"public":   typeTable("tools", map[string]string{"hermetic_nix": "public"}) + "[repos.alpha]\ntype = \"tools\"\n",
+		"override": typeTable("tools", nil) + "[repos.alpha]\ntype = \"tools\"\noverrides = { hermetic_nix = \"required\" }\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Parse(strings.NewReader(in))
+			if err == nil || !errors.Is(err, config.ErrInvalid) ||
+				!strings.Contains(err.Error(), "hermetic_nix is judged but repos.toml has no [hermetic] table") {
+				t.Errorf("Parse(no table) error = %v, want an ErrInvalid naming the missing [hermetic] table", err)
+			}
+			if _, err := config.Parse(strings.NewReader(hermeticTable + in)); err != nil {
+				t.Errorf("Parse(with table) error = %v, want nil", err)
+			}
+		})
+	}
+}
+
+// TestParse_hermeticUnusedIsError: a [hermetic] table nothing judges is a
+// dead setting, refused like a dead override.
+func TestParse_hermeticUnusedIsError(t *testing.T) {
+	t.Parallel()
+
+	in := typeTable("tools", nil) + hermeticTable + "[repos.alpha]\ntype = \"tools\"\n"
+	_, err := config.Parse(strings.NewReader(in))
+	if err == nil || !errors.Is(err, config.ErrInvalid) ||
+		!strings.Contains(err.Error(), "[hermetic] is set but no type or override judges hermetic_nix") {
+		t.Errorf("Parse() error = %v, want an ErrInvalid naming the unused [hermetic] table", err)
+	}
+}
+
+// TestParse_hermeticMissingKey: both keys are needed — the flake to find in
+// flake.nix and flake.lock, the lint to find in flake.nix and the gate — and
+// an empty table is a table written wrong, so its errors name the keys
+// rather than claiming the table is missing.
+func TestParse_hermeticMissingKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		table string
+		want  []string
+	}{
+		{"no flake", "[hermetic]\nlint = \"check-workflow-hermetic\"\n\n", []string{"hermetic.flake: missing"}},
+		{"empty flake", "[hermetic]\nflake = \"\"\nlint = \"check-workflow-hermetic\"\n\n", []string{"hermetic.flake: missing"}},
+		{"no lint", "[hermetic]\nflake = \"github:gh-owner/lint-flake\"\n\n", []string{"hermetic.lint: missing"}},
+		{"empty table", "[hermetic]\n\n", []string{"hermetic.flake: missing", "hermetic.lint: missing"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Parse(strings.NewReader(hermeticTools + tc.table + "[repos.alpha]\ntype = \"tools\"\n"))
+			if err == nil || !errors.Is(err, config.ErrInvalid) {
+				t.Fatalf("Parse() error = %v, want an ErrInvalid", err)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Parse() error = %q, want it to contain %q", err.Error(), want)
+				}
+			}
+			if strings.Contains(err.Error(), "no [hermetic] table") {
+				t.Errorf("Parse() error = %q, want no claim that the table is missing", err.Error())
+			}
+		})
+	}
+}
+
 func TestParse_keepsTheTypesTable(t *testing.T) {
 	t.Parallel()
 
@@ -221,7 +319,7 @@ func TestParse_keepsTheTypesTable(t *testing.T) {
 				entries[c.String()] = "info"
 			case c.Threshold():
 				entries[c.String()] = "7 days"
-			case c == rules.CheckGitIdentity:
+			case c == rules.CheckGitIdentity, c == rules.CheckHermeticNix:
 				entries[c.String()] = rules.OverrideNotRequired
 			default:
 				entries[c.String()] = rules.OverrideRequired
@@ -363,6 +461,11 @@ var rejectedFiles = []struct {
 		name:     "an [identity] table nothing judges",
 		in:       typeTable("tools", nil) + identityTable + "[repos.alpha]\ntype = \"tools\"\n",
 		contains: "[identity] is set but no type or override judges git_identity",
+	},
+	{
+		name:     "an unknown key under [hermetic]",
+		in:       hermeticTools + "[hermetic]\nflake = \"github:gh-owner/lint-flake\"\nlint = \"check-workflow-hermetic\"\nurl = \"x\"\n\n[repos.alpha]\ntype = \"tools\"\n",
+		contains: "hermetic.url",
 	},
 	{
 		name:     "an unknown key under [identity]",

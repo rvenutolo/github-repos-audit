@@ -34,6 +34,10 @@
       "description": "repos.toml's [identity] table: the identity git_identity holds the account holder's commits to. Absent when nothing judges git_identity, which is also the only case repos.toml may omit the table.",
       "$ref": "#/$defs/identity_standard"
     },
+    "hermetic": {
+      "description": "repos.toml's [hermetic] table: the flake and lint hermetic_nix looked for. Absent when nothing judges hermetic_nix, which is also the only case repos.toml may omit the table.",
+      "$ref": "#/$defs/hermetic_standard"
+    },
     "config_drift": {
       "description": "Where repos.toml and the account disagree about which repositories exist. Absent when they agree.",
       "$ref": "#/$defs/config_drift"
@@ -140,6 +144,7 @@
               "direct_push",
               "secret_scanning",
               "vuln_reporting",
+              "hermetic_nix",
               "last_release_age",
               "last_push",
               "open_prs",
@@ -292,6 +297,7 @@
         "direct_push",
         "secret_scanning",
         "vuln_reporting",
+        "hermetic_nix",
         "last_release_age",
         "last_push",
         "open_prs",
@@ -339,6 +345,7 @@
         "direct_push": { "$ref": "#/$defs/direct_push" },
         "secret_scanning": { "$ref": "#/$defs/expectation" },
         "vuln_reporting": { "$ref": "#/$defs/expectation" },
+        "hermetic_nix": { "$ref": "#/$defs/expectation" },
         "last_release_age": { "$ref": "#/$defs/info_expectation" },
         "last_push": { "$ref": "#/$defs/info_expectation" },
         "open_prs": { "$ref": "#/$defs/info_expectation" },
@@ -950,6 +957,16 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         }
+      }
+    },
+    "hermetic_standard": {
+      "description": "The hermetic-lint standard. flake is the input URL as flake.nix writes it, such as \"github:<owner>/<repo>\"; lint is the lint's command name, which flake.nix and a gate file are expected to mention.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flake", "lint"],
+      "properties": {
+        "flake": { "type": "string", "minLength": 1 },
+        "lint": { "type": "string", "minLength": 1 }
       }
     },
     "ruleset": {

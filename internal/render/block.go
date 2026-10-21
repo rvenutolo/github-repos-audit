@@ -51,6 +51,7 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	writeSection(&b, metadataSection(rep))
 	writeSection(&b, treeSection(rep))
 	writeSection(&b, filePathsSection(rep))
+	writeSection(&b, nixSection(rep))
 	writeSection(&b, policySection(rep))
 	writeSection(&b, activitySection(rep, at))
 	writeSection(&b, ciTimingSection(rep))
@@ -248,6 +249,20 @@ func filePathsSection(rep *rules.Report) string {
 		return ""
 	}
 	return "## File paths\n\n" + filePathsIntro + "\n\n" + strings.TrimSuffix(b.String(), "\n")
+}
+
+// nixSection shows how each repository uses Nix beyond having a flake.nix,
+// which the Tree section already reports.
+func nixSection(rep *rules.Report) string {
+	t := newTable("Repository", "Hermetic")
+	for i := range rep.Repos {
+		r := &rep.Repos[i]
+		t.add(
+			repoLink(rep.Owner, r.Repo.Name),
+			cell(r.Cell(rules.CheckHermeticNix)),
+		)
+	}
+	return heading("Nix", t)
 }
 
 func policySection(rep *rules.Report) string {

@@ -37,6 +37,13 @@ func fixtureIdentity() audit.IdentityStandard {
 	}
 }
 
+// fixtureHermetic is the [hermetic] table standard-types.toml declares, which
+// every snapshot judged against those types needs once any of them judges
+// hermetic_nix, as fixtureIdentity is for git_identity.
+func fixtureHermetic() audit.HermeticStandard {
+	return audit.HermeticStandard{Flake: "github:gh-owner/lint-flake", Lint: "check-workflow-hermetic"}
+}
+
 // renderedAt is the instant every golden file is rendered against, so the
 // relative dates in them are fixed rather than tied to the clock.
 var renderedAt = time.Date(2026, 9, 5, 7, 30, 0, 0, time.UTC)
@@ -72,6 +79,15 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			SecurityPolicy: "SECURITY.md",
 			PRTemplate:     ".github/pull_request_template.md",
 			Commitlint:     ".commitlintrc.yml",
+		},
+		// The fixture [hermetic] standard's flake, declared, locked, named in
+		// flake.nix and wired into the gate.
+		Flake: audit.Flake{
+			Inputs:       []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
+			HasLock:      true,
+			LockedInputs: []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
+			NamesLint:    true,
+			GateFiles:    []string{"run-all-checks"},
 		},
 		// The canonical identity, and a bot's that is never the owner's.
 		Identities: []audit.Identity{
@@ -118,7 +134,9 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // minimum release age that falls short and another that is unresolved, and
 // git identities that are mixed (beside an accepted one), canonical beside
 // an accepted one, consistently non-canonical, only someone else's, and
-// absent altogether.
+// absent altogether. The published software repository has declared and
+// locked the hermetic-lint flake without wiring the lint in, so the Nix
+// section carries a fail beside the passes.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -152,6 +170,9 @@ func fullSnapshot() *audit.Snapshot {
 	soft.Settings.PrivateVulnerabilityReporting = new(true)
 	soft.Settings.ActionsAccessLevel = ""
 	soft.Settings.HasProjects = true // the one deviation on projects
+	// It declares and locks the lint flake but has not wired the lint in yet.
+	soft.Flake.NamesLint = false
+	soft.Flake.GateFiles = nil
 	// Its history switched identity: mixed. The noreply identity GitHub records
 	// on web-UI merges beside them is accepted and does not count toward it.
 	soft.Identities = []audit.Identity{
@@ -234,6 +255,7 @@ func fullSnapshot() *audit.Snapshot {
 		Owner:       "gh-owner",
 		Types:       standardTypes(),
 		Identity:    fixtureIdentity(),
+		Hermetic:    fixtureHermetic(),
 		Repos:       []audit.Repo{soft, content, tools, empty, cfg},
 	}
 }
@@ -265,6 +287,7 @@ func driftSnapshot() *audit.Snapshot {
 		Owner:       "gh-owner",
 		Types:       standardTypes(),
 		Identity:    fixtureIdentity(),
+		Hermetic:    fixtureHermetic(),
 		Repos:       []audit.Repo{baseRepo("alpha", "tools"), baseRepo("bravo", "tools")},
 		Drift: audit.ConfigDrift{
 			Unconfigured: []string{"hook-guard"},

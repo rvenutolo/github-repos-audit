@@ -59,6 +59,7 @@ const (
 	CheckDirectPush
 	CheckSecretScanning
 	CheckVulnReporting
+	CheckHermeticNix
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
@@ -111,6 +112,7 @@ var checkNames = [...]string{
 	CheckDirectPush:            "direct_push",
 	CheckSecretScanning:        "secret_scanning",
 	CheckVulnReporting:         "vuln_reporting",
+	CheckHermeticNix:           "hermetic_nix",
 	CheckLastReleaseAge:        "last_release_age",
 	CheckLastPush:              "last_push",
 	CheckOpenPRs:               "open_prs",

@@ -364,6 +364,8 @@ type fakeCollector struct {
 	// asked is the names the last Collect call was given; nil if Collect was
 	// never called. A test reads it to learn what the program chose to read.
 	asked []string
+	// probe is what the last Collect call was told to look for.
+	probe github.Probe
 }
 
 func (f *fakeCollector) Discover(context.Context) ([]string, error) {
@@ -372,8 +374,9 @@ func (f *fakeCollector) Discover(context.Context) ([]string, error) {
 
 // Collect answers, like the real client, only for the names it is given: a
 // repository the program did not ask about is not read.
-func (f *fakeCollector) Collect(ctx context.Context, names []string, _ github.Probe) ([]audit.Repo, error) {
+func (f *fakeCollector) Collect(ctx context.Context, names []string, probe github.Probe) ([]audit.Repo, error) {
 	f.asked = slices.Clone(names)
+	f.probe = probe
 	repos := make([]audit.Repo, 0, len(names))
 	for _, r := range f.repos {
 		if slices.Contains(names, r.Name) {
@@ -563,6 +566,33 @@ func TestRunJSON_recordsTheIdentityStandard(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, snap.Identity); diff != "" {
 		t.Errorf("snapshot identity mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestRunJSON_recordsTheHermeticStandard: the [hermetic] table reaches the
+// snapshot, so audit.json says which flake hermetic_nix was judged by, and
+// its lint name reaches the collector, which records where the files name it.
+func TestRunJSON_recordsTheHermeticStandard(t *testing.T) {
+	t.Parallel()
+
+	_, configPath := scratchProject(t, scratchConfig)
+	fake := healthyFake()
+	var stdout, stderr bytes.Buffer
+	if err := runJSON(t.Context(), []string{"--config", configPath},
+		noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock); err != nil {
+		t.Fatalf("runJSON() error = %v, want nil", err)
+	}
+	var snap audit.Snapshot
+	if err := json.Unmarshal(stdout.Bytes(), &snap); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v", err)
+	}
+	// standard-types.toml's [hermetic] table, which scratchProject copies.
+	want := audit.HermeticStandard{Flake: "github:gh-owner/lint-flake", Lint: "check-workflow-hermetic"}
+	if diff := cmp.Diff(want, snap.Hermetic); diff != "" {
+		t.Errorf("snapshot hermetic mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(github.Probe{Lint: want.Lint}, fake.probe); diff != "" {
+		t.Errorf("Collect probe mismatch (-want +got):\n%s", diff)
 	}
 }
 

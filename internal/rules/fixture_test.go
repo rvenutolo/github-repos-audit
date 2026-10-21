@@ -62,6 +62,15 @@ func fixture(name string, typ rules.Type) audit.Repo {
 			PRTemplate:     ".github/pull_request_template.md",
 			Commitlint:     ".commitlintrc.yml",
 		},
+		// The fixture [hermetic] standard's flake, declared, locked, named in
+		// flake.nix and wired into the gate.
+		Flake: audit.Flake{
+			Inputs:       []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
+			HasLock:      true,
+			LockedInputs: []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
+			NamesLint:    true,
+			GateFiles:    []string{"run-all-checks"},
+		},
 		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
 		CIState:  "SUCCESS",
 		Releases: audit.Releases{
@@ -121,7 +130,7 @@ func published(r audit.Repo) audit.Repo {
 
 // evaluateOne runs one repository through the rules and returns its cells.
 func evaluateOne(r audit.Repo) (map[rules.Check]rules.Cell, error) {
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}})
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +146,13 @@ func fixtureIdentity() audit.IdentityStandard {
 		Match:     " Example <",
 		Accepted:  []string{"Pat Example <12345+pat@users.noreply.github.com>"},
 	}
+}
+
+// fixtureHermetic is the [hermetic] table standard-types.toml declares, which
+// every snapshot judged against those types needs once any of them judges
+// hermetic_nix, as fixtureIdentity is for git_identity.
+func fixtureHermetic() audit.HermeticStandard {
+	return audit.HermeticStandard{Flake: "github:gh-owner/lint-flake", Lint: "check-workflow-hermetic"}
 }
 
 // toolsRepos builds several private `tools` fixtures at once, which is the
@@ -160,12 +176,12 @@ func publicToolsRepos(names ...string) []audit.Repo {
 
 // table builds one complete type table: every check listed at a word it
 // accepts — required, blocked for direct push, info for the value-only checks,
-// "7 days" for the release-age threshold, not_required for git_identity
-// and the file-path checks —
-// with set overriding individual words. git_identity defaults to not_required
-// because most tests are about other checks, and a judged git_identity would
-// make each of them declare an identity standard it has no interest in. A key in set that is not a check is
-// added as well, so a test can build an unknown-check table the same way.
+// "7 days" for the release-age threshold, not_required for git_identity,
+// hermetic_nix and the file-path checks — with set overriding individual
+// words. git_identity and hermetic_nix default to not_required because most
+// tests are about other checks, and a judged one would make each of them
+// declare a standard it has no interest in. A key in set that is not a check
+// is added as well, so a test can build an unknown-check table the same way.
 func table(set map[string]string) map[string]string {
 	out := make(map[string]string, len(rules.Checks())+len(set))
 	for _, c := range rules.Checks() {
@@ -176,7 +192,7 @@ func table(set map[string]string) map[string]string {
 			out[c.String()] = "info"
 		case c.Threshold():
 			out[c.String()] = "7 days"
-		case c == rules.CheckGitIdentity, c.PathCheck() && c != rules.CheckJustfile && c != rules.CheckRenovate:
+		case c == rules.CheckGitIdentity, c == rules.CheckHermeticNix, c.PathCheck() && c != rules.CheckJustfile && c != rules.CheckRenovate:
 			out[c.String()] = rules.OverrideNotRequired
 		default:
 			out[c.String()] = rules.OverrideRequired

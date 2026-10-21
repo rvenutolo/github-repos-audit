@@ -4,8 +4,9 @@
 #
 # The defect is the dead override on [repos.config-files] below. Everything
 # else is a copy of repos.toml in this directory, except that no type judges
-# git_identity, so it needs no [identity] table: the dead override stays the
-# one thing wrong with it.
+# git_identity, so it needs no [identity] table; no type judges hermetic_nix
+# in either file, so neither has a [hermetic] table. The dead override stays
+# the one thing wrong with it.
 #
 # [types.<name>] a category of repository and what it is expected to have.
 #                Every type lists every check, each set to required,
@@ -20,6 +21,11 @@
 #                identity your commits should carry, match says which
 #                identities are yours. Required once any type or override
 #                judges git_identity, and refused when nothing does.
+#
+# [hermetic]     the hermetic-lint standard, for hermetic_nix: flake is the
+#                input URL flake.nix declares and lint the lint's command
+#                name. Required once any type or override judges
+#                hermetic_nix, and refused when nothing does.
 #
 # [repos.<name>]
 # type      which [types.*] table the repository is judged against
@@ -73,6 +79,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
 last_release_age = "info"
 last_push = "info"
 open_prs = "info"
@@ -120,6 +127,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
@@ -167,6 +175,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
@@ -214,6 +223,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "not_required"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
@@ -262,6 +272,7 @@ tag_ruleset = "required"
 direct_push = "allowed"
 secret_scanning = "public"
 vuln_reporting = "not_required"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
@@ -309,6 +320,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"

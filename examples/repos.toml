@@ -20,6 +20,12 @@
 #                which identities are yours. Required once any type or
 #                override judges git_identity, and refused when nothing does.
 #
+# [hermetic]     the hermetic-lint standard, for hermetic_nix: flake is the
+#                input URL flake.nix declares (github:gh-owner/lint-flake,
+#                say) and lint the lint's command name. Required once any
+#                type or override judges hermetic_nix, and refused when
+#                nothing does; nothing here judges it, so this file has none.
+#
 # [repos.<name>]
 # type      which [types.*] table the repository is judged against
 # published meant for someone else to find and use; default false
@@ -73,6 +79,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
 last_release_age = "info"
 last_push = "info"
 open_prs = "info"
@@ -120,6 +127,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
@@ -167,6 +175,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
@@ -214,6 +223,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "not_required"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
@@ -262,6 +272,7 @@ tag_ruleset = "required"
 direct_push = "allowed"
 secret_scanning = "public"
 vuln_reporting = "not_required"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"
@@ -309,6 +320,7 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
+hermetic_nix = "not_required"
 last_release_age = "not_required"
 last_push = "info"
 open_prs = "info"

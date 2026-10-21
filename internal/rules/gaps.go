@@ -53,6 +53,7 @@ var gapLabels = map[Check]string{
 	CheckTagRuleset:            "No tag ruleset",
 	CheckSecretScanning:        "Secret scanning off",
 	CheckVulnReporting:         "Private vulnerability reporting off",
+	CheckHermeticNix:           "Hermetic lint not wired in",
 }
 
 // communityFiles names the three community health files, in the order the

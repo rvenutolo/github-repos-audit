@@ -166,6 +166,29 @@ func isFakeFileText(v any) bool {
 	return true
 }
 
+// lockedRef is a flake reference as audit.json records one: flake.nix's
+// input URL as written, or flake.lock's GitHub node lower-cased.
+var lockedRef = regexp.MustCompile(`^github:([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)(?:/[^?#]*)?$`)
+
+// isFakeFlakeRef accepts a recorded flake reference naming gh-owner and a fake
+// repository, or nixpkgs, in any letter case: flake.lock's form is
+// lower-cased, so "github:gh-owner/mixedcase-flake" is still the fake name.
+func isFakeFlakeRef(v any) bool {
+	s, ok := str(v)
+	if !ok {
+		return false
+	}
+	m := lockedRef.FindStringSubmatch(s)
+	if m == nil {
+		return false
+	}
+	if strings.EqualFold(m[1]+"/"+m[2], "NixOS/nixpkgs") {
+		return true
+	}
+	return strings.EqualFold(m[1], fakeOwner) &&
+		slices.ContainsFunc(fakeRepos, func(r string) bool { return strings.EqualFold(r, m[2]) })
+}
+
 // pipeDescription is the one deliberate escaping fixture: a description
 // containing a pipe character, which proves the Markdown renderer escapes
 // table cells correctly. It names no account.
@@ -436,6 +459,12 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^identity\.canonical$`), func(v any) bool { return v == "Pat Example <pat@example.com>" }, "the fixture canonical identity"},
 	{regexp.MustCompile(`^identity\.match$`), func(v any) bool { return v == " Example <" }, "the fixture identity match"},
 	{regexp.MustCompile(`^identity\.accepted\[\]$`), func(v any) bool { return v == "Pat Example <12345+pat@users.noreply.github.com>" }, "the fixture accepted identity"},
+	// The [hermetic] table names the account and a repository of it in a
+	// real report, so a golden may carry only the fixture standard.
+	{regexp.MustCompile(`^hermetic\.flake$`), func(v any) bool { return v == "github:gh-owner/lint-flake" }, "the fixture hermetic flake"},
+	{regexp.MustCompile(`^hermetic\.lint$`), func(v any) bool { return v == "check-workflow-hermetic" }, "the fixture hermetic lint"},
+	{regexp.MustCompile(`^repos\[\]\.flake\.(inputs|locked_inputs)\[\]$`), isFakeFlakeRef, "github:gh-owner/<fake> or nixpkgs"},
+	{regexp.MustCompile(`^repos\[\]\.flake\.gate_files\[\]$`), matches(`^(run-all-checks|justfile|\.justfile|Justfile|\.ci/[A-Za-z0-9._-]+)$`), "a gate file path"},
 	// Recorded CI facts: commits carry the synthetic oid, dates are
 	// timestamps, and a job label is a generic "<workflow> / <job>" pair like
 	// the API fixtures'.
@@ -450,6 +479,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.seconds`,
 		`repos\[\]\.files\.[a-z_]+`,
+		`repos\[\]\.flake\.(has_lock|names_lint)`,
 		`repos\[\]\.overrides\.[a-z_]+`,
 		`repos\[\]\.releases\.(drafts|total)`,
 		// A duration such as "7 days" is never account data.
@@ -898,6 +928,33 @@ func TestCheck_rejectsAForeignIdentityStandard(t *testing.T) {
 		}
 	}
 	fixture := `{"identity": {"canonical": "Pat Example <pat@example.com>", "match": " Example <", "accepted": ["Pat Example <12345+pat@users.noreply.github.com>"]}}`
+	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
+		t.Errorf("check(the fixture standard) = %q, want no problem", got)
+	}
+}
+
+// TestCheck_rejectsAForeignHermeticStandard: a golden audit.json may record
+// only the fixture [hermetic] table and flake references to the fake
+// vocabulary, never an account's own flake.
+func TestCheck_rejectsAForeignHermeticStandard(t *testing.T) {
+	t.Parallel()
+
+	for _, doc := range []string{
+		`{"hermetic": {"flake": "github:someone/real-flake", "lint": "check-workflow-hermetic"}}`,
+		`{"hermetic": {"flake": "github:gh-owner/lint-flake", "lint": "someone-lint"}}`,
+		`{"repos": [{"flake": {"inputs": ["github:someone/lint-flake"]}}]}`,
+		`{"repos": [{"flake": {"locked_inputs": ["github:gh-owner/real-repo"]}}]}`,
+		`{"repos": [{"flake": {"inputs": ["git+https://example.invalid/lint-flake"]}}]}`,
+		`{"repos": [{"flake": {"gate_files": ["scripts/real-name"]}}]}`,
+	} {
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
+			t.Errorf("check(%s) found no problem, want one", doc)
+		}
+	}
+	fixture := `{"hermetic": {"flake": "github:gh-owner/lint-flake", "lint": "check-workflow-hermetic"}, ` +
+		`"repos": [{"flake": {"inputs": ["github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"], ` +
+		`"has_lock": true, "locked_inputs": ["github:gh-owner/mixedcase-flake", "github:nixos/nixpkgs"], ` +
+		`"names_lint": true, "gate_files": [".ci/check", "run-all-checks"]}}]}`
 	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
 		t.Errorf("check(the fixture standard) = %q, want no problem", got)
 	}
