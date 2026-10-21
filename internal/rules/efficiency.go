@@ -219,18 +219,26 @@ func countOf(n int, noun string) string {
 	return strconv.Itoa(n) + " " + noun + "s"
 }
 
-// failingLists builds a list the report gives under a table: for each
-// repository whose cell for c fails, in report order, the entries items
-// names for it. The list is the detail behind the cell's count, so a
-// repository that passes, or whose type or override does not judge the
-// check, is left off even when items would name something for it.
-func failingLists(repos []RepoReport, c Check, items func(audit.Repo) ([]string, bool)) []RepoList {
+// detailLists builds a list the report gives under a table: for each
+// repository in report order whose cell for c shows a count, the entries
+// items names for it. The list is the detail behind that count, so it holds
+// a repository whose cell fails, and one whose type shows the check as info
+// when items names something: an info cell still shows the count, and a
+// count with nothing behind it would leave the reader to open every file.
+// A repository that passes, or that is n/a, whether the check does not
+// apply or a not_required type or override excuses it, is left off even
+// when items would name something for it.
+func detailLists(repos []RepoReport, c Check, items func(audit.Repo) ([]string, bool)) []RepoList {
 	var out []RepoList
 	for _, r := range repos {
-		if r.Cell(c).Verdict != Fail {
+		verdict := r.Cell(c).Verdict
+		if verdict != Fail && verdict != Info {
 			continue
 		}
 		missing, _ := items(r.Repo)
+		if verdict == Info && len(missing) == 0 {
+			continue
+		}
 		out = append(out, RepoList{Repo: r.Repo.Name, Items: missing})
 	}
 	return out

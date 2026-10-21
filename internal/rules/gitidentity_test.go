@@ -1,7 +1,6 @@
 package rules_test
 
 import (
-	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -45,13 +44,7 @@ func withIdentities(r audit.Repo, ids ...audit.Identity) audit.Repo {
 
 // identityTypes is standard-types.toml with git_identity at word for tools.
 func identityTypes(word string) rules.Types {
-	types := make(rules.Types, len(standardTypes()))
-	for name, entries := range standardTypes() {
-		// standardTypes is shared read-only, so each table is copied.
-		types[name] = maps.Clone(entries)
-	}
-	types["tools"][rules.CheckGitIdentity.String()] = word
-	return types
+	return typesWith("tools", rules.CheckGitIdentity, word)
 }
 
 // TestEvaluate_gitIdentity judges a tools repository, which standard-types.toml

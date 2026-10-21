@@ -127,25 +127,39 @@ func TestEvaluate_jobTimeouts_list(t *testing.T) {
 	}
 }
 
-// TestEvaluate_jobTimeouts_listOnlyFailing: the list is the detail behind a
-// failing cell, so a repository that passes, or whose type does not judge
-// the check, is not on it.
-func TestEvaluate_jobTimeouts_listOnlyFailing(t *testing.T) {
+// TestEvaluate_jobTimeouts_listedWhenFailingOrInfo: the list is the detail
+// behind a cell's count, so it names a repository whose cell fails, or whose
+// type shows the check as info and the cell counts something. A repository
+// that passes, an info one with nothing to count, and one excused by
+// not_required are not on it.
+func TestEvaluate_jobTimeouts_listedWhenFailingOrInfo(t *testing.T) {
 	t.Parallel()
 
+	missing := func(name, typ string) audit.Repo {
+		r := fixture(name, rules.Type(typ))
+		r.Workflows = []audit.Workflow{jobsWorkflow(".github/workflows/ci.yml", audit.Job{ID: "check"})}
+		return r
+	}
 	passing := fixture("alpha", "tools")
 	passing.Workflows = []audit.Workflow{jobsWorkflow(".github/workflows/ci.yml", audit.Job{ID: "check", TimeoutMinutes: "15"})}
-	excused := fixture("bravo", "tools")
-	excused.Workflows = []audit.Workflow{jobsWorkflow(".github/workflows/ci.yml", audit.Job{ID: "check"})}
+	excused := missing("bravo", "tools")
 	excused.Overrides = map[string]string{"job_timeouts": rules.OverrideNotRequired}
+	infoPassing := fixture("charlie", "content")
+	infoPassing.Workflows = passing.Workflows
 	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
-		Repos: []audit.Repo{passing, excused},
+		GeneratedAt: cacheNow, Types: typesWith("content", rules.CheckJobTimeouts, "info"),
+		Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		Repos: []audit.Repo{passing, excused, infoPassing, missing("delta", "content"), missing("echo", "tools")},
 	})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
-	if rep.TimeoutMissing != nil {
-		t.Errorf("TimeoutMissing = %v, want nil", rep.TimeoutMissing)
+	wantCell(t, rep.Repos[3].Cell(rules.CheckJobTimeouts), rules.Info, "1 job")
+	want := []rules.RepoList{
+		{Repo: "delta", Items: []string{"ci.yml / check"}},
+		{Repo: "echo", Items: []string{"ci.yml / check"}},
+	}
+	if diff := cmp.Diff(want, rep.TimeoutMissing); diff != "" {
+		t.Errorf("TimeoutMissing differs (-want +got):\n%s", diff)
 	}
 }

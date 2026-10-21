@@ -165,25 +165,39 @@ func TestEvaluate_cancelSuperseded_list(t *testing.T) {
 	}
 }
 
-// TestEvaluate_cancelSuperseded_listOnlyFailing: the list is the detail
-// behind a failing cell, so a repository that passes, or whose type does
-// not judge the check, is not on it.
-func TestEvaluate_cancelSuperseded_listOnlyFailing(t *testing.T) {
+// TestEvaluate_cancelSuperseded_listedWhenFailingOrInfo: the list is the
+// detail behind a cell's count, so it names a repository whose cell fails,
+// or whose type shows the check as info and the cell counts something. A
+// repository that passes, an info one with nothing to count, and one
+// excused by not_required are not on it.
+func TestEvaluate_cancelSuperseded_listedWhenFailingOrInfo(t *testing.T) {
 	t.Parallel()
 
+	missing := func(name, typ string) audit.Repo {
+		r := fixture(name, rules.Type(typ))
+		r.Workflows = []audit.Workflow{prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check"})}
+		return r
+	}
 	passing := fixture("alpha", "tools")
 	passing.Workflows = []audit.Workflow{prWorkflow(".github/workflows/ci.yml", cancelling("true"), audit.Job{ID: "check"})}
-	excused := fixture("bravo", "tools")
-	excused.Workflows = []audit.Workflow{prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check"})}
+	excused := missing("bravo", "tools")
 	excused.Overrides = map[string]string{"ci_cancel_superseded": rules.OverrideNotRequired}
+	infoPassing := fixture("charlie", "content")
+	infoPassing.Workflows = passing.Workflows
 	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
-		Repos: []audit.Repo{passing, excused},
+		GeneratedAt: cacheNow, Types: typesWith("content", rules.CheckCICancelSuperseded, "info"),
+		Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		Repos: []audit.Repo{passing, excused, infoPassing, missing("delta", "content"), missing("echo", "tools")},
 	})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
-	if rep.CancelMissing != nil {
-		t.Errorf("CancelMissing = %v, want nil", rep.CancelMissing)
+	wantCell(t, rep.Repos[3].Cell(rules.CheckCICancelSuperseded), rules.Info, "1 workflow")
+	want := []rules.RepoList{
+		{Repo: "delta", Items: []string{".github/workflows/ci.yml"}},
+		{Repo: "echo", Items: []string{".github/workflows/ci.yml"}},
+	}
+	if diff := cmp.Diff(want, rep.CancelMissing); diff != "" {
+		t.Errorf("CancelMissing differs (-want +got):\n%s", diff)
 	}
 }

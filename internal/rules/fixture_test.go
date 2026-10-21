@@ -26,6 +26,17 @@ var standardTypes = sync.OnceValue(func() rules.Types {
 	return file.Types
 })
 
+// typesWith is standard-types.toml with check c at word for type typ.
+func typesWith(typ string, c rules.Check, word string) rules.Types {
+	types := make(rules.Types, len(standardTypes()))
+	for name, entries := range standardTypes() {
+		// standardTypes is shared read-only, so each table is copied.
+		types[name] = maps.Clone(entries)
+	}
+	types[typ][c.String()] = word
+	return types
+}
+
 // fixture builds a repository that passes every check its type asks of it, so
 // a test can break exactly one thing and see exactly one gap. Anything a test
 // wants different, it sets afterwards.

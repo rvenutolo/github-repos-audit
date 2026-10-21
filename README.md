@@ -446,8 +446,10 @@ Grouped by theme here; the report lists them in the fixed worklist order
   a literal `false` does not. A workflow file that does not parse fails it
   as unreadable. The cell counts the workflows that fail
   (`✗ 2 workflows`), and the report's CI efficiency section lists them per
-  repository under _Workflows without cancel-in-progress_. n/a when no
-  workflow is triggered by a pull request.
+  repository under _Workflows without cancel-in-progress_, for every
+  repository whose cell fails or, under `info`, shows a count; a
+  `not_required` repository is never listed. n/a when no workflow is
+  triggered by a pull request.
 - **job_timeouts** — whether every workflow job sets `timeout-minutes`, so a
   job that hangs is stopped well before GitHub's six-hour default rather
   than holding its runner, and every run queued behind it, for that long.
@@ -457,7 +459,9 @@ Grouped by theme here; the report lists them in the fixed worklist order
   does not parse fails it as unreadable. The cell counts the jobs that fail
   (`✗ 3 jobs`), and the report's CI efficiency section lists them per
   repository under _Jobs without timeouts_, as `<workflow file> / <job id>`
-  (`ci.yml / build`). n/a when no workflow holds a job of its own.
+  (`ci.yml / build`), for every repository whose cell fails or, under
+  `info`, shows a count; a `not_required` repository is never listed. n/a
+  when no workflow holds a job of its own.
 - **artifact_storage** — a plain fact, always shown and never judged: how
   many unexpired Actions artifacts the repository holds and their total
   size in decimal units (`12 · 206 MB`), or `0` with none. Artifacts share

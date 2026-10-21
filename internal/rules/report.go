@@ -150,12 +150,13 @@ type Report struct {
 	// CITiming is one line per repository with any complete sampled commit,
 	// slowest pull request mean first; see ciTimingLines.
 	CITiming []CITimingLine
-	// CancelMissing is, for each repository failing ci_cancel_superseded in
-	// report order, the workflows that fail it; see cancelMissing and
-	// failingLists.
+	// CancelMissing is, for each repository in report order whose
+	// ci_cancel_superseded cell fails or is info with a count, the workflows
+	// it counts; see cancelMissing and detailLists.
 	CancelMissing []RepoList
-	// TimeoutMissing is, for each repository failing job_timeouts in report
-	// order, the jobs that fail it; see timeoutMissing and failingLists.
+	// TimeoutMissing is, for each repository in report order whose
+	// job_timeouts cell fails or is info with a count, the jobs it counts;
+	// see timeoutMissing and detailLists.
 	TimeoutMissing []RepoList
 	// UnrecognisedCaches is, for each repository in report order holding a
 	// cache under neither the tool's prefixes nor an action's, those caches;
