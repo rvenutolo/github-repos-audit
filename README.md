@@ -398,6 +398,26 @@ Grouped by theme here; the report lists them in the fixed worklist order
   workflow uses, is then named as `unreadable <path>`, since it may be the
   refresh the tool cannot see. n/a without a `flake.lock`. The report's Nix
   section shows it.
+- **nix_cache** — whether the default branch's Nix store is cached at a
+  useful size by a `nix-community/cache-nix-action` set up to stay bounded.
+  Caches are grouped into families by the first two `-`-separated segments of
+  their key (`nix-Linux`, `nix-macOS`), counting only caches saved from the
+  default branch, and the newest entry of each family must hold between
+  1 MB and 1.5 GB (decimal units). The cell shows the size of the first
+  family out of range, or else the largest (`✓ 206 MB`, `✗ 2.2 GB`,
+  `✗ empty (430 B)`), or `none on main`. Every `cache-nix-action` step a job
+  runs, directly or through a local composite action, is then read, and the
+  cell names each problem once: `no gc-max-store-size` (none of
+  `gc-max-store-size`, `-linux` or `-macos`), `no purge` (`purge` is not
+  `true`), `no purge selector` (none of `purge-prefixes`, `purge-created`,
+  `purge-last-accessed` or `purge-primary-key`), and `no actions: write`
+  (the job's `permissions:`, else the workflow's, else the repository's
+  default workflow permissions, do not grant it; `write-all` does). A
+  workflow, or a composite a job uses, that the tool could not read is
+  named as `unreadable <path>`. It passes only with every size in range and
+  no problem. n/a without a `flake.nix`, or when no workflow has run on the
+  default branch in the last 7 days, since GitHub evicts a cache nothing has
+  restored for that long. The report's Nix section shows it.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches

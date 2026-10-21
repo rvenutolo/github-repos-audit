@@ -157,6 +157,157 @@ func scheduledFlakeUpdate(r audit.Repo) (bool, []string) {
 	return false, unreadable
 }
 
+// Bounds on the newest Nix cache entry of each family. Below the floor the
+// entry holds no store worth restoring: a save that ran before anything was
+// built, or a store garbage-collected to nothing. Above the ceiling, every
+// run spends longer downloading and unpacking it than a cache is meant to
+// save, and it crowds the repository's other caches out of its storage.
+const (
+	nixCacheFloor   = 1_000_000
+	nixCacheCeiling = 1_500_000_000
+)
+
+// cacheNixAction is the action that saves and restores the Nix store,
+// matched up to the "@" that pins its version.
+const cacheNixAction = "nix-community/cache-nix-action@"
+
+// observeNixCache judges whether the default branch's Nix store is cached,
+// at a useful size, by a cache-nix-action configured not to grow without
+// bound. Each runner OS restores its own family of entries (P4 in
+// cacheFamilies), and only the newest entry of each is restored, so that is
+// the one judged; the cell names the size of the worst family, the first
+// that is out of range or else the largest, then every setting problem.
+//
+// It is n/a without a flake.nix, which has no store to cache, and when the
+// default branch has not run CI within the activity window, since GitHub has
+// then evicted the caches whatever the configuration. Unlike the size, the
+// settings are read even when there is no cache to measure, so "none on
+// main" says what else to fix too.
+func observeNixCache(r audit.Repo, now time.Time) observation {
+	if !r.Files.FlakeNix || !recentDefaultRun(r, now) {
+		return observation{unknown: true}
+	}
+	problems := cacheNixProblems(r)
+	families := cacheFamilies(r, "nix-")
+	if len(families) == 0 {
+		return observation{value: strings.Join(append([]string{"none on main"}, problems...), ", "), mark: true}
+	}
+	worst, inRange := families[0].Newest.SizeBytes, true
+	for _, f := range families {
+		size := f.Newest.SizeBytes
+		if size < nixCacheFloor || size > nixCacheCeiling {
+			worst, inRange = size, false
+			break
+		}
+		worst = max(worst, size)
+	}
+	value := formatBytes(worst)
+	if worst < nixCacheFloor {
+		value = "empty (" + value + ")"
+	}
+	return observation{
+		ok:    inRange && len(problems) == 0,
+		value: strings.Join(append([]string{value}, problems...), ", "),
+		mark:  true,
+	}
+}
+
+// cacheNixProblems lists what is wrong with the repository's
+// cache-nix-action steps, each problem once and in a fixed order, then every
+// workflow, and every composite a job uses, that could not be read, as
+// "unreadable <path>" in path order: any of them may hold a step the list
+// cannot see. A step counts whether a job runs it directly or through a
+// local composite, which runs under the calling job's permissions.
+//
+//   - "no gc-max-store-size": no store bound, so the saved store grows by
+//     every build until it passes the ceiling.
+//   - "no purge": old entries are left for GitHub's own eviction, which
+//     goes by last access rather than by kind, and so may take another
+//     cache before them.
+//   - "no purge selector": nothing says which entries to purge (by key
+//     prefix, age or primary key), so purging has nothing to act on.
+//   - "no actions: write": purging deletes caches through the API, which the
+//     job's token may not do without that permission.
+func cacheNixProblems(r audit.Repo) []string {
+	var noGC, noPurge, noSelector, noWrite bool
+	var unreadable []string
+	judge := func(u audit.StepUse, write bool) {
+		if !strings.HasPrefix(u.Action, cacheNixAction) {
+			return
+		}
+		noGC = noGC || !anySet(u.With, "gc-max-store-size", "gc-max-store-size-linux", "gc-max-store-size-macos")
+		noPurge = noPurge || u.With["purge"] != "true"
+		noSelector = noSelector || !anySet(u.With, "purge-prefixes", "purge-created", "purge-last-accessed", "purge-primary-key")
+		noWrite = noWrite || !write
+	}
+	for _, w := range r.Workflows {
+		if w.ParseError != "" {
+			unreadable = append(unreadable, w.Path)
+			continue
+		}
+		for _, j := range w.Jobs {
+			write := grantsActionsWrite(r, w, j)
+			for _, u := range j.Uses {
+				judge(u, write)
+				ca, local := resolveComposite(r, u.Action)
+				switch {
+				case !local:
+				case ca.ParseError != "":
+					unreadable = append(unreadable, ca.Path)
+				default:
+					for _, cu := range ca.Uses {
+						judge(cu, write)
+					}
+				}
+			}
+		}
+	}
+	var out []string
+	for _, p := range []struct {
+		on   bool
+		text string
+	}{
+		{noGC, "no gc-max-store-size"},
+		{noPurge, "no purge"},
+		{noSelector, "no purge selector"},
+		{noWrite, "no actions: write"},
+	} {
+		if p.on {
+			out = append(out, p.text)
+		}
+	}
+	slices.Sort(unreadable)
+	for _, path := range slices.Compact(unreadable) {
+		out = append(out, "unreadable "+path)
+	}
+	return out
+}
+
+// anySet reports whether any of keys is given a non-empty value. An input
+// given as empty is the action's default, which is the same as leaving it
+// out.
+func anySet(with map[string]string, keys ...string) bool {
+	return slices.ContainsFunc(keys, func(k string) bool { return with[k] != "" })
+}
+
+// grantsActionsWrite reports whether job j of workflow w runs with
+// actions: write. GitHub takes the job's `permissions:` when it has one,
+// else the workflow's, else the repository's default token permissions, and
+// a `permissions:` that is set replaces the one above it outright rather
+// than adding to it. "write-all" grants every scope and "read-all" none for
+// writing; the map form grants only what it names, so a map without
+// actions: write leaves the token without it.
+func grantsActionsWrite(r audit.Repo, w audit.Workflow, j audit.Job) bool {
+	p := j.Permissions
+	if !p.Set {
+		p = w.Permissions
+	}
+	if !p.Set {
+		return r.Settings.DefaultWorkflowPermissions == "write"
+	}
+	return p.All == "write-all" || p.Scopes["actions"] == "write"
+}
+
 // resolveComposite finds the composite action a step's `uses:` names, when
 // it names one in this repository. "./x" and "$/x" resolve alike, both
 // against the repository root, to the directory x, whose action.yml (or,

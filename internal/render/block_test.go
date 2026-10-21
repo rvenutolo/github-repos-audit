@@ -123,7 +123,7 @@ func TestBlock_nixSection(t *testing.T) {
 		t.Fatalf("Block() has no Nix section between File paths and Policy:\n%s", got)
 	}
 	section := got[nix:strings.Index(got, "## Policy\n")]
-	for _, col := range []string{"| Repository ", "| Hermetic ", "| Lock age ", "| Lock refresh "} {
+	for _, col := range []string{"| Repository ", "| Hermetic ", "| Lock age ", "| Lock refresh ", "| Nix cache "} {
 		if !strings.Contains(section, col) {
 			t.Errorf("Nix section header lacks %q:\n%s", col, section)
 		}

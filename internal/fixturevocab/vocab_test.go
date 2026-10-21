@@ -472,9 +472,17 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.oid$`), matches(oid), "a pattern oid"},
 	{regexp.MustCompile(`^repos\[\]\.ci\.pull_requests\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
 	{regexp.MustCompile(`^repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.label$`), matches(`^ci / (check|test|lint|docs)$`), "a generic job label"},
+	{regexp.MustCompile(`^repos\[\]\.ci\.last_default_branch_run$`), matches(timestamp), "a timestamp"},
+	// Recorded cache entries: a generic "<prefix>-<os>-<hex>" key, saved from
+	// main or a pull request, at a timestamp.
+	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.key$`), matches(`^(go|nix)-(Linux|macOS)-[0-9a-f]+$`), "a generic cache key"},
+	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.ref$`), matches(`^refs/(heads/main|pull/[0-9]+/merge)$`), "main or a pull request ref"},
+	{regexp.MustCompile(`^repos\[\]\.actions_storage\.caches\[\]\.created_at$`), matches(timestamp), "a timestamp"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
+		`repos\[\]\.actions_storage\.(artifact_bytes|artifact_count|cache_limit_bytes|cache_usage_bytes)`,
+		`repos\[\]\.actions_storage\.caches\[\]\.size_bytes`,
 		`repos\[\]\.(branches|ci_state|default_branch|empty|license|open_pull_requests|published|topics|type|visibility)`,
 		`repos\[\]\.branch\.(known|types\[\])`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,

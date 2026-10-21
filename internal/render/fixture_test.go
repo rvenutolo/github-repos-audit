@@ -143,8 +143,9 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // an accepted one, consistently non-canonical, only someone else's, and
 // absent altogether. The published software repository has declared and
 // locked the hermetic-lint flake without wiring the lint in, and nothing
-// refreshes its lock, and the tools repository's nixpkgs lock is stale, so
-// the Nix section carries fails beside the passes.
+// refreshes its lock, and the tools repository's nixpkgs lock is stale and
+// its Nix cache oversized, so the Nix section carries fails beside the
+// passes.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -183,6 +184,19 @@ func fullSnapshot() *audit.Snapshot {
 	// It declares and locks the lint flake but has not wired the lint in yet.
 	soft.Flake.NamesLint = false
 	soft.Flake.GateFiles = nil
+	// Its default branch ran CI the day before the render, and the newest of
+	// its two Linux Nix caches is a useful size; a pull request's cache
+	// beside them serves no default-branch run.
+	soft.CI.LastDefaultBranchRun = at(2026, time.September, 4)
+	soft.Storage = audit.ActionsStorage{
+		Caches: []audit.Cache{
+			{Key: "nix-Linux-0a1b", Ref: "refs/heads/main", SizeBytes: 180_000_000, CreatedAt: at(2026, time.September, 1)},
+			{Key: "nix-Linux-2c3d", Ref: "refs/heads/main", SizeBytes: 206_000_000, CreatedAt: at(2026, time.September, 4)},
+			{Key: "nix-Linux-4e5f", Ref: "refs/pull/11/merge", SizeBytes: 900, CreatedAt: at(2026, time.September, 3)},
+		},
+		CacheUsageBytes: 386_000_900,
+		CacheLimitBytes: 10_000_000_000,
+	}
 	// Its history switched identity: mixed. The noreply identity GitHub records
 	// on web-UI merges beside them is accepted and does not count toward it.
 	soft.Identities = []audit.Identity{
@@ -233,6 +247,13 @@ func fullSnapshot() *audit.Snapshot {
 		DefaultBranch: []audit.CICommit{
 			ciCommit("0005", 0, time.Time{}, false, 3900, ciJob("ci / test", 3800)),
 		},
+	}
+	// Its Nix cache has outgrown the ceiling.
+	tools.CI.LastDefaultBranchRun = at(2026, time.September, 5)
+	tools.Storage = audit.ActionsStorage{
+		Caches:          []audit.Cache{{Key: "nix-Linux-6a7b", Ref: "refs/heads/main", SizeBytes: 2_200_000_000, CreatedAt: at(2026, time.September, 5)}},
+		CacheUsageBytes: 2_200_000_000,
+		CacheLimitBytes: 10_000_000_000,
 	}
 	// Consistently the wrong identity, beside GitHub's own web-flow committer.
 	tools.Identities = []audit.Identity{

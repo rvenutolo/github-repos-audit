@@ -39,10 +39,10 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## Nix
 
-| Repository                                 | Hermetic | Lock age | Lock refresh |
-| ------------------------------------------ | -------- | -------- | ------------ |
-| [alpha](https://github.com/gh-owner/alpha) | ✓        | ✓ 3d     | ✓ Renovate   |
-| [bravo](https://github.com/gh-owner/bravo) | ✓        | ✓ 3d     | ✓ Renovate   |
+| Repository                                 | Hermetic | Lock age | Lock refresh | Nix cache |
+| ------------------------------------------ | -------- | -------- | ------------ | --------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓        | ✓ 3d     | ✓ Renovate   | n/a       |
+| [bravo](https://github.com/gh-owner/bravo) | ✓        | ✓ 3d     | ✓ Renovate   | n/a       |
 
 ## Policy
 

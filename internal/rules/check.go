@@ -62,6 +62,7 @@ const (
 	CheckHermeticNix
 	CheckNixLockAge
 	CheckNixLockRefresh
+	CheckNixCache
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
@@ -117,6 +118,7 @@ var checkNames = [...]string{
 	CheckHermeticNix:           "hermetic_nix",
 	CheckNixLockAge:            "nix_lock_age",
 	CheckNixLockRefresh:        "nix_lock_refresh",
+	CheckNixCache:              "nix_cache",
 	CheckLastReleaseAge:        "last_release_age",
 	CheckLastPush:              "last_push",
 	CheckOpenPRs:               "open_prs",

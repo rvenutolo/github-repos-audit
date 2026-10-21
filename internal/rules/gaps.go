@@ -56,6 +56,7 @@ var gapLabels = map[Check]string{
 	CheckHermeticNix:           "Hermetic lint not wired in",
 	CheckNixLockAge:            "nixpkgs locked more than 30 days ago",
 	CheckNixLockRefresh:        "No automated flake.lock refresh",
+	CheckNixCache:              "Nix cache missing, empty, oversized or misconfigured",
 }
 
 // communityFiles names the three community health files, in the order the

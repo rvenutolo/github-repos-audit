@@ -31,6 +31,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
@@ -81,6 +82,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "not_required",
       "nix_lock_age": "not_required",
       "nix_lock_refresh": "not_required",
       "open_prs": "info",
@@ -131,6 +133,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
@@ -181,6 +184,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
@@ -231,6 +235,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
@@ -281,6 +286,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
@@ -438,7 +444,34 @@
               }
             ]
           }
-        ]
+        ],
+        "last_default_branch_run": "2026-09-04T12:00:00Z"
+      },
+      "actions_storage": {
+        "caches": [
+          {
+            "key": "nix-Linux-0a1b",
+            "ref": "refs/heads/main",
+            "size_bytes": 180000000,
+            "created_at": "2026-09-01T12:00:00Z"
+          },
+          {
+            "key": "nix-Linux-2c3d",
+            "ref": "refs/heads/main",
+            "size_bytes": 206000000,
+            "created_at": "2026-09-04T12:00:00Z"
+          },
+          {
+            "key": "nix-Linux-4e5f",
+            "ref": "refs/pull/11/merge",
+            "size_bytes": 900,
+            "created_at": "2026-09-03T12:00:00Z"
+          }
+        ],
+        "cache_usage_bytes": 386000900,
+        "cache_limit_bytes": 10000000000,
+        "artifact_count": 0,
+        "artifact_bytes": 0
       },
       "releases": {
         "total": 4,
@@ -702,7 +735,22 @@
               }
             ]
           }
-        ]
+        ],
+        "last_default_branch_run": "2026-09-05T12:00:00Z"
+      },
+      "actions_storage": {
+        "caches": [
+          {
+            "key": "nix-Linux-6a7b",
+            "ref": "refs/heads/main",
+            "size_bytes": 2200000000,
+            "created_at": "2026-09-05T12:00:00Z"
+          }
+        ],
+        "cache_usage_bytes": 2200000000,
+        "cache_limit_bytes": 10000000000,
+        "artifact_count": 0,
+        "artifact_bytes": 0
       },
       "releases": {
         "total": 0,
