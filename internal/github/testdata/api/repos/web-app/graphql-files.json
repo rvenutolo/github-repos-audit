@@ -1,0 +1,27 @@
+{
+  "data": {
+    "repository": {
+      "flake_nix": null,
+      "flake_lock": null,
+      "run_all_checks": null,
+      "justfile": null,
+      "dot_justfile": null,
+      "capital_justfile": null,
+      "workflows": {
+        "entries": [
+          {
+            "name": "workflow-33.yml",
+            "type": "blob",
+            "object": {
+              "text": "name: ci\non:\n  pull_req",
+              "is_truncated": true,
+              "is_binary": false
+            }
+          }
+        ]
+      },
+      "actions": null,
+      "ci": null
+    }
+  }
+}

@@ -29,12 +29,14 @@ const fakeOwner = "gh-owner"
 // account, so internal/render/testdata/golden/clean.md — which predates the
 // account scrub and was untouched by it — carries them safely.
 // "preset-store" is the repository the API fixtures' Renovate configs extend
-// presets from; no fixture directory of its own exists.
+// presets from; no fixture directory of its own exists. "lint-flake" is the
+// flake the API fixtures' flake.nix and flake.lock name as an input; it has
+// no fixture directory either.
 var fakeRepos = []string{
 	"blank-repo", "cipher-lib", "compiler-config", "config-files", "go-linter",
 	"hook-guard", "java-demo", "media-server", "mixedCase-flake", "pkg-index",
 	"private-notes", "recipe-site", "shell-scripts", "updater", "web-app",
-	"github-repos-audit", "alpha", "bravo", "preset-store",
+	"github-repos-audit", "alpha", "bravo", "preset-store", "lint-flake",
 }
 
 // fakeIdentityNames and fakeIdentityEmails are the only git identities a
@@ -115,6 +117,55 @@ func namesOnlyFakeRepos(v any) bool {
 	return true
 }
 
+// flakeRef finds a flake reference to a GitHub repository, as flake.nix
+// writes one ("github:<owner>/<repo>"), and lockOwner and lockRepo find the
+// same two halves as flake.lock spells them, as separate JSON keys. Neither
+// form is a pair presetRef sees: a colon or a key/value split is not one of
+// its separators.
+var (
+	flakeRef  = regexp.MustCompile(`github:([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)`)
+	lockOwner = regexp.MustCompile(`"owner"\s*:\s*"([^"]*)"`)
+	lockRepo  = regexp.MustCompile(`"repo"\s*:\s*"([^"]*)"`)
+)
+
+// publicPair matches the owner/repository pairs a file fixture may name beyond
+// the fake vocabulary: nixpkgs, which every flake names and which belongs to
+// no audited account, and the synthetic actions the allowlist fixtures
+// already use.
+var publicPair = regexp.MustCompile(`^(NixOS/nixpkgs|example-org/action-\d{2})$`)
+
+// isFakeFileText holds the text of a file fixture (flake.nix, flake.lock, a
+// workflow, a composite action, a gate script) to the fake vocabulary: every
+// repository it names, in any of the ways those files name one, is gh-owner
+// and a fake repository, or one of publicPair.
+func isFakeFileText(v any) bool {
+	s, ok := str(v)
+	if !ok {
+		return false
+	}
+	allowed := func(owner, repo string) bool {
+		return (owner == fakeOwner && slices.Contains(fakeRepos, repo)) || publicPair.MatchString(owner+"/"+repo)
+	}
+	for _, re := range []*regexp.Regexp{presetRef, flakeRef} {
+		for _, m := range re.FindAllStringSubmatch(s, -1) {
+			if !allowed(m[1], m[2]) {
+				return false
+			}
+		}
+	}
+	for _, m := range lockOwner.FindAllStringSubmatch(s, -1) {
+		if m[1] != fakeOwner && m[1] != "NixOS" {
+			return false
+		}
+	}
+	for _, m := range lockRepo.FindAllStringSubmatch(s, -1) {
+		if !slices.Contains(fakeRepos, m[1]) && m[1] != "nixpkgs" {
+			return false
+		}
+	}
+	return true
+}
+
 // pipeDescription is the one deliberate escaping fixture: a description
 // containing a pipe character, which proves the Markdown renderer escapes
 // table cells correctly. It names no account.
@@ -174,8 +225,10 @@ func optional(ok func(any) bool) func(any) bool {
 var (
 	oid       = `^(a{36}[0-9a-f]{4}|(0123456789abcdef){2}01234567)$`
 	timestamp = `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$`
-	workflow  = `^(ci\.ya?ml|workflow-\d{2}\.ya?ml)$`
-	ruleset   = `^(ruleset-\d{2}|protect-(main|tags))$`
+	// workflow also admits a README, the one file a workflows directory
+	// holds that is not a workflow, so the fixtures can show it is skipped.
+	workflow = `^(ci\.ya?ml|workflow-\d{2}\.ya?ml|README\.md)$`
+	ruleset  = `^(ruleset-\d{2}|protect-(main|tags))$`
 	// checkContext covers the API fixtures' synthetic "check-NN" contexts
 	// and the render snapshot golden's real CI job names (commitlint,
 	// gate (ubuntu-latest), merge-gate): generic job names, not account data.
@@ -210,6 +263,11 @@ func keepNil(paths ...string) rule {
 // present one is an object whose oid, text and flags are ruled separately;
 // an absent one is null.
 const renovateProbes = `(renovate_json|renovate_jsonc|renovate_json5|renovate_github_json|renovate_github_jsonc|renovate_github_json5|renovate_gitlab_json|renovate_gitlab_jsonc|renovate_gitlab_json5|renovaterc|renovaterc_json|renovaterc_jsonc|renovaterc_json5)`
+
+// fileProbes is the alternation of the file query's single-file probes. The
+// flake_nix alias is shared with the repository query, whose probe answers
+// an oid where this one answers text.
+const fileProbes = `(flake_nix|flake_lock|run_all_checks|justfile|dot_justfile|capital_justfile)`
 
 // isFakeBase64Content decodes a contents-API content field — base64 wrapped
 // with newlines, as GitHub sends it — and holds the text to namesOnlyFakeRepos.
@@ -251,6 +309,14 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^selected_actions_url$`), matches(`^https://api\.github\.com/repositories/1000\d{3}/actions/permissions/selected-actions$`), "a url with a synthetic id"},
 	{regexp.MustCompile(`rulesets\.nodes\[\]\.name$`), matches(ruleset), "a synthetic ruleset name"},
 	{regexp.MustCompile(`workflows\.entries\[\]\.name$`), matches(workflow), "a synthetic workflow file"},
+	// The file query's listings. Each entry's name is a file a real
+	// repository could be recognised by, so it is held to generic names, and
+	// each file's text to isFakeFileText.
+	{regexp.MustCompile(`^data\.repository\.ci\.entries\[\]\.name$`), matches(`^(check-\d{2}|lib\.sh)$`), "a generic .ci script name"},
+	{regexp.MustCompile(`^data\.repository\.actions\.entries\[\]\.name$`), matches(`^(setup|action-\d{2}|README\.md)$`), "a generic action directory name"},
+	{regexp.MustCompile(`^data\.repository\.actions\.entries\[\]\.object\.entries\[\]\.name$`), matches(`^(action\.ya?ml|README\.md)$`), "an action file name"},
+	{regexp.MustCompile(`^data\.repository\.` + fileProbes + `\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
+	{regexp.MustCompile(`^data\.repository\.(workflows|ci|actions\.entries\[\]\.object)\.entries\[\]\.object\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
 	{regexp.MustCompile(`required_status_checks\[\]\.context$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
@@ -301,6 +367,9 @@ var apiRules = []rule{
 		`data\.repository\.releases\.nodes\[\]\.is_draft`,
 		`data\.repository\.rulesets\.nodes\[\]\.(enforcement|target|conditions\.ref_name\.include\[\]|rules\.nodes\[\]\.type)`,
 		`data\.repository\.`+renovateProbes+`\.(is_truncated|is_binary)`,
+		`data\.repository\.`+fileProbes+`\.(is_truncated|is_binary)`,
+		`data\.repository\.(workflows|ci|actions\.entries\[\]\.object)\.entries\[\]\.(type|object\.is_truncated|object\.is_binary)`,
+		`data\.repository\.actions\.entries\[\]\.type`,
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
 		// A pull request number, a run's event, a run's or job's status and a
 		// list's total are counts and enums.
@@ -323,6 +392,7 @@ var apiRules = []rule{
 		`data\.repository\.(contributing_root|contributing_github|contributing_docs)`,
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
 		`data\.repository\.`+renovateProbes,
+		`data\.repository\.(`+fileProbes+`|actions|ci)`,
 		// A null actor: GitHub could not resolve who wrote or committed it.
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.nodes\[\]\.(author|committer)`,
 		// A deleted account's pull request.
@@ -781,6 +851,11 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 		{name: "a present renovate probe with a real flag field", doc: `{"data": {"repository": {"renovate_json": {"is_huge": true}}}}`},
 		{name: "a history author outside the identity vocabulary", doc: `{"data": {"repository": {"default_branch_ref": {"target": {"history": {"nodes": [{"author": {"name": "Someone Real", "email": "pat@example.com"}}]}}}}}}`},
 		{name: "a later history page's committer email outside the vocabulary", doc: `{"data": {"repository": {"object": {"history": {"nodes": [{"committer": {"name": "Pat Example", "email": "someone@real.invalid"}}]}}}}}`},
+		{name: "flake.nix naming a real input", doc: `{"data": {"repository": {"flake_nix": {"text": "inputs.x.url = \"github:someone/real-repo\";"}}}}`},
+		{name: "flake.lock naming a real owner", doc: `{"data": {"repository": {"flake_lock": {"text": "{\"original\": {\"owner\": \"someone\", \"repo\": \"lint-flake\"}}"}}}}`},
+		{name: "flake.lock naming a real repository", doc: `{"data": {"repository": {"flake_lock": {"text": "{\"original\": {\"owner\": \"gh-owner\", \"repo\": \"real-repo\"}}"}}}}`},
+		{name: "a workflow using a real action", doc: `{"data": {"repository": {"workflows": {"entries": [{"object": {"text": "- uses: someone/real-action@v1"}}]}}}}`},
+		{name: "a gate script under a real name", doc: `{"data": {"repository": {"ci": {"entries": [{"name": "deploy-media-stack"}]}}}}`},
 		{name: "a history cursor that is not synthetic", doc: `{"data": {"repository": {"object": {"history": {"page_info": {"end_cursor": "Y3Vyc29yOnYyOpK5"}}}}}}`},
 	}
 	for _, tc := range tests {

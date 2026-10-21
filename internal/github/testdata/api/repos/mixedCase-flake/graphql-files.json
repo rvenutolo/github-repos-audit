@@ -1,0 +1,103 @@
+{
+  "data": {
+    "repository": {
+      "flake_nix": {
+        "text": "{\n  inputs = {\n    nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";\n    lint-flake.url = \"github:gh-owner/lint-flake\";\n  };\n  outputs = { nixpkgs, lint-flake, ... }: {\n    devShells.x86_64-linux.default = nixpkgs.legacyPackages.x86_64-linux.mkShell {\n      packages = [ lint-flake.packages.x86_64-linux.check-workflow-hermetic ];\n    };\n  };\n}\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "flake_lock": {
+        "text": "{\n  \"nodes\": {\n    \"lint-flake\": {\n      \"locked\": {\n        \"lastModified\": 1756600000,\n        \"owner\": \"gh-owner\",\n        \"repo\": \"lint-flake\",\n        \"rev\": \"0123456789abcdef0123456789abcdef01234567\",\n        \"type\": \"github\"\n      },\n      \"original\": {\n        \"owner\": \"gh-owner\",\n        \"repo\": \"lint-flake\",\n        \"type\": \"github\"\n      }\n    },\n    \"nixpkgs\": {\n      \"locked\": {\n        \"lastModified\": 1756684800,\n        \"owner\": \"NixOS\",\n        \"repo\": \"nixpkgs\",\n        \"rev\": \"0123456789abcdef0123456789abcdef01234567\",\n        \"type\": \"github\"\n      },\n      \"original\": {\n        \"owner\": \"NixOS\",\n        \"ref\": \"nixos-unstable\",\n        \"repo\": \"nixpkgs\",\n        \"type\": \"github\"\n      }\n    },\n    \"root\": {\n      \"inputs\": {\n        \"lint-flake\": \"lint-flake\",\n        \"nixpkgs\": \"nixpkgs\"\n      }\n    }\n  },\n  \"root\": \"root\",\n  \"version\": 7\n}\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "run_all_checks": {
+        "text": "#!/usr/bin/env bash\nset -Eeuo pipefail\ncheck-workflow-hermetic\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "justfile": null,
+      "dot_justfile": null,
+      "capital_justfile": {
+        "text": "check:\n    ./run-all-checks\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "workflows": {
+        "entries": [
+          {
+            "name": "README.md",
+            "type": "blob",
+            "object": {
+              "text": "Workflows for this repository.\n",
+              "is_truncated": false,
+              "is_binary": false
+            }
+          },
+          {
+            "name": "ci.yml",
+            "type": "blob",
+            "object": {
+              "text": "name: ci\non:\n  pull_request:\n  push:\n    branches: [main]\nconcurrency:\n  group: ci-${{ github.ref }}\n  cancel-in-progress: true\npermissions:\n  contents: read\njobs:\n  check:\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    steps:\n      - uses: example-org/action-08@0123456789abcdef0123456789abcdef01234567\n      - uses: ./.github/actions/setup\n      - run: ./run-all-checks\n",
+              "is_truncated": false,
+              "is_binary": false
+            }
+          },
+          {
+            "name": "workflow-01.yml",
+            "type": "blob",
+            "object": {
+              "text": null,
+              "is_truncated": false,
+              "is_binary": true
+            }
+          }
+        ]
+      },
+      "actions": {
+        "entries": [
+          {
+            "name": "README.md",
+            "type": "blob",
+            "object": {}
+          },
+          {
+            "name": "action-01",
+            "type": "tree",
+            "object": {
+              "entries": [
+                {
+                  "name": "README.md",
+                  "type": "blob",
+                  "object": {
+                    "text": "Not an action yet.\n",
+                    "is_truncated": false,
+                    "is_binary": false
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "setup",
+            "type": "tree",
+            "object": {
+              "entries": [
+                {
+                  "name": "action.yml",
+                  "type": "blob",
+                  "object": {
+                    "text": "name: setup\ndescription: Set up the toolchain.\nruns:\n  using: composite\n  steps:\n    - uses: example-org/action-12@0123456789abcdef0123456789abcdef01234567\n      with:\n        purge: true\n",
+                    "is_truncated": false,
+                    "is_binary": false
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "ci": null
+    }
+  }
+}

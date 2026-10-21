@@ -230,6 +230,12 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 		f.serve(w, dir, "graphql-history-"+cursor)
 		return
 	}
+	// The file query carries the same variables as the repository query, so
+	// only its operation name tells the two apart.
+	if strings.Contains(body.Query, "query RepoFiles") {
+		f.serve(w, dir, "graphql-files")
+		return
+	}
 	f.serve(w, dir, "graphql")
 }
 

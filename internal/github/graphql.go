@@ -13,9 +13,10 @@ import (
 // TestClient_Collect_isReadOnly is why it is the only one.
 const graphQLPath = "/graphql"
 
-// repoQuery is the single query sent per repository. Every field is aliased to
-// snake_case so the decoded shape matches the project's JSON convention and no
-// struct tag has to carry GitHub's camelCase.
+// repoQuery is the repository query, the first of the two sent per repository
+// (filesQuery is the other). Every field is aliased to snake_case so the
+// decoded shape matches the project's JSON convention and no struct tag has
+// to carry GitHub's camelCase.
 //
 // The file probes use object(expression: "HEAD:<path>"), which answers null for
 // a path that does not exist: an absent file is an ordinary answer, not an
@@ -234,6 +235,59 @@ const historyQuery = `query RepoHistory($owner: String!, $name: String!, $oid: G
   }
 }`
 
+// filesQuery reads the text of the files the Nix and CI-efficiency facts come
+// from. It is a query of its own rather than more fields on repoQuery because
+// blob text is the expensive part of an answer: GitHub bounds a query's cost,
+// and a repository heavy enough to push repoQuery near that bound must not be
+// tipped over it by a workflow directory full of large files. Keeping the two
+// apart also means a repository that fails here names this query in the
+// error, not the one every other fact depends on.
+//
+// The directories are listed one level deep with each entry's text, because
+// GraphQL cannot filter a tree by name: every entry of .github/workflows and
+// .ci comes back, and the names this tool reads are picked out afterwards.
+// .github/actions is two levels, a directory per action, with each file in
+// it. Every entry carries only its name, its type and, for a blob, the three
+// fields blobFields names; nothing else is selected per entry, since an entry
+// is repeated as often as the directory is long.
+//
+// The justfile is probed under its three usual spellings rather than at the
+// path the tree read found, so this query does not have to wait for that
+// read. just matches the name case-insensitively, so a rarer spelling such as
+// JUSTFILE is not read here; a gate file it fails to read can only make a
+// check fail, never pass.
+const filesQuery = `query RepoFiles($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    flake_nix: object(expression: "HEAD:flake.nix") { ` + blobFields + ` }
+    flake_lock: object(expression: "HEAD:flake.lock") { ` + blobFields + ` }
+    run_all_checks: object(expression: "HEAD:run-all-checks") { ` + blobFields + ` }
+    justfile: object(expression: "HEAD:justfile") { ` + blobFields + ` }
+    dot_justfile: object(expression: "HEAD:.justfile") { ` + blobFields + ` }
+    capital_justfile: object(expression: "HEAD:Justfile") { ` + blobFields + ` }
+    workflows: object(expression: "HEAD:.github/workflows") {
+      ... on Tree { entries { name type object { ` + blobFields + ` } } }
+    }
+    actions: object(expression: "HEAD:.github/actions") {
+      ... on Tree {
+        entries {
+          name
+          type
+          object { ... on Tree { entries { name type object { ` + blobFields + ` } } } }
+        }
+      }
+    }
+    ci: object(expression: "HEAD:.ci") {
+      ... on Tree { entries { name type object { ` + blobFields + ` } } }
+    }
+  }
+}`
+
+// blobFields is what filesQuery reads of every file: its text, and the two
+// flags that say whether the text is the whole file. GitHub answers text: null
+// for a binary blob and cuts a large one short, and either way the text is not
+// the file.
+const blobFields = `... on Blob { text is_truncated: isTruncated is_binary: isBinary }`
+
 // graphQLRequest is the POST body. Variables carry the owner and name rather
 // than being interpolated into the document, so a repository name can never be
 // read as query text.
@@ -349,6 +403,53 @@ type repository struct {
 	RenovateRCJSON5     *renovateBlob `json:"renovaterc_json5"`
 
 	Workflows *tree `json:"workflows"`
+}
+
+// repoFiles is the decoded shape of filesQuery. Every probe is null when its
+// path does not exist at HEAD.
+type repoFiles struct {
+	FlakeNix        *fileBlob    `json:"flake_nix"`
+	FlakeLock       *fileBlob    `json:"flake_lock"`
+	RunAllChecks    *fileBlob    `json:"run_all_checks"`
+	Justfile        *fileBlob    `json:"justfile"`
+	DotJustfile     *fileBlob    `json:"dot_justfile"`
+	CapitalJustfile *fileBlob    `json:"capital_justfile"`
+	Workflows       *blobTree    `json:"workflows"`
+	Actions         *actionsTree `json:"actions"`
+	CI              *blobTree    `json:"ci"`
+}
+
+// fileBlob is one file as blobFields reads it. An entry that is not a blob
+// decodes to the zero value, which is why every tree entry carries its type.
+type fileBlob struct {
+	Text        *string `json:"text"`
+	IsTruncated bool    `json:"is_truncated"`
+	IsBinary    bool    `json:"is_binary"`
+}
+
+// blobTree is a directory listed one level deep, each entry with its text.
+type blobTree struct {
+	Entries []blobEntry `json:"entries"`
+}
+
+type blobEntry struct {
+	Name string `json:"name"`
+	// Type is the git object type: "blob" for a file, "tree" for a
+	// directory, "commit" for a submodule.
+	Type   string    `json:"type"`
+	Object *fileBlob `json:"object"`
+}
+
+// actionsTree is .github/actions: a directory per action, each listed with
+// its files' text.
+type actionsTree struct {
+	Entries []actionEntry `json:"entries"`
+}
+
+type actionEntry struct {
+	Name   string    `json:"name"`
+	Type   string    `json:"type"`
+	Object *blobTree `json:"object"`
 }
 
 type licenseInfo struct {

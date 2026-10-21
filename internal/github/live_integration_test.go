@@ -113,7 +113,7 @@ func TestLive_collectParsesEveryField(t *testing.T) {
 	t.Parallel()
 
 	c, lt := liveClient(t)
-	repos, err := c.Collect(t.Context(), []string{lt.publicRepo, lt.privateRepo})
+	repos, err := c.Collect(t.Context(), []string{lt.publicRepo, lt.privateRepo}, Probe{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil", err)
 	}
@@ -196,7 +196,7 @@ func TestLive_normalNotErrors(t *testing.T) {
 	t.Parallel()
 
 	c, lt := liveClient(t)
-	repos, err := c.Collect(t.Context(), []string{lt.publicRepo, lt.privateRepo})
+	repos, err := c.Collect(t.Context(), []string{lt.publicRepo, lt.privateRepo}, Probe{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil", err)
 	}
@@ -262,7 +262,7 @@ func TestLive_rollupAgreesWithRunAggregation(t *testing.T) {
 	t.Parallel()
 
 	c, lt := liveClient(t)
-	repos, err := c.Collect(t.Context(), []string{lt.publicRepo})
+	repos, err := c.Collect(t.Context(), []string{lt.publicRepo}, Probe{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil", err)
 	}
@@ -317,7 +317,7 @@ func TestLive_headShaNeedsTheFullOID(t *testing.T) {
 	t.Parallel()
 
 	c, lt := liveClient(t)
-	repos, err := c.Collect(t.Context(), []string{lt.publicRepo})
+	repos, err := c.Collect(t.Context(), []string{lt.publicRepo}, Probe{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil", err)
 	}
@@ -356,7 +356,7 @@ func TestLive_rollupNeedsNoChecksPermission(t *testing.T) {
 	t.Parallel()
 
 	c, lt := liveClient(t)
-	repos, err := c.Collect(t.Context(), []string{lt.publicRepo})
+	repos, err := c.Collect(t.Context(), []string{lt.publicRepo}, Probe{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil", err)
 	}
@@ -383,7 +383,7 @@ func TestLive_ciTimingDecodes(t *testing.T) {
 	t.Parallel()
 
 	c, lt := liveClient(t)
-	repos, err := c.Collect(t.Context(), []string{lt.publicRepo, lt.privateRepo})
+	repos, err := c.Collect(t.Context(), []string{lt.publicRepo, lt.privateRepo}, Probe{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil", err)
 	}
@@ -432,7 +432,7 @@ func TestLive_collectIsPromptlyCancellable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Nanosecond)
 	defer cancel()
 
-	_, err := c.Collect(ctx, []string{lt.publicRepo, lt.privateRepo})
+	_, err := c.Collect(ctx, []string{lt.publicRepo, lt.privateRepo}, Probe{})
 	if err == nil {
 		t.Fatal("Collect() error = nil, want a cancellation")
 	}

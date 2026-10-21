@@ -19,6 +19,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
+	"github.com/rvenutolo/github-repos-audit/internal/github"
 	"github.com/rvenutolo/github-repos-audit/internal/render"
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
 )
@@ -371,7 +372,7 @@ func (f *fakeCollector) Discover(context.Context) ([]string, error) {
 
 // Collect answers, like the real client, only for the names it is given: a
 // repository the program did not ask about is not read.
-func (f *fakeCollector) Collect(ctx context.Context, names []string) ([]audit.Repo, error) {
+func (f *fakeCollector) Collect(ctx context.Context, names []string, _ github.Probe) ([]audit.Repo, error) {
 	f.asked = slices.Clone(names)
 	repos := make([]audit.Repo, 0, len(names))
 	for _, r := range f.repos {

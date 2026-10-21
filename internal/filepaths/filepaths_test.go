@@ -226,6 +226,29 @@ func TestFind_claudeMD(t *testing.T) {
 	runField(t, func(p filepaths.Paths) string { return p.ClaudeMD }, cs)
 }
 
+func TestFind_goMod(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		entries []filepaths.Entry
+		want    bool
+	}{
+		{"root go.mod", files("go.mod"), true},
+		{"nested go.mod is another module", files("sub/go.mod"), false},
+		{"exact name only", files("Go.mod"), false},
+		{"a directory is not the file", []filepaths.Entry{{Path: "go.mod", Dir: true}}, false},
+		{"absent", files("go.sum"), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := filepaths.Find(tc.entries).GoMod; got != tc.want {
+				t.Fatalf("GoMod = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFind_caseInsensitive(t *testing.T) {
 	t.Parallel()
 	runField(t, func(p filepaths.Paths) string { return p.Justfile }, []fieldCase{

@@ -107,6 +107,17 @@ type Repo struct {
 	Files Files `json:"files"`
 	// Renovate is what the Renovate configuration says, when there is one.
 	Renovate Renovate `json:"renovate,omitzero"`
+	// Flake is what flake.nix and flake.lock say, and which files name the
+	// hermetic lint. Zero when the repository has neither file and no gate
+	// file names the lint.
+	Flake Flake `json:"flake,omitzero"`
+	// Workflows is every .yml or .yaml file in .github/workflows, parsed,
+	// sorted by path. Files.Workflows is the directory's listing; this is
+	// what the files say.
+	Workflows []Workflow `json:"workflow_facts,omitzero"`
+	// Actions is every composite action in .github/actions, one per
+	// directory holding an action.yml or action.yaml, sorted by path.
+	Actions []CompositeAction `json:"composite_actions,omitzero"`
 	// CIState is the statusCheckRollup state of the head commit: SUCCESS,
 	// FAILURE, PENDING, ERROR or EXPECTED. Empty when the rollup was null,
 	// which means no check has run on that commit.
@@ -216,6 +227,8 @@ type Files struct {
 	PRTemplate string `json:"pr_template,omitzero"`
 	// ClaudeMD is the Claude Code memory file.
 	ClaudeMD string `json:"claude_md,omitzero"`
+	// GoMod reports a file named exactly `go.mod` at the root.
+	GoMod bool `json:"go_mod,omitzero"`
 }
 
 // CI is the timing of a repository's recent CI, as recorded per commit. It

@@ -26,7 +26,10 @@ import (
 // The preset cache is made here, per run, and handed down rather than kept on
 // the Client: a Client stays safe for concurrent use, and a second run reads
 // every preset afresh instead of trusting an answer from an earlier one.
-func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, error) {
+//
+// probe says what to look for in file text beyond the facts always recorded;
+// see Probe.
+func (c *Client) Collect(ctx context.Context, names []string, probe Probe) ([]audit.Repo, error) {
 	repos := make([]audit.Repo, len(names))
 	presets := newPresetCache(c)
 
@@ -34,7 +37,7 @@ func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, err
 	g.SetLimit(fetchLimit)
 	for i, name := range names {
 		g.Go(func() error {
-			repo, err := c.collectOne(ctx, name, presets)
+			repo, err := c.collectOne(ctx, name, presets, probe)
 			if err != nil {
 				return fmt.Errorf("%s: %w", name, err)
 			}
@@ -51,18 +54,20 @@ func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, err
 	return repos, nil
 }
 
-// collectOne reads one repository: the single GraphQL query first, because the
+// collectOne reads one repository: the repository query first, because the
 // REST path needs the live default branch name from it, then the REST calls.
 // A repository with a Renovate config also costs a contents read for each
 // in-account preset it extends that no other repository in this run has
 // already read. The first hundred commits of the default branch's history
-// arrive with the GraphQL query; a longer history costs one more request per
+// arrive with the repository query; a longer history costs one more request per
 // further hundred commits, so a large repository is the slow one to collect.
 // The CI timing costs one runs read plus one jobs read per run on a sampled
 // commit (see fetchCI), and nothing for a repository with no commits.
-// Last comes one recursive tree read at the head commit, which is where every
-// file path the report records is found; it is skipped for an empty repository.
-func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache) (audit.Repo, error) {
+// Then comes one recursive tree read at the head commit, which is where every
+// file path the report records is found, and last the second GraphQL query,
+// filesQuery, for the text of the workflow, composite-action, flake and gate
+// files; both are skipped for an empty repository, which has no files.
+func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache, probe Probe) (audit.Repo, error) {
 	gql, err := c.fetchRepository(ctx, name)
 	if err != nil {
 		return audit.Repo{}, err
@@ -86,14 +91,21 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 	if err := c.fetchCI(ctx, c.repoPath(name), &repo.CI); err != nil {
 		return audit.Repo{}, err
 	}
-	// An empty repository has no commit to list, so it costs no tree request.
-	if repo.HeadOID != "" {
-		entries, err := c.fetchTree(ctx, c.repoPath(name), repo.HeadOID)
-		if err != nil {
-			return audit.Repo{}, err
-		}
-		recordPaths(&repo.Files, filepaths.Find(entries))
+	// An empty repository has no commit to list, so it costs no tree request
+	// and no file query.
+	if repo.HeadOID == "" {
+		return repo, nil
 	}
+	entries, err := c.fetchTree(ctx, c.repoPath(name), repo.HeadOID)
+	if err != nil {
+		return audit.Repo{}, err
+	}
+	recordPaths(&repo.Files, filepaths.Find(entries))
+	files, err := c.fetchFiles(ctx, name)
+	if err != nil {
+		return audit.Repo{}, err
+	}
+	recordFiles(&repo, files, probe)
 	return repo, nil
 }
 
@@ -205,6 +217,7 @@ func recordPaths(f *audit.Files, p filepaths.Paths) {
 	f.Codeowners = p.Codeowners
 	f.PRTemplate = p.PRTemplate
 	f.ClaudeMD = p.ClaudeMD
+	f.GoMod = p.GoMod
 }
 
 // renovateConfig returns the first accepted path that exists, so the report

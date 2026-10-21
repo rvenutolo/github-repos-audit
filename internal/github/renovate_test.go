@@ -63,7 +63,7 @@ func scriptRenovateProbes(t *testing.T, api *fakeAPI, probes map[string]any) {
 // collectFlake collects mixedCase-flake alone and returns its Renovate facts.
 func collectFlake(t *testing.T, api *fakeAPI) audit.Renovate {
 	t.Helper()
-	repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+	repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil: an unusable config is a fact, not an abort", err)
 	}
@@ -77,7 +77,7 @@ func TestCollect_presetFetchedOncePerRun(t *testing.T) {
 	api := newFakeAPI(t)
 	c := newTestClient(t, api.url())
 	// mixedCase-flake and web-app both extend github>gh-owner/preset-store.
-	if _, err := c.Collect(t.Context(), []string{"mixedCase-flake", "web-app"}); err != nil {
+	if _, err := c.Collect(t.Context(), []string{"mixedCase-flake", "web-app"}, github.Probe{}); err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
 	if n := api.callsTo(presetDefault); n != 1 {
@@ -93,7 +93,7 @@ func TestCollect_presetCacheIsPerRun(t *testing.T) {
 	api := newFakeAPI(t)
 	c := newTestClient(t, api.url())
 	for range 2 {
-		if _, err := c.Collect(t.Context(), []string{"mixedCase-flake"}); err != nil {
+		if _, err := c.Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{}); err != nil {
 			t.Fatalf("Collect() error = %v", err)
 		}
 	}
@@ -143,7 +143,7 @@ func TestCollect_presetServerErrorAborts(t *testing.T) {
 	api.failNext(presetDefault,
 		scriptedFailure{status: http.StatusForbidden, body: `{"message":"Forbidden"}`})
 	c := newTestClient(t, api.url())
-	if _, err := c.Collect(t.Context(), []string{"mixedCase-flake"}); !errors.Is(err, github.ErrUnexpectedStatus) {
+	if _, err := c.Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{}); !errors.Is(err, github.ErrUnexpectedStatus) {
 		t.Errorf("Collect() error = %v, want ErrUnexpectedStatus", err)
 	}
 }
@@ -319,7 +319,7 @@ func TestCollect_renovateConfigFollowsRenovateLookupOrder(t *testing.T) {
 			}
 			api := newFakeAPI(t)
 			scriptRenovateProbes(t, api, probes)
-			repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+			repos, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"}, github.Probe{})
 			if err != nil {
 				t.Fatalf("Collect() error = %v", err)
 			}
