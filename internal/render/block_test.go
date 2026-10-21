@@ -109,7 +109,8 @@ func TestBlock_nothingWrong(t *testing.T) {
 }
 
 // TestBlock_nixSection: the Nix section sits after File paths and before
-// Policy, and a hermetic_nix fail names every missing part beside its mark.
+// Policy, carries a column per Nix check, and a hermetic_nix fail names every
+// missing part beside its mark.
 func TestBlock_nixSection(t *testing.T) {
 	t.Parallel()
 
@@ -122,8 +123,10 @@ func TestBlock_nixSection(t *testing.T) {
 		t.Fatalf("Block() has no Nix section between File paths and Policy:\n%s", got)
 	}
 	section := got[nix:strings.Index(got, "## Policy\n")]
-	if !strings.Contains(section, "| Repository ") || !strings.Contains(section, "| Hermetic ") {
-		t.Errorf("Nix section header lacks Repository and Hermetic:\n%s", section)
+	for _, col := range []string{"| Repository ", "| Hermetic ", "| Lock age "} {
+		if !strings.Contains(section, col) {
+			t.Errorf("Nix section header lacks %q:\n%s", col, section)
+		}
 	}
 	if !strings.Contains(section, "✗ not in devShell, not in gate") {
 		t.Errorf("Nix section lacks the software repository's fail:\n%s", section)
@@ -857,5 +860,64 @@ func TestCITimingSection_naCells(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// nixRow renders snap and returns the Nix section's row for the named
+// repository.
+func nixRow(t *testing.T, snap *audit.Snapshot, name string) string {
+	t.Helper()
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	start := strings.Index(got, "## Nix\n")
+	end := strings.Index(got, "## Policy\n")
+	if start < 0 || end < start {
+		t.Fatalf("Block() has no Nix section before Policy:\n%s", got)
+	}
+	for l := range strings.SplitSeq(got[start:end], "\n") {
+		if strings.HasPrefix(l, "| ["+name+"]") {
+			return l
+		}
+	}
+	t.Fatalf("Nix section has no row for %s:\n%s", name, got[start:end])
+	return ""
+}
+
+// TestMarkedDateCell: the lock-age cell shows the age beside its mark, so a
+// stale lock reads "✗ 47d" rather than a bare cross; a type that does not
+// judge the check still shows the age it found; a lock with nothing to date
+// is n/a; and an unreadable lock says so.
+func TestMarkedDateCell(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		typ    rules.Type
+		mutate func(*audit.Flake)
+		want   string
+	}{
+		{"fresh", "tools", func(f *audit.Flake) { f.NixpkgsLastModified = renderedAt.Add(-4 * 24 * time.Hour) }, "✓ 4d"},
+		{"stale", "tools", func(f *audit.Flake) { f.NixpkgsLastModified = renderedAt.Add(-47 * 24 * time.Hour) }, "✗ 47d"},
+		{"not judged", "content", func(f *audit.Flake) { f.NixpkgsLastModified = renderedAt.Add(-47 * 24 * time.Hour) }, "47d"},
+		{"no nixpkgs", "tools", func(f *audit.Flake) { f.NixpkgsLastModified = time.Time{} }, "n/a"},
+		{"unreadable", "tools", func(f *audit.Flake) { *f = audit.Flake{HasLock: true, LockError: "flake.lock: invalid JSON"} }, "✗ unreadable flake.lock"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := baseRepo("alpha", tc.typ)
+			tc.mutate(&r.Flake)
+			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+			row := nixRow(t, snap, "alpha")
+			cols := strings.Split(row, "|")
+			// "| repo | Hermetic | Lock age |…": the lock age is the third
+			// cell, after the empty string before the first pipe.
+			if len(cols) < 4 || strings.TrimSpace(cols[3]) != tc.want {
+				t.Errorf("Nix row = %q, want a Lock age cell %q", row, tc.want)
+			}
+		})
 	}
 }

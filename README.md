@@ -376,6 +376,14 @@ Grouped by theme here; the report lists them in the fixed worklist order
   call is reachable. A `flake.nix` the tool could not read records nothing,
   so it reads as `no input` and `not in devShell`. n/a without a `flake.nix`,
   which the flake_nix row already reports. The report's Nix section shows it.
+- **nix_lock_age** — how long ago `flake.lock` locked nixpkgs: the
+  `lastModified` of the node the root's `nixpkgs` input resolves to,
+  following `follows`, so a lock that names it `nixpkgs_2` is still found.
+  It passes at 30 days or less, measured to the second against the moment
+  the audit was read, and the cell shows the age beside its mark (`✓ 4d`,
+  `✗ 47d`). A `flake.lock` the tool could not read fails as
+  `unreadable flake.lock`. n/a without a `flake.lock`, or when the root has
+  no input named `nixpkgs`. The report's Nix section shows it.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches

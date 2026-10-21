@@ -63,13 +63,15 @@ func fixture(name string, typ rules.Type) audit.Repo {
 			Commitlint:     ".commitlintrc.yml",
 		},
 		// The fixture [hermetic] standard's flake, declared, locked, named in
-		// flake.nix and wired into the gate.
+		// flake.nix and wired into the gate, with nixpkgs locked well within
+		// the lock-age limit.
 		Flake: audit.Flake{
-			Inputs:       []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
-			HasLock:      true,
-			LockedInputs: []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
-			NamesLint:    true,
-			GateFiles:    []string{"run-all-checks"},
+			Inputs:              []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
+			HasLock:             true,
+			LockedInputs:        []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
+			NixpkgsLastModified: time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC),
+			NamesLint:           true,
+			GateFiles:           []string{"run-all-checks"},
 		},
 		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json"},
 		CIState:  "SUCCESS",

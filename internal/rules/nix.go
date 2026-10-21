@@ -3,6 +3,7 @@ package rules
 import (
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
@@ -43,6 +44,35 @@ func observeHermetic(r audit.Repo, std audit.HermeticStandard) observation {
 		return observation{ok: true}
 	}
 	return observation{value: strings.Join(missing, ", "), mark: true}
+}
+
+// maxLockAge is how old the nixpkgs lock may be before nix_lock_age fails.
+// nixpkgs channels move daily and carry security fixes, so a month without a
+// refresh means a month of fixes the flake does not have; the age is measured
+// to the second, so exactly 30 days still passes.
+const maxLockAge = 30 * 24 * time.Hour
+
+// observeLockAge judges how long ago the flake's nixpkgs was locked, against
+// now, the snapshot's instant, so the same audit.json always reads the same
+// way. The date is the lock's `lastModified` for the node the root's nixpkgs
+// input resolves to; the cell carries it and the renderer shows its age
+// beside the mark, so a stale lock reads as how stale.
+//
+// There is nothing to date without a flake.lock, or in a lock with no
+// nixpkgs input, so both are n/a. A lock the collector could not read fails
+// as unreadable: it recorded no date, and passing on a missing date would
+// hide exactly the lock that most needs looking at.
+func observeLockAge(r audit.Repo, now time.Time) observation {
+	switch {
+	case !r.Flake.HasLock:
+		return observation{unknown: true}
+	case r.Flake.LockError != "":
+		return observation{value: "unreadable flake.lock", mark: true}
+	case r.Flake.NixpkgsLastModified.IsZero():
+		return observation{unknown: true}
+	}
+	at := r.Flake.NixpkgsLastModified
+	return observation{at: at, ok: now.Sub(at) <= maxLockAge, mark: true, scalar: true}
 }
 
 // lockedRef is the form audit.Flake.LockedInputs records a flake reference

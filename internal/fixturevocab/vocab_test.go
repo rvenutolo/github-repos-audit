@@ -465,6 +465,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^hermetic\.lint$`), func(v any) bool { return v == "check-workflow-hermetic" }, "the fixture hermetic lint"},
 	{regexp.MustCompile(`^repos\[\]\.flake\.(inputs|locked_inputs)\[\]$`), isFakeFlakeRef, "github:gh-owner/<fake> or nixpkgs"},
 	{regexp.MustCompile(`^repos\[\]\.flake\.gate_files\[\]$`), matches(`^(run-all-checks|justfile|\.justfile|Justfile|\.ci/[A-Za-z0-9._-]+)$`), "a gate file path"},
+	{regexp.MustCompile(`^repos\[\]\.flake\.nixpkgs_last_modified$`), matches(timestamp), "a timestamp"},
 	// Recorded CI facts: commits carry the synthetic oid, dates are
 	// timestamps, and a job label is a generic "<workflow> / <job>" pair like
 	// the API fixtures'.

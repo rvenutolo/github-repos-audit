@@ -81,13 +81,15 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			Commitlint:     ".commitlintrc.yml",
 		},
 		// The fixture [hermetic] standard's flake, declared, locked, named in
-		// flake.nix and wired into the gate.
+		// flake.nix and wired into the gate, with nixpkgs locked days before
+		// the render.
 		Flake: audit.Flake{
-			Inputs:       []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
-			HasLock:      true,
-			LockedInputs: []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
-			NamesLint:    true,
-			GateFiles:    []string{"run-all-checks"},
+			Inputs:              []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
+			HasLock:             true,
+			LockedInputs:        []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
+			NixpkgsLastModified: at(2026, time.September, 1),
+			NamesLint:           true,
+			GateFiles:           []string{"run-all-checks"},
 		},
 		// The canonical identity, and a bot's that is never the owner's.
 		Identities: []audit.Identity{
@@ -135,8 +137,9 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // git identities that are mixed (beside an accepted one), canonical beside
 // an accepted one, consistently non-canonical, only someone else's, and
 // absent altogether. The published software repository has declared and
-// locked the hermetic-lint flake without wiring the lint in, so the Nix
-// section carries a fail beside the passes.
+// locked the hermetic-lint flake without wiring the lint in, and the tools
+// repository's nixpkgs lock is stale, so the Nix section carries fails beside
+// the passes.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -198,6 +201,7 @@ func fullSnapshot() *audit.Snapshot {
 	content.Files.RenovateConfig = ""
 	content.Renovate = audit.Renovate{} // no configuration, so nothing it says
 	content.Files.FlakeNix = false
+	content.Flake = audit.Flake{} // no flake.nix, so no flake.lock either
 	content.Files.Justfile = false
 	content.Files.JustfilePath = ""
 	content.Files.Workflows = nil
@@ -214,6 +218,8 @@ func fullSnapshot() *audit.Snapshot {
 	tools.CIState = "PENDING"
 	tools.Branches = 4 // three besides the default, so the cell is not a zero
 	tools.Branch.RequiredChecks = []string{"merge-gate"}
+	// Its nixpkgs was last locked well over a month ago.
+	tools.Flake.NixpkgsLastModified = at(2026, time.July, 20)
 	// Its only merged pull requests are a bot's, so PR CI has nothing to show.
 	tools.CI = audit.CI{
 		PullRequests: []audit.CICommit{ciCommit("0004", 7, at(2026, time.August, 22), true, 90, ciJob("ci / check", 60))},
@@ -240,6 +246,7 @@ func fullSnapshot() *audit.Snapshot {
 	cfg.Files.Commitlint = ".commitlintrc.json"
 	cfg.Overrides = map[string]string{"flake_nix": rules.OverrideNotRequired}
 	cfg.Files.FlakeNix = false
+	cfg.Flake = audit.Flake{}
 	cfg.Settings.HasWiki = true // the one deviation on wiki
 	// A preset it extends is missing, so its release age is unresolved.
 	cfg.Renovate = audit.Renovate{MinReleaseAgeError: "preset github>gh-owner/preset-store:go: not found"}

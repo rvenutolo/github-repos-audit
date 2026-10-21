@@ -51,7 +51,7 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	writeSection(&b, metadataSection(rep))
 	writeSection(&b, treeSection(rep))
 	writeSection(&b, filePathsSection(rep))
-	writeSection(&b, nixSection(rep))
+	writeSection(&b, nixSection(rep, at))
 	writeSection(&b, policySection(rep))
 	writeSection(&b, activitySection(rep, at))
 	writeSection(&b, ciTimingSection(rep))
@@ -253,13 +253,14 @@ func filePathsSection(rep *rules.Report) string {
 
 // nixSection shows how each repository uses Nix beyond having a flake.nix,
 // which the Tree section already reports.
-func nixSection(rep *rules.Report) string {
-	t := newTable("Repository", "Hermetic")
+func nixSection(rep *rules.Report, at time.Time) string {
+	t := newTable("Repository", "Hermetic", "Lock age")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
 			repoLink(rep.Owner, r.Repo.Name),
 			cell(r.Cell(rules.CheckHermeticNix)),
+			markedDateCell(r.Cell(rules.CheckNixLockAge), at),
 		)
 	}
 	return heading("Nix", t)
@@ -501,6 +502,26 @@ func dateCell(c rules.Cell, at time.Time) string {
 	}
 	if c.At.IsZero() {
 		return "never"
+	}
+	return age(c.At, at)
+}
+
+// markedDateCell renders a judged instant as its age beside the verdict's
+// mark, "✓ 4d" or "✗ 47d": the age alone would hide whether it is too old,
+// and the mark alone would hide by how much. A cell that is not judged shows
+// the bare age it found, as a scalar does on n/a; a cell with no instant is
+// whatever cell makes of it, which is n/a or the reason it has none, such as
+// an unreadable file.
+func markedDateCell(c rules.Cell, at time.Time) string {
+	if c.At.IsZero() {
+		return cell(c)
+	}
+	switch c.Verdict {
+	case rules.Pass:
+		return markPass + " " + age(c.At, at)
+	case rules.Fail:
+		return markFail + " " + age(c.At, at)
+	case rules.NA, rules.Info:
 	}
 	return age(c.At, at)
 }

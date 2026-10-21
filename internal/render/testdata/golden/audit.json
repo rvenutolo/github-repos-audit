@@ -31,6 +31,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_lock_age": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -79,6 +80,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_lock_age": "not_required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -127,6 +129,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_lock_age": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -175,6 +178,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_lock_age": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -223,6 +227,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_lock_age": "required",
       "open_prs": "info",
       "pr_template": "info",
       "prettier": "not_required",
@@ -271,6 +276,7 @@
       "lychee": "not_required",
       "markdownlint": "not_required",
       "mkdocs": "not_required",
+      "nix_lock_age": "required",
       "open_prs": "info",
       "pr_template": "not_required",
       "prettier": "not_required",
@@ -368,7 +374,8 @@
         "locked_inputs": [
           "github:gh-owner/lint-flake",
           "github:nixos/nixpkgs"
-        ]
+        ],
+        "nixpkgs_last_modified": "2026-09-01T12:00:00Z"
       },
       "ci_state": "SUCCESS",
       "ci": {
@@ -527,21 +534,6 @@
         "security_policy": "SECURITY.md",
         "pr_template": ".github/pull_request_template.md"
       },
-      "flake": {
-        "inputs": [
-          "github:NixOS/nixpkgs/nixos-unstable",
-          "github:gh-owner/lint-flake"
-        ],
-        "has_lock": true,
-        "locked_inputs": [
-          "github:gh-owner/lint-flake",
-          "github:nixos/nixpkgs"
-        ],
-        "names_lint": true,
-        "gate_files": [
-          "run-all-checks"
-        ]
-      },
       "releases": {
         "total": 0,
         "drafts": 0
@@ -665,6 +657,7 @@
           "github:gh-owner/lint-flake",
           "github:nixos/nixpkgs"
         ],
+        "nixpkgs_last_modified": "2026-07-20T12:00:00Z",
         "names_lint": true,
         "gate_files": [
           "run-all-checks"
@@ -872,21 +865,6 @@
       },
       "renovate": {
         "min_release_age_error": "preset github>gh-owner/preset-store:go: not found"
-      },
-      "flake": {
-        "inputs": [
-          "github:NixOS/nixpkgs/nixos-unstable",
-          "github:gh-owner/lint-flake"
-        ],
-        "has_lock": true,
-        "locked_inputs": [
-          "github:gh-owner/lint-flake",
-          "github:nixos/nixpkgs"
-        ],
-        "names_lint": true,
-        "gate_files": [
-          "run-all-checks"
-        ]
       },
       "ci_state": "SUCCESS",
       "releases": {

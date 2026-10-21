@@ -54,6 +54,7 @@ var gapLabels = map[Check]string{
 	CheckSecretScanning:        "Secret scanning off",
 	CheckVulnReporting:         "Private vulnerability reporting off",
 	CheckHermeticNix:           "Hermetic lint not wired in",
+	CheckNixLockAge:            "nixpkgs locked more than 30 days ago",
 }
 
 // communityFiles names the three community health files, in the order the

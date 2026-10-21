@@ -3,6 +3,7 @@ package rules_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
@@ -220,4 +221,111 @@ func TestEvaluate_hermetic_judgedWithoutStandardErrors(t *testing.T) {
 	if got := rep.Repos[0].Cell(rules.CheckHermeticNix); got.Verdict != rules.NA {
 		t.Errorf("cell = %v, want n/a", got.Verdict)
 	}
+}
+
+// lockAgeAt judges one tools repository, which standard-types.toml holds to
+// nix_lock_age = "required", as of now, and returns its nix_lock_age cell.
+func lockAgeAt(t *testing.T, r audit.Repo, now time.Time) rules.Cell {
+	t.Helper()
+	rep, err := rules.Evaluate(&audit.Snapshot{
+		GeneratedAt: now, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		Repos: []audit.Repo{r},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v, want nil", err)
+	}
+	return rep.Repos[0].Cell(rules.CheckNixLockAge)
+}
+
+// TestEvaluate_lockAge_boundary: nixpkgs locked at most 30 days before the
+// snapshot passes, and a second more fails. The age is measured against the
+// snapshot's own instant, so the same audit.json always judges the same way,
+// and the cell carries the lock instant for the renderer to show as an age
+// beside its mark.
+func TestEvaluate_lockAge_boundary(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		at   time.Time
+		want rules.Verdict
+	}{
+		{"exactly 30 days", now.Add(-30 * 24 * time.Hour), rules.Pass},
+		{"30 days and a second", now.Add(-30*24*time.Hour - time.Second), rules.Fail},
+		{"locked yesterday", now.Add(-24 * time.Hour), rules.Pass},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := fixture("alpha", "tools")
+			r.Flake.NixpkgsLastModified = tc.at
+			got := lockAgeAt(t, r, now)
+			if got.Verdict != tc.want || !got.At.Equal(tc.at) || !got.Mark || got.Value != "" {
+				t.Errorf("cell = %v at=%v mark=%t value=%q, want %v at %v, marked, no value",
+					got.Verdict, got.At, got.Mark, got.Value, tc.want, tc.at)
+			}
+		})
+	}
+}
+
+// TestEvaluate_lockAge_unreadable: a flake.lock that could not be read has no
+// date to judge, and fails saying so rather than passing on nothing.
+func TestEvaluate_lockAge_unreadable(t *testing.T) {
+	t.Parallel()
+
+	r := fixture("alpha", "tools")
+	r.Flake = audit.Flake{HasLock: true, LockError: "flake.lock: invalid JSON"}
+	got := lockAgeAt(t, r, time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC))
+	if got.Verdict != rules.Fail || got.Value != "unreadable flake.lock" || !got.Mark {
+		t.Errorf("cell = %v %q mark=%t, want a marked fail %q", got.Verdict, got.Value, got.Mark, "unreadable flake.lock")
+	}
+}
+
+// TestEvaluate_lockAge_noLockIsNA: with no flake.lock, or a lock with no
+// input named nixpkgs, there is no nixpkgs date to be old, so the check does
+// not apply.
+func TestEvaluate_lockAge_noLockIsNA(t *testing.T) {
+	t.Parallel()
+
+	for name, f := range map[string]audit.Flake{
+		"no lock":            {},
+		"no nixpkgs":         {HasLock: true, LockedInputs: []string{"github:gh-owner/lint-flake"}},
+		"stale, but no lock": {NixpkgsLastModified: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := fixture("alpha", "tools")
+			r.Flake = f
+			got := lockAgeAt(t, r, time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC))
+			if got.Verdict != rules.NA {
+				t.Errorf("cell = %v %q, want n/a", got.Verdict, got.Value)
+			}
+		})
+	}
+}
+
+// TestEvaluate_lockAge_reachesTheWorklist: a stale lock is a gap under its
+// own label.
+func TestEvaluate_lockAge_reachesTheWorklist(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	r := fixture("alpha", "tools")
+	r.Flake.NixpkgsLastModified = now.Add(-47 * 24 * time.Hour)
+	rep, err := rules.Evaluate(&audit.Snapshot{
+		GeneratedAt: now, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		Repos: []audit.Repo{r},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v, want nil", err)
+	}
+	for _, g := range rep.Gaps {
+		if g.Label == "nixpkgs locked more than 30 days ago" && len(g.Repos) == 1 && g.Repos[0] == "alpha" {
+			return
+		}
+	}
+	t.Errorf("Gaps = %+v, want alpha under %q", rep.Gaps, "nixpkgs locked more than 30 days ago")
 }

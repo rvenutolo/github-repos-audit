@@ -319,6 +319,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 
 	case CheckHermeticNix:
 		return observeHermetic(r, ev.hermetic)
+	case CheckNixLockAge:
+		return observeLockAge(r, ev.now)
 
 	case CheckTopics:
 		return observation{ok: r.Topics > 0, value: strconv.Itoa(r.Topics), scalar: true}

@@ -46,10 +46,10 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## Nix
 
-| Repository                                 | Hermetic |
-| ------------------------------------------ | -------- |
-| [alpha](https://github.com/gh-owner/alpha) | ✓        |
-| [bravo](https://github.com/gh-owner/bravo) | ✓        |
+| Repository                                 | Hermetic | Lock age |
+| ------------------------------------------ | -------- | -------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓        | ✓ 3d     |
+| [bravo](https://github.com/gh-owner/bravo) | ✓        | ✓ 3d     |
 
 ## Policy
 

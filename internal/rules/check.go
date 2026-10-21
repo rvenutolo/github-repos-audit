@@ -60,6 +60,7 @@ const (
 	CheckSecretScanning
 	CheckVulnReporting
 	CheckHermeticNix
+	CheckNixLockAge
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
@@ -113,6 +114,7 @@ var checkNames = [...]string{
 	CheckSecretScanning:        "secret_scanning",
 	CheckVulnReporting:         "vuln_reporting",
 	CheckHermeticNix:           "hermetic_nix",
+	CheckNixLockAge:            "nix_lock_age",
 	CheckLastReleaseAge:        "last_release_age",
 	CheckLastPush:              "last_push",
 	CheckOpenPRs:               "open_prs",

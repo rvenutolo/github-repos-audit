@@ -20,6 +20,7 @@
 - **Direct push to the default branch blocked** (1) — cipher-lib
 - **Secret scanning off** (1) — cipher-lib
 - **Hermetic lint not wired in** (1) — mixedCase-flake
+- **nixpkgs locked more than 30 days ago** (1) — github-repos-audit
 
 ## Metadata
 
@@ -77,13 +78,13 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## Nix
 
-| Repository                                                           | Hermetic                       |
-| -------------------------------------------------------------------- | ------------------------------ |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a                            |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓                              |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a                            |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✗ not in devShell, not in gate |
-| [web-app](https://github.com/gh-owner/web-app)                       | n/a                            |
+| Repository                                                           | Hermetic                       | Lock age |
+| -------------------------------------------------------------------- | ------------------------------ | -------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a                            | n/a      |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓                              | ✗ 46d    |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a                            | n/a      |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✗ not in devShell, not in gate | ✓ 3d     |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a                            | n/a      |
 
 ## Policy
 
