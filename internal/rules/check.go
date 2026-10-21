@@ -64,6 +64,7 @@ const (
 	CheckNixLockRefresh
 	CheckNixCache
 	CheckGoCache
+	CheckCacheUsage
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
@@ -121,6 +122,7 @@ var checkNames = [...]string{
 	CheckNixLockRefresh:        "nix_lock_refresh",
 	CheckNixCache:              "nix_cache",
 	CheckGoCache:               "go_cache",
+	CheckCacheUsage:            "cache_usage",
 	CheckLastReleaseAge:        "last_release_age",
 	CheckLastPush:              "last_push",
 	CheckOpenPRs:               "open_prs",

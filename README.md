@@ -429,6 +429,14 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `none on main`. n/a without a root `go.mod`, or when no workflow has run
   on the default branch in the last 7 days. The report's CI efficiency
   section shows it.
+- **cache_usage** — whether the repository's Actions caches stay at or
+  below 80% of the cache storage limit GitHub reports for it. Past the limit
+  GitHub evicts the entries restored longest ago to make room for each new
+  save, so caches push each other out and runs miss the caches they
+  expected. The cell shows the usage in decimal units (`✓ 2.3 GB`); the
+  comparison is exact, so a byte over 80% fails even where the size reads
+  the same. n/a when no limit was read, as for an empty repository. The
+  report's CI efficiency section shows it.
 - **last_release_age**, **last_push**, **open_prs**, **branches** — plain
   facts, always shown and never judged: how long since the last release and
   the last push, how many pull requests are open, and how many branches

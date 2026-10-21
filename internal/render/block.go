@@ -273,12 +273,13 @@ func nixSection(rep *rules.Report, at time.Time) string {
 // storage well: caches saved with something in them, and nothing left to
 // pile up.
 func ciEfficiencySection(rep *rules.Report) string {
-	t := newTable("Repository", "Go cache")
+	t := newTable("Repository", "Go cache", "Cache use")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
 			repoLink(rep.Owner, r.Repo.Name),
 			cell(r.Cell(rules.CheckGoCache)),
+			cell(r.Cell(rules.CheckCacheUsage)),
 		)
 	}
 	return heading("CI efficiency", t)

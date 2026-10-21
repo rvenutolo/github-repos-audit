@@ -4,6 +4,7 @@
   "types": {
     "config": {
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "not_required",
       "ci_green": "required",
       "ci_workflows": "required",
@@ -56,6 +57,7 @@
     },
     "content": {
       "branches": "info",
+      "cache_usage": "not_required",
       "changelog": "not_required",
       "ci_green": "not_required",
       "ci_workflows": "not_required",
@@ -108,6 +110,7 @@
     },
     "environment": {
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "not_required",
       "ci_green": "required",
       "ci_workflows": "required",
@@ -160,6 +163,7 @@
     },
     "infra": {
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "not_required",
       "ci_green": "required",
       "ci_workflows": "required",
@@ -212,6 +216,7 @@
     },
     "software": {
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "required",
       "ci_green": "required",
       "ci_workflows": "required",
@@ -264,6 +269,7 @@
     },
     "tools": {
       "branches": "info",
+      "cache_usage": "required",
       "changelog": "not_required",
       "ci_green": "required",
       "ci_workflows": "required",

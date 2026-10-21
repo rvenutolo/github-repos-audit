@@ -97,13 +97,13 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## CI efficiency
 
-| Repository                                                           | Go cache        |
-| -------------------------------------------------------------------- | --------------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a             |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         |
-| [web-app](https://github.com/gh-owner/web-app)                       | n/a             |
+| Repository                                                           | Go cache        | Cache use |
+| -------------------------------------------------------------------- | --------------- | --------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a             | n/a       |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✓ 2.3 GB  |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a       |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓ 481 MB  |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       |
 
 ## Policy
 

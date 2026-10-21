@@ -37,3 +37,23 @@ func observeGoCache(r audit.Repo, now time.Time) observation {
 	}
 	return observation{ok: true, value: formatBytes(largest), mark: true}
 }
+
+// observeCacheUsage judges whether the repository's Actions caches leave
+// headroom under the storage limit GitHub reported for it. Past the limit
+// GitHub evicts the entries restored longest ago to make room for each new
+// save, so caches start pushing each other out and runs miss caches they
+// expected to hit; 80% is far enough below it that one more save does not
+// trigger that. The comparison is in integer bytes, usage*10 against
+// limit*8, so exactly 80% passes and no rounding moves the boundary. The
+// usage is a scalar, worth showing whether or not the check is required.
+//
+// It is n/a when no limit was read: storage is not collected for an empty
+// repository, and a zero limit would fail every repository that holds a
+// single cache.
+func observeCacheUsage(r audit.Repo) observation {
+	usage, limit := r.Storage.CacheUsageBytes, r.Storage.CacheLimitBytes
+	if limit == 0 {
+		return observation{unknown: true}
+	}
+	return observation{ok: usage*10 <= limit*8, value: formatBytes(usage), mark: true, scalar: true}
+}

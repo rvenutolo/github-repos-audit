@@ -134,8 +134,9 @@ func TestBlock_nixSection(t *testing.T) {
 }
 
 // TestBlock_ciEfficiencySection: the CI efficiency section sits right after
-// the Nix section and before Policy, carries a Go cache column, and a
-// go_cache fail shows the size it found beside its mark.
+// the Nix section and before Policy, carries Go cache and Cache use
+// columns, a go_cache fail shows the size it found beside its mark, and a
+// cache_usage pass shows the usage it measured.
 func TestBlock_ciEfficiencySection(t *testing.T) {
 	t.Parallel()
 
@@ -148,13 +149,16 @@ func TestBlock_ciEfficiencySection(t *testing.T) {
 		t.Fatalf("Block() has no CI efficiency section between Nix and Policy:\n%s", got)
 	}
 	section := got[ci:policy]
-	for _, col := range []string{"| Repository ", "| Go cache "} {
+	for _, col := range []string{"| Repository ", "| Go cache ", "| Cache use "} {
 		if !strings.Contains(section, col) {
 			t.Errorf("CI efficiency section header lacks %q:\n%s", col, section)
 		}
 	}
 	if !strings.Contains(section, "✗ empty (430 B)") {
 		t.Errorf("CI efficiency section lacks the tools repository's fail:\n%s", section)
+	}
+	if !strings.Contains(section, "✓ 2.3 GB") {
+		t.Errorf("CI efficiency section lacks the tools repository's cache usage:\n%s", section)
 	}
 }
 
