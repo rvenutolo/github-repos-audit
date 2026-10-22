@@ -204,3 +204,51 @@ func TestEvaluate_cancelSuperseded_listedWhenFailingOrInfo(t *testing.T) {
 		t.Errorf("CancelMissing differs (-want +got):\n%s", diff)
 	}
 }
+
+// TestEvaluate_cancelSuperseded_typesWithoutSynchronize: a pull-request
+// trigger whose listed types exclude synchronize never sees a push to an open
+// pull request, so nothing is superseded through it and the workflow is not
+// judged; one that lists synchronize, or no types at all (GitHub's default
+// set includes it), is.
+func TestEvaluate_cancelSuperseded_typesWithoutSynchronize(t *testing.T) {
+	t.Parallel()
+
+	push := audit.Workflow{Path: ".github/workflows/release.yml", Events: []string{"push"}, Jobs: []audit.Job{{ID: "release"}}}
+	closedOnly := prWorkflow(".github/workflows/cleanup.yml", audit.Concurrency{}, audit.Job{ID: "clean"})
+	closedOnly.PullRequestTypes = []string{"closed"}
+	if got := cancelCell(t, push, closedOnly); got.Verdict != rules.NA {
+		t.Errorf("closed-only cell = %v %q, want n/a", got.Verdict, got.Value)
+	}
+
+	withSync := prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check"})
+	withSync.PullRequestTypes = []string{"opened", "synchronize"}
+	wantCell(t, cancelCell(t, push, withSync), rules.Fail, "1 workflow")
+
+	targetClosed := audit.Workflow{
+		Path: ".github/workflows/label.yml", Events: []string{"pull_request", "pull_request_target"},
+		PullRequestTargetTypes: []string{"closed"}, Jobs: []audit.Job{{ID: "label"}},
+	}
+	wantCell(t, cancelCell(t, targetClosed), rules.Fail, "1 workflow")
+
+	targetSync := audit.Workflow{
+		Path: ".github/workflows/label.yml", Events: []string{"pull_request_target"},
+		PullRequestTargetTypes: []string{"synchronize"}, Jobs: []audit.Job{{ID: "label"}},
+	}
+	wantCell(t, cancelCell(t, targetSync), rules.Fail, "1 workflow")
+}
+
+// TestEvaluate_cancelSuperseded_unreadableBesideUnjudged: an unreadable
+// workflow still fails the check when the only readable pull-request
+// workflow cannot be superseded.
+func TestEvaluate_cancelSuperseded_unreadableBesideUnjudged(t *testing.T) {
+	t.Parallel()
+
+	closedOnly := prWorkflow(".github/workflows/cleanup.yml", audit.Concurrency{}, audit.Job{ID: "clean"})
+	closedOnly.PullRequestTypes = []string{"closed"}
+	rep := cancelReport(t, closedOnly, audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "invalid YAML"})
+	wantCell(t, rep.Repos[0].Cell(rules.CheckCICancelSuperseded), rules.Fail, "1 workflow")
+	want := []rules.RepoList[string]{{Repo: "alpha", Items: []string{"unreadable .github/workflows/broken.yml"}}}
+	if diff := cmp.Diff(want, rep.CancelMissing); diff != "" {
+		t.Errorf("CancelMissing differs (-want +got):\n%s", diff)
+	}
+}

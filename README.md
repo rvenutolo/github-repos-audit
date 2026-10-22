@@ -446,23 +446,26 @@ Grouped by theme here; the report lists them in the fixed worklist order
   comparison is exact, so a byte over 80% fails even where the size reads
   the same. n/a when no limit was read, as for an empty repository. The
   report's CI efficiency section shows it.
-- **ci_cancel_superseded** — whether every workflow triggered by
-  `pull_request` or `pull_request_target` cancels the run a newer push to
-  the same pull request supersedes, so a run whose result nobody will read
-  does not hold a runner. A workflow passes with a workflow-level
+- **ci_cancel_superseded** — whether every workflow that a push to an open
+  pull request triggers cancels the run that push supersedes, so a run
+  whose result nobody will read does not hold a runner. A workflow counts
+  when `on:` names `pull_request` or `pull_request_target` and that trigger
+  can run on `synchronize`: it lists no `types` (GitHub's default set,
+  `opened`, `synchronize`, `reopened`, includes it) or lists `synchronize`.
+  A workflow whose pull request triggers list only other types, such as
+  `closed`, is not judged. A counted workflow passes with a workflow-level
   `concurrency` that sets `cancel-in-progress`, or when every one of its
   jobs sets it in a job-level `concurrency`; an expression counts as set,
-  a literal `false`, in any case, does not. A workflow file that does not parse fails it
-  as unreadable. The cell counts the workflows that fail
+  a literal `false`, in any case, does not. A workflow file that does not
+  parse fails it as unreadable. The cell counts the workflows that fail
   (`✗ 2 workflows`), and the report's CI efficiency section lists them per
   repository under _Workflows without cancel-in-progress_, for every
   repository whose cell fails or, under `info`, shows a count; a
-  `not_required` repository is never listed. n/a when no workflow is
-  triggered by a pull request. `audit.json` records each workflow's
-  triggers under `events` and the `types:` its two pull request triggers
-  list under `pull_request_types` and `pull_request_target_types`; a key is
-  absent when its trigger lists none, which leaves GitHub's default set
-  (`opened`, `synchronize`, `reopened`).
+  `not_required` repository is never listed. n/a when no workflow counts.
+  `audit.json` records each workflow's triggers under `events` and the
+  `types:` its two pull request triggers list under `pull_request_types`
+  and `pull_request_target_types`; a key is absent when its trigger lists
+  none.
 - **job_timeouts** — whether every workflow job sets `timeout-minutes`, so a
   job that hangs is stopped well before GitHub's six-hour default rather
   than holding its runner, and every run queued behind it, for that long.
