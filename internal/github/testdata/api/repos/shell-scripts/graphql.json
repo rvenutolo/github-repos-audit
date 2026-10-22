@@ -251,36 +251,6 @@
         "entries": [
           {
             "name": "ci.yml"
-          },
-          {
-            "name": "workflow-29.yml"
-          },
-          {
-            "name": "workflow-06.yml"
-          },
-          {
-            "name": "workflow-10.yml"
-          },
-          {
-            "name": "workflow-12.yml"
-          },
-          {
-            "name": "workflow-30.yml"
-          },
-          {
-            "name": "workflow-13.yml"
-          },
-          {
-            "name": "workflow-15.yml"
-          },
-          {
-            "name": "workflow-16.yml"
-          },
-          {
-            "name": "workflow-31.yml"
-          },
-          {
-            "name": "workflow-32.yml"
           }
         ]
       }

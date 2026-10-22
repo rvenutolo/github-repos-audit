@@ -201,91 +201,13 @@
       "workflows": {
         "entries": [
           {
-            "name": "workflow-01.yml"
-          },
-          {
-            "name": "workflow-02.yml"
-          },
-          {
-            "name": "workflow-03.yml"
+            "name": "README.md"
           },
           {
             "name": "ci.yml"
           },
           {
-            "name": "workflow-04.yml"
-          },
-          {
-            "name": "workflow-05.yml"
-          },
-          {
-            "name": "workflow-06.yml"
-          },
-          {
-            "name": "workflow-07.yml"
-          },
-          {
-            "name": "workflow-08.yml"
-          },
-          {
-            "name": "workflow-09.yml"
-          },
-          {
-            "name": "workflow-10.yml"
-          },
-          {
-            "name": "workflow-11.yml"
-          },
-          {
-            "name": "workflow-12.yml"
-          },
-          {
-            "name": "workflow-13.yml"
-          },
-          {
-            "name": "workflow-14.yml"
-          },
-          {
-            "name": "workflow-15.yml"
-          },
-          {
-            "name": "workflow-16.yml"
-          },
-          {
-            "name": "workflow-17.yml"
-          },
-          {
-            "name": "workflow-18.yml"
-          },
-          {
-            "name": "workflow-19.yml"
-          },
-          {
-            "name": "workflow-20.yml"
-          },
-          {
-            "name": "workflow-21.yml"
-          },
-          {
-            "name": "workflow-22.yml"
-          },
-          {
-            "name": "workflow-23.yml"
-          },
-          {
-            "name": "workflow-24.yml"
-          },
-          {
-            "name": "workflow-25.yml"
-          },
-          {
-            "name": "workflow-26.yml"
-          },
-          {
-            "name": "workflow-27.yml"
-          },
-          {
-            "name": "workflow-28.yml"
+            "name": "workflow-01.yml"
           }
         ]
       }

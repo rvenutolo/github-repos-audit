@@ -2,7 +2,6 @@ package github
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"slices"
 	"strconv"
@@ -36,22 +35,16 @@ func (c *Client) Discover(ctx context.Context) ([]string, error) {
 	names := make([]string, 0, discoverPageSize)
 	path := "/user/repos?affiliation=owner&per_page=" + strconv.Itoa(discoverPageSize)
 
-	for page := 1; path != ""; page++ {
-		if page > maxDiscoverPages {
-			return nil, fmt.Errorf("discover: more than %d pages of repositories", maxDiscoverPages)
-		}
-		var batch []discovered
-		resp, err := c.getJSON(ctx, path, &batch)
-		if err != nil {
-			return nil, err
-		}
-		for _, r := range batch {
+	err := getPages(ctx, c, path, maxDiscoverPages, func(batch *[]discovered) {
+		for _, r := range *batch {
 			if r.Fork || r.Archived {
 				continue
 			}
 			names = append(names, r.Name)
 		}
-		path = nextPage(resp.header.Get("Link"))
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	slices.SortFunc(names, compareFold)

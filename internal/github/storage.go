@@ -136,10 +136,11 @@ func (c *Client) fetchStorage(ctx context.Context, base string, s *audit.Actions
 }
 
 // getPages reads path and every page its Link header leads to, handing each
-// decoded page to visit, and fails rather than read past maxPages. The Link GitHub sends for these lists names the
-// repository by numeric id (/repositories/{id}/…) rather than by owner and
-// name; nextPage keeps that path and drops the host, so the request still
-// goes to the client's own base URL.
+// decoded page to visit, and fails rather than read past maxPages. The Link
+// GitHub sends for the storage lists names the repository by numeric id
+// (/repositories/{id}/…) rather than by owner and name; nextPage keeps that
+// path and drops the host, so the request still goes to the client's own base
+// URL.
 func getPages[P any](ctx context.Context, c *Client, path string, maxPages int, visit func(*P)) error {
 	first := path
 	for page := 1; path != ""; page++ {

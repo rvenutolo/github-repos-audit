@@ -343,11 +343,11 @@ func pathItem(s string) string {
 // code. The key is whatever a workflow passed to a cache action, so it is
 // free text: code widens its fence around any backtick, and a line break,
 // which would end the bullet, becomes a space. Nothing else needs escaping
-// inside a code span in a list, and escape's table rules would show there: a
-// "\|" renders as both characters outside a table. The ref is a branch name
-// or GitHub's own ref, shown as plain text so the parentheses read as one
-// aside; a branch name is the owner's choice, so listText keeps it from
-// being read as markup.
+// inside a code span in a list, and escape's table rules would show there:
+// in a code span a "\|" renders as both characters outside a table. The ref
+// is a branch name or GitHub's own ref, shown as plain text so the
+// parentheses read as one aside; a branch name is the owner's choice, so
+// listText keeps it from being read as markup.
 func cacheItem(c rules.CacheItem) string {
 	return code(oneLine(c.Key)) + " (" + c.Size + ", " + listText(c.Ref) + ")"
 }
@@ -634,6 +634,9 @@ func markedDateCell(c rules.Cell, at time.Time) string {
 	case rules.Fail:
 		return markFail + " " + age(c.At, at)
 	case rules.NA, rules.Info:
+		// Not judged, so no mark: the bare age below. Returning here would
+		// leave the final return after the switch with no path to it, which
+		// Go still requires and the coverage gate would count as unrun.
 	}
 	return age(c.At, at)
 }
