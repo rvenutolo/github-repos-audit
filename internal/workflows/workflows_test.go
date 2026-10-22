@@ -40,6 +40,9 @@ func TestParseWorkflow_eventsForms(t *testing.T) {
 		{"map with a bare key", "on:\n  workflow_dispatch:\n  push:\n", []string{"push", "workflow_dispatch"}},
 		{"repeated in a list", "on: [push, push]\n", []string{"push"}},
 		{"absent", "jobs: {}\n", nil},
+		{"blank string", "on: \"\"\n", nil},
+		{"null in a list", "on: [~]\n", nil},
+		{"blank beside a name", "on: [push, \"\"]\n", []string{"push"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -287,6 +290,14 @@ func TestParse_wrongShape(t *testing.T) {
 		{"job permissions is a sequence", "jobs:\n  a:\n    permissions: [x]\n", "permissions"},
 		{"job concurrency is a sequence", "jobs:\n  a:\n    concurrency: [x]\n", "concurrency"},
 		{"event list holds a mapping", "on: [{x: y}]\n", "on"},
+		{"repeated top-level key", "jobs:\n  a: {}\njobs:\n  b: {}\n", "jobs is defined twice"},
+		{"repeated job key", "jobs:\n  a:\n    runs-on: x\n    runs-on: y\n", "jobs.a.runs-on is defined twice"},
+		{
+			"repeated with key",
+			"jobs:\n  a:\n    steps:\n      - uses: a@b\n        with:\n          k: 1\n          k: 2\n",
+			"with.k is defined twice",
+		},
+		{"repeated on trigger", "on:\n  push: {}\n  push: {}\n", "on.push is defined twice"},
 	}
 	for _, tt := range workflowTests {
 		t.Run("workflow "+tt.name, func(t *testing.T) {
@@ -310,6 +321,7 @@ func TestParse_wrongShape(t *testing.T) {
 		{"runs is a scalar", "runs: x\n", "runs"},
 		{"steps is a mapping", "runs:\n  steps: {x: y}\n", "steps"},
 		{"step uses is a sequence", "runs:\n  steps:\n    - uses: [x]\n", "uses"},
+		{"repeated runs key", "runs:\n  steps: []\nruns:\n  steps: []\n", "runs is defined twice"},
 	}
 	for _, tt := range compositeTests {
 		t.Run("composite "+tt.name, func(t *testing.T) {

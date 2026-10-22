@@ -162,7 +162,9 @@ func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
 }
 
 // events reduces the three forms of `on:` (one name, a list of names, a map
-// keyed by name) to the sorted, distinct names.
+// keyed by name) to the sorted, distinct names. A blank or null name is no
+// event, so it is dropped; with nothing left the result is nil, the same as
+// an absent `on:`.
 func events(n *yaml.Node) ([]string, error) {
 	var names []string
 	switch {
@@ -176,13 +178,22 @@ func events(n *yaml.Node) ([]string, error) {
 			if err != nil {
 				return nil, err
 			}
+			// scalar reads a null item as "", which the filter below drops.
 			names = append(names, name)
 		}
 	default:
 		// lookup has followed any alias, so what is left is a mapping.
-		for i := 0; i+1 < len(n.Content); i += 2 {
-			names = append(names, deref(n.Content[i]).Value)
+		ps, err := pairs(n, "on")
+		if err != nil {
+			return nil, err
 		}
+		for _, p := range ps {
+			names = append(names, p.key)
+		}
+	}
+	names = slices.DeleteFunc(names, func(name string) bool { return name == "" })
+	if len(names) == 0 {
+		return nil, nil
 	}
 	slices.Sort(names)
 	return slices.Compact(names), nil
@@ -237,6 +248,9 @@ func document(text string) (*yaml.Node, error) {
 	if top.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("line %d: the document is a %s, not a mapping", top.Line, kind(top))
 	}
+	if _, err := pairs(top, ""); err != nil {
+		return nil, err
+	}
 	return top, nil
 }
 
@@ -246,6 +260,9 @@ type pair struct {
 }
 
 // pairs returns a mapping's entries in file order. An absent node has none.
+// A key written twice is an error: YAML leaves it undefined, GitHub rejects
+// the file, and lookup would otherwise read only the first of the two. An
+// empty where names the top-level mapping, whose keys need no prefix.
 func pairs(n *yaml.Node, where string) ([]pair, error) {
 	if absent(n) {
 		return nil, nil
@@ -254,8 +271,18 @@ func pairs(n *yaml.Node, where string) ([]pair, error) {
 		return nil, shapeError(n, where, "a mapping")
 	}
 	ps := make([]pair, 0, len(n.Content)/2)
+	seen := make(map[string]bool, len(n.Content)/2)
 	for i := 0; i+1 < len(n.Content); i += 2 {
-		ps = append(ps, pair{key: deref(n.Content[i]).Value, value: deref(n.Content[i+1])})
+		k := deref(n.Content[i])
+		if seen[k.Value] {
+			path := k.Value
+			if where != "" {
+				path = where + "." + k.Value
+			}
+			return nil, fmt.Errorf("line %d: %s is defined twice", k.Line, path)
+		}
+		seen[k.Value] = true
+		ps = append(ps, pair{key: k.Value, value: deref(n.Content[i+1])})
 	}
 	return ps, nil
 }
