@@ -1,6 +1,7 @@
 package rules_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,13 +13,7 @@ import (
 // go_cache = "required", as of cacheNow, and returns its go_cache cell.
 func goCache(t *testing.T, r audit.Repo) rules.Cell {
 	t.Helper()
-	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
-		Repos: []audit.Repo{r},
-	})
-	if err != nil {
-		t.Fatalf("Evaluate() error = %v, want nil", err)
-	}
+	rep := mustEvaluateOne(t, r)
 	return rep.Repos[0].Cell(rules.CheckGoCache)
 }
 
@@ -115,8 +110,11 @@ func TestEvaluate_goCache_floor(t *testing.T) {
 		{5_000_000_000, rules.Pass, "5.0 GB"},
 	}
 	for _, tc := range tests {
-		r := goFixture(mainCache("go-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
-		wantCell(t, goCache(t, r), tc.verdict, tc.value)
+		t.Run(fmt.Sprintf("%d B", tc.size), func(t *testing.T) {
+			t.Parallel()
+			r := goFixture(mainCache("go-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
+			wantCell(t, goCache(t, r), tc.verdict, tc.value)
+		})
 	}
 }
 

@@ -350,6 +350,9 @@ func resolveComposite(r audit.Repo, action string) (audit.CompositeAction, bool)
 	if !ok {
 		return audit.CompositeAction{}, false
 	}
+	// "./x/" names the same directory as "./x"; left alone it would build
+	// "x//action.yml", which no recorded path matches.
+	dir = strings.TrimSuffix(dir, "/")
 	for _, name := range []string{"action.yml", "action.yaml"} {
 		i := slices.IndexFunc(r.Actions, func(a audit.CompositeAction) bool { return a.Path == dir+"/"+name })
 		if i >= 0 {

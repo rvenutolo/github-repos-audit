@@ -65,12 +65,15 @@ func wantShellScripts(t *testing.T) audit.Repo {
 			Security:       true,
 			SecurityPolicy: ".github/SECURITY.md",
 			RenovateConfig: ".github/renovate.json",
-			Workflows: []string{
-				"ci.yml", "workflow-06.yml", "workflow-10.yml", "workflow-12.yml", "workflow-13.yml",
-				"workflow-15.yml", "workflow-16.yml", "workflow-29.yml", "workflow-30.yml",
-				"workflow-31.yml", "workflow-32.yml",
-			},
+			Workflows:      []string{"ci.yml"},
 		},
+		// The file listing and the file read name the same workflow.
+		Workflows: []audit.Workflow{{
+			Path:        ".github/workflows/ci.yml",
+			Events:      []string{"pull_request", "push"},
+			Permissions: audit.Permissions{Set: true, Scopes: map[string]string{"contents": "read"}},
+			Jobs:        []audit.Job{{ID: "check", TimeoutMinutes: "15"}},
+		}},
 		CIState: "SUCCESS",
 		// Every shape the CI fixtures carry, recorded as it is: the first pull
 		// request's two workflows ran side by side, so its wait spans both runs

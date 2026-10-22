@@ -893,7 +893,7 @@
       }
     },
     "actions_storage": {
-      "description": "What the repository holds in GitHub Actions storage, sizes in bytes as GitHub reports them. Absent for an empty repository, which is not read for it.",
+      "description": "What the repository holds in GitHub Actions storage, sizes in bytes as GitHub reports them. Absent for an empty repository, which is not read for it, or when all four answers are zero.",
       "type": "object",
       "additionalProperties": false,
       "required": ["cache_usage_bytes", "artifact_count", "artifact_bytes"],

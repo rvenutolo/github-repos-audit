@@ -31,13 +31,7 @@ func TestEvaluate_artifactStorage_value(t *testing.T) {
 
 			r := fixture("alpha", "tools")
 			r.Storage = audit.ActionsStorage{ArtifactCount: tc.count, ArtifactBytes: tc.bytes}
-			rep, err := rules.Evaluate(&audit.Snapshot{
-				GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
-				Repos: []audit.Repo{r},
-			})
-			if err != nil {
-				t.Fatalf("Evaluate() error = %v, want nil", err)
-			}
+			rep := mustEvaluateOne(t, r)
 			got := rep.Repos[0].Cell(rules.CheckArtifactStorage)
 			if got.Verdict != rules.Info || got.Value != tc.want || !got.Scalar || got.Mark {
 				t.Errorf("cell = %v %q scalar=%t mark=%t, want an unmarked scalar info %q",

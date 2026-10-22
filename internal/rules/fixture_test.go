@@ -5,6 +5,7 @@ import (
 	"maps"
 	"path/filepath"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -148,11 +149,29 @@ func published(r audit.Repo) audit.Repo {
 
 // evaluateOne runs one repository through the rules and returns its cells.
 func evaluateOne(r audit.Repo) (map[rules.Check]rules.Cell, error) {
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}})
+	rep, err := evaluateOneReport(r)
 	if err != nil {
 		return nil, err
 	}
 	return rep.Repos[0].Cells, nil
+}
+
+// evaluateOneReport runs one repository through the rules as of cacheNow, the
+// instant the cache and CI-efficiency fixtures are dated against, and returns
+// the whole report for tests that read more than the cells.
+func evaluateOneReport(r audit.Repo) (*rules.Report, error) {
+	return rules.Evaluate(&audit.Snapshot{GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}})
+}
+
+// mustEvaluateOne is evaluateOneReport for a test that has no use for an
+// Evaluate error.
+func mustEvaluateOne(t *testing.T, r audit.Repo) *rules.Report {
+	t.Helper()
+	rep, err := evaluateOneReport(r)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v, want nil", err)
+	}
+	return rep
 }
 
 // fixtureIdentity is the [identity] table standard-types.toml declares, which

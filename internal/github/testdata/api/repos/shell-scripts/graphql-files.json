@@ -11,7 +11,19 @@
       "justfile": null,
       "dot_justfile": null,
       "capital_justfile": null,
-      "workflows": null,
+      "workflows": {
+        "entries": [
+          {
+            "name": "ci.yml",
+            "type": "blob",
+            "object": {
+              "text": "name: ci\non:\n  pull_request:\n  push:\n    branches: [main]\npermissions:\n  contents: read\njobs:\n  check:\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    steps:\n      - run: ./run-all-checks\n",
+              "is_truncated": false,
+              "is_binary": false
+            }
+          }
+        ]
+      },
       "actions": null,
       "ci": null
     }

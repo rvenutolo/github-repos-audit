@@ -132,7 +132,9 @@ type Repo struct {
 	// for a repository with no merged pull requests and no commits.
 	CI CI `json:"ci,omitzero"`
 	// Storage is what the repository holds in GitHub Actions storage. Zero
-	// for an empty repository, which is not read for it.
+	// for an empty repository, which is not read for it, and for one whose
+	// four answers (caches, cache usage, cache limit, artifacts) are all
+	// zero, which omitzero drops alike.
 	Storage ActionsStorage `json:"actions_storage,omitzero"`
 	// Releases summarises the repository's releases.
 	Releases Releases `json:"releases"`
