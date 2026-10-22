@@ -32,45 +32,15 @@ func TestFlakeFacts_unreadableLock(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := flakeFacts(&repoFiles{FlakeLock: tc.lock}, Probe{})
+			got := flakeFacts(&repoFiles{FlakeLock: tc.lock})
 			if !got.HasLock {
 				t.Error("HasLock = false, want true: the file exists")
 			}
 			if !strings.HasPrefix(got.LockError, tc.want) {
 				t.Errorf("LockError = %q, want it to start with %q", got.LockError, tc.want)
 			}
-			if got.LockedInputs != nil || !got.NixpkgsLastModified.IsZero() || got.AllRevPinned {
+			if !got.NixpkgsLastModified.IsZero() || got.AllRevPinned {
 				t.Errorf("lock facts = %+v, want none beside the error", got)
-			}
-		})
-	}
-}
-
-// TestFlakeFacts_unreadableFlakeNix: a flake.nix not read in full is recorded
-// as unreadable, and neither an input nor the lint is recorded from part of
-// it. A missing flake.nix is not an error: files.flake_nix already reports
-// it, so nothing is recorded.
-func TestFlakeFacts_unreadableFlakeNix(t *testing.T) {
-	t.Parallel()
-
-	partial := text(`inputs.lint.url = "github:gh-owner/lint-flake"; check-workflow-hermetic`)
-	partial.IsTruncated = true
-	tests := []struct {
-		name  string
-		flake *fileBlob
-		want  audit.Flake
-	}{
-		{name: "truncated", flake: partial, want: audit.Flake{NixError: "flake.nix: too large to read in full"}},
-		{name: "binary", flake: &fileBlob{IsBinary: true}, want: audit.Flake{NixError: "flake.nix: not a text file"}},
-		{name: "missing", flake: nil, want: audit.Flake{}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := flakeFacts(&repoFiles{FlakeNix: tc.flake}, Probe{Lint: "check-workflow-hermetic"})
-			if diff := cmp.Diff(tc.want, got); diff != "" {
-				t.Errorf("Flake mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -130,87 +100,5 @@ func TestWorkflowFacts_onlyWorkflowFiles(t *testing.T) {
 	want := []audit.Workflow{{Path: ".github/workflows/ci.yaml", Events: []string{"push"}}}
 	if diff := cmp.Diff(want, workflowFacts(listing)); diff != "" {
 		t.Errorf("workflowFacts mismatch (-want +got):\n%s", diff)
-	}
-}
-
-// TestGateFiles_ciSubdirectoryIsNotRead: only files directly under .ci are
-// gate files; a directory there has no text of its own.
-func TestGateFiles_ciSubdirectoryIsNotRead(t *testing.T) {
-	t.Parallel()
-
-	f := &repoFiles{
-		DotJustfile: text("check:\n    lint-x\n"),
-		CI: &blobTree{Entries: []blobEntry{
-			{Name: "sub", Type: "tree", Object: &fileBlob{}},
-			{Name: "check-01", Type: "blob", Object: text("lint-x\n")},
-		}},
-	}
-	want := []string{".ci/check-01", ".justfile"}
-	if diff := cmp.Diff(want, gateFiles(f, "lint-x")); diff != "" {
-		t.Errorf("gateFiles mismatch (-want +got):\n%s", diff)
-	}
-}
-
-// TestNamesOutsideComments: a line whose first non-whitespace character is
-// '#' is a comment and names nothing; a trailing comment is not stripped, so
-// a mention before one still counts.
-func TestNamesOutsideComments(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		text string
-		want bool
-	}{
-		{name: "full-line comment", text: "# check-x", want: false},
-		{name: "indented comment", text: "  # check-x", want: false},
-		{name: "tab-indented comment", text: "\t# check-x", want: false},
-		{name: "trailing comment keeps the mention", text: "run check-x # note", want: true},
-		{name: "comment then code", text: "# check-x\ncheck-x", want: true},
-		{name: "hash inside a string", text: "echo '#' check-x", want: true},
-		{name: "empty", text: "", want: false},
-		{name: "CRLF comment", text: "# check-x\r\nother\r\n", want: false},
-		{name: "CRLF code", text: "# note\r\ncheck-x\r\n", want: true},
-		{name: "absent", text: "other\n", want: false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := namesOutsideComments(tc.text, "check-x"); got != tc.want {
-				t.Errorf("namesOutsideComments(%q) = %v, want %v", tc.text, got, tc.want)
-			}
-		})
-	}
-}
-
-// TestGateFiles_commentOnlyMentionIsNotWiring: a gate file that mentions the
-// lint only in a comment does not run it.
-func TestGateFiles_commentOnlyMentionIsNotWiring(t *testing.T) {
-	t.Parallel()
-
-	f := &repoFiles{
-		Justfile: text("# lint-x is run elsewhere\ncheck:\n    true\n"),
-		CI:       &blobTree{Entries: []blobEntry{{Name: "check-01", Type: "blob", Object: text("lint-x\n")}}},
-	}
-	want := []string{".ci/check-01"}
-	if diff := cmp.Diff(want, gateFiles(f, "lint-x")); diff != "" {
-		t.Errorf("gateFiles mismatch (-want +got):\n%s", diff)
-	}
-}
-
-// TestFlakeFacts_commentOnlyLintMention: flake.nix naming the lint only in a
-// comment does not put it in the devShell.
-func TestFlakeFacts_commentOnlyLintMention(t *testing.T) {
-	t.Parallel()
-
-	probe := Probe{Lint: "check-workflow-hermetic"}
-	commented := flakeFacts(&repoFiles{FlakeNix: text("{\n  # check-workflow-hermetic goes here\n}\n")}, probe)
-	if commented.NamesLint {
-		t.Error("NamesLint = true for a comment-only mention, want false")
-	}
-	live := flakeFacts(&repoFiles{FlakeNix: text("{\n  packages = [ check-workflow-hermetic ];\n}\n")}, probe)
-	if !live.NamesLint {
-		t.Error("NamesLint = false for a code mention, want true")
 	}
 }

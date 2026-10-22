@@ -34,10 +34,6 @@
       "description": "repos.toml's [identity] table: the identity git_identity holds the account holder's commits to. Absent when nothing judges git_identity, which is also the only case repos.toml may omit the table.",
       "$ref": "#/$defs/identity_standard"
     },
-    "hermetic": {
-      "description": "repos.toml's [hermetic] table: the flake and lint hermetic_nix looked for. Absent when nothing judges hermetic_nix, which is also the only case repos.toml may omit the table.",
-      "$ref": "#/$defs/hermetic_standard"
-    },
     "config_drift": {
       "description": "Where repos.toml and the account disagree about which repositories exist. Absent when they agree.",
       "$ref": "#/$defs/config_drift"
@@ -147,7 +143,6 @@
               "direct_push",
               "secret_scanning",
               "vuln_reporting",
-              "hermetic_nix",
               "nix_lock_age",
               "nix_lock_refresh",
               "nix_cache",
@@ -311,7 +306,6 @@
         "direct_push",
         "secret_scanning",
         "vuln_reporting",
-        "hermetic_nix",
         "nix_lock_age",
         "nix_lock_refresh",
         "nix_cache",
@@ -370,7 +364,6 @@
         "direct_push": { "$ref": "#/$defs/direct_push" },
         "secret_scanning": { "$ref": "#/$defs/expectation" },
         "vuln_reporting": { "$ref": "#/$defs/expectation" },
-        "hermetic_nix": { "$ref": "#/$defs/expectation" },
         "nix_lock_age": { "$ref": "#/$defs/expectation" },
         "nix_lock_refresh": { "$ref": "#/$defs/expectation" },
         "nix_cache": { "$ref": "#/$defs/expectation" },
@@ -591,29 +584,15 @@
       }
     },
     "flake": {
-      "description": "What flake.nix and flake.lock say, and which files name the configured hermetic-lint command. Absent when nothing in either file was recorded and no gate file names the lint. That includes a readable flake.nix that binds no URL and names no lint, so files.flake_nix, not this object, says whether flake.nix exists.",
+      "description": "What flake.lock says. Absent when there is no flake.lock; files.flake_nix, not this object, says whether flake.nix exists.",
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,
       "properties": {
-        "inputs": {
-          "description": "Every `url = \"…\"` flake.nix binds, as written, sorted and without repeats. flake.nix is read as text, not evaluated.",
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 },
-          "uniqueItems": true
-        },
         "has_lock": {
           "description": "flake.lock exists.",
           "type": "boolean",
           "const": true
-        },
-        "locked_inputs": {
-          "description": "\"github:<owner>/<repo>\", lower-cased, for every GitHub-type node of flake.lock, from the node's `original`, sorted and without repeats.",
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 },
-          "uniqueItems": true
         },
         "nixpkgs_last_modified": {
           "description": "locked.lastModified of the node the root's nixpkgs input resolves to, in UTC. Absent when there is no lock or no input named nixpkgs.",
@@ -629,23 +608,6 @@
           "description": "Why flake.lock could not be read. When present none of the other lock facts is.",
           "type": "string",
           "minLength": 1
-        },
-        "nix_error": {
-          "description": "Why flake.nix could not be read: a blob that is binary or too large to read in full. When present neither inputs nor names_lint is.",
-          "type": "string",
-          "minLength": 1
-        },
-        "names_lint": {
-          "description": "flake.nix's text contains the configured hermetic-lint command name on a line that is not a full-line # comment (trailing comments are not stripped).",
-          "type": "boolean",
-          "const": true
-        },
-        "gate_files": {
-          "description": "The gate files (run-all-checks, the justfile, each file directly under .ci) whose text contains the configured hermetic-lint command name on a line that is not a full-line # comment (trailing comments are not stripped), by path, sorted.",
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 },
-          "uniqueItems": true
         }
       }
     },
@@ -1050,16 +1012,6 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         }
-      }
-    },
-    "hermetic_standard": {
-      "description": "The hermetic-lint standard. flake is the input URL as flake.nix writes it, such as \"github:<owner>/<repo>\"; lint is the lint's command name, which flake.nix and a gate file are expected to mention.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["flake", "lint"],
-      "properties": {
-        "flake": { "type": "string", "minLength": 1 },
-        "lint": { "type": "string", "minLength": 1 }
       }
     },
     "ruleset": {

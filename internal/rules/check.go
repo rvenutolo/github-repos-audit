@@ -62,7 +62,6 @@ const (
 	CheckDirectPush
 	CheckSecretScanning
 	CheckVulnReporting
-	CheckHermeticNix
 	CheckNixLockAge
 	CheckNixLockRefresh
 	CheckNixCache
@@ -126,7 +125,6 @@ var checkNames = [...]string{
 	CheckDirectPush:            "direct_push",
 	CheckSecretScanning:        "secret_scanning",
 	CheckVulnReporting:         "vuln_reporting",
-	CheckHermeticNix:           "hermetic_nix",
 	CheckNixLockAge:            "nix_lock_age",
 	CheckNixLockRefresh:        "nix_lock_refresh",
 	CheckNixCache:              "nix_cache",

@@ -2,22 +2,13 @@ package audit
 
 import "time"
 
-// Flake is what a repository's flake.nix and flake.lock say, as far as the
-// checks need it. The zero value is a repository from which nothing was
-// recorded. That includes one with a readable flake.nix that binds no URL
-// and names no lint, so Files.FlakeNix, not this, says whether flake.nix
-// exists. Whether the inputs name the right flake or the lock is fresh
-// enough is internal/rules' decision.
+// Flake is what a repository's flake.lock says, as far as the checks need it.
+// The zero value is a repository without a flake.lock. Files.FlakeNix, not
+// this, says whether flake.nix exists. Whether the lock is fresh enough is
+// internal/rules' decision.
 type Flake struct {
-	// Inputs is every `url = "…"` flake.nix binds, as written, sorted and
-	// without repeats. flake.nix is read as text, not evaluated.
-	Inputs []string `json:"inputs,omitzero"`
 	// HasLock reports that flake.lock exists.
 	HasLock bool `json:"has_lock,omitzero"`
-	// LockedInputs is "github:<owner>/<repo>", lower-cased, for every
-	// GitHub-type node of flake.lock, taken from the node's `original`,
-	// sorted and without repeats.
-	LockedInputs []string `json:"locked_inputs,omitzero"`
 	// NixpkgsLastModified is the `locked.lastModified` of the node the
 	// root's `nixpkgs` input resolves to, following `follows`, in UTC. Zero
 	// when there is no lock or no input named nixpkgs.
@@ -29,18 +20,4 @@ type Flake struct {
 	// the lock facts above are, so a check reading the lock fails as
 	// unreadable rather than passing on what it did manage to read.
 	LockError string `json:"lock_error,omitzero"`
-	// NixError is why flake.nix could not be read. When it is set neither
-	// Inputs nor NamesLint is, so a check reading flake.nix fails as
-	// unreadable rather than passing on what it did manage to read.
-	NixError string `json:"nix_error,omitzero"`
-	// NamesLint reports that flake.nix's text contains the configured
-	// hermetic-lint command name on a line that is not a full-line '#'
-	// comment. Trailing comments are not stripped: telling a trailing '#'
-	// from one inside a string or URL needs a Nix parser.
-	NamesLint bool `json:"names_lint,omitzero"`
-	// GateFiles is the gate files whose text contains the configured
-	// hermetic-lint command name on a line that is not a full-line '#'
-	// comment, by path. Trailing comments are not stripped: telling a
-	// trailing '#' from one inside a string or URL needs a shell parser.
-	GateFiles []string `json:"gate_files,omitzero"`
 }

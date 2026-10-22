@@ -26,10 +26,7 @@ import (
 // The preset cache is made here, per run, and handed down rather than kept on
 // the Client: a Client stays safe for concurrent use, and a second run reads
 // every preset afresh instead of trusting an answer from an earlier one.
-//
-// probe says what to look for in file text beyond the facts always recorded;
-// see Probe.
-func (c *Client) Collect(ctx context.Context, names []string, probe Probe) ([]audit.Repo, error) {
+func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, error) {
 	repos := make([]audit.Repo, len(names))
 	presets := newPresetCache(c)
 
@@ -37,7 +34,7 @@ func (c *Client) Collect(ctx context.Context, names []string, probe Probe) ([]au
 	g.SetLimit(fetchLimit)
 	for i, name := range names {
 		g.Go(func() error {
-			repo, err := c.collectOne(ctx, name, presets, probe)
+			repo, err := c.collectOne(ctx, name, presets)
 			if err != nil {
 				return fmt.Errorf("%s: %w", name, err)
 			}
@@ -68,10 +65,10 @@ func (c *Client) Collect(ctx context.Context, names []string, probe Probe) ([]au
 // hundred caches or artifacts (see fetchStorage); one recursive tree read at
 // the head commit, which is where every file path the report records is
 // found; and last the second GraphQL query, filesQuery, for the text of the
-// workflow, composite-action, flake and gate files. All three are skipped for
+// workflow, composite-action and flake.lock files. All three are skipped for
 // an empty repository: it has no files, and with no commit no workflow can
 // have run to store anything.
-func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache, probe Probe) (audit.Repo, error) {
+func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache) (audit.Repo, error) {
 	gql, err := c.fetchRepository(ctx, name)
 	if err != nil {
 		return audit.Repo{}, err
@@ -112,7 +109,7 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 	if err != nil {
 		return audit.Repo{}, err
 	}
-	recordFiles(&repo, files, probe)
+	recordFiles(&repo, files)
 	return repo, nil
 }
 

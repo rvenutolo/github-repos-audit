@@ -286,7 +286,6 @@ var defNames = map[reflect.Type]string{
 	reflect.TypeFor[audit.AllowedActions]():   "allowed_actions",
 	reflect.TypeFor[audit.Identity]():         "identity",
 	reflect.TypeFor[audit.IdentityStandard](): "identity_standard",
-	reflect.TypeFor[audit.HermeticStandard](): "hermetic_standard",
 }
 
 // loadObjects reads the root and every $defs entry of audit.schema.json as an

@@ -21,9 +21,8 @@ type collector interface {
 	// archived.
 	Discover(ctx context.Context) ([]string, error)
 	// Collect reads each named repository. It fills every field of audit.Repo
-	// except the ones repos.toml declares; probe says what to look for in
-	// file text.
-	Collect(ctx context.Context, names []string, probe github.Probe) ([]audit.Repo, error)
+	// except the ones repos.toml declares.
+	Collect(ctx context.Context, names []string) ([]audit.Repo, error)
 	// Owner is the account the repositories belong to.
 	Owner() string
 }
@@ -98,7 +97,7 @@ func collect(
 	}
 	warnDrift(ctx, logger, drift)
 
-	repos, err := client.Collect(ctx, configured, github.Probe{Lint: cfg.Hermetic.Lint})
+	repos, err := client.Collect(ctx, configured)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +118,6 @@ func collect(
 		Owner:       client.Owner(),
 		Types:       cfg.Types,
 		Identity:    cfg.Identity,
-		Hermetic:    cfg.Hermetic,
 		Repos:       repos,
 		Drift:       drift,
 	}

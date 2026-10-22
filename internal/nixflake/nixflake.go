@@ -1,59 +1,22 @@
-// Package nixflake reads a repository's flake.nix and flake.lock into the
-// facts internal/audit records about them. It does no I/O and judges
-// nothing: the caller supplies the text, and whether a lock is fresh enough
-// or the right flake is an input is internal/rules' decision.
+// Package nixflake reads a repository's flake.lock into the facts
+// internal/audit records about it. It does no I/O and judges nothing: the
+// caller supplies the text, and whether a lock is fresh enough is
+// internal/rules' decision.
 //
-// flake.nix is a Nix expression, and evaluating one is out of the question
-// for a read-only audit, so Inputs reads it as text. flake.lock is JSON that
-// Nix itself writes, so ParseLock reads it properly, and reports a lock it
-// cannot read in full as a problem instead of a partial result: a check that
-// read half a lock could pass on the half it missed.
+// flake.lock is JSON that Nix itself writes, so ParseLock reads it properly,
+// and reports a lock it cannot read in full as a problem instead of a partial
+// result: a check that read half a lock could pass on the half it missed.
 package nixflake
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"slices"
-	"strings"
 	"time"
 )
 
-// inputURL matches every `url = "…"` binding, in any of the forms an input
-// can be written in (`nixpkgs.url = …`, `inputs.nixpkgs.url = …`, or `url = …`
-// inside a nested set). It does not know Nix syntax, so a commented-out
-// binding counts too; the facts are what the file names, and a flake that
-// keeps a stale reference in a comment is the rare case that pays for not
-// evaluating the file.
-var inputURL = regexp.MustCompile(`url\s*=\s*"([^"]+)"`)
-
-// Inputs returns every `url = "…"` binding flake.nix holds, inside `inputs`
-// or not, as written, sorted and without repeats.
-func Inputs(flakeNix string) []string {
-	matches := inputURL.FindAllStringSubmatch(flakeNix, -1)
-	// nil, not empty, when there are none: audit.Flake's omitzero leaves
-	// out a nil slice but writes an empty one.
-	if len(matches) == 0 {
-		return nil
-	}
-	urls := make([]string, 0, len(matches))
-	for _, m := range matches {
-		urls = append(urls, m[1])
-	}
-	slices.Sort(urls)
-	return slices.Compact(urls)
-}
-
 // LockFacts is what flake.lock says, as far as the checks need it.
 type LockFacts struct {
-	// LockedInputs is "github:<owner>/<repo>", lower-cased, for every
-	// GitHub-type node, direct or transitive, sorted and without repeats.
-	// It comes from each node's `original`, the reference flake.nix (or the
-	// input's own flake.nix) asked for, so it matches the way a standard
-	// names a flake rather than whatever commit it resolved to. Lower-cased
-	// because GitHub owner and repository names are case-insensitive.
-	LockedInputs []string
 	// NixpkgsLastModified is the `locked.lastModified` of the node the
 	// root's `nixpkgs` input resolves to, in UTC. Zero when the root has no
 	// input named nixpkgs.
@@ -86,10 +49,7 @@ type locked struct {
 }
 
 type original struct {
-	Type  string `json:"type"`
-	Owner string `json:"owner"`
-	Repo  string `json:"repo"`
-	Rev   string `json:"rev"`
+	Rev string `json:"rev"`
 }
 
 // ParseLock returns what the flake.lock whose content is text says. A lock
@@ -143,13 +103,8 @@ func parseLock(text string) (LockFacts, error) {
 		if n.Original == nil || n.Original.Rev == "" {
 			pinned = false
 		}
-		if o := n.Original; o != nil && o.Type == "github" && o.Owner != "" && o.Repo != "" {
-			facts.LockedInputs = append(facts.LockedInputs, strings.ToLower("github:"+o.Owner+"/"+o.Repo))
-		}
 	}
 	facts.AllRevPinned = pinned && inputs > 0
-	slices.Sort(facts.LockedInputs)
-	facts.LockedInputs = slices.Compact(facts.LockedInputs)
 	return facts, nil
 }
 

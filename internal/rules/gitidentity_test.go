@@ -78,7 +78,7 @@ func TestEvaluate_gitIdentity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			snap := &audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{tt.repo}}
+			snap := &audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{tt.repo}}
 			if tt.match != "" {
 				snap.Identity.Match = tt.match
 			}
@@ -107,7 +107,7 @@ func TestEvaluate_gitIdentityOverrideNotRequiredStillLists(t *testing.T) {
 
 	r := withIdentities(fixture("alpha", "tools"), idOtherEmail)
 	r.Overrides = map[string]string{rules.CheckGitIdentity.String(): rules.OverrideNotRequired}
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
@@ -126,7 +126,7 @@ func TestEvaluate_gitIdentityInfo(t *testing.T) {
 	t.Parallel()
 
 	r := withIdentities(fixture("alpha", "tools"), idOtherEmail)
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: identityTypes("info"), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: identityTypes("info"), Identity: fixtureIdentity(), Repos: []audit.Repo{r}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)
 	}
@@ -148,7 +148,7 @@ func TestEvaluate_gitIdentityWithoutAStandard(t *testing.T) {
 		t.Errorf("Evaluate(judged, no standard) error = %v, want one naming git_identity", err)
 	}
 
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: identityTypes(rules.OverrideNotRequired), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}})
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: identityTypes(rules.OverrideNotRequired), Repos: []audit.Repo{r}})
 	if err != nil {
 		t.Fatalf("Evaluate(not judged, no standard) error = %v, want nil", err)
 	}
@@ -185,7 +185,7 @@ func TestEvaluate_gitIdentityRejectsAnUnusableStandard(t *testing.T) {
 func TestEvaluate_gitIdentityReachesTheWorklist(t *testing.T) {
 	t.Parallel()
 
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{
 		withIdentities(fixture("fine", "tools"), idCanonical),
 		withIdentities(fixture("wrong", "tools"), idOtherEmail),
 		withIdentities(fixture("Mixed", "tools"), idCanonical, idLongName),
@@ -210,7 +210,7 @@ func TestEvaluate_gitIdentityReachesTheWorklist(t *testing.T) {
 func TestEvaluate_identityLines(t *testing.T) {
 	t.Parallel()
 
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{
 		withIdentities(fixture("delta", "tools"), idLongName, idCanonical),
 		withIdentities(fixture("bravo", "tools"), idStranger),
 		withIdentities(fixture("alpha", "tools"), idCanonical, idUpperEmail, idBot),
@@ -252,7 +252,7 @@ func TestIdentityLines_nonCanonicalOrder(t *testing.T) {
 	t.Parallel()
 
 	upperOther := audit.Identity{Name: "Pat Example", Email: "Pat@example.org"}
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{
 		withIdentities(fixture("alpha", "tools"), idLongName, idOtherEmail, upperOther, idCanonical),
 	}})
 	if err != nil {
@@ -289,7 +289,7 @@ func TestIdentityEntry_String(t *testing.T) {
 func TestIdentityLines_accepted(t *testing.T) {
 	t.Parallel()
 
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{
 		withIdentities(fixture("alpha", "tools"), idCanonical, idUpperNoreply),
 		withIdentities(fixture("bravo", "tools"), idNoreply),
 		withIdentities(fixture("charlie", "tools"), idNoreply, idOtherEmail),
@@ -326,7 +326,7 @@ func TestIdentityLines_acceptedBeforeWrong(t *testing.T) {
 
 	std := fixtureIdentity()
 	std.Accepted = []string{"Patrick Example <patrick@example.org>"}
-	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: std, Hermetic: fixtureHermetic(), Repos: []audit.Repo{
+	rep, err := rules.Evaluate(&audit.Snapshot{Types: standardTypes(), Identity: std, Repos: []audit.Repo{
 		withIdentities(fixture("alpha", "tools"), idOtherEmail, idLongName),
 	}})
 	if err != nil {

@@ -152,8 +152,8 @@ func TestEvaluate_jobTimeouts_listedWhenFailingOrInfo(t *testing.T) {
 	infoPassing.Workflows = passing.Workflows
 	rep, err := rules.Evaluate(&audit.Snapshot{
 		GeneratedAt: cacheNow, Types: typesWith("content", rules.CheckJobTimeouts, "info"),
-		Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
-		Repos: []audit.Repo{passing, excused, infoPassing, missing("delta", "content"), missing("echo", "tools")},
+		Identity: fixtureIdentity(),
+		Repos:    []audit.Repo{passing, excused, infoPassing, missing("delta", "content"), missing("echo", "tools")},
 	})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v, want nil", err)

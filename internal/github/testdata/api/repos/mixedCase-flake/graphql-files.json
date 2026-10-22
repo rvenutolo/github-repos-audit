@@ -1,25 +1,8 @@
 {
   "data": {
     "repository": {
-      "flake_nix": {
-        "text": "{\n  inputs = {\n    nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";\n    lint-flake.url = \"github:gh-owner/lint-flake\";\n  };\n  outputs = { nixpkgs, lint-flake, ... }: {\n    devShells.x86_64-linux.default = nixpkgs.legacyPackages.x86_64-linux.mkShell {\n      packages = [ lint-flake.packages.x86_64-linux.check-workflow-hermetic ];\n    };\n  };\n}\n",
-        "is_truncated": false,
-        "is_binary": false
-      },
       "flake_lock": {
         "text": "{\n  \"nodes\": {\n    \"lint-flake\": {\n      \"locked\": {\n        \"lastModified\": 1756600000,\n        \"owner\": \"gh-owner\",\n        \"repo\": \"lint-flake\",\n        \"rev\": \"0123456789abcdef0123456789abcdef01234567\",\n        \"type\": \"github\"\n      },\n      \"original\": {\n        \"owner\": \"gh-owner\",\n        \"repo\": \"lint-flake\",\n        \"type\": \"github\"\n      }\n    },\n    \"nixpkgs\": {\n      \"locked\": {\n        \"lastModified\": 1756684800,\n        \"owner\": \"NixOS\",\n        \"repo\": \"nixpkgs\",\n        \"rev\": \"0123456789abcdef0123456789abcdef01234567\",\n        \"type\": \"github\"\n      },\n      \"original\": {\n        \"owner\": \"NixOS\",\n        \"ref\": \"nixos-unstable\",\n        \"repo\": \"nixpkgs\",\n        \"type\": \"github\"\n      }\n    },\n    \"root\": {\n      \"inputs\": {\n        \"lint-flake\": \"lint-flake\",\n        \"nixpkgs\": \"nixpkgs\"\n      }\n    }\n  },\n  \"root\": \"root\",\n  \"version\": 7\n}\n",
-        "is_truncated": false,
-        "is_binary": false
-      },
-      "run_all_checks": {
-        "text": "#!/usr/bin/env bash\nset -Eeuo pipefail\ncheck-workflow-hermetic\n",
-        "is_truncated": false,
-        "is_binary": false
-      },
-      "justfile": null,
-      "dot_justfile": null,
-      "capital_justfile": {
-        "text": "check:\n    ./run-all-checks\n",
         "is_truncated": false,
         "is_binary": false
       },
@@ -96,8 +79,7 @@
             }
           }
         ]
-      },
-      "ci": null
+      }
     }
   }
 }

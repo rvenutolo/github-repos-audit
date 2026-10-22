@@ -15,7 +15,7 @@ func cacheUsage(t *testing.T, usage, limit int64) rules.Cell {
 	r := fixture("alpha", "tools")
 	r.Storage = audit.ActionsStorage{CacheUsageBytes: usage, CacheLimitBytes: limit}
 	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(),
 		Repos: []audit.Repo{r},
 	})
 	if err != nil {

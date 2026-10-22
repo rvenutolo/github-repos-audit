@@ -28,7 +28,6 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
-      "hermetic_nix": "not_required",
       "homepage": "public_published",
       "job_timeouts": "required",
       "justfile": "required",
@@ -87,7 +86,6 @@
       "git_identity": "not_required",
       "gitignore": "required",
       "go_cache": "not_required",
-      "hermetic_nix": "not_required",
       "homepage": "public_published",
       "job_timeouts": "not_required",
       "justfile": "not_required",
@@ -146,7 +144,6 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
-      "hermetic_nix": "not_required",
       "homepage": "public_published",
       "job_timeouts": "required",
       "justfile": "required",
@@ -205,7 +202,6 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
-      "hermetic_nix": "not_required",
       "homepage": "public_published",
       "job_timeouts": "required",
       "justfile": "required",
@@ -264,7 +260,6 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
-      "hermetic_nix": "required",
       "homepage": "public_published",
       "job_timeouts": "required",
       "justfile": "required",
@@ -323,7 +318,6 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
-      "hermetic_nix": "required",
       "homepage": "public_published",
       "job_timeouts": "required",
       "justfile": "required",
@@ -363,10 +357,6 @@
     "accepted": [
       "Pat Example <12345+pat@users.noreply.github.com>"
     ]
-  },
-  "hermetic": {
-    "flake": "github:gh-owner/lint-flake",
-    "lint": "check-workflow-hermetic"
   },
   "repos": [
     {
@@ -418,20 +408,8 @@
         "lock_file_maintenance": true
       },
       "flake": {
-        "inputs": [
-          "github:NixOS/nixpkgs/nixos-unstable",
-          "github:gh-owner/lint-flake"
-        ],
         "has_lock": true,
-        "locked_inputs": [
-          "github:gh-owner/lint-flake",
-          "github:nixos/nixpkgs"
-        ],
-        "nixpkgs_last_modified": "2026-09-01T12:00:00Z",
-        "names_lint": true,
-        "gate_files": [
-          "run-all-checks"
-        ]
+        "nixpkgs_last_modified": "2026-09-01T12:00:00Z"
       },
       "workflow_facts": [
         {
@@ -574,20 +552,8 @@
         "lock_file_maintenance": true
       },
       "flake": {
-        "inputs": [
-          "github:NixOS/nixpkgs/nixos-unstable",
-          "github:gh-owner/lint-flake"
-        ],
         "has_lock": true,
-        "locked_inputs": [
-          "github:gh-owner/lint-flake",
-          "github:nixos/nixpkgs"
-        ],
-        "nixpkgs_last_modified": "2026-09-01T12:00:00Z",
-        "names_lint": true,
-        "gate_files": [
-          "run-all-checks"
-        ]
+        "nixpkgs_last_modified": "2026-09-01T12:00:00Z"
       },
       "workflow_facts": [
         {

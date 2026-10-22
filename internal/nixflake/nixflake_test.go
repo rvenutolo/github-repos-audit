@@ -22,46 +22,6 @@ func parse(t *testing.T, text string) nixflake.LockFacts {
 	return lock
 }
 
-func TestInputs(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		text string
-		want []string
-	}{
-		{
-			"attribute form, sorted",
-			`{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    lint.url = "github:gh-owner/lint-flake";
-  };
-}`,
-			[]string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
-		},
-		{
-			"nested set with free spacing",
-			"{ inputs.lint = { url   =\"github:gh-owner/lint-flake\"; inputs.nixpkgs.follows = \"nixpkgs\"; }; }",
-			[]string{"github:gh-owner/lint-flake"},
-		},
-		{
-			"repeated",
-			`{ inputs.a.url = "github:gh-owner/lint-flake"; inputs.b.url = "github:gh-owner/lint-flake"; }`,
-			[]string{"github:gh-owner/lint-flake"},
-		},
-		{"none", `{ outputs = _: { }; }`, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if diff := cmp.Diff(tt.want, nixflake.Inputs(tt.text)); diff != "" {
-				t.Errorf("Inputs() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
 func TestParseLock_directNixpkgs(t *testing.T) {
 	t.Parallel()
 
@@ -188,27 +148,6 @@ func TestParseLock_noInputsAtAll(t *testing.T) {
 	got := parse(t, `{"nodes": {"root": {}}, "root": "root", "version": 7}`)
 	if diff := cmp.Diff(nixflake.LockFacts{}, got); diff != "" {
 		t.Errorf("ParseLock() mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestParseLock_lockedInputs(t *testing.T) {
-	t.Parallel()
-
-	got := parse(t, `{
-  "nodes": {
-    "lint": {"original": {"type": "github", "owner": "GH-Owner", "repo": "Lint-Flake"}},
-    "lint_2": {"original": {"type": "github", "owner": "gh-owner", "repo": "lint-flake", "ref": "main"}},
-    "nixpkgs": {"locked": {"lastModified": 1760918400}, "original": {"type": "github", "owner": "NixOS", "repo": "nixpkgs"}},
-    "local": {"original": {"type": "path", "path": "./sub"}},
-    "tarball": {"original": {"type": "tarball", "url": "https://example.com/x.tar.gz"}},
-    "root": {"inputs": {"lint": "lint", "nixpkgs": "nixpkgs", "local": "local", "tarball": "tarball"}}
-  },
-  "root": "root",
-  "version": 7
-}`)
-	want := []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"}
-	if diff := cmp.Diff(want, got.LockedInputs); diff != "" {
-		t.Errorf("LockedInputs mismatch (-want +got):\n%s", diff)
 	}
 }
 
