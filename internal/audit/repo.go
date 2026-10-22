@@ -113,9 +113,9 @@ type Repo struct {
 	Renovate Renovate `json:"renovate,omitzero"`
 	// Flake is what flake.nix and flake.lock say, and which files name the
 	// hermetic lint. Zero when nothing in either file was recorded and no
-	// gate file names the lint, which includes a readable flake.nix that
-	// binds no URL and names no lint, so a zero Flake does not mean there is
-	// no flake.nix: Files.FlakeNix is the presence fact.
+	// gate file names the lint. That includes a readable flake.nix that binds
+	// no URL and names no lint, so Files.FlakeNix, not this, says whether
+	// flake.nix exists.
 	Flake Flake `json:"flake,omitzero"`
 	// Workflows is every .yml or .yaml file in .github/workflows, parsed,
 	// sorted by path. Files.Workflows is the directory's listing; this is

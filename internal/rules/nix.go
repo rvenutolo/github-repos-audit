@@ -21,10 +21,12 @@ import (
 // list. A repository with no flake.nix is n/a: there is no Nix to be hermetic
 // about, and flake_nix already reports the missing file.
 //
-// A flake.nix the collector could not read fails as unreadable and lists
-// nothing else, the way an unreadable workflow fails: it recorded no inputs
-// and no lint, so every other part would only repeat that, and naming them
-// would send the reader to fix wiring that may well be there.
+// A flake.nix the collector could not read fails as "unreadable flake.nix"
+// and names nothing else. It recorded no inputs and no lint, so "no input"
+// and "not in devShell" would only echo the read failure. The lock and gate
+// parts are recorded facts, but they are left out too, so the cell holds the
+// one fix (make flake.nix readable) and the next run names whatever is still
+// missing; nix_lock_age fails as "unreadable flake.lock" alone the same way.
 func observeHermetic(r audit.Repo, std audit.HermeticStandard) observation {
 	if !r.Files.FlakeNix {
 		return observation{unknown: true}

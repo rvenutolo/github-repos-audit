@@ -171,9 +171,9 @@ func TestEvaluate_hermetic_noFlakeIsNA(t *testing.T) {
 }
 
 // TestEvaluate_hermetic_unreadableFlakeNix: a flake.nix the collector could
-// not read fails as unreadable and lists nothing else, since every other part
-// would only echo that it recorded nothing. With no flake.nix at all the row
-// is still n/a.
+// not read fails as unreadable and names no other part, even with the lock
+// and gate parts missing too, so the cell holds the one fix. With no
+// flake.nix at all the row is still n/a.
 func TestEvaluate_hermetic_unreadableFlakeNix(t *testing.T) {
 	t.Parallel()
 
