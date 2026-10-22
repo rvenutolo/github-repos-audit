@@ -1,6 +1,8 @@
 package nixflake_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -306,5 +308,34 @@ func TestParseLock_invalid(t *testing.T) {
 				t.Errorf("ParseLock() carries facts beside the problem (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestParseLock_fanInFollowsIsFast(t *testing.T) {
+	t.Parallel()
+
+	// Every hub input h_k follows a path whose last two steps both resolve
+	// h_(k-1) again, so resolving without remembering results costs twice as
+	// much per level and does not finish within the test timeout at this depth. Each input resolves
+	// to the hub itself, which carries the date.
+	const levels = 30
+	inputs := []string{`"h_0": "hub"`}
+	for k := 1; k <= levels; k++ {
+		inputs = append(inputs, fmt.Sprintf(`"h_%d": ["hub", "h_%d", "h_%d"]`, k, k-1, k-1))
+	}
+	got := parse(t, fmt.Sprintf(`{
+  "nodes": {
+    "hub": {
+      "inputs": {%s},
+      "locked": {"lastModified": 1760918400, "type": "github"},
+      "original": {"owner": "NixOS", "repo": "nixpkgs", "type": "github"}
+    },
+    "root": {"inputs": {"hub": "hub", "nixpkgs": ["hub", "h_%d"]}}
+  },
+  "root": "root",
+  "version": 7
+}`, strings.Join(inputs, ", "), levels))
+	if want := time.Unix(1760918400, 0).UTC(); !got.NixpkgsLastModified.Equal(want) {
+		t.Errorf("NixpkgsLastModified = %v, want %v", got.NixpkgsLastModified, want)
 	}
 }
