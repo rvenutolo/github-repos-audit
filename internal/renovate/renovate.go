@@ -141,7 +141,8 @@ func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch)
 	res := Result{
 		// enabledManagers only narrows the managers Renovate runs; the nix
 		// manager defaults to disabled, so listing it there without
-		// nix.enabled leaves it off. Upstream declined to change that:
+		// nix.enabled leaves it off. Upstream declined to change that (see
+		// the issue below).
 		// doc-rot-exempt: upstream Renovate issue, cited as the reason nix stays off
 		// https://github.com/renovatebot/renovate/issues/9408
 		NixManager:          l.nix.value && (!l.managers.set || slices.Contains(l.managers.names, "nix")),

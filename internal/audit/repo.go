@@ -164,8 +164,9 @@ type Renovate struct {
 	// then in MinReleaseAgeError; a wrong-typed manager key never sets it).
 	NixManager bool `json:"nix_manager,omitzero"`
 	// LockFileMaintenance is whether lockFileMaintenance.enabled is true
-	// after the same merge. False when off, unset, of the wrong type, or
-	// unresolved.
+	// after the same merge, which for this key also reads the built-in
+	// presets the README lists under nix_lock_refresh. False when off, unset,
+	// of the wrong type, or unresolved.
 	LockFileMaintenance bool `json:"lock_file_maintenance,omitzero"`
 }
 
