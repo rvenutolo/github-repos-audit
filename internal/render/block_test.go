@@ -393,6 +393,73 @@ func TestBlock_listPathsAreOneLine(t *testing.T) {
 	}
 }
 
+// blockOf renders rep, failing the test on error.
+func blockOf(t *testing.T, rep *rules.Report) string {
+	t.Helper()
+	got, err := render.Block(rep, clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	return got
+}
+
+// wantOneLine fails unless got holds want as one span and no line of it
+// starts with the second half of a broken value.
+func wantOneLine(t *testing.T, got, want string) {
+	t.Helper()
+	if !strings.Contains(got, want) {
+		t.Errorf("Block() lacks %q:\n%s", want, got)
+	}
+	for line := range strings.SplitSeq(got, "\n") {
+		if strings.HasPrefix(line, "b") {
+			t.Errorf("a line break split a bullet: line %q in:\n%s", line, got)
+		}
+	}
+}
+
+// TestBlock_staleEntryNamesAreOneLine: a stale entry is a repos.toml key, so
+// it is free text and may hold a line break, which would end the bullet.
+func TestBlock_staleEntryNamesAreOneLine(t *testing.T) {
+	t.Parallel()
+
+	rep := &rules.Report{Owner: "gh-owner", Drift: audit.ConfigDrift{StaleEntries: []string{"a\nb", "a\r\nb"}}}
+	wantOneLine(t, blockOf(t, rep), "`a b`, `a b`")
+}
+
+// TestBlock_gitIdentitiesAreOneLine: an identity comes from commit metadata
+// and is rendered in a bullet, so a line break in it must not end the bullet.
+func TestBlock_gitIdentitiesAreOneLine(t *testing.T) {
+	t.Parallel()
+
+	rep := &rules.Report{Owner: "gh-owner", Identities: []rules.IdentityLine{{
+		Repo:       "alpha",
+		Identities: []rules.IdentityEntry{{Name: "a\nb", Email: "x@example.invalid"}},
+	}}}
+	wantOneLine(t, blockOf(t, rep), "`a b <x@example.invalid>`")
+}
+
+// TestBlock_exceptionValuesAreOneLine: a deviating value and the usual one
+// are settings read from the repository, so either may hold a line break.
+func TestBlock_exceptionValuesAreOneLine(t *testing.T) {
+	t.Parallel()
+
+	rep := &rules.Report{Owner: "gh-owner", Exceptions: []rules.Exception{
+		{Repo: "alpha", Setting: "wiki", Value: "a\nb", Modal: "a\r\nb"},
+	}}
+	wantOneLine(t, blockOf(t, rep), "wiki `a b`, usually `a b`")
+}
+
+// TestBlock_overrideValuesAreOneLine: an override value is whatever
+// repos.toml says, so it may hold a line break.
+func TestBlock_overrideValuesAreOneLine(t *testing.T) {
+	t.Parallel()
+
+	rep := &rules.Report{Owner: "gh-owner", Overrides: []rules.Override{
+		{Repo: "alpha", Check: rules.CheckREADME, Value: "a\r\nb"},
+	}}
+	wantOneLine(t, blockOf(t, rep), "is `a b`")
+}
+
 // TestBlock_naCellCarryingAScalar is the "an n/a cell still shows a value it
 // has" decision, seen from the renderer's side.
 func TestBlock_naCellCarryingAScalar(t *testing.T) {
