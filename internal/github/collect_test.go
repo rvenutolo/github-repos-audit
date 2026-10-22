@@ -69,10 +69,11 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		},
 		// The file listing and the file read name the same workflow.
 		Workflows: []audit.Workflow{{
-			Path:        ".github/workflows/ci.yml",
-			Events:      []string{"pull_request", "push"},
-			Permissions: audit.Permissions{Set: true, Scopes: map[string]string{"contents": "read"}},
-			Jobs:        []audit.Job{{ID: "check", TimeoutMinutes: "15"}},
+			Path:         ".github/workflows/ci.yml",
+			Events:       []string{"pull_request", "push"},
+			PushBranches: []string{"main"},
+			Permissions:  audit.Permissions{Set: true, Scopes: map[string]string{"contents": "read"}},
+			Jobs:         []audit.Job{{ID: "check", TimeoutMinutes: "15"}},
 		}},
 		CIState: "SUCCESS",
 		// Every shape the CI fixtures carry, recorded as it is: the first pull
@@ -528,10 +529,11 @@ func TestClient_Collect_fileFacts(t *testing.T) {
 			},
 			workflows: []audit.Workflow{
 				{
-					Path:        ".github/workflows/ci.yml",
-					Events:      []string{"pull_request", "push"},
-					Concurrency: audit.Concurrency{Set: true, CancelInProgress: "true"},
-					Permissions: audit.Permissions{Set: true, Scopes: map[string]string{"contents": "read"}},
+					Path:         ".github/workflows/ci.yml",
+					Events:       []string{"pull_request", "push"},
+					PushBranches: []string{"main"},
+					Concurrency:  audit.Concurrency{Set: true, CancelInProgress: "true"},
+					Permissions:  audit.Permissions{Set: true, Scopes: map[string]string{"contents": "read"}},
 					Jobs: []audit.Job{{
 						ID:             "check",
 						TimeoutMinutes: "15",

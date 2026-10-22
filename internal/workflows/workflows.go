@@ -69,6 +69,7 @@ func parseWorkflow(text string) (audit.Workflow, error) {
 		return w, err
 	}
 	w.Events, w.PullRequestTypes, w.PullRequestTargetTypes = t.names, t.pullRequest, t.pullRequestTarget
+	w.PushBranches, w.PushBranchesIgnore, w.PushTagFilter = t.push.branches, t.push.branchesIgnore, t.push.tagFilter
 	if w.Concurrency, err = concurrency(lookup(top, "concurrency"), "concurrency"); err != nil {
 		return w, err
 	}
@@ -163,17 +164,25 @@ func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
 	return uses, update, nil
 }
 
-// triggers is what `on:` says: the event names, and the `types:` the two
-// pull request triggers list.
+// triggers is what `on:` says: the event names, the `types:` the two pull
+// request triggers list, and the ref filters of `push`.
 type triggers struct {
 	names, pullRequest, pullRequestTarget []string
+	push                                  pushFilter
+}
+
+// pushFilter is which refs `on.push` admits, as written.
+type pushFilter struct {
+	branches, branchesIgnore []string
+	tagFilter                bool
 }
 
 // events reduces the three forms of `on:` (one name, a list of names, a map
 // keyed by name) to the sorted, distinct names. A blank or null name is no
 // event, so it is dropped; with nothing left the result is nil, the same as
 // an absent `on:`. Only the map form can give a trigger settings, so only it
-// can list `types:` for `pull_request` and `pull_request_target`.
+// can list `types:` for `pull_request` and `pull_request_target`, and ref
+// filters for `push`.
 func events(n *yaml.Node) (triggers, error) {
 	var t triggers
 	switch {
@@ -203,6 +212,8 @@ func events(n *yaml.Node) (triggers, error) {
 				t.pullRequest, err = eventTypes(p.value, "on.pull_request")
 			case "pull_request_target":
 				t.pullRequestTarget, err = eventTypes(p.value, "on.pull_request_target")
+			case "push":
+				t.push, err = pushFilters(p.value, "on.push")
 			}
 			if err != nil {
 				return t, err
@@ -254,6 +265,80 @@ func eventTypes(n *yaml.Node, where string) ([]string, error) {
 		}
 	}
 	return distinct(types), nil
+}
+
+// pushFilters reads the ref filters of `on.push`. Branch patterns are kept
+// exactly as written, unsorted and with repeats, because `!` patterns are
+// order-sensitive; a scalar is a one-item list, and an empty list is nil, as
+// for eventTypes. Blank patterns (a null item) are dropped. Of the tag
+// filters only their presence is kept, since what matters downstream is
+// whether branch pushes can run the workflow at all.
+//
+// Settings that are not a mapping (null for a bare trigger) filter nothing.
+// `paths` and the rest are not read, so they stay as unjudged as they are for
+// every other trigger.
+func pushFilters(n *yaml.Node, where string) (pushFilter, error) {
+	var f pushFilter
+	if n.Kind != yaml.MappingNode {
+		return f, nil
+	}
+	// pairs, not lookup, so a key written twice is rejected rather than
+	// read as whichever comes first.
+	ps, err := pairs(n, where)
+	if err != nil {
+		return f, err
+	}
+	var hasBranches, hasIgnore bool
+	for _, p := range ps {
+		switch p.key {
+		case "branches":
+			hasBranches = true
+			f.branches, err = patterns(p.value, where+".branches")
+		case "branches-ignore":
+			hasIgnore = true
+			f.branchesIgnore, err = patterns(p.value, where+".branches-ignore")
+		case "tags", "tags-ignore":
+			var tags []string
+			tags, err = patterns(p.value, where+"."+p.key)
+			f.tagFilter = f.tagFilter || len(tags) > 0
+		}
+		if err != nil {
+			return f, err
+		}
+	}
+	// GitHub refuses the pair, and reading both would hide which of the two
+	// the author meant to apply.
+	if hasBranches && hasIgnore {
+		return f, fmt.Errorf("line %d: %s lists both branches and branches-ignore", n.Line, where)
+	}
+	return f, nil
+}
+
+// patterns reads a filter's pattern list in written order: a scalar is a
+// one-item list, blanks are dropped and nothing is sorted or deduplicated.
+// Nil when no pattern is left, so omitzero leaves the key out.
+func patterns(n *yaml.Node, where string) ([]string, error) {
+	if !absent(n) && n.Kind == yaml.ScalarNode {
+		if n.Value == "" {
+			return nil, nil
+		}
+		return []string{n.Value}, nil
+	}
+	items, err := sequence(n, where)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for i, item := range items {
+		v, err := scalar(item, fmt.Sprintf("%s[%d]", where, i))
+		if err != nil {
+			return nil, err
+		}
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out, nil
 }
 
 // distinct sorts names and drops repeats and blanks, returning nil when

@@ -677,6 +677,22 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
+        "push_branches": {
+          "description": "The `branches:` listed for `push` under the map form of `on:`, in written order with repeats kept, because a `!` pattern only excludes what the patterns before it matched. Absent when the trigger lists none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "push_branches_ignore": {
+          "description": "The `branches-ignore:` listed for `push` under the map form of `on:`, in written order with repeats kept. Absent when the trigger lists none; never present beside `push_branches`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "push_tag_filter": {
+          "description": "`push` lists `tags:` or `tags-ignore:`. With no branch filter beside it, branch pushes never trigger the workflow.",
+          "type": "boolean"
+        },
         "concurrency": { "$ref": "#/$defs/concurrency" },
         "permissions": { "$ref": "#/$defs/permissions" },
         "jobs": {
