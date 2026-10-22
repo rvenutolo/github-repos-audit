@@ -182,6 +182,94 @@ func TestParseWorkflow_pushFilters(t *testing.T) {
 	}
 }
 
+// TestParseWorkflow_pullRequestBranchFilters pins what the two pull request
+// triggers say about which base branches start the workflow, read as push's
+// branch filters are: written order with repeats kept, a scalar as a
+// one-item list, nil whenever no pattern is listed, and each trigger's
+// filters kept apart from the other's.
+func TestParseWorkflow_pullRequestBranchFilters(t *testing.T) {
+	t.Parallel()
+
+	type filters struct {
+		Branches, BranchesIgnore, TargetBranches, TargetBranchesIgnore []string
+	}
+	tests := []struct {
+		name string
+		text string
+		want filters
+	}{
+		{"bare string form", "on: pull_request\n", filters{}},
+		{"null trigger", "on:\n  pull_request:\n", filters{}},
+		{
+			"branches",
+			"on:\n  pull_request:\n    branches: [main, 'releases/**']\n",
+			filters{Branches: []string{"main", "releases/**"}},
+		},
+		{
+			"order and repeats kept",
+			"on:\n  pull_request:\n    branches: ['**', '!main', '**']\n",
+			filters{Branches: []string{"**", "!main", "**"}},
+		},
+		{"scalar branch", "on:\n  pull_request:\n    branches: main\n", filters{Branches: []string{"main"}}},
+		{
+			"branches-ignore",
+			"on:\n  pull_request:\n    branches-ignore: [wip/*]\n",
+			filters{BranchesIgnore: []string{"wip/*"}},
+		},
+		{
+			"beside types",
+			"on:\n  pull_request:\n    types: [opened]\n    branches: [main]\n",
+			filters{Branches: []string{"main"}},
+		},
+		{"blank pattern dropped", "on:\n  pull_request:\n    branches: [main, \"\", ~]\n", filters{Branches: []string{"main"}}},
+		{"empty branches", "on:\n  pull_request:\n    branches: []\n", filters{}},
+		{"paths only", "on:\n  pull_request:\n    paths: [src/**]\n", filters{}},
+		{
+			"pull_request_target branches",
+			"on:\n  pull_request_target:\n    branches: [main]\n",
+			filters{TargetBranches: []string{"main"}},
+		},
+		{
+			"pull_request_target branches-ignore",
+			"on:\n  pull_request_target:\n    branches-ignore: [wip/*]\n",
+			filters{TargetBranchesIgnore: []string{"wip/*"}},
+		},
+		{
+			"both triggers kept apart",
+			"on:\n  pull_request:\n    branches: [main]\n  pull_request_target:\n    branches-ignore: [main]\n",
+			filters{Branches: []string{"main"}, TargetBranchesIgnore: []string{"main"}},
+		},
+		{"push filters ignored", "on:\n  push:\n    branches: [main]\n", filters{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			w := parse(t, tt.text)
+			got := filters{
+				Branches:             w.PullRequestBranches,
+				BranchesIgnore:       w.PullRequestBranchesIgnore,
+				TargetBranches:       w.PullRequestTargetBranches,
+				TargetBranchesIgnore: w.PullRequestTargetBranchesIgnore,
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("pull request branch filters mismatch (-want +got):\n%s", diff)
+			}
+			// omitzero writes an empty non-nil slice as [], so "no
+			// pattern" has to be nil, not merely empty.
+			for name, v := range map[string][]string{
+				"PullRequestBranches":             got.Branches,
+				"PullRequestBranchesIgnore":       got.BranchesIgnore,
+				"PullRequestTargetBranches":       got.TargetBranches,
+				"PullRequestTargetBranchesIgnore": got.TargetBranchesIgnore,
+			} {
+				if len(v) == 0 && v != nil {
+					t.Errorf("%s = %#v, want nil", name, v)
+				}
+			}
+		})
+	}
+}
+
 func TestParseWorkflow_concurrency(t *testing.T) {
 	t.Parallel()
 
@@ -437,6 +525,19 @@ func TestParse_wrongShape(t *testing.T) {
 		{"repeated push branches key", "on:\n  push:\n    branches: [a]\n    branches: [b]\n", "on.push.branches is defined twice"},
 		{"push branch pattern is a mapping", "on:\n  push:\n    branches: [{x: y}]\n", "on.push.branches"},
 		{"push branches is a mapping", "on:\n  push:\n    branches: {x: y}\n", "on.push.branches"},
+		{"push tags is a mapping", "on:\n  push:\n    tags: {x: y}\n", "on.push.tags"},
+		{
+			"pull_request branches with branches-ignore",
+			"on:\n  pull_request:\n    branches: [main]\n    branches-ignore: [wip]\n",
+			"on.pull_request lists both",
+		},
+		{
+			"pull_request_target branches with branches-ignore",
+			"on:\n  pull_request_target:\n    branches: [main]\n    branches-ignore: [wip]\n",
+			"on.pull_request_target lists both",
+		},
+		{"pull_request branch pattern is a mapping", "on:\n  pull_request:\n    branches: [{x: y}]\n", "on.pull_request.branches"},
+		{"pull_request_target branches-ignore is a mapping", "on:\n  pull_request_target:\n    branches-ignore: {x: y}\n", "on.pull_request_target.branches-ignore"},
 		{
 			"repeated pull_request types key",
 			"on:\n  pull_request:\n    types: [opened]\n    types: [closed]\n",

@@ -307,3 +307,90 @@ func TestBranchUpToDate_emptyRepositoryIsNA(t *testing.T) {
 		t.Errorf("verdict = %v, want NA on an empty repository", cell.Verdict)
 	}
 }
+
+// TestCIOnPR_branchFilters: GitHub matches a pull request trigger's branch
+// filters against the pull request's base branch, so a workflow runs on
+// pull requests into the default branch only when its filters admit that
+// branch, read as push's are.
+func TestCIOnPR_branchFilters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		branches       []string
+		ignore         []string
+		targetBranches []string
+		want           rules.Verdict
+	}{
+		{"no filter", nil, nil, nil, rules.Pass},
+		{"branches names the default", []string{"main"}, nil, nil, rules.Pass},
+		{"branches pattern admits the default", []string{"ma*"}, nil, nil, rules.Pass},
+		{"branches names only release branches", []string{"release/**"}, nil, nil, rules.Fail},
+		{"branches negates the default", []string{"**", "!main"}, nil, nil, rules.Fail},
+		{"branches-ignore names another branch", nil, []string{"wip/**"}, nil, rules.Pass},
+		{"branches-ignore names the default", nil, []string{"main"}, nil, rules.Fail},
+		{"pull_request_target admits it where pull_request does not", []string{"release/**"}, nil, []string{"main"}, rules.Pass},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			events := []string{"pull_request"}
+			if tt.targetBranches != nil {
+				events = append(events, "pull_request_target")
+			}
+			w := audit.Workflow{
+				Path: ".github/workflows/ci.yml", Events: events,
+				PullRequestBranches: tt.branches, PullRequestBranchesIgnore: tt.ignore,
+				PullRequestTargetBranches: tt.targetBranches,
+			}
+			wantCell(t, prCell(t, w), tt.want, "")
+		})
+	}
+}
+
+// TestCIOnPR_pullRequestTargetBranchFilters: pull_request_target's filters
+// are judged on their own, so its branches-ignore excludes the default
+// branch even when pull_request is absent.
+func TestCIOnPR_pullRequestTargetBranchFilters(t *testing.T) {
+	t.Parallel()
+
+	w := audit.Workflow{
+		Path: ".github/workflows/ci.yml", Events: []string{"pull_request_target"},
+		PullRequestTargetBranchesIgnore: []string{"main"},
+	}
+	wantCell(t, prCell(t, w), rules.Fail, "")
+	w.PullRequestTargetBranchesIgnore = []string{"wip/**"}
+	wantCell(t, prCell(t, w), rules.Pass, "")
+}
+
+// TestCIOnPR_branchFiltersFollowTheDefaultBranch: the filters are matched
+// against the repository's own default branch, not a fixed name.
+func TestCIOnPR_branchFiltersFollowTheDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	w := audit.Workflow{
+		Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
+		PullRequestBranches: []string{"main"},
+	}
+	pr, push := triggerCells(t, "trunk", w)
+	wantCell(t, pr, rules.Fail, "")
+	wantCell(t, push, rules.Fail, "")
+	pr, push = triggerCells(t, "main", w)
+	wantCell(t, pr, rules.Pass, "")
+	wantCell(t, push, rules.Pass, "")
+}
+
+// TestCIOnPush_needsPullRequestsIntoTheDefaultBranch: ci_on_push asks for
+// one workflow that runs on pull requests and on a push to the default
+// branch, so a workflow whose pull request filters exclude the default
+// branch does not satisfy it even when its push trigger admits it.
+func TestCIOnPush_needsPullRequestsIntoTheDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	w := audit.Workflow{
+		Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
+		PullRequestBranches: []string{"release/**"}, PushBranches: []string{"main"},
+	}
+	wantCell(t, pushCell(t, "main", w), rules.Fail, "")
+}

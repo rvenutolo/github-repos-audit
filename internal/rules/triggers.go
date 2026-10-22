@@ -9,20 +9,21 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
 
-// observeCIOnPR judges whether some workflow runs when a pull request is
-// opened or updated, which is the only way a pull request is tested before it
-// is merged. The predicate is runsOnSynchronize, the same one
-// ci_cancel_superseded uses to decide which workflows a pull request runs, so
-// the two checks cannot disagree on what a pull-request workflow is.
+// observeCIOnPR judges whether some workflow runs when a pull request into
+// the default branch is opened or updated, which is the only way a pull
+// request is tested before it is merged. The predicate is runsOnSynchronize,
+// the same one ci_cancel_superseded uses to decide which workflows a pull
+// request runs, so the two checks cannot disagree on what a pull-request
+// workflow is.
 //
 // It is judged from configuration only, never from run history: a quiet
 // repository whose CI is set up correctly passes.
 func observeCIOnPR(r audit.Repo) observation {
-	return observeTrigger(r, runsOnSynchronize)
+	return observeTrigger(r, func(w audit.Workflow) bool { return runsOnSynchronize(w, r.DefaultBranch) })
 }
 
-// observeCIOnPush judges whether some workflow runs both on pull requests and
-// on a push to the default branch. Without the push run, a merge of two green
+// observeCIOnPush judges whether some workflow runs both on pull requests
+// into the default branch and on a push to it. Without the push run, a merge of two green
 // pull requests can leave the default branch red with nothing reporting it,
 // and the default branch never saves a cache, so every pull request starts
 // cold: GitHub scopes caches by ref, and a pull request can read only its
@@ -35,7 +36,7 @@ func observeCIOnPR(r audit.Repo) observation {
 // so it leaves the cold-cache problem where it was.
 func observeCIOnPush(r audit.Repo) observation {
 	return observeTrigger(r, func(w audit.Workflow) bool {
-		return runsOnSynchronize(w) && pushAdmits(w, r.DefaultBranch)
+		return runsOnSynchronize(w, r.DefaultBranch) && pushAdmits(w, r.DefaultBranch)
 	})
 }
 
@@ -79,27 +80,37 @@ func isMergeGate(w audit.Workflow) bool {
 // pushAdmits reports whether a workflow's push trigger runs for a push to
 // branch, as GitHub applies its filters. A push trigger with no branch
 // filter runs for every branch, unless a tag filter is its only filter: then
-// it runs for matching tags and never for a branch. branches-ignore admits
-// what none of its patterns match. In branches, a pattern admits what it
-// matches and a !pattern excludes it, a later pattern overriding an earlier
-// one, so the last that matches decides and a branch none match is not
-// admitted. Path filters are ignored: they narrow when the workflow runs on
+// it runs for matching tags and never for a branch. Apart from that,
+// branchAdmits decides. Path filters are ignored: they narrow when the workflow runs on
 // the branch, not whether it can.
 func pushAdmits(w audit.Workflow, branch string) bool {
 	if !slices.Contains(w.Events, "push") {
 		return false
 	}
+	if w.PushTagFilter && len(w.PushBranches) == 0 && len(w.PushBranchesIgnore) == 0 {
+		return false
+	}
+	return branchAdmits(w.PushBranches, w.PushBranchesIgnore, branch)
+}
+
+// branchAdmits reports whether a trigger's branch filters, branches or
+// branches-ignore (GitHub allows only one of the two), admit branch. With
+// neither, every branch is admitted. branches-ignore admits what none of its
+// patterns match. In branches, a pattern admits what it matches and a
+// !pattern excludes it, a later pattern overriding an earlier one, so the
+// last that matches decides and a branch none match is not admitted.
+func branchAdmits(branches, ignore []string, branch string) bool {
 	switch {
-	case len(w.PushBranches) == 0 && len(w.PushBranchesIgnore) == 0:
-		return !w.PushTagFilter
-	case len(w.PushBranchesIgnore) > 0:
+	case len(branches) == 0 && len(ignore) == 0:
+		return true
+	case len(ignore) > 0:
 		// A "!" is matched literally here: GitHub documents negation only
 		// for branches, so treating it as one would admit or exclude
 		// branches the workflow does not.
-		return !slices.ContainsFunc(w.PushBranchesIgnore, func(p string) bool { return matchFilter(p, branch) })
+		return !slices.ContainsFunc(ignore, func(p string) bool { return matchFilter(p, branch) })
 	}
 	admitted := false
-	for _, p := range w.PushBranches {
+	for _, p := range branches {
 		if negated, ok := strings.CutPrefix(p, "!"); ok {
 			if matchFilter(negated, branch) {
 				admitted = false

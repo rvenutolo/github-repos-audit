@@ -102,13 +102,14 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json",
 			NixManager: true, LockFileMaintenance: true,
 		},
-		// ci.yml runs on pull requests and on a push to the default branch,
-		// cancels superseded runs and bounds its one job.
+		// ci.yml runs on pull requests into the default branch and on a push
+		// to it, cancels superseded runs and bounds its one job.
 		Workflows: []audit.Workflow{{
 			Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
-			PushBranches: []string{"main"},
-			Concurrency:  audit.Concurrency{Set: true, CancelInProgress: "true"},
-			Jobs:         []audit.Job{{ID: "check", TimeoutMinutes: "15"}},
+			PullRequestBranches: []string{"main"},
+			PushBranches:        []string{"main"},
+			Concurrency:         audit.Concurrency{Set: true, CancelInProgress: "true"},
+			Jobs:                []audit.Job{{ID: "check", TimeoutMinutes: "15"}},
 		}},
 		CIState: "SUCCESS",
 		Rulesets: []audit.Ruleset{
