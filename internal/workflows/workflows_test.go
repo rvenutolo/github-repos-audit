@@ -40,6 +40,9 @@ func TestParseWorkflow_eventsForms(t *testing.T) {
 		{"map with a bare key", "on:\n  workflow_dispatch:\n  push:\n", []string{"push", "workflow_dispatch"}},
 		{"repeated in a list", "on: [push, push]\n", []string{"push"}},
 		{"absent", "jobs: {}\n", nil},
+		{"blank string", "on: \"\"\n", nil},
+		{"null in a list", "on: [~]\n", nil},
+		{"blank beside a name", "on: [push, \"\"]\n", []string{"push"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

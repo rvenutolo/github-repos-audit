@@ -162,7 +162,9 @@ func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
 }
 
 // events reduces the three forms of `on:` (one name, a list of names, a map
-// keyed by name) to the sorted, distinct names.
+// keyed by name) to the sorted, distinct names. A blank or null name is no
+// event, so it is dropped; with nothing left the result is nil, the same as
+// an absent `on:`.
 func events(n *yaml.Node) ([]string, error) {
 	var names []string
 	switch {
@@ -176,6 +178,7 @@ func events(n *yaml.Node) ([]string, error) {
 			if err != nil {
 				return nil, err
 			}
+			// scalar reads a null item as "", which the filter below drops.
 			names = append(names, name)
 		}
 	default:
@@ -187,6 +190,10 @@ func events(n *yaml.Node) ([]string, error) {
 		for _, p := range ps {
 			names = append(names, p.key)
 		}
+	}
+	names = slices.DeleteFunc(names, func(name string) bool { return name == "" })
+	if len(names) == 0 {
+		return nil, nil
 	}
 	slices.Sort(names)
 	return slices.Compact(names), nil
