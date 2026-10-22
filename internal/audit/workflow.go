@@ -38,7 +38,8 @@ type Workflow struct {
 	// PushBranchesIgnore is as PushBranches, for `branches-ignore:`. GitHub
 	// rejects a trigger that lists both, so at most one of the two is set.
 	PushBranchesIgnore []string `json:"push_branches_ignore,omitzero"`
-	// PushTagFilter reports that `push` lists `tags:` or `tags-ignore:`.
+	// PushTagFilter reports that `push` has a `tags:` or `tags-ignore:` key
+	// with a value, an empty list included.
 	// With no branch filter beside it, GitHub runs the workflow for matching
 	// tags only, never for a branch push, so a reader needs this to tell a
 	// release workflow from one that runs on every push.

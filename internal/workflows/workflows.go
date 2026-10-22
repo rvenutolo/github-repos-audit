@@ -271,7 +271,8 @@ func eventTypes(n *yaml.Node, where string) ([]string, error) {
 // exactly as written, unsorted and with repeats, because `!` patterns are
 // order-sensitive; a scalar is a one-item list, and an empty list is nil, as
 // for eventTypes. Blank patterns (a null item) are dropped. Of the tag
-// filters only their presence is kept, since what matters downstream is
+// filters only their presence (a non-null `tags:` or `tags-ignore:`, empty
+// included) is kept, since what matters downstream is
 // whether branch pushes can run the workflow at all.
 //
 // Settings that are not a mapping (null for a bare trigger) filter nothing.
@@ -298,9 +299,11 @@ func pushFilters(n *yaml.Node, where string) (pushFilter, error) {
 			hasIgnore = true
 			f.branchesIgnore, err = patterns(p.value, where+".branches-ignore")
 		case "tags", "tags-ignore":
-			var tags []string
-			tags, err = patterns(p.value, where+"."+p.key)
-			f.tagFilter = f.tagFilter || len(tags) > 0
+			_, err = patterns(p.value, where+"."+p.key)
+			// Presence, not a non-empty list: an empty tag list is not a
+			// documented form, so it is read as the tag-only trigger it
+			// resembles rather than as one that admits every branch.
+			f.tagFilter = f.tagFilter || !absent(p.value)
 		}
 		if err != nil {
 			return f, err
