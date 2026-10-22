@@ -29,9 +29,9 @@ const fakeOwner = "gh-owner"
 // account, so internal/render/testdata/golden/clean.md — which predates the
 // account scrub and was untouched by it — carries them safely.
 // "preset-store" is the repository the API fixtures' Renovate configs extend
-// presets from; no fixture directory of its own exists. "lint-flake" is the
-// flake the API fixtures' flake.nix and flake.lock name as an input; it has
-// no fixture directory either.
+// presets from; no fixture directory of its own exists. "lint-flake" is a
+// flake the API fixtures' flake.lock names as an input; it has no fixture
+// directory either.
 var fakeRepos = []string{
 	"blank-repo", "cipher-lib", "compiler-config", "config-files", "go-linter",
 	"hook-guard", "java-demo", "media-server", "mixedCase-flake", "pkg-index",
@@ -134,8 +134,8 @@ var (
 // already use.
 var publicPair = regexp.MustCompile(`^(NixOS/nixpkgs|example-org/action-\d{2})$`)
 
-// isFakeFileText holds the text of a file fixture (flake.nix, flake.lock, a
-// workflow, a composite action, a gate script) to the fake vocabulary: every
+// isFakeFileText holds the text of a file fixture (flake.lock, a workflow, a
+// composite action) to the fake vocabulary: every
 // repository it names, in any of the ways those files name one, is gh-owner
 // and a fake repository, or one of publicPair.
 func isFakeFileText(v any) bool {
@@ -164,29 +164,6 @@ func isFakeFileText(v any) bool {
 		}
 	}
 	return true
-}
-
-// lockedRef is a flake reference as audit.json records one: flake.nix's
-// input URL as written, or flake.lock's GitHub node lower-cased.
-var lockedRef = regexp.MustCompile(`^github:([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)(?:/[^?#]*)?$`)
-
-// isFakeFlakeRef accepts a recorded flake reference naming gh-owner and a fake
-// repository, or nixpkgs, in any letter case: flake.lock's form is
-// lower-cased, so "github:gh-owner/mixedcase-flake" is still the fake name.
-func isFakeFlakeRef(v any) bool {
-	s, ok := str(v)
-	if !ok {
-		return false
-	}
-	m := lockedRef.FindStringSubmatch(s)
-	if m == nil {
-		return false
-	}
-	if strings.EqualFold(m[1]+"/"+m[2], "NixOS/nixpkgs") {
-		return true
-	}
-	return strings.EqualFold(m[1], fakeOwner) &&
-		slices.ContainsFunc(fakeRepos, func(r string) bool { return strings.EqualFold(r, m[2]) })
 }
 
 // pipeDescription is the one deliberate escaping fixture: a description
@@ -287,10 +264,8 @@ func keepNil(paths ...string) rule {
 // an absent one is null.
 const renovateProbes = `(renovate_json|renovate_jsonc|renovate_json5|renovate_github_json|renovate_github_jsonc|renovate_github_json5|renovate_gitlab_json|renovate_gitlab_jsonc|renovate_gitlab_json5|renovaterc|renovaterc_json|renovaterc_jsonc|renovaterc_json5)`
 
-// fileProbes is the alternation of the file query's single-file probes. The
-// flake_nix alias is shared with the repository query, whose probe answers
-// an oid where this one answers text.
-const fileProbes = `(flake_nix|flake_lock|run_all_checks|justfile|dot_justfile|capital_justfile)`
+// fileProbes is the alternation of the file query's single-file probes.
+const fileProbes = `(flake_lock)`
 
 // isFakeBase64Content decodes a contents-API content field — base64 wrapped
 // with newlines, as GitHub sends it — and holds the text to namesOnlyFakeRepos.
@@ -335,11 +310,10 @@ var apiRules = []rule{
 	// The file query's listings. Each entry's name is a file a real
 	// repository could be recognised by, so it is held to generic names, and
 	// each file's text to isFakeFileText.
-	{regexp.MustCompile(`^data\.repository\.ci\.entries\[\]\.name$`), matches(`^(check-\d{2}|lib\.sh)$`), "a generic .ci script name"},
 	{regexp.MustCompile(`^data\.repository\.actions\.entries\[\]\.name$`), matches(`^(setup|action-\d{2}|README\.md)$`), "a generic action directory name"},
 	{regexp.MustCompile(`^data\.repository\.actions\.entries\[\]\.object\.entries\[\]\.name$`), matches(`^(action\.ya?ml|README\.md)$`), "an action file name"},
 	{regexp.MustCompile(`^data\.repository\.` + fileProbes + `\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
-	{regexp.MustCompile(`^data\.repository\.(workflows|ci|actions\.entries\[\]\.object)\.entries\[\]\.object\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
+	{regexp.MustCompile(`^data\.repository\.(workflows|actions\.entries\[\]\.object)\.entries\[\]\.object\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
 	{regexp.MustCompile(`required_status_checks\[\]\.context$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
@@ -410,7 +384,7 @@ var apiRules = []rule{
 		`data\.repository\.rulesets\.nodes\[\]\.(enforcement|target|conditions\.ref_name\.include\[\]|rules\.nodes\[\]\.type)`,
 		`data\.repository\.`+renovateProbes+`\.(is_truncated|is_binary)`,
 		`data\.repository\.`+fileProbes+`\.(is_truncated|is_binary)`,
-		`data\.repository\.(workflows|ci|actions\.entries\[\]\.object)\.entries\[\]\.(type|object\.is_truncated|object\.is_binary)`,
+		`data\.repository\.(workflows|actions\.entries\[\]\.object)\.entries\[\]\.(type|object\.is_truncated|object\.is_binary)`,
 		`data\.repository\.actions\.entries\[\]\.type`,
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
 		// A pull request number, a run's event, a run's or job's status and a
@@ -437,7 +411,7 @@ var apiRules = []rule{
 		`data\.repository\.(contributing_root|contributing_github|contributing_docs)`,
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
 		`data\.repository\.`+renovateProbes,
-		`data\.repository\.(`+fileProbes+`|actions|ci)`,
+		`data\.repository\.(`+fileProbes+`|actions)`,
 		// A null actor: GitHub could not resolve who wrote or committed it.
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.nodes\[\]\.(author|committer)`,
 		// A deleted account's pull request.
@@ -466,12 +440,6 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^identity\.canonical$`), func(v any) bool { return v == "Pat Example <pat@example.com>" }, "the fixture canonical identity"},
 	{regexp.MustCompile(`^identity\.match$`), func(v any) bool { return v == " Example <" }, "the fixture identity match"},
 	{regexp.MustCompile(`^identity\.accepted\[\]$`), func(v any) bool { return v == "Pat Example <12345+pat@users.noreply.github.com>" }, "the fixture accepted identity"},
-	// The [hermetic] table names the account and a repository of it in a
-	// real report, so a golden may carry only the fixture standard.
-	{regexp.MustCompile(`^hermetic\.flake$`), func(v any) bool { return v == "github:gh-owner/lint-flake" }, "the fixture hermetic flake"},
-	{regexp.MustCompile(`^hermetic\.lint$`), func(v any) bool { return v == "check-workflow-hermetic" }, "the fixture hermetic lint"},
-	{regexp.MustCompile(`^repos\[\]\.flake\.(inputs|locked_inputs)\[\]$`), isFakeFlakeRef, "github:gh-owner/<fake> or nixpkgs"},
-	{regexp.MustCompile(`^repos\[\]\.flake\.gate_files\[\]$`), matches(`^(run-all-checks|justfile|\.justfile|Justfile|\.ci/[A-Za-z0-9._-]+)$`), "a gate file path"},
 	{regexp.MustCompile(`^repos\[\]\.flake\.nixpkgs_last_modified$`), matches(timestamp), "a timestamp"},
 	// Recorded CI facts: commits carry the synthetic oid, dates are
 	// timestamps, and a job label is a generic "<workflow> / <job>" pair like
@@ -509,7 +477,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.seconds`,
 		`repos\[\]\.files\.[a-z_]+`,
-		`repos\[\]\.flake\.(all_rev_pinned|has_lock|names_lint)`,
+		`repos\[\]\.flake\.(all_rev_pinned|has_lock)`,
 		`repos\[\]\.overrides\.[a-z_]+`,
 		`repos\[\]\.releases\.(drafts|total)`,
 		// A duration such as "7 days" is never account data.
@@ -929,11 +897,9 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 		{name: "a present renovate probe with a real flag field", doc: `{"data": {"repository": {"renovate_json": {"is_huge": true}}}}`},
 		{name: "a history author outside the identity vocabulary", doc: `{"data": {"repository": {"default_branch_ref": {"target": {"history": {"nodes": [{"author": {"name": "Someone Real", "email": "pat@example.com"}}]}}}}}}`},
 		{name: "a later history page's committer email outside the vocabulary", doc: `{"data": {"repository": {"object": {"history": {"nodes": [{"committer": {"name": "Pat Example", "email": "someone@real.invalid"}}]}}}}}`},
-		{name: "flake.nix naming a real input", doc: `{"data": {"repository": {"flake_nix": {"text": "inputs.x.url = \"github:someone/real-repo\";"}}}}`},
 		{name: "flake.lock naming a real owner", doc: `{"data": {"repository": {"flake_lock": {"text": "{\"original\": {\"owner\": \"someone\", \"repo\": \"lint-flake\"}}"}}}}`},
 		{name: "flake.lock naming a real repository", doc: `{"data": {"repository": {"flake_lock": {"text": "{\"original\": {\"owner\": \"gh-owner\", \"repo\": \"real-repo\"}}"}}}}`},
 		{name: "a workflow using a real action", doc: `{"data": {"repository": {"workflows": {"entries": [{"object": {"text": "- uses: someone/real-action@v1"}}]}}}}`},
-		{name: "a gate script under a real name", doc: `{"data": {"repository": {"ci": {"entries": [{"name": "deploy-media-stack"}]}}}}`},
 		{name: "a history cursor that is not synthetic", doc: `{"data": {"repository": {"object": {"history": {"page_info": {"end_cursor": "Y3Vyc29yOnYyOpK5"}}}}}}`},
 	}
 	for _, tc := range tests {
@@ -984,33 +950,6 @@ func TestCheck_rejectsAFreeTextCacheKey(t *testing.T) {
 		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) != 0 {
 			t.Errorf("check(%s) = %q, want no problem", doc, got)
 		}
-	}
-}
-
-// TestCheck_rejectsAForeignHermeticStandard: a golden audit.json may record
-// only the fixture [hermetic] table and flake references to the fake
-// vocabulary, never an account's own flake.
-func TestCheck_rejectsAForeignHermeticStandard(t *testing.T) {
-	t.Parallel()
-
-	for _, doc := range []string{
-		`{"hermetic": {"flake": "github:someone/real-flake", "lint": "check-workflow-hermetic"}}`,
-		`{"hermetic": {"flake": "github:gh-owner/lint-flake", "lint": "someone-lint"}}`,
-		`{"repos": [{"flake": {"inputs": ["github:someone/lint-flake"]}}]}`,
-		`{"repos": [{"flake": {"locked_inputs": ["github:gh-owner/real-repo"]}}]}`,
-		`{"repos": [{"flake": {"inputs": ["git+https://example.invalid/lint-flake"]}}]}`,
-		`{"repos": [{"flake": {"gate_files": ["scripts/real-name"]}}]}`,
-	} {
-		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
-			t.Errorf("check(%s) found no problem, want one", doc)
-		}
-	}
-	fixture := `{"hermetic": {"flake": "github:gh-owner/lint-flake", "lint": "check-workflow-hermetic"}, ` +
-		`"repos": [{"flake": {"inputs": ["github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"], ` +
-		`"has_lock": true, "locked_inputs": ["github:gh-owner/mixedcase-flake", "github:nixos/nixpkgs"], ` +
-		`"names_lint": true, "gate_files": [".ci/check", "run-all-checks"]}}]}`
-	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
-		t.Errorf("check(the fixture standard) = %q, want no problem", got)
 	}
 }
 

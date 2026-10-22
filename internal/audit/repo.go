@@ -25,10 +25,6 @@ type Snapshot struct {
 	// which identity the history was held to. Absent when nothing judges
 	// git_identity.
 	Identity IdentityStandard `json:"identity,omitzero"`
-	// Hermetic is repos.toml's [hermetic] table, recorded so audit.json says
-	// which flake and lint hermetic_nix looked for. Absent when nothing judges
-	// hermetic_nix.
-	Hermetic HermeticStandard `json:"hermetic,omitzero"`
 	// Repos is sorted by name, case-insensitively.
 	Repos []Repo `json:"repos"`
 	// Drift is where repos.toml and the account disagree about which
@@ -111,11 +107,7 @@ type Repo struct {
 	Files Files `json:"files"`
 	// Renovate is what the Renovate configuration says, when there is one.
 	Renovate Renovate `json:"renovate,omitzero"`
-	// Flake is what flake.nix and flake.lock say, and which files name the
-	// hermetic lint. Zero when nothing in either file was recorded and no
-	// gate file names the lint. That includes a readable flake.nix that binds
-	// no URL and names no lint, so Files.FlakeNix, not this, says whether
-	// flake.nix exists.
+	// Flake is what flake.lock says. Zero when there is no flake.lock.
 	Flake Flake `json:"flake,omitzero"`
 	// Workflows is every .yml or .yaml file in .github/workflows, parsed,
 	// sorted by path. Files.Workflows is the directory's listing; this is
@@ -451,18 +443,4 @@ type IdentityStandard struct {
 	// merge made in the web UI adds back, so it can never be rewritten away.
 	// Nil when nothing beyond Canonical is accepted.
 	Accepted []string `json:"accepted,omitzero"`
-}
-
-// HermeticStandard is repos.toml's [hermetic] table: the flake that carries
-// the hermetic lint, and the lint's command name. Both are configuration, not
-// constants, because the flake names an account and a repository. It is
-// recorded on the snapshot so audit.json describes the standard it was judged
-// by.
-type HermeticStandard struct {
-	// Flake is the input URL as flake.nix writes it, such as
-	// "github:<owner>/<repo>".
-	Flake string `json:"flake"`
-	// Lint is the hermetic-lint command name flake.nix and the gate files are
-	// expected to mention.
-	Lint string `json:"lint"`
 }

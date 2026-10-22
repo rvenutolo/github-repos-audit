@@ -1,12 +1,7 @@
 {
   "data": {
     "repository": {
-      "flake_nix": null,
       "flake_lock": null,
-      "run_all_checks": null,
-      "justfile": null,
-      "dot_justfile": null,
-      "capital_justfile": null,
       "workflows": {
         "entries": [
           {
@@ -20,8 +15,7 @@
           }
         ]
       },
-      "actions": null,
-      "ci": null
+      "actions": null
     }
   }
 }

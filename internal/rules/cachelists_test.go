@@ -13,7 +13,7 @@ import (
 func cacheListsReport(t *testing.T, repos ...audit.Repo) *rules.Report {
 	t.Helper()
 	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(),
 		Repos: repos,
 	})
 	if err != nil {

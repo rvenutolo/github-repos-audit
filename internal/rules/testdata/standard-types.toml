@@ -1,8 +1,7 @@
 # The six repository types this project judged against when the matrix lived
-# in Go, as [types.*] tables, plus the [identity] table git_identity needs and
-# the [hermetic] table hermetic_nix needs. A test fixture: rules, render and
-# cmd/github-repos-audit tests read it, so they do not move when this
-# repository's own repos.toml does.
+# in Go, as [types.*] tables, plus the [identity] table git_identity needs. A
+# test fixture: rules, render and cmd/github-repos-audit tests read it, so they
+# do not move when this repository's own repos.toml does.
 
 [types.software]
 readme = "required"
@@ -49,7 +48,6 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
-hermetic_nix = "required"
 nix_lock_age = "required"
 nix_lock_refresh = "required"
 nix_cache = "required"
@@ -108,7 +106,6 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
-hermetic_nix = "not_required"
 nix_lock_age = "required"
 nix_lock_refresh = "required"
 nix_cache = "required"
@@ -167,7 +164,6 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
-hermetic_nix = "not_required"
 nix_lock_age = "required"
 nix_lock_refresh = "required"
 nix_cache = "required"
@@ -226,7 +222,6 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "not_required"
-hermetic_nix = "not_required"
 nix_lock_age = "required"
 nix_lock_refresh = "required"
 nix_cache = "required"
@@ -286,7 +281,6 @@ tag_ruleset = "required"
 direct_push = "allowed"
 secret_scanning = "public"
 vuln_reporting = "not_required"
-hermetic_nix = "not_required"
 nix_lock_age = "not_required"
 nix_lock_refresh = "not_required"
 nix_cache = "not_required"
@@ -345,7 +339,6 @@ tag_ruleset = "required"
 direct_push = "blocked"
 secret_scanning = "public"
 vuln_reporting = "public"
-hermetic_nix = "required"
 nix_lock_age = "required"
 nix_lock_refresh = "required"
 nix_cache = "required"
@@ -366,10 +359,3 @@ artifact_storage = "info"
 canonical = "Pat Example <pat@example.com>"
 accepted = ["Pat Example <12345+pat@users.noreply.github.com>"]
 match = " Example <"
-
-# The hermetic-lint standard, for hermetic_nix. Fake too: lint-flake is a
-# name internal/fixturevocab allows, and the lint is the command name the
-# contract uses.
-[hermetic]
-flake = "github:gh-owner/lint-flake"
-lint = "check-workflow-hermetic"

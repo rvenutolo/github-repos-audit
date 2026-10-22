@@ -244,26 +244,15 @@ const historyQuery = `query RepoHistory($owner: String!, $name: String!, $oid: G
 // error, not the one every other fact depends on.
 //
 // The directories are listed one level deep with each entry's text, because
-// GraphQL cannot filter a tree by name: every entry of .github/workflows and
-// .ci comes back, and the names this tool reads are picked out afterwards.
+// GraphQL cannot filter a tree by name: every entry of .github/workflows
+// comes back, and the names this tool reads are picked out afterwards.
 // .github/actions is two levels, a directory per action, with each file in
 // it. Every entry carries only its name, its type and, for a blob, the three
 // fields blobFields names; nothing else is selected per entry, since an entry
 // is repeated as often as the directory is long.
-//
-// The justfile is probed under its three usual spellings rather than at the
-// path the tree read found, so this query does not have to wait for that
-// read. just matches the name case-insensitively, so a rarer spelling such as
-// JUSTFILE is not read here; a gate file it fails to read can only make a
-// check fail, never pass.
 const filesQuery = `query RepoFiles($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
-    flake_nix: object(expression: "HEAD:flake.nix") { ` + blobFields + ` }
     flake_lock: object(expression: "HEAD:flake.lock") { ` + blobFields + ` }
-    run_all_checks: object(expression: "HEAD:run-all-checks") { ` + blobFields + ` }
-    justfile: object(expression: "HEAD:justfile") { ` + blobFields + ` }
-    dot_justfile: object(expression: "HEAD:.justfile") { ` + blobFields + ` }
-    capital_justfile: object(expression: "HEAD:Justfile") { ` + blobFields + ` }
     workflows: object(expression: "HEAD:.github/workflows") {
       ... on Tree { entries { name type object { ` + blobFields + ` } } }
     }
@@ -275,9 +264,6 @@ const filesQuery = `query RepoFiles($owner: String!, $name: String!) {
           object { ... on Tree { entries { name type object { ` + blobFields + ` } } } }
         }
       }
-    }
-    ci: object(expression: "HEAD:.ci") {
-      ... on Tree { entries { name type object { ` + blobFields + ` } } }
     }
   }
 }`
@@ -408,15 +394,9 @@ type repository struct {
 // repoFiles is the decoded shape of filesQuery. Every probe is null when its
 // path does not exist at HEAD.
 type repoFiles struct {
-	FlakeNix        *fileBlob    `json:"flake_nix"`
-	FlakeLock       *fileBlob    `json:"flake_lock"`
-	RunAllChecks    *fileBlob    `json:"run_all_checks"`
-	Justfile        *fileBlob    `json:"justfile"`
-	DotJustfile     *fileBlob    `json:"dot_justfile"`
-	CapitalJustfile *fileBlob    `json:"capital_justfile"`
-	Workflows       *blobTree    `json:"workflows"`
-	Actions         *actionsTree `json:"actions"`
-	CI              *blobTree    `json:"ci"`
+	FlakeLock *fileBlob    `json:"flake_lock"`
+	Workflows *blobTree    `json:"workflows"`
+	Actions   *actionsTree `json:"actions"`
 }
 
 // fileBlob is one file as blobFields reads it. An entry that is not a blob

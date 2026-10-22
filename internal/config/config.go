@@ -1,6 +1,6 @@
 // Package config reads repos.toml and checks its shape and vocabulary:
 // unknown keys, unknown types and checks, malformed overrides, and the
-// [identity] and [hermetic] tables. Dead overrides are rules.ValidateOffline's; the checks
+// [identity] table. Dead overrides are rules.ValidateOffline's; the checks
 // that need live data (see cmd/github-repos-audit's collect) run there through
 // rules.Validate.
 package config
@@ -53,11 +53,6 @@ type Config struct {
 	// no [identity] table, which it may omit only when nothing judges
 	// git_identity.
 	Identity audit.IdentityStandard
-	// Hermetic is the [hermetic] table: the flake that carries the hermetic
-	// lint and the lint's command name. Zero when repos.toml has no
-	// [hermetic] table, which it may omit only when nothing judges
-	// hermetic_nix.
-	Hermetic audit.HermeticStandard
 }
 
 // Names returns every declared repository name, sorted case-insensitively so
@@ -74,7 +69,6 @@ type fileShape struct {
 	Types    rules.Types           `toml:"types"`
 	Repos    map[string]entryShape `toml:"repos"`
 	Identity *identityShape        `toml:"identity"`
-	Hermetic *hermeticShape        `toml:"hermetic"`
 }
 
 // identityShape mirrors [identity]. A pointer in fileShape, so an empty table
@@ -83,13 +77,6 @@ type identityShape struct {
 	Canonical string   `toml:"canonical"`
 	Accepted  []string `toml:"accepted"`
 	Match     string   `toml:"match"`
-}
-
-// hermeticShape mirrors [hermetic], a pointer in fileShape for the same
-// reason identityShape is.
-type hermeticShape struct {
-	Flake string `toml:"flake"`
-	Lint  string `toml:"lint"`
 }
 
 type entryShape struct {
@@ -152,13 +139,10 @@ func Parse(r io.Reader) (*Config, error) {
 	}
 	std, errs := identityProblems(raw)
 	problems = append(problems, errs...)
-	hermetic, errs := hermeticProblems(raw)
-	problems = append(problems, errs...)
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("%w: %w", ErrInvalid, errors.Join(problems...))
 	}
 	cfg.Identity = std
-	cfg.Hermetic = hermetic
 	return cfg, nil
 }
 
@@ -206,32 +190,6 @@ func identityProblems(raw fileShape) (audit.IdentityStandard, []error) {
 		std.Accepted = nil
 	}
 	return std, rules.IdentityProblems(std)
-}
-
-// hermeticProblems checks [hermetic] the way identityProblems checks
-// [identity]: needed and absent is an error, present and unused is a dead
-// setting. Both keys are needed: the flake is what flake.nix and flake.lock
-// are searched for, and the lint is what flake.nix and the gate files are.
-// Neither is checked further, since what a flake reference may look like is
-// Nix's business; README says which form the lock is matched on.
-func hermeticProblems(raw fileShape) (audit.HermeticStandard, []error) {
-	needed := judges(raw, rules.CheckHermeticNix)
-	switch {
-	case raw.Hermetic == nil && needed:
-		return audit.HermeticStandard{}, []error{errors.New("hermetic_nix is judged but repos.toml has no [hermetic] table")}
-	case raw.Hermetic == nil:
-		return audit.HermeticStandard{}, nil
-	case !needed:
-		return audit.HermeticStandard{}, []error{errors.New("[hermetic] is set but no type or override judges hermetic_nix")}
-	}
-	var problems []error
-	if raw.Hermetic.Flake == "" {
-		problems = append(problems, errors.New("hermetic.flake: missing"))
-	}
-	if raw.Hermetic.Lint == "" {
-		problems = append(problems, errors.New("hermetic.lint: missing"))
-	}
-	return audit.HermeticStandard{Flake: raw.Hermetic.Flake, Lint: raw.Hermetic.Lint}, problems
 }
 
 // repoNameShape is the characters and length GitHub allows a repository name.

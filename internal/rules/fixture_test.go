@@ -74,16 +74,10 @@ func fixture(name string, typ rules.Type) audit.Repo {
 			PRTemplate:     ".github/pull_request_template.md",
 			Commitlint:     ".commitlintrc.yml",
 		},
-		// The fixture [hermetic] standard's flake, declared, locked, named in
-		// flake.nix and wired into the gate, with nixpkgs locked well within
-		// the lock-age limit.
+		// nixpkgs locked well within the lock-age limit.
 		Flake: audit.Flake{
-			Inputs:              []string{"github:NixOS/nixpkgs/nixos-unstable", "github:gh-owner/lint-flake"},
 			HasLock:             true,
-			LockedInputs:        []string{"github:gh-owner/lint-flake", "github:nixos/nixpkgs"},
 			NixpkgsLastModified: time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC),
-			NamesLint:           true,
-			GateFiles:           []string{"run-all-checks"},
 		},
 		// Renovate refreshes flake.lock: its nix manager runs, with lock-file
 		// maintenance.
@@ -171,7 +165,7 @@ func evaluateOne(r audit.Repo) (map[rules.Check]rules.Cell, error) {
 // instant the cache and CI-efficiency fixtures are dated against, and returns
 // the whole report for tests that read more than the cells.
 func evaluateOneReport(r audit.Repo) (*rules.Report, error) {
-	return rules.Evaluate(&audit.Snapshot{GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}})
+	return rules.Evaluate(&audit.Snapshot{GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}})
 }
 
 // mustEvaluateOne is evaluateOneReport for a test that has no use for an
@@ -196,13 +190,6 @@ func fixtureIdentity() audit.IdentityStandard {
 	}
 }
 
-// fixtureHermetic is the [hermetic] table standard-types.toml declares, which
-// every snapshot judged against those types needs once any of them judges
-// hermetic_nix, as fixtureIdentity is for git_identity.
-func fixtureHermetic() audit.HermeticStandard {
-	return audit.HermeticStandard{Flake: "github:gh-owner/lint-flake", Lint: "check-workflow-hermetic"}
-}
-
 // toolsRepos builds several private `tools` fixtures at once, which is the
 // shape most modal tests want: a uniform account with one deviation.
 func toolsRepos(names ...string) []audit.Repo {
@@ -224,11 +211,11 @@ func publicToolsRepos(names ...string) []audit.Repo {
 
 // table builds one complete type table: every check listed at a word it
 // accepts — required, blocked for direct push, info for the value-only checks,
-// "7 days" for the release-age threshold, not_required for git_identity,
-// hermetic_nix and the file-path checks — with set overriding individual
-// words. git_identity and hermetic_nix default to not_required because most
-// tests are about other checks, and a judged one would make each of them
-// declare a standard it has no interest in. A key in set that is not a check
+// "7 days" for the release-age threshold, not_required for git_identity and
+// the file-path checks — with set overriding individual words. git_identity
+// defaults to not_required because most tests are about other checks, and a
+// judged one would make each of them declare a standard it has no interest
+// in. A key in set that is not a check
 // is added as well, so a test can build an unknown-check table the same way.
 func table(set map[string]string) map[string]string {
 	out := make(map[string]string, len(rules.Checks())+len(set))
@@ -240,7 +227,7 @@ func table(set map[string]string) map[string]string {
 			out[c.String()] = "info"
 		case c.Threshold():
 			out[c.String()] = "7 days"
-		case c == rules.CheckGitIdentity, c == rules.CheckHermeticNix, c.PathCheck() && c != rules.CheckJustfile && c != rules.CheckRenovate:
+		case c == rules.CheckGitIdentity, c.PathCheck() && c != rules.CheckJustfile && c != rules.CheckRenovate:
 			out[c.String()] = rules.OverrideNotRequired
 		default:
 			out[c.String()] = rules.OverrideRequired

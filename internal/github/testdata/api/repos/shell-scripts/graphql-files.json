@@ -1,16 +1,7 @@
 {
   "data": {
     "repository": {
-      "flake_nix": {
-        "text": "{\n  inputs.nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";\n  outputs = { nixpkgs, ... }: { };\n}\n",
-        "is_truncated": false,
-        "is_binary": false
-      },
       "flake_lock": null,
-      "run_all_checks": null,
-      "justfile": null,
-      "dot_justfile": null,
-      "capital_justfile": null,
       "workflows": {
         "entries": [
           {
@@ -24,8 +15,7 @@
           }
         ]
       },
-      "actions": null,
-      "ci": null
+      "actions": null
     }
   }
 }

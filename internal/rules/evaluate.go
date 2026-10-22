@@ -78,7 +78,7 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 		return nil, fmt.Errorf("evaluate: identity: %w", err)
 	}
 
-	ev := evalContext{now: snap.GeneratedAt, hermetic: snap.Hermetic}
+	ev := evalContext{now: snap.GeneratedAt}
 	rep := &Report{GeneratedAt: snap.GeneratedAt, Owner: snap.Owner, Drift: snap.Drift}
 	rep.Repos = make([]RepoReport, 0, len(snap.Repos))
 	for _, r := range snap.Repos {
@@ -114,14 +114,11 @@ func compareNames(a, b string) int {
 }
 
 // evalContext is what every repository is judged against beyond its own
-// facts and its type: the run's instant and the snapshot's standards.
+// facts and its type: the run's instant.
 type evalContext struct {
 	// The run's instant: the snapshot's GeneratedAt, so the same audit.json
 	// evaluates to the same report whenever it is read.
 	now time.Time
-	// hermetic is the [hermetic] standard, zero when the snapshot declares
-	// none.
-	hermetic audit.HermeticStandard
 }
 
 // evaluateRepo produces one cell for every check. std is the compiled identity
@@ -191,12 +188,6 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard
 				obs = observeIdentity(r, std)
 			}
 		} else {
-			// The same reasoning as git_identity's: config validation refuses
-			// a judged hermetic_nix without both halves of [hermetic], and an
-			// empty flake reference would fail every flake for nothing.
-			if c == CheckHermeticNix && exp != expNA && (ev.hermetic.Flake == "" || ev.hermetic.Lint == "") {
-				return nil, fmt.Errorf("evaluate %s: hermetic_nix is judged but the snapshot has no complete hermetic standard", r.Name)
-			}
 			obs = observe(c, r, ev)
 		}
 		if obs.unknown {
@@ -322,8 +313,6 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		}
 		return observation{ok: *r.Settings.PrivateVulnerabilityReporting}
 
-	case CheckHermeticNix:
-		return observeHermetic(r, ev.hermetic)
 	case CheckNixLockAge:
 		return observeLockAge(r, ev.now)
 	case CheckNixLockRefresh:

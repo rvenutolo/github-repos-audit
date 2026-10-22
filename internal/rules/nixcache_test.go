@@ -409,7 +409,7 @@ func TestEvaluate_nixCache_reachesTheWorklist(t *testing.T) {
 
 	r := cachedFixture()
 	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(),
 		Repos: []audit.Repo{r},
 	})
 	if err != nil {

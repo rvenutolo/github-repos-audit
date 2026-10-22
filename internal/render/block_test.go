@@ -93,7 +93,7 @@ func TestBlock_nothingWrong(t *testing.T) {
 
 	a := baseRepo("alpha", "tools")
 	b := baseRepo("bravo", "tools")
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a, b}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{a, b}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -115,8 +115,7 @@ func TestBlock_nothingWrong(t *testing.T) {
 }
 
 // TestBlock_nixSection: the Nix section sits after File paths and before
-// Policy, carries a column per Nix check, and a hermetic_nix fail names every
-// missing part beside its mark.
+// Policy, and carries a column per Nix check.
 func TestBlock_nixSection(t *testing.T) {
 	t.Parallel()
 
@@ -129,13 +128,10 @@ func TestBlock_nixSection(t *testing.T) {
 		t.Fatalf("Block() has no Nix section between File paths and Policy:\n%s", got)
 	}
 	section := got[nix:strings.Index(got, "## Policy\n")]
-	for _, col := range []string{"| Repository ", "| Hermetic ", "| Lock age ", "| Lock refresh ", "| Nix cache "} {
+	for _, col := range []string{"| Repository ", "| Lock age ", "| Lock refresh ", "| Nix cache "} {
 		if !strings.Contains(section, col) {
 			t.Errorf("Nix section header lacks %q:\n%s", col, section)
 		}
-	}
-	if !strings.Contains(section, "✗ not in devShell, not in gate") {
-		t.Errorf("Nix section lacks the software repository's fail:\n%s", section)
 	}
 }
 
@@ -226,7 +222,7 @@ func TestBlock_cacheListsOmittedWhenEmpty(t *testing.T) {
 	t.Parallel()
 
 	a := baseRepo("alpha", "tools")
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{a}}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
 		t.Fatalf("Block() error = %v, want nil", err)
@@ -246,7 +242,7 @@ func TestBlock_cancelMissingUnreadable(t *testing.T) {
 
 	a := baseRepo("alpha", "tools")
 	a.Workflows = []audit.Workflow{{Path: ".github/workflows/broken.yml", ParseError: "invalid YAML"}}
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{a}}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
 		t.Fatalf("Block() error = %v, want nil", err)
@@ -323,7 +319,7 @@ func TestBlock_relativeDates(t *testing.T) {
 
 			r := baseRepo("alpha", "tools")
 			r.PushedAt = tc.pushed
-			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 			got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 			if err != nil {
 				t.Fatalf("Block() error = %v, want nil", err)
@@ -340,7 +336,7 @@ func TestBlock_escapesAPipeInADescription(t *testing.T) {
 
 	r := baseRepo("alpha", "tools")
 	r.Description = "before | after"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -360,7 +356,7 @@ func TestBlock_lineBreaksInADescription(t *testing.T) {
 
 	r := baseRepo("alpha", "tools")
 	r.Description = "one\r\ntwo\nthree\rfour"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -469,7 +465,7 @@ func TestBlock_naCellCarryingAScalar(t *testing.T) {
 	r := baseRepo("cipher-lib", "content")
 	r.Visibility = "public"
 	r.Topics = 6
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -492,7 +488,7 @@ func TestBlock_backticksABareURLInADescription(t *testing.T) {
 
 	r := baseRepo("config-files", "environment")
 	r.Description = "Config files managed by chezmoi - https://www.chezmoi.io/"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -532,7 +528,7 @@ func TestBlock_widensTheFenceAroundABacktick(t *testing.T) {
 
 	r := baseRepo("alpha", "tools")
 	r.Files.RenovateConfig = "re``no`vate.json"
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -556,7 +552,7 @@ func TestBlock_noConsensusWithoutExceptions(t *testing.T) {
 	a := baseRepo("alpha", "tools")
 	b := baseRepo("bravo", "tools")
 	b.Settings.HasWiki = true
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{a, b}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{a, b}}
 
 	rep := evaluate(t, snap)
 	if len(rep.Exceptions) != 0 {
@@ -661,7 +657,7 @@ func TestBlock_gitIdentities(t *testing.T) {
 	echo := baseRepo("echo", "tools")
 	echo.Identities = []audit.Identity{patNoreply}
 	snap := &audit.Snapshot{
-		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),
 		Repos: []audit.Repo{alpha, bravo, charlie, delta, echo},
 	}
 
@@ -730,7 +726,7 @@ func TestBlock_noIdentitiesSectionWithoutAStandard(t *testing.T) {
 	r.Identities = []audit.Identity{patOther}
 	snap := &audit.Snapshot{
 		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord(rules.OverrideNotRequired),
-		Hermetic: fixtureHermetic(), Repos: []audit.Repo{r},
+		Repos: []audit.Repo{r},
 	}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -753,7 +749,7 @@ func TestBlock_identityInfoCells(t *testing.T) {
 	accepted := baseRepo("charlie", "tools")
 	accepted.Identities = []audit.Identity{patNoreply}
 	snap := &audit.Snapshot{
-		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord("info"), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: withTypesWord("info"), Identity: fixtureIdentity(),
 		Repos: []audit.Repo{fine, wrong, accepted},
 	}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
@@ -780,7 +776,7 @@ func TestBlock_widensTheFenceAroundABacktickInAnIdentity(t *testing.T) {
 	r.Identities = []audit.Identity{{Name: "Pat `Example", Email: "pat@example.com"}}
 	std := fixtureIdentity()
 	std.Match = "Example <" // " Example <" would not see past the backtick
-	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: std, Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: std, Repos: []audit.Repo{r}}
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
 		t.Fatalf("Block() error = %v, want nil", err)
@@ -1168,7 +1164,7 @@ func TestMarkedDateCell(t *testing.T) {
 
 			r := baseRepo("alpha", tc.typ)
 			tc.mutate(&r.Flake)
-			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
+			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
 			if got := nixCell(t, snap, "alpha", "Lock age"); got != tc.want {
 				t.Errorf("Lock age cell = %q, want %q", got, tc.want)
 			}

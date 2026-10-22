@@ -225,28 +225,6 @@ The table is required once any type or override judges `git_identity` (with
 any word but `not_required`), and refused when nothing does, for the same
 reason a dead override is.
 
-`[hermetic]` declares the hermetic-lint standard, for the `hermetic_nix`
-check:
-
-```toml
-[hermetic]
-flake = "github:gh-owner/lint-flake"
-lint = "check-workflow-hermetic"
-```
-
-- `flake` is the flake that provides the lint, written as `flake.nix` writes
-  the input's `url`. Only a `github:<owner>/<repo>` reference can be found in
-  `flake.lock`, since the tool records only flake.lock's GitHub-type nodes;
-  any other kind (`git+https:`, say) is always reported `not locked`.
-- `lint` is the lint's command name, looked for in `flake.nix` and the gate
-  files. A line whose first non-whitespace character is `#` is a comment and
-  is skipped; a trailing comment is not stripped, since telling a `#` that
-  starts one from a `#` inside a string or URL needs a shell or Nix parser.
-
-Both keys are required and must not be empty. Like `[identity]`, the table is
-required once any type or override judges `hermetic_nix`, and refused when
-nothing does.
-
 An override that names an unknown check is an error, and so is an override
 that agrees with what the repository's type already derives — a dead
 override is deleted rather than left to rot. `required` is never accepted on
@@ -254,8 +232,7 @@ a value-only check, and an override with an empty value is an error.
 `examples/repos.invalid.toml` is a worked example of the
 dead-override error: it is a copy of `examples/repos.toml` with one override
 restated — and with `git_identity` judged by no type, so it needs no
-`[identity]` table (neither file judges `hermetic_nix`, so neither has a
-`[hermetic]` table) — and `github-repos-audit validate` is expected to reject
+`[identity]` table — and `github-repos-audit validate` is expected to reject
 it.
 
 ## The checks
@@ -394,21 +371,6 @@ Grouped by theme here; the report lists them in the fixed worklist order
   identity; see `accepted` above.
 - **secret_scanning**, **vuln_reporting** — the two security features
   GitHub can enable on a repository.
-- **hermetic_nix** — whether the repository runs the hermetic lint named in
-  `[hermetic]`. It passes when all of these hold, and otherwise names each one
-  that does not: `flake.nix` declares an input whose `url` is
-  `[hermetic].flake` exactly (`no input`); `flake.lock` has a node for it,
-  matched on `github:<owner>/<repo>`, the owner and repository without regard
-  to case and the `github:` scheme as written, so a `git+https:` or other
-  non-GitHub input is never found (`not locked`); `flake.nix` mentions
-  `[hermetic].lint` outside a full-line `#` comment, which stands in for the
-  default devShell carrying it since the tool never evaluates Nix
-  (`not in devShell`); and `run-all-checks`, a file directly under `.ci/`, or
-  the `justfile` mentions it outside a full-line `#` comment (`not in gate`).
-  The gate part shows the wiring exists, not that the call is reachable. A
-  `flake.nix` the tool could not read fails as `unreadable flake.nix`, with no
-  other part named. n/a without a `flake.nix`, which the flake_nix row already
-  reports. The report's Nix section shows it.
 - **nix_lock_age** — how long ago `flake.lock` locked nixpkgs: the
   `lastModified` of the node the root's `nixpkgs` input resolves to,
   following `follows`, so a lock that names it `nixpkgs_2` is still found.
