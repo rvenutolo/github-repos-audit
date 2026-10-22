@@ -274,20 +274,22 @@ Grouped by theme here; the report lists them in the fixed worklist order
   is allowed, since there is no gate to require anything), and whether the
   head commit's checks last reported success.
 - **ci_on_pr**, **ci_on_push** — whether some workflow runs when a pull
-  request is opened or updated (`pull_request` or `pull_request_target`
-  whose `types:` include `synchronize`, as the default set does), and
-  whether one such workflow also runs on a push to the repository's own
-  default branch. Both are judged from the workflow files, never from run
+  request into the repository's own default branch is opened or updated
+  (`pull_request` or `pull_request_target` whose `types:` include
+  `synchronize`, as the default set does, and whose `branches:` or
+  `branches-ignore:`, which GitHub matches against the pull request's base
+  branch, admit the default branch), and whether one such workflow also
+  runs on a push to the default branch. Both are judged from the workflow files, never from run
   history, so an idle repository that is set up correctly passes. The push
   trigger must sit on the same workflow as the pull-request trigger, so a
   release workflow that runs only on a push to the default branch does not
-  count. The push trigger's `branches:` or `branches-ignore:` are matched
+  count. Both triggers' `branches:` or `branches-ignore:` are matched
   against the default branch with GitHub's filter pattern syntax, the last
   matching `branches:` pattern deciding; a push trigger that lists only
   `tags:` or `tags-ignore:` runs for tags alone and does not count. A
   pattern this tool cannot read with certainty admits nothing.
-  `paths:` and `paths-ignore:` are ignored, since they narrow when the
-  workflow runs on the branch rather than whether it can, and `merge_group`
+  `paths:` and `paths-ignore:` are ignored on both, since they narrow when
+  the workflow runs for the branch rather than whether it can, and `merge_group`
   does not count, since a merge queue run saves its cache under a ref no
   pull request reads. The `merge-gate.yml` placeholder never counts for
   either. When nothing qualifies and a workflow could not be parsed, the
@@ -485,10 +487,12 @@ Grouped by theme here; the report lists them in the fixed worklist order
   pull request triggers cancels the run that push supersedes, so a run
   whose result nobody will read does not hold a runner. A workflow counts
   when `on:` names `pull_request` or `pull_request_target` and that trigger
-  can run on `synchronize`: it lists no `types` (GitHub's default set,
-  `opened`, `synchronize`, `reopened`, includes it) or lists `synchronize`.
-  A workflow whose pull request triggers list only other types, such as
-  `closed`, is not judged. A counted workflow passes with a workflow-level
+  can run on `synchronize` for a pull request into the default branch: it
+  lists no `types` (GitHub's default set, `opened`, `synchronize`,
+  `reopened`, includes it) or lists `synchronize`, and its `branches:` or
+  `branches-ignore:` admit the default branch, matched as for ci_on_pr. A
+  workflow whose pull request triggers list only other types, such as
+  `closed`, or only other base branches, is not judged. A counted workflow passes with a workflow-level
   `concurrency` that sets `cancel-in-progress`, or when every one of its
   jobs sets it in a job-level `concurrency`; an expression counts as set,
   a literal `false` or an expression that is only `false` (`${{ false }}`),

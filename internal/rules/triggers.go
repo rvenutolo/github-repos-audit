@@ -9,20 +9,21 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
 
-// observeCIOnPR judges whether some workflow runs when a pull request is
-// opened or updated, which is the only way a pull request is tested before it
-// is merged. The predicate is runsOnSynchronize, the same one
-// ci_cancel_superseded uses to decide which workflows a pull request runs, so
-// the two checks cannot disagree on what a pull-request workflow is.
+// observeCIOnPR judges whether some workflow runs when a pull request into
+// the default branch is opened or updated, which is the only way a pull
+// request is tested before it is merged. The predicate is runsOnSynchronize,
+// the same one ci_cancel_superseded uses to decide which workflows a pull
+// request runs, so the two checks cannot disagree on what a pull-request
+// workflow is.
 //
 // It is judged from configuration only, never from run history: a quiet
 // repository whose CI is set up correctly passes.
 func observeCIOnPR(r audit.Repo) observation {
-	return observeTrigger(r, runsOnSynchronize)
+	return observeTrigger(r, func(w audit.Workflow) bool { return runsOnSynchronize(w, r.DefaultBranch) })
 }
 
-// observeCIOnPush judges whether some workflow runs both on pull requests and
-// on a push to the default branch. Without the push run, a merge of two green
+// observeCIOnPush judges whether some workflow runs both on pull requests
+// into the default branch and on a push to it. Without the push run, a merge of two green
 // pull requests can leave the default branch red with nothing reporting it,
 // and the default branch never saves a cache, so every pull request starts
 // cold: GitHub scopes caches by ref, and a pull request can read only its
@@ -35,7 +36,7 @@ func observeCIOnPR(r audit.Repo) observation {
 // so it leaves the cold-cache problem where it was.
 func observeCIOnPush(r audit.Repo) observation {
 	return observeTrigger(r, func(w audit.Workflow) bool {
-		return runsOnSynchronize(w) && pushAdmits(w, r.DefaultBranch)
+		return runsOnSynchronize(w, r.DefaultBranch) && pushAdmits(w, r.DefaultBranch)
 	})
 }
 

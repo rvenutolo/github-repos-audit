@@ -215,6 +215,30 @@ func TestEvaluate_cancelSuperseded_listedWhenFailingOrInfo(t *testing.T) {
 	}
 }
 
+// TestEvaluate_cancelSuperseded_branchFiltersExcludeDefault: a workflow
+// whose pull request branch filters exclude the default branch never runs
+// for a pull request into it, so it is not judged; one whose filters admit
+// the default branch is.
+func TestEvaluate_cancelSuperseded_branchFiltersExcludeDefault(t *testing.T) {
+	t.Parallel()
+
+	releaseOnly := prWorkflow(".github/workflows/release-ci.yml", audit.Concurrency{}, audit.Job{ID: "check"})
+	releaseOnly.PullRequestBranches = []string{"release/**"}
+	if got := cancelCell(t, releaseOnly); got.Verdict != rules.NA {
+		t.Errorf("release-only cell = %v %q, want n/a", got.Verdict, got.Value)
+	}
+
+	ignoresMain := prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check"})
+	ignoresMain.PullRequestBranchesIgnore = []string{"main"}
+	if got := cancelCell(t, ignoresMain); got.Verdict != rules.NA {
+		t.Errorf("ignores-main cell = %v %q, want n/a", got.Verdict, got.Value)
+	}
+
+	admitsMain := prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check"})
+	admitsMain.PullRequestBranches = []string{"main"}
+	wantCell(t, cancelCell(t, releaseOnly, admitsMain), rules.Fail, "1 workflow")
+}
+
 // TestEvaluate_cancelSuperseded_typesWithoutSynchronize: a pull-request
 // trigger whose listed types exclude synchronize never sees a push to an open
 // pull request, so nothing is superseded through it and the workflow is not

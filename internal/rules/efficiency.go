@@ -111,8 +111,10 @@ func observeCancelSuperseded(r audit.Repo) observation {
 //
 // A workflow counts when runsOnSynchronize: `on:` names pull_request or
 // pull_request_target and that trigger can fire on a push to an open pull
-// request. A workflow whose pull-request triggers list only other types
-// (closed, labeled, ...) is never superseded that way, so it is not judged.
+// request into the default branch. A workflow whose pull-request triggers
+// list only other types (closed, labeled, ...), or whose branch filters
+// exclude the default branch, is never superseded that way on the pull
+// requests the repository merges, so it is not judged.
 // It cancels superseded runs when its workflow-level concurrency sets
 // cancel-in-progress, or every job's job-level concurrency does. Set means
 // present and not false, whether the literal or an expression that is only the
@@ -127,7 +129,7 @@ func cancelMissing(r audit.Repo) (missing []string, judged bool) {
 		switch {
 		case w.ParseError != "":
 			missing = append(missing, "unreadable "+w.Path)
-		case !runsOnSynchronize(w):
+		case !runsOnSynchronize(w, r.DefaultBranch):
 			continue
 		case !cancelsSuperseded(w):
 			missing = append(missing, w.Path)
@@ -139,11 +141,16 @@ func cancelMissing(r audit.Repo) (missing []string, judged bool) {
 
 // runsOnSynchronize reports whether a workflow has a pull_request or
 // pull_request_target trigger that can run when a push updates an open pull
-// request. A trigger that lists no types (recorded as nil) gets GitHub's
-// default set, opened, synchronize and reopened, which includes it.
-func runsOnSynchronize(w audit.Workflow) bool {
-	return (slices.Contains(w.Events, "pull_request") && synchronizes(w.PullRequestTypes)) ||
-		(slices.Contains(w.Events, "pull_request_target") && synchronizes(w.PullRequestTargetTypes))
+// request whose base is base. A trigger that lists no types (recorded as
+// nil) gets GitHub's default set, opened, synchronize and reopened, which
+// includes it. GitHub matches the trigger's branch filters against the base
+// branch, so they must admit base, as branchAdmits reads them; its path
+// filters are ignored, since they narrow when it runs, not for which base.
+func runsOnSynchronize(w audit.Workflow, base string) bool {
+	return (slices.Contains(w.Events, "pull_request") && synchronizes(w.PullRequestTypes) &&
+		branchAdmits(w.PullRequestBranches, w.PullRequestBranchesIgnore, base)) ||
+		(slices.Contains(w.Events, "pull_request_target") && synchronizes(w.PullRequestTargetTypes) &&
+			branchAdmits(w.PullRequestTargetBranches, w.PullRequestTargetBranchesIgnore, base))
 }
 
 // synchronizes reports whether a trigger's recorded types include
