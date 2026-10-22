@@ -15,13 +15,7 @@ func cancelReport(t *testing.T, workflows ...audit.Workflow) *rules.Report {
 	t.Helper()
 	r := fixture("alpha", "tools")
 	r.Workflows = workflows
-	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
-		Repos: []audit.Repo{r},
-	})
-	if err != nil {
-		t.Fatalf("Evaluate() error = %v, want nil", err)
-	}
+	rep := mustEvaluateOne(t, r)
 	return rep
 }
 
@@ -251,6 +245,21 @@ func TestEvaluate_cancelSuperseded_typesWithoutSynchronize(t *testing.T) {
 		PullRequestTargetTypes: []string{"synchronize"}, Jobs: []audit.Job{{ID: "label"}},
 	}
 	wantCell(t, cancelCell(t, targetSync), rules.Fail, "1 workflow")
+}
+
+// TestEvaluate_cancelSuperseded_unreadableBesidePushOnly: an unreadable
+// workflow beside only push-triggered ones is the sole candidate for a
+// pull-request workflow, so that one file makes the check apply and fail.
+func TestEvaluate_cancelSuperseded_unreadableBesidePushOnly(t *testing.T) {
+	t.Parallel()
+
+	push := audit.Workflow{Path: ".github/workflows/release.yml", Events: []string{"push"}, Jobs: []audit.Job{{ID: "release"}}}
+	rep := cancelReport(t, push, audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "invalid YAML"})
+	wantCell(t, rep.Repos[0].Cell(rules.CheckCICancelSuperseded), rules.Fail, "1 workflow")
+	want := []rules.RepoList[string]{{Repo: "alpha", Items: []string{"unreadable .github/workflows/broken.yml"}}}
+	if diff := cmp.Diff(want, rep.CancelMissing); diff != "" {
+		t.Errorf("CancelMissing differs (-want +got):\n%s", diff)
+	}
 }
 
 // TestEvaluate_cancelSuperseded_unreadableBesideUnjudged: an unreadable

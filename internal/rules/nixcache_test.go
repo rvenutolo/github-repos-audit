@@ -20,13 +20,7 @@ const cacheNixAction = "nix-community/cache-nix-action@0123456789abcdef012345678
 // nix_cache = "required", as of cacheNow, and returns its nix_cache cell.
 func nixCache(t *testing.T, r audit.Repo) rules.Cell {
 	t.Helper()
-	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
-		Repos: []audit.Repo{r},
-	})
-	if err != nil {
-		t.Fatalf("Evaluate() error = %v, want nil", err)
-	}
+	rep := mustEvaluateOne(t, r)
 	return rep.Repos[0].Cell(rules.CheckNixCache)
 }
 
@@ -151,11 +145,14 @@ func TestEvaluate_nixCache_ceiling(t *testing.T) {
 		{999_999, rules.Fail, "empty (999 KB)"},
 	}
 	for _, tc := range tests {
-		r := cachedFixture(mainCache("nix-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
-		got := nixCache(t, r)
-		if got.Verdict != tc.verdict || got.Value != tc.value {
-			t.Errorf("%d B: cell = %v %q, want %v %q", tc.size, got.Verdict, got.Value, tc.verdict, tc.value)
-		}
+		t.Run(fmt.Sprintf("%d B", tc.size), func(t *testing.T) {
+			t.Parallel()
+			r := cachedFixture(mainCache("nix-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
+			got := nixCache(t, r)
+			if got.Verdict != tc.verdict || got.Value != tc.value {
+				t.Errorf("%d B: cell = %v %q, want %v %q", tc.size, got.Verdict, got.Value, tc.verdict, tc.value)
+			}
+		})
 	}
 }
 
@@ -174,6 +171,20 @@ func TestEvaluate_nixCache_perOSFamilies(t *testing.T) {
 
 	r = cachedFixture(mainCache("nix-Linux-abc", 206_000_000, created), mainCache("nix-macOS-abc", 300_000_000, created))
 	wantCell(t, nixCache(t, r), rules.Pass, "300 MB")
+}
+
+// TestEvaluate_nixCache_firstFailingFamilyShown: with two families out of
+// range at once, the cell names the first in family-name order, whichever
+// bound each breaks.
+func TestEvaluate_nixCache_firstFailingFamilyShown(t *testing.T) {
+	t.Parallel()
+
+	created := cacheNow.Add(-time.Hour)
+	r := cachedFixture(mainCache("nix-Linux-abc", 2_200_000_000, created), mainCache("nix-macOS-abc", 430, created))
+	wantCell(t, nixCache(t, r), rules.Fail, "2.2 GB")
+
+	r = cachedFixture(mainCache("nix-Linux-abc", 430, created), mainCache("nix-macOS-abc", 2_200_000_000, created))
+	wantCell(t, nixCache(t, r), rules.Fail, "empty (430 B)")
 }
 
 // TestEvaluate_nixCache_settingsThroughComposite: a job that uses a local
@@ -349,10 +360,13 @@ func TestFormatBytes(t *testing.T) {
 		{1_499_999_999, "1.4 GB"},
 	}
 	for _, tc := range tests {
-		r := cachedFixture(mainCache("nix-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
-		if got := nixCache(t, r); got.Value != tc.want {
-			t.Errorf("%d B: value = %q, want %q", tc.size, got.Value, tc.want)
-		}
+		t.Run(fmt.Sprintf("%d B", tc.size), func(t *testing.T) {
+			t.Parallel()
+			r := cachedFixture(mainCache("nix-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
+			if got := nixCache(t, r); got.Value != tc.want {
+				t.Errorf("%d B: value = %q, want %q", tc.size, got.Value, tc.want)
+			}
+		})
 	}
 }
 

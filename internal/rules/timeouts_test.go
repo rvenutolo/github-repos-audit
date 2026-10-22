@@ -15,13 +15,7 @@ func timeoutReport(t *testing.T, workflows ...audit.Workflow) *rules.Report {
 	t.Helper()
 	r := fixture("alpha", "tools")
 	r.Workflows = workflows
-	rep, err := rules.Evaluate(&audit.Snapshot{
-		GeneratedAt: cacheNow, Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(),
-		Repos: []audit.Repo{r},
-	})
-	if err != nil {
-		t.Fatalf("Evaluate() error = %v, want nil", err)
-	}
+	rep := mustEvaluateOne(t, r)
 	return rep
 }
 

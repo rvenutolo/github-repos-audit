@@ -1095,9 +1095,10 @@ func TestCITimingSection_naCells(t *testing.T) {
 	}
 }
 
-// nixRow renders snap and returns the Nix section's row for the named
-// repository.
-func nixRow(t *testing.T, snap *audit.Snapshot, name string) string {
+// nixCell renders snap and returns the cell under the given header of the Nix
+// section's row for the named repository. Locating the column by its header
+// keeps a column added to the table from shifting the cell under test.
+func nixCell(t *testing.T, snap *audit.Snapshot, name, header string) string {
 	t.Helper()
 	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
 	if err != nil {
@@ -1108,13 +1109,38 @@ func nixRow(t *testing.T, snap *audit.Snapshot, name string) string {
 	if start < 0 || end < start {
 		t.Fatalf("Block() has no Nix section before Policy:\n%s", got)
 	}
-	for l := range strings.SplitSeq(got[start:end], "\n") {
-		if strings.HasPrefix(l, "| ["+name+"]") {
-			return l
+	section := got[start:end]
+	// The section holds several tables; the row's own header is the last one
+	// above it.
+	var headers, row []string
+	for l := range strings.SplitSeq(section, "\n") {
+		switch {
+		case strings.HasPrefix(l, "| Repository"):
+			headers = splitCells(l)
+		case strings.HasPrefix(l, "| ["+name+"]"):
+			row = splitCells(l)
+		}
+		if row != nil {
+			break
 		}
 	}
-	t.Fatalf("Nix section has no row for %s:\n%s", name, got[start:end])
-	return ""
+	if headers == nil || row == nil {
+		t.Fatalf("Nix section has no header row or no row for %s:\n%s", name, section)
+	}
+	i := slices.Index(headers, header)
+	if i < 0 || i >= len(row) {
+		t.Fatalf("Nix section has no %q column (headers %q) in row %q", header, headers, row)
+	}
+	return row[i]
+}
+
+// splitCells splits a Markdown table row into its trimmed cells.
+func splitCells(line string) []string {
+	cells := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
+	for i, c := range cells {
+		cells[i] = strings.TrimSpace(c)
+	}
+	return cells
 }
 
 // TestMarkedDateCell: the lock-age cell shows the age beside its mark, so a
@@ -1143,12 +1169,8 @@ func TestMarkedDateCell(t *testing.T) {
 			r := baseRepo("alpha", tc.typ)
 			tc.mutate(&r.Flake)
 			snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Hermetic: fixtureHermetic(), Repos: []audit.Repo{r}}
-			row := nixRow(t, snap, "alpha")
-			cols := strings.Split(row, "|")
-			// "| repo | Hermetic | Lock age |…": the lock age is the third
-			// cell, after the empty string before the first pipe.
-			if len(cols) < 4 || strings.TrimSpace(cols[3]) != tc.want {
-				t.Errorf("Nix row = %q, want a Lock age cell %q", row, tc.want)
+			if got := nixCell(t, snap, "alpha", "Lock age"); got != tc.want {
+				t.Errorf("Lock age cell = %q, want %q", got, tc.want)
 			}
 		})
 	}
