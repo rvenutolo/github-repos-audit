@@ -183,7 +183,9 @@ func TestEvaluate_nixCache_firstFailingFamilyShown(t *testing.T) {
 	r := cachedFixture(mainCache("nix-Linux-abc", 2_200_000_000, created), mainCache("nix-macOS-abc", 430, created))
 	wantCell(t, nixCache(t, r), rules.Fail, "2.2 GB")
 
-	r = cachedFixture(mainCache("nix-Linux-abc", 430, created), mainCache("nix-macOS-abc", 2_200_000_000, created))
+	// macOS is listed first here, so only name order, not input order, puts
+	// the Linux family first.
+	r = cachedFixture(mainCache("nix-macOS-abc", 2_200_000_000, created), mainCache("nix-Linux-abc", 430, created))
 	wantCell(t, nixCache(t, r), rules.Fail, "empty (430 B)")
 }
 
