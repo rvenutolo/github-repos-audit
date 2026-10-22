@@ -467,6 +467,7 @@ func TestEvaluate_lockRefresh_scheduledWorkflow(t *testing.T) {
 		{"a ./ composite", uses("./.github/actions/update"), composite(".github/actions/update/action.yml")},
 		{"a $/ composite", uses("$/.github/actions/update"), composite(".github/actions/update/action.yml")},
 		{"an action.yaml composite", uses("./.github/actions/update"), composite(".github/actions/update/action.yaml")},
+		{"a ./ composite with a trailing slash", uses("./.github/actions/update/"), composite(".github/actions/update/action.yml")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
