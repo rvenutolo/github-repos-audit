@@ -109,6 +109,9 @@
               "gitignore",
               "ci_workflows",
               "required_checks",
+              "ci_on_pr",
+              "ci_on_push",
+              "branch_up_to_date",
               "ci_green",
               "renovate",
               "renovate_min_release_age",
@@ -270,6 +273,9 @@
         "gitignore",
         "ci_workflows",
         "required_checks",
+        "ci_on_pr",
+        "ci_on_push",
+        "branch_up_to_date",
         "ci_green",
         "renovate",
         "renovate_min_release_age",
@@ -326,6 +332,9 @@
         "gitignore": { "$ref": "#/$defs/expectation" },
         "ci_workflows": { "$ref": "#/$defs/expectation" },
         "required_checks": { "$ref": "#/$defs/expectation" },
+        "ci_on_pr": { "$ref": "#/$defs/expectation" },
+        "ci_on_push": { "$ref": "#/$defs/expectation" },
+        "branch_up_to_date": { "$ref": "#/$defs/expectation" },
         "ci_green": { "$ref": "#/$defs/expectation" },
         "renovate": { "$ref": "#/$defs/expectation" },
         "renovate_min_release_age": { "$ref": "#/$defs/release_age_threshold" },
@@ -676,6 +685,23 @@
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
+        },
+        "push_branches": {
+          "description": "The `branches:` listed for `push` under the map form of `on:`, in written order with repeats kept, because a `!` pattern only excludes what the patterns before it matched. Absent when the trigger lists none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "push_branches_ignore": {
+          "description": "The `branches-ignore:` listed for `push` under the map form of `on:`, in written order with repeats kept. Absent when the trigger lists none; never present beside `push_branches`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "push_tag_filter": {
+          "description": "`push` lists `tags:` or `tags-ignore:`. With no branch filter beside it, branch pushes never trigger the workflow. Absent when false.",
+          "type": "boolean",
+          "const": true
         },
         "concurrency": { "$ref": "#/$defs/concurrency" },
         "permissions": { "$ref": "#/$defs/permissions" },
@@ -1067,6 +1093,11 @@
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
+        },
+        "strict": {
+          "description": "True when any required_status_checks rule in force asks for the branch to be up to date before merging. GitHub applies it only with at least one required check. Absent when false.",
+          "type": "boolean",
+          "const": true
         }
       }
     },

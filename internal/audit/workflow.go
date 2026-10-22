@@ -27,6 +27,23 @@ type Workflow struct {
 	// PullRequestTargetTypes is as PullRequestTypes, for
 	// `pull_request_target`, whose default set is the same.
 	PullRequestTargetTypes []string `json:"pull_request_target_types,omitzero"`
+	// PushBranches is the `branches:` the map form of `on:` lists for
+	// `push`, in written order and with repeats kept: unlike a set of event
+	// types, the list is order-sensitive, because a `!` pattern excludes only
+	// what the patterns before it matched and a later pattern can admit it
+	// again. A single pattern written as a scalar is a one-item list. Absent
+	// when the trigger lists none, `branches: []` included, which leaves
+	// every branch admitted unless a tag filter is the only filter.
+	PushBranches []string `json:"push_branches,omitzero"`
+	// PushBranchesIgnore is as PushBranches, for `branches-ignore:`. GitHub
+	// rejects a trigger that lists both, so at most one of the two is set.
+	PushBranchesIgnore []string `json:"push_branches_ignore,omitzero"`
+	// PushTagFilter reports that `push` has a `tags:` or `tags-ignore:` key
+	// with a value, an empty list included.
+	// With no branch filter beside it, GitHub runs the workflow for matching
+	// tags only, never for a branch push, so a reader needs this to tell a
+	// release workflow from one that runs on every push.
+	PushTagFilter bool `json:"push_tag_filter,omitzero"`
 	// Concurrency is the workflow-level `concurrency:`.
 	Concurrency Concurrency `json:"concurrency,omitzero"`
 	// Permissions is the workflow-level `permissions:`.

@@ -358,6 +358,11 @@ type BranchRules struct {
 	Types []string `json:"types,omitzero"`
 	// RequiredChecks is the context name of each required status check.
 	RequiredChecks []string `json:"required_checks,omitzero"`
+	// Strict is true when any required_status_checks rule in force asks for a
+	// pull request's branch to be up to date with the base before merging.
+	// GitHub applies the setting only with at least one required check, so
+	// true without RequiredChecks enforces nothing.
+	Strict bool `json:"strict,omitzero"`
 }
 
 // Settings is every live repository setting. Most feed the modal computation

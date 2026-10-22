@@ -102,6 +102,14 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json",
 			NixManager: true, LockFileMaintenance: true,
 		},
+		// ci.yml runs on pull requests and on a push to the default branch,
+		// cancels superseded runs and bounds its one job.
+		Workflows: []audit.Workflow{{
+			Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
+			PushBranches: []string{"main"},
+			Concurrency:  audit.Concurrency{Set: true, CancelInProgress: "true"},
+			Jobs:         []audit.Job{{ID: "check", TimeoutMinutes: "15"}},
+		}},
 		CIState: "SUCCESS",
 		Rulesets: []audit.Ruleset{
 			{Name: "protect-tags", Target: "TAG", Enforcement: "ACTIVE", Include: []string{"refs/tags/**"}},
@@ -114,6 +122,7 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			Known:          true,
 			Types:          []string{"pull_request", "required_signatures", "required_status_checks"},
 			RequiredChecks: []string{"gate (ubuntu-latest)", "commitlint"},
+			Strict:         true,
 		},
 		Settings: audit.Settings{
 			HasIssues:                  true,
@@ -241,6 +250,7 @@ func fullSnapshot() *audit.Snapshot {
 	content.Files.Justfile = false
 	content.Files.JustfilePath = ""
 	content.Files.Workflows = nil
+	content.Workflows = nil
 	content.CIState = ""
 	content.Settings.SecretScanning = "disabled"
 	content.Settings.SecretScanningPushProtection = "disabled"

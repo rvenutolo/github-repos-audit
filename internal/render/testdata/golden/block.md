@@ -6,6 +6,8 @@
 - **No .gitignore** (2) — go-linter, web-app
 - **No CI workflows** (1) — go-linter
 - **No required checks** (1) — github-repos-audit
+- **No CI on pull requests** (1) — go-linter
+- **No CI on the default branch** (2) — github-repos-audit, go-linter
 - **CI not green on the default branch** (1) — go-linter
 - **No Renovate config** (1) — go-linter
 - **Renovate minimum release age unset, unresolved or too short** (2) — mixedCase-flake, web-app
@@ -99,7 +101,7 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✓ 2.3 GB  | ✗ 2 workflows     | ✗ 1 job  | 0           |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a       | n/a               | n/a      | 0           |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓ 481 MB  | ✓                 | ✓        | 12 · 206 MB |
-| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       | n/a               | n/a      | 0           |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       | ✓                 | ✓        | 0           |
 
 ### Workflows without cancel-in-progress
 
@@ -123,13 +125,13 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## Policy
 
-| Repository                                                           | Direct push | Signed | Identity  | CI workflows | Required checks | Tag ruleset  | Secret scanning | Vuln. reporting |
-| -------------------------------------------------------------------- | ----------- | ------ | --------- | ------------ | --------------- | ------------ | --------------- | --------------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | ✗ blocked   | ✓      | n/a       | n/a          | 2               | default      | ✗               | n/a             |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | ✗               | default      | n/a             | n/a             |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗ allowed   | n/a    | n/a       | ✗            | n/a             | ✗            | n/a             | n/a             |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | 2               | `ruleset-02` | ✓               | ✓               |
-| [web-app](https://github.com/gh-owner/web-app)                       | ✓ blocked   | ✓      | ✓         | ✓            | 2               | default      | n/a             | n/a             |
+| Repository                                                           | Direct push | Signed | Identity  | CI workflows | Required checks | PR CI | Push CI | Up to date | Tag ruleset  | Secret scanning | Vuln. reporting |
+| -------------------------------------------------------------------- | ----------- | ------ | --------- | ------------ | --------------- | ----- | ------- | ---------- | ------------ | --------------- | --------------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | ✗ blocked   | ✓      | n/a       | n/a          | 2               | n/a   | n/a     | ✓          | default      | ✗               | n/a             |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | ✗               | ✓     | ✗       | ✓          | default      | n/a             | n/a             |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗ allowed   | n/a    | n/a       | ✗            | n/a             | ✗     | ✗       | n/a        | ✗            | n/a             | n/a             |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | 2               | ✓     | ✓       | ✓          | `ruleset-02` | ✓               | ✓               |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✓ blocked   | ✓      | ✓         | ✓            | 2               | ✓     | ✓       | ✓          | default      | n/a             | n/a             |
 
 ## Activity
 

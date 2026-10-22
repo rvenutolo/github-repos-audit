@@ -4,11 +4,14 @@
   "types": {
     "config": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
       "ci_cancel_superseded": "required",
       "ci_green": "required",
+      "ci_on_pr": "required",
+      "ci_on_push": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
       "codecov": "not_required",
@@ -60,11 +63,14 @@
     },
     "content": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "not_required",
       "changelog": "not_required",
       "ci_cancel_superseded": "not_required",
       "ci_green": "not_required",
+      "ci_on_pr": "not_required",
+      "ci_on_push": "not_required",
       "ci_workflows": "not_required",
       "claude_md": "not_required",
       "codecov": "not_required",
@@ -116,11 +122,14 @@
     },
     "environment": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
       "ci_cancel_superseded": "required",
       "ci_green": "required",
+      "ci_on_pr": "required",
+      "ci_on_push": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
       "codecov": "not_required",
@@ -172,11 +181,14 @@
     },
     "infra": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
       "ci_cancel_superseded": "required",
       "ci_green": "required",
+      "ci_on_pr": "required",
+      "ci_on_push": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
       "codecov": "not_required",
@@ -228,11 +240,14 @@
     },
     "software": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "required",
       "ci_cancel_superseded": "required",
       "ci_green": "required",
+      "ci_on_pr": "required",
+      "ci_on_push": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
       "codecov": "not_required",
@@ -284,11 +299,14 @@
     },
     "tools": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
       "ci_cancel_superseded": "required",
       "ci_green": "required",
+      "ci_on_pr": "required",
+      "ci_on_push": "required",
       "ci_workflows": "required",
       "claude_md": "not_required",
       "codecov": "not_required",
@@ -565,7 +583,8 @@
         "required_checks": [
           "gate (ubuntu-latest)",
           "commitlint"
-        ]
+        ],
+        "strict": true
       },
       "settings": {
         "has_issues": true,
@@ -665,7 +684,8 @@
         "required_checks": [
           "gate (ubuntu-latest)",
           "commitlint"
-        ]
+        ],
+        "strict": true
       },
       "settings": {
         "has_issues": true,
@@ -909,7 +929,8 @@
         ],
         "required_checks": [
           "merge-gate"
-        ]
+        ],
+        "strict": true
       },
       "settings": {
         "has_issues": true,
@@ -1046,6 +1067,28 @@
       "renovate": {
         "min_release_age_error": "preset github>gh-owner/preset-store:go: not found"
       },
+      "workflow_facts": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "events": [
+            "pull_request",
+            "push"
+          ],
+          "push_branches": [
+            "main"
+          ],
+          "concurrency": {
+            "set": true,
+            "cancel_in_progress": "true"
+          },
+          "jobs": [
+            {
+              "id": "check",
+              "timeout_minutes": "15"
+            }
+          ]
+        }
+      ],
       "ci_state": "SUCCESS",
       "releases": {
         "total": 0,
@@ -1082,7 +1125,8 @@
         "required_checks": [
           "gate (ubuntu-latest)",
           "commitlint"
-        ]
+        ],
+        "strict": true
       },
       "settings": {
         "has_issues": true,

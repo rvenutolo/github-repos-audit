@@ -495,6 +495,7 @@ var snapshotRules = []rule{
 	// anything a workflow file can.
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.path$`), matches(`^\.github/workflows/(ci|workflow-\d{2})\.ya?ml$`), "a synthetic workflow path"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.events\[\]$`), matches(`^(pull_request|pull_request_target|push|schedule|workflow_dispatch)$`), "a GitHub event name"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.push_branches(_ignore)?\[\]$`), matches(`^main$`), "the fixture default branch"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.id$`), matches(`^(check|test|lint|docs)$`), "a generic job id"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.(jobs\[\]\.)?concurrency\.cancel_in_progress$`), matches(`^(true|false)$`), "a literal cancel-in-progress"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.timeout_minutes$`), matches(`^[0-9]+$`), "a literal timeout in minutes"},
@@ -504,7 +505,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.actions_storage\.(artifact_bytes|artifact_count|cache_limit_bytes|cache_usage_bytes)`,
 		`repos\[\]\.actions_storage\.caches\[\]\.size_bytes`,
 		`repos\[\]\.(branches|ci_state|default_branch|empty|license|open_pull_requests|published|topics|type|visibility)`,
-		`repos\[\]\.branch\.(known|types\[\])`,
+		`repos\[\]\.branch\.(known|strict|types\[\])`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.seconds`,
 		`repos\[\]\.files\.[a-z_]+`,

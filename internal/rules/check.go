@@ -24,6 +24,9 @@ const (
 	CheckGitignore
 	CheckCIWorkflows
 	CheckRequiredChecks
+	CheckCIOnPR
+	CheckCIOnPush
+	CheckBranchUpToDate
 	CheckCIGreen
 	CheckRenovate
 	CheckRenovateMinReleaseAge
@@ -85,6 +88,9 @@ var checkNames = [...]string{
 	CheckGitignore:             "gitignore",
 	CheckCIWorkflows:           "ci_workflows",
 	CheckRequiredChecks:        "required_checks",
+	CheckCIOnPR:                "ci_on_pr",
+	CheckCIOnPush:              "ci_on_push",
+	CheckBranchUpToDate:        "branch_up_to_date",
 	CheckCIGreen:               "ci_green",
 	CheckRenovate:              "renovate",
 	CheckRenovateMinReleaseAge: "renovate_min_release_age",
