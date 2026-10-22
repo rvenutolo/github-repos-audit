@@ -100,7 +100,7 @@ func TestResolve(t *testing.T) {
 			renovate.Result{MinReleaseAge: "4 days", Source: "github>gh-owner/other//dir/default"},
 		},
 		{
-			"other owners and built-ins contribute nothing", `{"extends": ["github>someone-else/x", "config:best-practices"]}`,
+			"other owners and built-ins contribute nothing", `{"extends": ["github>someone-else/x", "config:recommended"]}`,
 			renovate.Result{},
 		},
 		{
@@ -384,5 +384,78 @@ func TestResolve_unresolvedLeavesManagerFactsFalse(t *testing.T) {
 	got := resolve(t, `{"nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}, "minimumReleaseAge": 7}`, nil)
 	if got.Unresolved == "" || got.NixManager || got.LockFileMaintenance {
 		t.Errorf("Resolve() = %+v, want only Unresolved set", got)
+	}
+}
+
+func TestResolve_builtinLockFilePresets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		ref  string
+		want bool
+	}{
+		{":maintainLockFilesWeekly", true},
+		{"default:maintainLockFilesWeekly", true},
+		{":maintainLockFilesMonthly", true},
+		{":maintainLockFilesDisabled", false},
+		{"config:best-practices", true},
+		{"config:semverAllWeekly", true},
+		{"config:semverAllMonthly", true},
+		{"config:recommended", false},
+		{"config:base", false},
+		{":maintainLockFilesWeekly(x)", true},
+		{":semanticCommits", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.ref, func(t *testing.T) {
+			t.Parallel()
+			root := fmt.Sprintf(`{"extends": [%q]}`, tt.ref)
+			if got := resolve(t, root, files{}).LockFileMaintenance; got != tt.want {
+				t.Errorf("LockFileMaintenance for extends %q = %v, want %v", tt.ref, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolve_builtinPresetOrder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		root string
+		want bool
+	}{
+		{"a later disable wins", `{"extends": [":maintainLockFilesWeekly", ":maintainLockFilesDisabled"]}`, false},
+		{"a later enable wins", `{"extends": [":maintainLockFilesDisabled", ":maintainLockFilesWeekly"]}`, true},
+		{
+			"the file's own key wins over a built-in",
+			`{"extends": ["config:best-practices"], "lockFileMaintenance": {"enabled": false}}`,
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := resolve(t, tt.root, files{}).LockFileMaintenance; got != tt.want {
+				t.Errorf("LockFileMaintenance = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolve_builtinPresetsAreNeverFetched(t *testing.T) {
+	t.Parallel()
+
+	fetch := func(_ context.Context, p renovate.Preset) (string, string, error) {
+		t.Errorf("Fetch called for %+v, want no call for a built-in preset", p)
+		return "", renovate.ProblemNotFound, nil
+	}
+	root := `{"extends": [":maintainLockFilesWeekly", "default:maintainLockFilesMonthly", "config:best-practices", "config:semverAllWeekly", ":maintainLockFilesWeekly(x)", "config:recommended"]}`
+	res, err := renovate.Resolve(context.Background(), "gh-owner", "renovate.json", root, fetch)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v, want nil", err)
+	}
+	if !res.LockFileMaintenance {
+		t.Errorf("LockFileMaintenance = false, want true")
 	}
 }

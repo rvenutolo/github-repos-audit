@@ -237,9 +237,12 @@ func wantWebApp(t *testing.T) audit.Repo {
 		},
 		// Nothing stored: the limit is still read.
 		Storage: audit.ActionsStorage{CacheLimitBytes: 10_000_000_000},
-		// Inherited from the in-account preset; config:best-practices is a
-		// built-in, which sets nothing this tool can read.
-		Renovate: audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store"},
+		// The age is inherited from the in-account preset; config:best-practices
+		// is a built-in the tool knows turns lock-file maintenance on.
+		Renovate: audit.Renovate{
+			MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store",
+			LockFileMaintenance: true,
+		},
 		Rulesets: []audit.Ruleset{
 			{
 				Name:        "ruleset-01",

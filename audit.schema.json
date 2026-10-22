@@ -424,7 +424,7 @@
           "const": true
         },
         "lock_file_maintenance": {
-          "description": "Whether lockFileMaintenance.enabled is true after the same merge. Absent when off, unset, of the wrong type or unresolved.",
+          "description": "Whether lockFileMaintenance.enabled is true after the same merge, which for this key also reads the built-in presets the README lists under nix_lock_refresh. Absent when off, unset, of the wrong type or unresolved.",
           "type": "boolean",
           "const": true
         }
