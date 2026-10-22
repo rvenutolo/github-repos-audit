@@ -85,7 +85,9 @@ const driftIntro = "`repos.toml` and the account disagree. " +
 //
 // A repository with no entry is linked, since it exists. A stale entry is
 // not: its repository may be gone, and a link to nothing reads as a broken
-// report rather than as the finding it is.
+// report rather than as the finding it is. The key is whatever repos.toml
+// holds, so it is free text: oneLine keeps a line break in it from ending
+// the bullet.
 func driftSection(rep *rules.Report) string {
 	drift := rep.Drift
 	if len(drift.Unconfigured) == 0 && len(drift.StaleEntries) == 0 {
@@ -103,7 +105,7 @@ func driftSection(rep *rules.Report) string {
 	if n := len(drift.StaleEntries); n > 0 {
 		names := make([]string, 0, n)
 		for _, name := range drift.StaleEntries {
-			names = append(names, code(name))
+			names = append(names, code(oneLine(name)))
 		}
 		fmt.Fprintf(&b, "- **Stale `repos.toml` entry** (%d) — %s\n", n, strings.Join(names, ", "))
 	}
@@ -460,7 +462,9 @@ func ciDuration(d time.Duration) string {
 // identitiesSection renders rep.Identities, one line per repository with any
 // of the account holder's identities, and is omitted when there are none. Why
 // the listing exists beside the Policy column, and how accepted identities
-// are tagged, is on identityLines in internal/rules/identitylines.go.
+// are tagged, is on identityLines in internal/rules/identitylines.go. A name
+// is commit metadata, which the owner does not control, so each identity is
+// put on one line: a line break would end the bullet.
 func identitiesSection(rep *rules.Report) string {
 	if len(rep.Identities) == 0 {
 		return ""
@@ -470,7 +474,7 @@ func identitiesSection(rep *rules.Report) string {
 	for _, line := range rep.Identities {
 		parts := make([]string, 0, len(line.Identities))
 		for _, id := range line.Identities {
-			p := code(id.String())
+			p := code(oneLine(id.String()))
 			switch {
 			case id.Canonical:
 				p += " (canonical)"
@@ -492,7 +496,9 @@ func identitiesSection(rep *rules.Report) string {
 }
 
 // exceptionsSection groups the deviations by repository, so a repository that
-// differs on three settings reads as one line rather than three.
+// differs on three settings reads as one line rather than three. Both values
+// are text read from the repository's settings, so each is put on one line: a
+// line break would end the bullet.
 func exceptionsSection(rep *rules.Report) string {
 	if len(rep.Exceptions) == 0 && len(rep.NoConsensus) == 0 {
 		return ""
@@ -508,7 +514,7 @@ func exceptionsSection(rep *rules.Report) string {
 		var parts []string
 		for ; i < len(rep.Exceptions) && rep.Exceptions[i].Repo == repo; i++ {
 			e := rep.Exceptions[i]
-			parts = append(parts, fmt.Sprintf("%s %s, usually %s", e.Setting, code(e.Value), code(e.Modal)))
+			parts = append(parts, fmt.Sprintf("%s %s, usually %s", e.Setting, code(oneLine(e.Value)), code(oneLine(e.Modal))))
 		}
 		fmt.Fprintf(&b, "- **%s** — %s\n", repo, strings.Join(parts, "; "))
 	}
@@ -525,7 +531,8 @@ func exceptionsSection(rep *rules.Report) string {
 }
 
 // overridesSection renders rep.Overrides; see rules.collectOverrides for why
-// they are listed.
+// they are listed. A value is whatever repos.toml says, so it is put on one
+// line: a line break would end the bullet.
 func overridesSection(rep *rules.Report) string {
 	if len(rep.Overrides) == 0 {
 		return ""
@@ -533,7 +540,7 @@ func overridesSection(rep *rules.Report) string {
 	var b strings.Builder
 	b.WriteString("## Overrides\n\n")
 	for _, o := range rep.Overrides {
-		fmt.Fprintf(&b, "- **%s** — %s is %s\n", o.Repo, code(o.Check.String()), code(o.Value))
+		fmt.Fprintf(&b, "- **%s** — %s is %s\n", o.Repo, code(o.Check.String()), code(oneLine(o.Value)))
 	}
 	return b.String()
 }
