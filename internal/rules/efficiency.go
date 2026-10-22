@@ -2,6 +2,7 @@ package rules
 
 import (
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -88,8 +89,8 @@ func observeArtifactStorage(r audit.Repo) observation {
 // request waits for. The cell counts the workflows cancelMissing names; a
 // pass carries no count, since there is nothing missing to count.
 //
-// It is n/a when no workflow is triggered by a pull request, and none is
-// unreadable: such a repository's runs are never superseded this way.
+// It is n/a when no workflow can run on a pull request's synchronize, and
+// none is unreadable: such a repository's runs are never superseded this way.
 func observeCancelSuperseded(r audit.Repo) observation {
 	missing, judged := cancelMissing(r)
 	switch {
@@ -108,11 +109,15 @@ func observeCancelSuperseded(r audit.Repo) observation {
 // also reports whether anything was judged at all, which is what makes the
 // check apply.
 //
-// A workflow counts when `on:` names pull_request or pull_request_target.
+// A workflow counts when runsOnSynchronize: `on:` names pull_request or
+// pull_request_target and that trigger can fire on a push to an open pull
+// request. A workflow whose pull-request triggers list only other types
+// (closed, labeled, ...) is never superseded that way, so it is not judged.
 // It cancels superseded runs when its workflow-level concurrency sets
 // cancel-in-progress, or every job's job-level concurrency does. Set means
-// present and not the literal "false": an expression, typically one that
-// cancels only pull-request runs, is a deliberate choice and counts. A
+// present and not false, whether the literal or an expression that is only the
+// word false: any other expression, typically one that cancels only
+// pull-request runs, is a deliberate choice and counts. A
 // workflow with no jobs has no job to cancel through, so only the
 // workflow-level setting can pass it.
 func cancelMissing(r audit.Repo) (missing []string, judged bool) {
@@ -122,7 +127,7 @@ func cancelMissing(r audit.Repo) (missing []string, judged bool) {
 		switch {
 		case w.ParseError != "":
 			missing = append(missing, "unreadable "+w.Path)
-		case !slices.Contains(w.Events, "pull_request") && !slices.Contains(w.Events, "pull_request_target"):
+		case !runsOnSynchronize(w):
 			continue
 		case !cancelsSuperseded(w):
 			missing = append(missing, w.Path)
@@ -130,6 +135,21 @@ func cancelMissing(r audit.Repo) (missing []string, judged bool) {
 		judged = true
 	}
 	return missing, judged
+}
+
+// runsOnSynchronize reports whether a workflow has a pull_request or
+// pull_request_target trigger that can run when a push updates an open pull
+// request. A trigger that lists no types (recorded as nil) gets GitHub's
+// default set, opened, synchronize and reopened, which includes it.
+func runsOnSynchronize(w audit.Workflow) bool {
+	return (slices.Contains(w.Events, "pull_request") && synchronizes(w.PullRequestTypes)) ||
+		(slices.Contains(w.Events, "pull_request_target") && synchronizes(w.PullRequestTargetTypes))
+}
+
+// synchronizes reports whether a trigger's recorded types include
+// synchronize, with no recorded types meaning the default set.
+func synchronizes(types []string) bool {
+	return types == nil || slices.Contains(types, "synchronize")
 }
 
 // cancelsSuperseded reports whether a parsed workflow cancels superseded
@@ -149,10 +169,18 @@ func cancelsSuperseded(w audit.Workflow) bool {
 	return true
 }
 
+// falseExpression matches an expression that is only the word false: GitHub
+// evaluates `${{ false }}` to the same boolean as the literal, with the word in
+// any case and any (or no) space inside the braces. Anything else inside the
+// braces is a real expression whose value is not known offline.
+var falseExpression = regexp.MustCompile(`(?i)^\$\{\{\s*false\s*\}\}$`)
+
 // cancelSet reports whether a concurrency setting sets cancel-in-progress to
-// anything but the literal false, in any case YAML reads as that boolean.
+// anything but false: the literal in any case YAML reads as that boolean, or
+// an expression that is only the word false (see falseExpression).
 func cancelSet(c audit.Concurrency) bool {
-	return c.CancelInProgress != "" && !strings.EqualFold(c.CancelInProgress, "false")
+	v := strings.TrimSpace(c.CancelInProgress)
+	return v != "" && !strings.EqualFold(v, "false") && !falseExpression.MatchString(v)
 }
 
 // observeJobTimeouts judges whether every job bounds its own run time with

@@ -23,7 +23,8 @@ const activityWindow = 7 * 24 * time.Hour
 // Restoring such an entry costs a run its cache while looking like a hit.
 const cacheFloor = 1_000_000
 
-// recentDefaultRun reports whether a workflow ran on the default branch
+// recentDefaultRun reports whether a workflow of the repository's own (the
+// collector does not count a fork's pull request) ran on the default branch
 // within activityWindow of now, the snapshot's instant. A repository with no
 // default-branch run recorded has none within it.
 func recentDefaultRun(r audit.Repo, now time.Time) bool {
@@ -81,6 +82,21 @@ func familyName(key string) string {
 // truncated rather than rounded, so a size never reads as the next unit up
 // ("1000 KB") and never as more than it is.
 func formatBytes(b int64) string {
+	return renderBytes(b, false)
+}
+
+// formatBytesUp is formatBytes with the GB place rounded up instead of
+// truncated. A size that fails a ceiling uses it, so that it never reads as
+// the bound it exceeds: 1,500,000,001 B is "1.6 GB", where truncation would
+// show the passing "1.5 GB" beside a failing mark. Sizes below 1 GB cannot
+// exceed a GB ceiling and are rendered as formatBytes renders them.
+func formatBytesUp(b int64) string {
+	return renderBytes(b, true)
+}
+
+// renderBytes is the unit switch behind formatBytes and formatBytesUp; up
+// rounds the GB tenths up and changes nothing below 1 GB.
+func renderBytes(b int64, up bool) string {
 	switch {
 	case b < 1_000:
 		return strconv.FormatInt(b, 10) + " B"
@@ -90,6 +106,9 @@ func formatBytes(b int64) string {
 		return strconv.FormatInt(b/1_000_000, 10) + " MB"
 	default:
 		tenths := b / 100_000_000
+		if up && b%100_000_000 != 0 {
+			tenths++
+		}
 		return strconv.FormatInt(tenths/10, 10) + "." + strconv.FormatInt(tenths%10, 10) + " GB"
 	}
 }

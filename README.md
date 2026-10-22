@@ -239,7 +239,9 @@ lint = "check-workflow-hermetic"
   `flake.lock`, since the tool records only flake.lock's GitHub-type nodes;
   any other kind (`git+https:`, say) is always reported `not locked`.
 - `lint` is the lint's command name, looked for in `flake.nix` and the gate
-  files.
+  files. A line whose first non-whitespace character is `#` is a comment and
+  is skipped; a trailing comment is not stripped, since telling a `#` that
+  starts one from a `#` inside a string or URL needs a shell or Nix parser.
 
 Both keys are required and must not be empty. Like `[identity]`, the table is
 required once any type or override judges `hermetic_nix`, and refused when
@@ -364,18 +366,20 @@ Grouped by theme here; the report lists them in the fixed worklist order
 - **secret_scanning**, **vuln_reporting** — the two security features
   GitHub can enable on a repository.
 - **hermetic_nix** — whether the repository runs the hermetic lint named in
-  `[hermetic]`. It passes when all of these hold, and otherwise names each
-  one that does not: `flake.nix` declares an input whose `url` is
+  `[hermetic]`. It passes when all of these hold, and otherwise names each one
+  that does not: `flake.nix` declares an input whose `url` is
   `[hermetic].flake` exactly (`no input`); `flake.lock` has a node for it,
-  matched on `github:<owner>/<repo>` without regard to case, so a `git+https:`
-  or other non-GitHub input is never found (`not locked`); `flake.nix`
-  mentions `[hermetic].lint`, a text stand-in for the default devShell
-  carrying it, since the tool never evaluates Nix (`not in devShell`); and
-  `run-all-checks`, a file directly under `.ci/`, or the `justfile` mentions
-  it (`not in gate`). The gate part shows the wiring exists, not that the
-  call is reachable. A `flake.nix` the tool could not read fails as
-  `unreadable flake.nix`, with no other part named. n/a without a `flake.nix`,
-  which the flake_nix row already reports. The report's Nix section shows it.
+  matched on `github:<owner>/<repo>`, the owner and repository without regard
+  to case and the `github:` scheme as written, so a `git+https:` or other
+  non-GitHub input is never found (`not locked`); `flake.nix` mentions
+  `[hermetic].lint` outside a full-line `#` comment, which stands in for the
+  default devShell carrying it since the tool never evaluates Nix
+  (`not in devShell`); and `run-all-checks`, a file directly under `.ci/`, or
+  the `justfile` mentions it outside a full-line `#` comment (`not in gate`).
+  The gate part shows the wiring exists, not that the call is reachable. A
+  `flake.nix` the tool could not read fails as `unreadable flake.nix`, with no
+  other part named. n/a without a `flake.nix`, which the flake_nix row already
+  reports. The report's Nix section shows it.
 - **nix_lock_age** — how long ago `flake.lock` locked nixpkgs: the
   `lastModified` of the node the root's `nixpkgs` input resolves to,
   following `follows`, so a lock that names it `nixpkgs_2` is still found.
@@ -407,37 +411,41 @@ Grouped by theme here; the report lists them in the fixed worklist order
   workflow uses, is then named as `unreadable <path>`, since it may be the
   refresh the tool cannot see. n/a without a `flake.lock`. The report's Nix
   section shows it.
-- **nix_cache** — whether the default branch's Nix store is cached at a
-  useful size by a `nix-community/cache-nix-action` set up to stay bounded.
-  Caches are grouped into families by the first two `-`-separated segments of
-  their key (`nix-Linux`, `nix-macOS`), counting only caches saved from the
-  default branch, and the newest entry of each family must hold between
-  1 MB and 1.5 GB (decimal units). The cell shows the size of the first
-  family out of range, or else the largest (`✓ 206 MB`, `✗ 2.2 GB`,
-  `✗ empty (430 B)`), or `none on main`. Every `cache-nix-action` step a job
-  runs, directly or through a local composite action, is then read, and the
-  cell names each problem once: `no gc-max-store-size` (none of
-  `gc-max-store-size`, `-linux` or `-macos`), `no purge` (`purge` is not
-  `true` in any case), `no purge selector` (none of `purge-prefixes`,
-  `purge-created`, `purge-last-accessed` or `purge-primary-key`), and
-  `no actions: write` (the job's `permissions:`, else the workflow's, else
-  the repository's default workflow permissions, do not grant it;
-  `write-all` does). A workflow, or a composite a job uses, that the tool
-  could not read is named as `unreadable <path>`. It passes only with every
-  size in range and no problem. n/a without a `flake.nix`, or when no workflow has run on the
-  default branch in the last 7 days, since GitHub evicts a cache nothing has
-  restored for that long. The report's Nix section shows it.
-- **go_cache** — whether the default branch's Go cache holds something.
-  Caches whose key starts `go-` are grouped into families as for nix_cache
+- **nix_cache** — whether the default branch's Nix store is cached at a useful
+  size by a `nix-community/cache-nix-action` set up to stay bounded. Caches
+  are grouped into families by the first two `-`-separated segments of their
+  key (`nix-Linux`, `nix-macOS`), counting only caches saved from the default
+  branch, and the newest entry of each family must hold between 1 MB and 1.5
+  GB (decimal units). The cell shows the size of the first family out of
+  range, or else the largest (`✓ 206 MB`, `✗ 2.3 GB`, `✗ empty (430 B)`), or
+  `none on main`. A size over 1.5 GB is rounded up to the next 0.1 GB, so it
+  never reads as the passing bound; other sizes are truncated. Any
+  default-branch cache whose key starts `nix-` is judged on size, whatever
+  tool saved it. Every `cache-nix-action` step a job runs, directly or through
+  a local composite action, is then read, and the cell names each problem
+  once: `no gc-max-store-size` (none of `gc-max-store-size`, `-linux` or
+  `-macos`), `no purge` (`purge` is not `true` in any case),
+  `no purge selector` (none of `purge-prefixes`, `purge-created`,
+  `purge-last-accessed` or `purge-primary-key`), and `no actions: write` (the
+  job's `permissions:`, else the workflow's, else the repository's default
+  workflow permissions, do not grant it; `write-all` does). A workflow, or a
+  composite a job uses, that the tool could not read is named as
+  `unreadable <path>`. It passes only with every size in range and no problem.
+  n/a without a `flake.nix`, or when no workflow of this repository's own (not
+  a fork's pull request from a branch of the same name) has run on the default
+  branch in the last 7 days, since GitHub evicts a cache nothing has restored
+  for that long. The report's Nix section shows it.
+- **go_cache** — whether the default branch's Go cache holds something. Caches
+  whose key starts `go-` are grouped into families as for nix_cache
   (`go-Linux`, `go-macOS`), counting only caches saved from the default
-  branch, and the newest entry of each family must hold at least 1 MB
-  (decimal units): the newest is the one the next run restores, so a job
-  that built nothing but saved last fails it however full the older entries
-  are. There is no upper bound. The cell shows the first family below the
-  floor (`✗ empty (430 B)`), or else the largest (`✓ 206 MB`), or
-  `none on main`. n/a without a root `go.mod`, or when no workflow has run
-  on the default branch in the last 7 days. The report's CI efficiency
-  section shows it.
+  branch, and the newest entry of each family must hold at least 1 MB (decimal
+  units): the newest is the one the next run restores, so a job that built
+  nothing but saved last fails it however full the older entries are. There is
+  no upper bound. The cell shows the first family below the floor
+  (`✗ empty (430 B)`), or else the largest (`✓ 206 MB`), or `none on main`.
+  n/a without a root `go.mod`, or when no workflow of this repository's own
+  (not a fork's pull request) has run on the default branch in the last 7
+  days. The report's CI efficiency section shows it.
 - **cache_usage** — whether the repository's Actions caches stay at or
   below 80% of the cache storage limit GitHub reports for it. Past the limit
   GitHub evicts the entries restored longest ago to make room for each new
@@ -446,23 +454,32 @@ Grouped by theme here; the report lists them in the fixed worklist order
   comparison is exact, so a byte over 80% fails even where the size reads
   the same. n/a when no limit was read, as for an empty repository. The
   report's CI efficiency section shows it.
-- **ci_cancel_superseded** — whether every workflow triggered by
-  `pull_request` or `pull_request_target` cancels the run a newer push to
-  the same pull request supersedes, so a run whose result nobody will read
-  does not hold a runner. A workflow passes with a workflow-level
+- **ci_cancel_superseded** — whether every workflow that a push to an open
+  pull request triggers cancels the run that push supersedes, so a run
+  whose result nobody will read does not hold a runner. A workflow counts
+  when `on:` names `pull_request` or `pull_request_target` and that trigger
+  can run on `synchronize`: it lists no `types` (GitHub's default set,
+  `opened`, `synchronize`, `reopened`, includes it) or lists `synchronize`.
+  A workflow whose pull request triggers list only other types, such as
+  `closed`, is not judged. A counted workflow passes with a workflow-level
   `concurrency` that sets `cancel-in-progress`, or when every one of its
   jobs sets it in a job-level `concurrency`; an expression counts as set,
-  a literal `false`, in any case, does not. A workflow file that does not parse fails it
-  as unreadable. The cell counts the workflows that fail
+  a literal `false` or an expression that is only `false` (`${{ false }}`),
+  in any case, does not. A workflow file that does not
+  parse fails it as unreadable. The cell counts the workflows that fail
   (`✗ 2 workflows`), and the report's CI efficiency section lists them per
   repository under _Workflows without cancel-in-progress_, for every
   repository whose cell fails or, under `info`, shows a count; a
-  `not_required` repository is never listed. n/a when no workflow is
-  triggered by a pull request.
+  `not_required` repository is never listed. n/a when no workflow counts.
+  `audit.json` records each workflow's triggers under `events` and the
+  `types:` its two pull request triggers list under `pull_request_types`
+  and `pull_request_target_types`; a key is absent when its trigger lists
+  none.
 - **job_timeouts** — whether every workflow job sets `timeout-minutes`, so a
   job that hangs is stopped well before GitHub's six-hour default rather
   than holding its runner, and every run queued behind it, for that long.
-  An expression counts as set. A job that calls a reusable workflow (a
+  An expression counts as set, and so does `timeout-minutes: 0`, which
+  GitHub does not define. A job that calls a reusable workflow (a
   job-level `uses:`) is left out, since GitHub does not accept the setting
   there and the called workflow's own jobs carry it. A workflow file that
   does not parse fails it as unreadable, and counts as one entry in the

@@ -134,7 +134,8 @@ func actionFile(dir *blobTree) (blobEntry, bool) {
 }
 
 // flakeFacts records what flake.nix and flake.lock say, and which files name
-// probe.Lint. flake.lock's existence is a fact even when its text cannot be
+// probe.Lint (a mention only in a full-line comment does not count; see
+// namesOutsideComments). flake.lock's existence is a fact even when its text cannot be
 // read, so HasLock is set either way and LockError says why the rest is
 // missing. A flake.nix not read in full is recorded the same way, through
 // NixError, so a check reading it fails as unreadable instead of on facts
@@ -146,7 +147,7 @@ func flakeFacts(f *repoFiles, probe Probe) audit.Flake {
 		text, problem := blobText(f.FlakeNix, "flake.nix")
 		if problem == "" {
 			flake.Inputs = nixflake.Inputs(text)
-			flake.NamesLint = probe.Lint != "" && strings.Contains(text, probe.Lint)
+			flake.NamesLint = probe.Lint != "" && namesOutsideComments(text, probe.Lint)
 		}
 		flake.NixError = problem
 	}
@@ -166,8 +167,9 @@ func flakeFacts(f *repoFiles, probe Probe) audit.Flake {
 	return flake
 }
 
-// gateFiles returns the path of every gate file whose text names lint, sorted:
-// run-all-checks, the justfile and each file directly under .ci. Naming the
+// gateFiles returns the path of every gate file whose text names lint outside
+// a full-line comment, sorted: run-all-checks, the justfile and each file
+// directly under .ci. Naming the
 // lint shows the wiring exists, not that the gate reaches it; that is as far
 // as reading text can go. A gate file not read in full is passed over.
 func gateFiles(f *repoFiles, lint string) []string {
@@ -189,10 +191,29 @@ func gateFiles(f *repoFiles, lint string) []string {
 	}
 	var out []string
 	for _, c := range candidates {
-		if text, problem := blobText(c.Object, c.Name); problem == "" && strings.Contains(text, lint) {
+		if text, problem := blobText(c.Object, c.Name); problem == "" && namesOutsideComments(text, lint) {
 			out = append(out, c.Name)
 		}
 	}
 	slices.Sort(out)
 	return out
+}
+
+// namesOutsideComments reports whether some line of text whose first
+// non-whitespace character is not '#' contains name. Both shell and Nix
+// start a comment with '#', so a full-line comment is wiring that does not
+// run. A trailing comment is not stripped: telling a '#' that starts a
+// comment from one inside a string or a URL needs a shell or Nix parser, and
+// a mention before a trailing '#' is taken as live.
+// Trimming whitespace also drops the '\r' of a CRLF line ending.
+func namesOutsideComments(text, name string) bool {
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if strings.Contains(line, name) {
+			return true
+		}
+	}
+	return false
 }

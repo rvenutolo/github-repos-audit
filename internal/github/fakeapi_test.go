@@ -331,8 +331,9 @@ func (f *fakeAPI) handleTree(w http.ResponseWriter, r *http.Request) {
 //
 // A request filtered by branch is the default-branch recency read, answered
 // from actions-runs-default-branch instead: GitHub filters that list server
-// side, so it is a separate recording, and only its newest run is wanted, so
-// its page size is one. Every fixture repository's default branch is main.
+// side, so it is a separate recording. Its page size is the maximum too: the
+// newest runs on a branch name can all be forks' pull requests, which the
+// collector skips. Every fixture repository's default branch is main.
 func (f *fakeAPI) handleRuns(w http.ResponseWriter, r *http.Request) {
 	f.t.Helper()
 	if owner := r.PathValue("owner"); owner != testOwner {
@@ -344,8 +345,8 @@ func (f *fakeAPI) handleRuns(w http.ResponseWriter, r *http.Request) {
 		if got := query.Get("branch"); got != "main" {
 			f.t.Errorf("runs request for %s has branch=%q, want main", r.URL.Path, got)
 		}
-		if got := query.Get("per_page"); got != "1" {
-			f.t.Errorf("default-branch runs request for %s has per_page=%q, want 1", r.URL.Path, got)
+		if got := query.Get("per_page"); got != "100" {
+			f.t.Errorf("default-branch runs request for %s has per_page=%q, want 100", r.URL.Path, got)
 		}
 		f.serve(w, dir, "actions-runs-default-branch")
 		return

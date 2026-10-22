@@ -54,6 +54,65 @@ func TestParseWorkflow_eventsForms(t *testing.T) {
 	}
 }
 
+// TestParseWorkflow_pullRequestTypes pins the `types:` of the two pull
+// request triggers: sorted and distinct, a scalar read as a one-item list, and
+// nil whenever the trigger lists none, which with the trigger in Events means
+// GitHub's default set.
+func TestParseWorkflow_pullRequestTypes(t *testing.T) {
+	t.Parallel()
+
+	type types struct {
+		PullRequest, PullRequestTarget []string
+	}
+	tests := []struct {
+		name string
+		text string
+		want types
+	}{
+		{
+			"listed",
+			"on:\n  pull_request:\n    types: [synchronize, opened, synchronize]\n",
+			types{PullRequest: []string{"opened", "synchronize"}},
+		},
+		{
+			"scalar",
+			"on:\n  pull_request_target:\n    types: closed\n",
+			types{PullRequestTarget: []string{"closed"}},
+		},
+		{
+			"both",
+			"on:\n  pull_request:\n    types: [opened]\n  pull_request_target:\n    types: [labeled]\n",
+			types{PullRequest: []string{"opened"}, PullRequestTarget: []string{"labeled"}},
+		},
+		{"empty list", "on:\n  pull_request:\n    types: []\n", types{}},
+		{"null trigger", "on:\n  pull_request:\n", types{}},
+		{"no types key", "on:\n  pull_request:\n    branches: [main]\n", types{}},
+		{"null types", "on:\n  pull_request:\n    types:\n", types{}},
+		{"blank type dropped", "on:\n  pull_request:\n    types: [opened, \"\", ~]\n", types{PullRequest: []string{"opened"}}},
+		{"list form", "on: [pull_request]\n", types{}},
+		{"string form", "on: pull_request_target\n", types{}},
+		{"other trigger ignored", "on:\n  issues:\n    types: [opened]\n", types{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			w := parse(t, tt.text)
+			got := types{PullRequest: w.PullRequestTypes, PullRequestTarget: w.PullRequestTargetTypes}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("pull request types mismatch (-want +got):\n%s", diff)
+			}
+			// omitzero writes an empty non-nil slice as [], so "lists no
+			// types" has to be nil, not merely empty.
+			if len(got.PullRequest) == 0 && got.PullRequest != nil {
+				t.Errorf("PullRequestTypes = %#v, want nil", got.PullRequest)
+			}
+			if len(got.PullRequestTarget) == 0 && got.PullRequestTarget != nil {
+				t.Errorf("PullRequestTargetTypes = %#v, want nil", got.PullRequestTarget)
+			}
+		})
+	}
+}
+
 func TestParseWorkflow_concurrency(t *testing.T) {
 	t.Parallel()
 
@@ -298,6 +357,14 @@ func TestParse_wrongShape(t *testing.T) {
 			"with.k is defined twice",
 		},
 		{"repeated on trigger", "on:\n  push: {}\n  push: {}\n", "on.push is defined twice"},
+		{"pull_request types holds a mapping", "on:\n  pull_request:\n    types: [{x: y}]\n", "on.pull_request.types"},
+		{"pull_request types is a mapping", "on:\n  pull_request:\n    types: {x: y}\n", "on.pull_request.types"},
+		{"pull_request_target types holds a sequence", "on:\n  pull_request_target:\n    types: [[x]]\n", "on.pull_request_target.types"},
+		{
+			"repeated pull_request types key",
+			"on:\n  pull_request:\n    types: [opened]\n    types: [closed]\n",
+			"on.pull_request.types is defined twice",
+		},
 	}
 	for _, tt := range workflowTests {
 		t.Run("workflow "+tt.name, func(t *testing.T) {

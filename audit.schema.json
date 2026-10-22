@@ -627,12 +627,12 @@
           "minLength": 1
         },
         "names_lint": {
-          "description": "flake.nix's text contains the configured hermetic-lint command name.",
+          "description": "flake.nix's text contains the configured hermetic-lint command name on a line that is not a full-line # comment (trailing comments are not stripped).",
           "type": "boolean",
           "const": true
         },
         "gate_files": {
-          "description": "The gate files (run-all-checks, the justfile, each file directly under .ci) whose text contains the configured hermetic-lint command name, by path, sorted.",
+          "description": "The gate files (run-all-checks, the justfile, each file directly under .ci) whose text contains the configured hermetic-lint command name on a line that is not a full-line # comment (trailing comments are not stripped), by path, sorted.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 },
@@ -661,6 +661,20 @@
           "type": "array",
           "minItems": 1,
           "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "pull_request_types": {
+          "description": "The `types:` listed for `pull_request` under the map form of `on:`, sorted and without repeats. Absent when the trigger lists none: with `pull_request` in `events` that is GitHub's default set, `opened`, `synchronize` and `reopened`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "pull_request_target_types": {
+          "description": "The `types:` listed for `pull_request_target` under the map form of `on:`, sorted and without repeats. Absent when the trigger lists none: with `pull_request_target` in `events` that is GitHub's default set, `opened`, `synchronize` and `reopened`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
         "concurrency": { "$ref": "#/$defs/concurrency" },
@@ -811,7 +825,7 @@
           "items": { "$ref": "#/$defs/ci_commit" }
         },
         "last_default_branch_run": {
-          "description": "When the newest workflow run on the default branch was created, of any event, in UTC. Absent when no workflow has run on the default branch, and for an empty repository.",
+          "description": "When the newest workflow run on the default branch from this repository, not a fork's pull request from a branch of the same name, was created, of any event, in UTC. Absent when no such run is among the newest hundred runs on that branch name, and for an empty repository.",
           "type": "string",
           "format": "date-time"
         }

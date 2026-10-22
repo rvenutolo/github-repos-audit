@@ -51,12 +51,15 @@ func pushEvents() []string { return []string{"push", "merge_group"} }
 // 5,000 requests an hour a token is allowed.
 //
 // ciRecencyPage is the page size of the default-branch runs read
-// (lastDefaultBranchRun): only the newest run is wanted, and the list is
-// newest first.
+// (lastDefaultBranchRun), also the API's maximum. Only the newest run of the
+// repository's own is wanted, but the branch-filtered list also holds forks'
+// pull-request runs whose head branch shares the default branch's name, and
+// those can fill its newest entries; a full page still costs one request,
+// and the list is not paged further (see lastDefaultBranchRun).
 const (
 	ciRunsPage    = "100"
 	ciJobsPage    = "100"
-	ciRecencyPage = "1"
+	ciRecencyPage = "100"
 )
 
 // actionsRuns is the slice of the runs list this tool reads.
@@ -66,14 +69,24 @@ type actionsRuns struct {
 
 // actionsRun is one workflow run. Name is the workflow's name. CreatedAt is
 // when the run was triggered, and a re-run keeps it, which is what lets a
-// re-run extend the wait instead of starting a new one.
+// re-run extend the wait instead of starting a new one. Repository is the
+// repository the run belongs to and HeadRepository the one its head commit
+// came from: they differ for a fork's pull request, and HeadRepository is
+// null once that fork is deleted.
 type actionsRun struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	HeadSHA   string    `json:"head_sha"`
-	Event     string    `json:"event"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	ID             int64     `json:"id"`
+	Name           string    `json:"name"`
+	HeadSHA        string    `json:"head_sha"`
+	Event          string    `json:"event"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+	Repository     runRepo   `json:"repository"`
+	HeadRepository *runRepo  `json:"head_repository"`
+}
+
+// runRepo is the slice of a run's repository objects this tool reads.
+type runRepo struct {
+	ID int64 `json:"id"`
 }
 
 // actionsJobs is one run's jobs list. TotalCount is how many jobs the run
@@ -144,7 +157,9 @@ func (r *repository) ci() audit.CI {
 // LastDefaultBranchRun comes from a read of its own (lastDefaultBranchRun),
 // not from the timing page: in a busy repository the newest hundred runs can
 // all be on other branches, and a recency read off that page would then say
-// no run happened on the default branch at all. A repository with no sampled
+// no run happened on the default branch at all. It counts only the
+// repository's own runs, not a fork's pull request from a branch of the same
+// name. A repository with no sampled
 // commits is an empty one, with no branch any workflow could have run on, so
 // it reads nothing and its recency stays zero.
 // base is the repository's /repos/{owner}/{name} path, and defaultBranch is
@@ -210,13 +225,22 @@ func (c *Client) fetchCI(ctx context.Context, base, defaultBranch string, ci *au
 	return nil
 }
 
-// lastDefaultBranchRun is when the newest workflow run on defaultBranch was
-// created, of any event, since a scheduled or dispatched run keeps the
-// branch's caches as warm as a push does; zero when none has run. The runs
-// list filtered by branch is newest first, so one entry answers it exactly
-// for one request, however many runs other branches have had since. The
-// filter matches a run's head branch, which for a pull request's run is its
-// head branch, so only runs on the default branch itself are returned.
+// lastDefaultBranchRun is when the newest workflow run of this repository's
+// own on defaultBranch was created, of any event, since a scheduled or
+// dispatched run keeps the branch's caches as warm as a push does; zero when
+// none has run. Filtering to push runs would miss those, so the event is not
+// filtered on.
+//
+// The branch filter matches a run's head branch, so it also returns a fork's
+// pull-request runs whose head branch the fork named like the default branch.
+// Those warm none of this repository's default-branch caches, so a run counts
+// only when its head repository is the repository it ran in; a null head
+// repository is a deleted fork's and does not count. head_repository.fork is
+// no help: when the audited repository is itself a fork, it is true for every
+// run. The list is newest first, so the first run that counts answers it, out
+// of one page of ciRecencyPage for one request however many runs other
+// branches have had since. A page holding only forks' runs leaves the recency
+// zero, which reads as no recent run, the same as an idle repository.
 //
 // No default branch means nothing to ask about, and costs no request.
 func (c *Client) lastDefaultBranchRun(ctx context.Context, base, defaultBranch string) (time.Time, error) {
@@ -228,10 +252,12 @@ func (c *Client) lastDefaultBranchRun(ctx context.Context, base, defaultBranch s
 	if _, err := c.getJSON(ctx, path, &list); err != nil {
 		return time.Time{}, err
 	}
-	if len(list.WorkflowRuns) == 0 {
-		return time.Time{}, nil
+	for _, run := range list.WorkflowRuns {
+		if run.HeadRepository != nil && run.HeadRepository.ID == run.Repository.ID {
+			return run.CreatedAt.UTC(), nil
+		}
 	}
-	return list.WorkflowRuns[0].CreatedAt.UTC(), nil
+	return time.Time{}, nil
 }
 
 // timeCommit reduces one commit's workflow runs to its wait and job

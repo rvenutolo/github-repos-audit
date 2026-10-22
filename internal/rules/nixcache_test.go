@@ -1,6 +1,7 @@
 package rules_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -144,7 +145,8 @@ func TestEvaluate_nixCache_ceiling(t *testing.T) {
 		value   string
 	}{
 		{1_500_000_000, rules.Pass, "1.5 GB"},
-		{1_500_000_001, rules.Fail, "1.5 GB"},
+		{1_500_000_001, rules.Fail, "1.6 GB"},
+		{1_400_000_001, rules.Pass, "1.4 GB"},
 		{1_000_000, rules.Pass, "1 MB"},
 		{999_999, rules.Fail, "empty (999 KB)"},
 	}
@@ -344,13 +346,43 @@ func TestFormatBytes(t *testing.T) {
 		{206_789_000, "206 MB"},
 		{999_999_999, "999 MB"},
 		{1_000_000_000, "1.0 GB"},
-		{2_249_999_999, "2.2 GB"},
+		{1_499_999_999, "1.4 GB"},
 	}
 	for _, tc := range tests {
 		r := cachedFixture(mainCache("nix-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
 		if got := nixCache(t, r); got.Value != tc.want {
 			t.Errorf("%d B: value = %q, want %q", tc.size, got.Value, tc.want)
 		}
+	}
+}
+
+// TestFormatBytesUp: a size that fails the ceiling shows its GB tenths
+// rounded up, so it never reads the same as the passing bound; whole tenths
+// are unchanged. Seen through the nix_cache cell, the public surface.
+func TestFormatBytesUp(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		size int64
+		want string
+	}{
+		{1_500_000_001, "1.6 GB"},
+		{1_599_999_999, "1.6 GB"},
+		{1_600_000_000, "1.6 GB"},
+		{2_000_000_000, "2.0 GB"},
+		{2_000_000_001, "2.1 GB"},
+		{2_249_999_999, "2.3 GB"},
+		{9_950_000_001, "10.0 GB"},
+	}
+	for _, tc := range tests {
+		t.Run(fmt.Sprintf("%d B", tc.size), func(t *testing.T) {
+			t.Parallel()
+			r := cachedFixture(mainCache("nix-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
+			got := nixCache(t, r)
+			if got.Verdict != rules.Fail || got.Value != tc.want {
+				t.Errorf("%d B: cell = %v %q, want Fail %q", tc.size, got.Verdict, got.Value, tc.want)
+			}
+		})
 	}
 }
 

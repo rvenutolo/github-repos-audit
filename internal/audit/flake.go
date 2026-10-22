@@ -34,9 +34,13 @@ type Flake struct {
 	// unreadable rather than passing on what it did manage to read.
 	NixError string `json:"nix_error,omitzero"`
 	// NamesLint reports that flake.nix's text contains the configured
-	// hermetic-lint command name.
+	// hermetic-lint command name on a line that is not a full-line '#'
+	// comment. Trailing comments are not stripped: telling a trailing '#'
+	// from one inside a string or URL needs a Nix parser.
 	NamesLint bool `json:"names_lint,omitzero"`
 	// GateFiles is the gate files whose text contains the configured
-	// hermetic-lint command name, by path.
+	// hermetic-lint command name on a line that is not a full-line '#'
+	// comment, by path. Trailing comments are not stripped: telling a
+	// trailing '#' from one inside a string or URL needs a shell parser.
 	GateFiles []string `json:"gate_files,omitzero"`
 }

@@ -8,7 +8,13 @@
       "head_branch": "main",
       "event": "push",
       "status": "completed",
-      "created_at": "2025-09-02T01:45:00Z"
+      "created_at": "2025-09-02T01:45:00Z",
+      "repository": {
+        "id": 1000005
+      },
+      "head_repository": {
+        "id": 1000005
+      }
     }
   ]
 }
