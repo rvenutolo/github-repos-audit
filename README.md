@@ -458,7 +458,11 @@ Grouped by theme here; the report lists them in the fixed worklist order
   repository under _Workflows without cancel-in-progress_, for every
   repository whose cell fails or, under `info`, shows a count; a
   `not_required` repository is never listed. n/a when no workflow is
-  triggered by a pull request.
+  triggered by a pull request. `audit.json` records each workflow's
+  triggers under `events` and the `types:` its two pull request triggers
+  list under `pull_request_types` and `pull_request_target_types`; a key is
+  absent when its trigger lists none, which leaves GitHub's default set
+  (`opened`, `synchronize`, `reopened`).
 - **job_timeouts** — whether every workflow job sets `timeout-minutes`, so a
   job that hangs is stopped well before GitHub's six-hour default rather
   than holding its runner, and every run queued behind it, for that long.

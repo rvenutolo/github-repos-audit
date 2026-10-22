@@ -17,6 +17,16 @@ type Workflow struct {
 	// Events is the trigger names under `on:`, sorted and without repeats.
 	// The string, list and map forms all reduce to the same names.
 	Events []string `json:"events,omitzero"`
+	// PullRequestTypes is the `types:` the map form of `on:` lists for
+	// `pull_request`, sorted and without repeats; a single name written as a
+	// scalar is a one-item list. Absent when the trigger lists no types,
+	// `types: []` included: with "pull_request" in Events that means GitHub's
+	// default set, `opened`, `synchronize` and `reopened`, and without it the
+	// trigger is not there at all.
+	PullRequestTypes []string `json:"pull_request_types,omitzero"`
+	// PullRequestTargetTypes is as PullRequestTypes, for
+	// `pull_request_target`, whose default set is the same.
+	PullRequestTargetTypes []string `json:"pull_request_target_types,omitzero"`
 	// Concurrency is the workflow-level `concurrency:`.
 	Concurrency Concurrency `json:"concurrency,omitzero"`
 	// Permissions is the workflow-level `permissions:`.

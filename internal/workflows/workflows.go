@@ -64,9 +64,11 @@ func parseWorkflow(text string) (audit.Workflow, error) {
 	if err != nil {
 		return w, err
 	}
-	if w.Events, err = events(lookup(top, "on")); err != nil {
+	t, err := events(lookup(top, "on"))
+	if err != nil {
 		return w, err
 	}
+	w.Events, w.PullRequestTypes, w.PullRequestTargetTypes = t.names, t.pullRequest, t.pullRequestTarget
 	if w.Concurrency, err = concurrency(lookup(top, "concurrency"), "concurrency"); err != nil {
 		return w, err
 	}
@@ -161,42 +163,108 @@ func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
 	return uses, update, nil
 }
 
+// triggers is what `on:` says: the event names, and the `types:` the two
+// pull request triggers list.
+type triggers struct {
+	names, pullRequest, pullRequestTarget []string
+}
+
 // events reduces the three forms of `on:` (one name, a list of names, a map
 // keyed by name) to the sorted, distinct names. A blank or null name is no
 // event, so it is dropped; with nothing left the result is nil, the same as
-// an absent `on:`.
-func events(n *yaml.Node) ([]string, error) {
-	var names []string
+// an absent `on:`. Only the map form can give a trigger settings, so only it
+// can list `types:` for `pull_request` and `pull_request_target`.
+func events(n *yaml.Node) (triggers, error) {
+	var t triggers
 	switch {
 	case absent(n):
-		return nil, nil
+		return t, nil
 	case n.Kind == yaml.ScalarNode:
-		names = []string{n.Value}
+		t.names = []string{n.Value}
 	case n.Kind == yaml.SequenceNode:
 		for i, item := range n.Content {
 			name, err := scalar(deref(item), fmt.Sprintf("on[%d]", i))
 			if err != nil {
-				return nil, err
+				return t, err
 			}
-			// scalar reads a null item as "", which the filter below drops.
-			names = append(names, name)
+			// scalar reads a null item as "", which distinct drops.
+			t.names = append(t.names, name)
 		}
 	default:
 		// lookup has followed any alias, so what is left is a mapping.
 		ps, err := pairs(n, "on")
 		if err != nil {
-			return nil, err
+			return t, err
 		}
 		for _, p := range ps {
-			names = append(names, p.key)
+			t.names = append(t.names, p.key)
+			switch p.key {
+			case "pull_request":
+				t.pullRequest, err = eventTypes(p.value, "on.pull_request")
+			case "pull_request_target":
+				t.pullRequestTarget, err = eventTypes(p.value, "on.pull_request_target")
+			}
+			if err != nil {
+				return t, err
+			}
 		}
 	}
-	names = slices.DeleteFunc(names, func(name string) bool { return name == "" })
-	if len(names) == 0 {
+	t.names = distinct(t.names)
+	return t, nil
+}
+
+// eventTypes reads the `types:` of one trigger's settings: sorted, distinct,
+// and nil when none are listed, `types: []` included, since omitzero would
+// write an empty non-nil slice as `[]` and "lists no types" has one spelling.
+// A scalar is a one-item list, as GitHub reads it; failing the whole file as
+// unreadable for a form GitHub runs would fail every check on it.
+//
+// Settings that are not a mapping (null for a bare trigger) list no types.
+// Only `types:` is read here, so a trigger's other shapes stay as unjudged as
+// they are for every other trigger.
+func eventTypes(n *yaml.Node, where string) ([]string, error) {
+	if n.Kind != yaml.MappingNode {
 		return nil, nil
 	}
+	// pairs, not lookup, so a `types:` written twice is rejected rather
+	// than read as whichever comes first.
+	ps, err := pairs(n, where)
+	if err != nil {
+		return nil, err
+	}
+	where += ".types"
+	var types []string
+	for _, p := range ps {
+		if p.key != "types" {
+			continue
+		}
+		if !absent(p.value) && p.value.Kind == yaml.ScalarNode {
+			return distinct([]string{p.value.Value}), nil
+		}
+		items, err := sequence(p.value, where)
+		if err != nil {
+			return nil, err
+		}
+		for i, item := range items {
+			v, err := scalar(item, fmt.Sprintf("%s[%d]", where, i))
+			if err != nil {
+				return nil, err
+			}
+			types = append(types, v)
+		}
+	}
+	return distinct(types), nil
+}
+
+// distinct sorts names and drops repeats and blanks, returning nil when
+// nothing is left, which omitzero then leaves out of audit.json.
+func distinct(names []string) []string {
+	names = slices.DeleteFunc(names, func(name string) bool { return name == "" })
+	if len(names) == 0 {
+		return nil
+	}
 	slices.Sort(names)
-	return slices.Compact(names), nil
+	return slices.Compact(names)
 }
 
 func concurrency(n *yaml.Node, where string) (audit.Concurrency, error) {

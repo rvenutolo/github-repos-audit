@@ -663,6 +663,20 @@
           "items": { "type": "string" },
           "uniqueItems": true
         },
+        "pull_request_types": {
+          "description": "The `types:` listed for `pull_request` under the map form of `on:`, sorted and without repeats. Absent when the trigger lists none: with `pull_request` in `events` that is GitHub's default set, `opened`, `synchronize` and `reopened`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "pull_request_target_types": {
+          "description": "The `types:` listed for `pull_request_target` under the map form of `on:`, sorted and without repeats. Absent when the trigger lists none: with `pull_request_target` in `events` that is GitHub's default set, `opened`, `synchronize` and `reopened`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
         "concurrency": { "$ref": "#/$defs/concurrency" },
         "permissions": { "$ref": "#/$defs/permissions" },
         "jobs": {
