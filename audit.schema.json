@@ -699,8 +699,9 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "push_tag_filter": {
-          "description": "`push` lists `tags:` or `tags-ignore:`. With no branch filter beside it, branch pushes never trigger the workflow.",
-          "type": "boolean"
+          "description": "`push` lists `tags:` or `tags-ignore:`. With no branch filter beside it, branch pushes never trigger the workflow. Absent when false.",
+          "type": "boolean",
+          "const": true
         },
         "concurrency": { "$ref": "#/$defs/concurrency" },
         "permissions": { "$ref": "#/$defs/permissions" },
