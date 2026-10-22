@@ -136,13 +136,19 @@ func actionFile(dir *blobTree) (blobEntry, bool) {
 // flakeFacts records what flake.nix and flake.lock say, and which files name
 // probe.Lint. flake.lock's existence is a fact even when its text cannot be
 // read, so HasLock is set either way and LockError says why the rest is
-// missing. A flake.nix not read in full is treated as saying nothing, for the
-// reason blobText gives.
+// missing. A flake.nix not read in full is recorded the same way, through
+// NixError, so a check reading it fails as unreadable instead of on facts
+// that were never read. A missing flake.nix records nothing: Files.FlakeNix
+// already says it is absent, and absence is not a read failure.
 func flakeFacts(f *repoFiles, probe Probe) audit.Flake {
 	var flake audit.Flake
-	if text, problem := blobText(f.FlakeNix, "flake.nix"); problem == "" {
-		flake.Inputs = nixflake.Inputs(text)
-		flake.NamesLint = probe.Lint != "" && strings.Contains(text, probe.Lint)
+	if f.FlakeNix != nil {
+		text, problem := blobText(f.FlakeNix, "flake.nix")
+		if problem == "" {
+			flake.Inputs = nixflake.Inputs(text)
+			flake.NamesLint = probe.Lint != "" && strings.Contains(text, probe.Lint)
+		}
+		flake.NixError = problem
 	}
 	if f.FlakeLock != nil {
 		flake.HasLock = true

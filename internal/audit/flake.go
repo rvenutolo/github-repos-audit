@@ -3,10 +3,16 @@ package audit
 import "time"
 
 // Flake is what a repository's flake.nix and flake.lock say, as far as the
-// checks need it. The zero value is a repository with neither file. Whether
-// the inputs name the right flake or the lock is fresh enough is
-// internal/rules' decision.
+// checks need it. The zero value is a repository from which nothing was
+// recorded, which includes one with a readable flake.nix that binds no URL
+// and names no lint, so Files.FlakeNix, not this, says whether flake.nix
+// exists. Whether the inputs name the right flake or the lock is fresh
+// enough is internal/rules' decision.
 type Flake struct {
+	// NixError is why flake.nix could not be read. When it is set neither
+	// Inputs nor NamesLint is, so a check reading flake.nix fails as
+	// unreadable rather than passing on what it did manage to read.
+	NixError string `json:"nix_error,omitzero"`
 	// Inputs is every `url = "…"` flake.nix binds, as written, sorted and
 	// without repeats. flake.nix is read as text, not evaluated.
 	Inputs []string `json:"inputs,omitzero"`

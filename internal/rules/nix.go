@@ -21,11 +21,16 @@ import (
 // list. A repository with no flake.nix is n/a: there is no Nix to be hermetic
 // about, and flake_nix already reports the missing file.
 //
-// An unreadable flake.nix records no inputs and no lint, so it reads as "no
-// input, …" here; the collector does not tell it apart from a silent one.
+// A flake.nix the collector could not read fails as unreadable and lists
+// nothing else, the way an unreadable workflow fails: it recorded no inputs
+// and no lint, so every other part would only repeat that, and naming them
+// would send the reader to fix wiring that may well be there.
 func observeHermetic(r audit.Repo, std audit.HermeticStandard) observation {
 	if !r.Files.FlakeNix {
 		return observation{unknown: true}
+	}
+	if r.Flake.NixError != "" {
+		return observation{value: "unreadable flake.nix", mark: true}
 	}
 	var missing []string
 	if !slices.Contains(r.Flake.Inputs, std.Flake) {
