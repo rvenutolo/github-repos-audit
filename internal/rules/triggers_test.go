@@ -202,6 +202,7 @@ func TestCIOnPush_branchFilters(t *testing.T) {
 		{name: "other prefix", branches: []string{"release/**"}, branch: "main", admitted: false},
 		{name: "only negations", branches: []string{"!dev"}, branch: "main", admitted: false},
 		{name: "ignored", ignore: []string{"main"}, branch: "main", admitted: false},
+		{name: "ignore does not negate", ignore: []string{"!main"}, branch: "main", admitted: true},
 		{name: "ignore misses", ignore: []string{"wip/*"}, branch: "main", admitted: true},
 		{name: "literal dot", branches: []string{"main.x"}, branch: "mainax", admitted: false},
 		{name: "escaped star is literal", branches: []string{`ma\*`}, branch: "main", admitted: false},

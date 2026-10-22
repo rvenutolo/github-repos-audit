@@ -93,6 +93,9 @@ func pushAdmits(w audit.Workflow, branch string) bool {
 	case len(w.PushBranches) == 0 && len(w.PushBranchesIgnore) == 0:
 		return !w.PushTagFilter
 	case len(w.PushBranchesIgnore) > 0:
+		// A "!" is matched literally here: GitHub documents negation only
+		// for branches, so treating it as one would admit or exclude
+		// branches the workflow does not.
 		return !slices.ContainsFunc(w.PushBranchesIgnore, func(p string) bool { return matchFilter(p, branch) })
 	}
 	admitted := false
