@@ -101,16 +101,32 @@ func TestEvaluate_cancelSuperseded_literalFalseFails(t *testing.T) {
 	}
 }
 
+// TestEvaluate_cancelSuperseded_falseExpressionFails: an expression that is
+// only the word false, in any case with any spacing inside the braces, is the
+// literal false written another way.
+func TestEvaluate_cancelSuperseded_falseExpressionFails(t *testing.T) {
+	t.Parallel()
+
+	for _, v := range []string{"${{ false }}", "${{false}}", "${{ FALSE }}", "${{\tFalse  }}", " ${{ false }} "} {
+		wf := prWorkflow(".github/workflows/ci.yml", cancelling(v), audit.Job{ID: "check"})
+		wantCell(t, cancelCell(t, wf), rules.Fail, "1 workflow")
+
+		job := prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check", Concurrency: cancelling(v)})
+		wantCell(t, cancelCell(t, job), rules.Fail, "1 workflow")
+	}
+}
+
 // TestEvaluate_cancelSuperseded_expressionCounts: an expression, typically
 // cancelling only pull-request runs, is a deliberate setting, so it counts
 // as set at either level.
 func TestEvaluate_cancelSuperseded_expressionCounts(t *testing.T) {
 	t.Parallel()
 
-	expr := "${{ github.event_name == 'pull_request' }}"
-	wantPlainPass(t, cancelCell(t, prWorkflow(".github/workflows/ci.yml", cancelling(expr), audit.Job{ID: "check"})))
-	wantPlainPass(t, cancelCell(t,
-		prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check", Concurrency: cancelling(expr)})))
+	for _, expr := range []string{"${{ github.event_name == 'pull_request' }}", "${{ !false }}", "${{ false || true }}"} {
+		wantPlainPass(t, cancelCell(t, prWorkflow(".github/workflows/ci.yml", cancelling(expr), audit.Job{ID: "check"})))
+		wantPlainPass(t, cancelCell(t,
+			prWorkflow(".github/workflows/ci.yml", audit.Concurrency{}, audit.Job{ID: "check", Concurrency: cancelling(expr)})))
+	}
 }
 
 // TestEvaluate_cancelSuperseded_pushOnlyIsNA: only pull-request workflows

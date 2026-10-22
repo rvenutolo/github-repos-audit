@@ -358,7 +358,8 @@ func resolveComposite(r audit.Repo, action string) (audit.CompositeAction, bool)
 // in: "github:<owner>/<repo>", lower-cased, without the ref, directory or
 // query flake.nix may add after it. flake.lock spells the owner and the
 // repository as GitHub answered them, which need not be the case flake.nix
-// wrote, and GitHub matches both without regard to case.
+// wrote, and GitHub matches both without regard to case. The scheme is
+// compared as written: Nix only recognises a lower-case "github:".
 //
 // Only github: references have that form. Any other kind returns "", and
 // observeHermetic counts such a flake as never locked: the collector records
@@ -366,7 +367,7 @@ func resolveComposite(r audit.Repo, action string) (audit.CompositeAction, bool)
 // rather than passing.
 func lockedRef(flake string) string {
 	const scheme = "github:"
-	if len(flake) < len(scheme) || !strings.EqualFold(flake[:len(scheme)], scheme) {
+	if !strings.HasPrefix(flake, scheme) {
 		return ""
 	}
 	rest := flake[len(scheme):]

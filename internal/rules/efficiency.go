@@ -2,6 +2,7 @@ package rules
 
 import (
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -114,8 +115,9 @@ func observeCancelSuperseded(r audit.Repo) observation {
 // (closed, labeled, ...) is never superseded that way, so it is not judged.
 // It cancels superseded runs when its workflow-level concurrency sets
 // cancel-in-progress, or every job's job-level concurrency does. Set means
-// present and not the literal "false": an expression, typically one that
-// cancels only pull-request runs, is a deliberate choice and counts. A
+// present and not false, whether the literal or an expression that is only the
+// word false: any other expression, typically one that cancels only
+// pull-request runs, is a deliberate choice and counts. A
 // workflow with no jobs has no job to cancel through, so only the
 // workflow-level setting can pass it.
 func cancelMissing(r audit.Repo) (missing []string, judged bool) {
@@ -167,10 +169,18 @@ func cancelsSuperseded(w audit.Workflow) bool {
 	return true
 }
 
+// falseExpression matches an expression that is only the word false: GitHub
+// evaluates `${{ false }}` to the same boolean as the literal, with the word in
+// any case and any (or no) space inside the braces. Anything else inside the
+// braces is a real expression whose value is not known offline.
+var falseExpression = regexp.MustCompile(`(?i)^\$\{\{\s*false\s*\}\}$`)
+
 // cancelSet reports whether a concurrency setting sets cancel-in-progress to
-// anything but the literal false, in any case YAML reads as that boolean.
+// anything but false: the literal in any case YAML reads as that boolean, or
+// an expression that is only the word false (see falseExpression).
 func cancelSet(c audit.Concurrency) bool {
-	return c.CancelInProgress != "" && !strings.EqualFold(c.CancelInProgress, "false")
+	v := strings.TrimSpace(c.CancelInProgress)
+	return v != "" && !strings.EqualFold(v, "false") && !falseExpression.MatchString(v)
 }
 
 // observeJobTimeouts judges whether every job bounds its own run time with

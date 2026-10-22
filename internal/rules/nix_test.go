@@ -116,7 +116,8 @@ func TestEvaluate_hermetic_lockMatchIgnoresCaseAndSuffix(t *testing.T) {
 // TestEvaluate_hermetic_nonGitHubFlakeIsNeverLocked: flake.lock's GitHub-type
 // nodes are the only ones recorded, so a configured flake of any other kind
 // cannot be found locked; the cell says so rather than passing.
-// A github: reference with no owner or no repository names no lock node
+// The github: scheme is read as written, so a differently-cased scheme is
+// not one either. A github: reference with no owner or no repository names no lock node
 // either, and is never found locked, even beside a lock entry it could be
 // mistaken for.
 func TestEvaluate_hermetic_nonGitHubFlakeIsNeverLocked(t *testing.T) {
@@ -128,6 +129,8 @@ func TestEvaluate_hermetic_nonGitHubFlakeIsNeverLocked(t *testing.T) {
 		"github:gh-owner",
 		"github:/lint-flake",
 		"github:gh-owner/",
+		"GitHub:gh-owner/lint-flake",
+		"GITHUB:gh-owner/lint-flake",
 	} {
 		t.Run(flake, func(t *testing.T) {
 			t.Parallel()

@@ -369,8 +369,9 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `[hermetic]`. It passes when all of these hold, and otherwise names each
   one that does not: `flake.nix` declares an input whose `url` is
   `[hermetic].flake` exactly (`no input`); `flake.lock` has a node for it,
-  matched on `github:<owner>/<repo>` without regard to case, so a `git+https:`
-  or other non-GitHub input is never found (`not locked`); `flake.nix`
+  matched on `github:<owner>/<repo>`, the owner and repository without regard
+  to case and the `github:` scheme as written, so a `git+https:` or other
+  non-GitHub input is never found (`not locked`); `flake.nix`
   mentions `[hermetic].lint` outside a full-line `#` comment, a text stand-in for the default devShell
   carrying it, since the tool never evaluates Nix (`not in devShell`); and
   `run-all-checks`, a file directly under `.ci/`, or the `justfile` mentions
@@ -416,7 +417,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
   default branch, and the newest entry of each family must hold between
   1 MB and 1.5 GB (decimal units). The cell shows the size of the first
   family out of range, or else the largest (`✓ 206 MB`, `✗ 2.2 GB`,
-  `✗ empty (430 B)`), or `none on main`. Every `cache-nix-action` step a job
+  `✗ empty (430 B)`), or `none on main`. Any default-branch cache whose key
+  starts `nix-` is judged on size, whatever tool saved it. Every `cache-nix-action` step a job
   runs, directly or through a local composite action, is then read, and the
   cell names each problem once: `no gc-max-store-size` (none of
   `gc-max-store-size`, `-linux` or `-macos`), `no purge` (`purge` is not
@@ -460,7 +462,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `closed`, is not judged. A counted workflow passes with a workflow-level
   `concurrency` that sets `cancel-in-progress`, or when every one of its
   jobs sets it in a job-level `concurrency`; an expression counts as set,
-  a literal `false`, in any case, does not. A workflow file that does not
+  a literal `false` or an expression that is only `false` (`${{ false }}`),
+  in any case, does not. A workflow file that does not
   parse fails it as unreadable. The cell counts the workflows that fail
   (`✗ 2 workflows`), and the report's CI efficiency section lists them per
   repository under _Workflows without cancel-in-progress_, for every
@@ -473,7 +476,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
 - **job_timeouts** — whether every workflow job sets `timeout-minutes`, so a
   job that hangs is stopped well before GitHub's six-hour default rather
   than holding its runner, and every run queued behind it, for that long.
-  An expression counts as set. A job that calls a reusable workflow (a
+  An expression counts as set, and so does `timeout-minutes: 0`, which
+  GitHub does not define. A job that calls a reusable workflow (a
   job-level `uses:`) is left out, since GitHub does not accept the setting
   there and the called workflow's own jobs carry it. A workflow file that
   does not parse fails it as unreadable, and counts as one entry in the
