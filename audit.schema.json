@@ -825,7 +825,7 @@
           "items": { "$ref": "#/$defs/ci_commit" }
         },
         "last_default_branch_run": {
-          "description": "When the newest workflow run on the default branch was created, of any event, in UTC. Absent when no workflow has run on the default branch, and for an empty repository.",
+          "description": "When the newest workflow run on the default branch from this repository, not a fork's pull request from a branch of the same name, was created, of any event, in UTC. Absent when no such run is among the newest hundred runs on that branch name, and for an empty repository.",
           "type": "string",
           "format": "date-time"
         }

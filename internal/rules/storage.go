@@ -23,7 +23,8 @@ const activityWindow = 7 * 24 * time.Hour
 // Restoring such an entry costs a run its cache while looking like a hit.
 const cacheFloor = 1_000_000
 
-// recentDefaultRun reports whether a workflow ran on the default branch
+// recentDefaultRun reports whether a workflow of the repository's own (the
+// collector does not count a fork's pull request) ran on the default branch
 // within activityWindow of now, the snapshot's instant. A repository with no
 // default-branch run recorded has none within it.
 func recentDefaultRun(r audit.Repo, now time.Time) bool {

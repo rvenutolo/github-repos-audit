@@ -424,9 +424,10 @@ Grouped by theme here; the report lists them in the fixed worklist order
   the repository's default workflow permissions, do not grant it;
   `write-all` does). A workflow, or a composite a job uses, that the tool
   could not read is named as `unreadable <path>`. It passes only with every
-  size in range and no problem. n/a without a `flake.nix`, or when no workflow has run on the
-  default branch in the last 7 days, since GitHub evicts a cache nothing has
-  restored for that long. The report's Nix section shows it.
+  size in range and no problem. n/a without a `flake.nix`, or when no workflow
+  of this repository's own (not a fork's pull request from a branch of the
+  same name) has run on the default branch in the last 7 days, since GitHub
+  evicts a cache nothing has restored for that long. The report's Nix section shows it.
 - **go_cache** — whether the default branch's Go cache holds something.
   Caches whose key starts `go-` are grouped into families as for nix_cache
   (`go-Linux`, `go-macOS`), counting only caches saved from the default
@@ -435,8 +436,9 @@ Grouped by theme here; the report lists them in the fixed worklist order
   that built nothing but saved last fails it however full the older entries
   are. There is no upper bound. The cell shows the first family below the
   floor (`✗ empty (430 B)`), or else the largest (`✓ 206 MB`), or
-  `none on main`. n/a without a root `go.mod`, or when no workflow has run
-  on the default branch in the last 7 days. The report's CI efficiency
+  `none on main`. n/a without a root `go.mod`, or when no workflow of this
+  repository's own (not a fork's pull request) has run on the default branch
+  in the last 7 days. The report's CI efficiency
   section shows it.
 - **cache_usage** — whether the repository's Actions caches stay at or
   below 80% of the cache storage limit GitHub reports for it. Past the limit

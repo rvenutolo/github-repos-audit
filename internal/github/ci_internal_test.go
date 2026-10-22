@@ -373,11 +373,23 @@ func TestToAudit_ciEmptyRepo(t *testing.T) {
 // ciBase is the repository path fetchCI is handed in these tests.
 const ciBase = "/repos/gh-owner/web-app"
 
+// ciRepoID is the repository id every run in these tests belongs to.
+const ciRepoID int64 = 1
+
 // branchRun renders one workflow_runs entry on branch, on a commit no sample
-// names, so fetchCI reads no jobs for it and only its recency is in play.
-func branchRun(id int, branch, event, createdAt string) string {
+// names, so fetchCI reads no jobs for it and only its recency is in play. The
+// run belongs to repository ciRepoID; headRepoID is the repository its head
+// commit came from, ciRepoID for a run of the repository's own, another id
+// for a fork's pull request, and nil for one whose fork has been deleted,
+// which GitHub sends as a null head_repository.
+func branchRun(id int, branch, event, createdAt string, headRepoID *int64) string {
+	head := "null"
+	if headRepoID != nil {
+		head = `{"id":` + strconv.FormatInt(*headRepoID, 10) + `}`
+	}
 	return `{"id":` + strconv.Itoa(id) + `,"name":"ci","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb00c1",` +
-		`"head_branch":"` + branch + `","event":"` + event + `","status":"completed","created_at":"` + createdAt + `"}`
+		`"head_branch":"` + branch + `","event":"` + event + `","status":"completed","created_at":"` + createdAt + `",` +
+		`"repository":{"id":` + strconv.FormatInt(ciRepoID, 10) + `},"head_repository":` + head + `}`
 }
 
 // runsList renders a workflow_runs list of the given entries.
@@ -395,11 +407,11 @@ func TestFetchCI_lastDefaultBranchRun(t *testing.T) {
 
 	c, seen := newStorageClient(t, map[string]storagePage{
 		ciBase + "/actions/runs": runsList(
-			branchRun(4000004, "feature", "pull_request", "2026-10-20T09:00:00Z"),
-			branchRun(4000003, "feature", "push", "2026-10-20T08:00:00Z"),
+			branchRun(4000004, "feature", "pull_request", "2026-10-20T09:00:00Z", new(ciRepoID)),
+			branchRun(4000003, "feature", "push", "2026-10-20T08:00:00Z", new(ciRepoID)),
 		),
 		ciBase + "/actions/runs?branch=main": runsList(
-			branchRun(4000002, "main", "schedule", "2026-10-19T06:00:00+02:00"),
+			branchRun(4000002, "main", "schedule", "2026-10-19T06:00:00+02:00", new(ciRepoID)),
 		),
 	})
 	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
@@ -420,11 +432,11 @@ func TestFetchCI_lastDefaultBranchRun(t *testing.T) {
 	}
 }
 
-// TestFetchCI_lastDefaultBranchRunAsksForOneEscapedRun: the branch filter is
+// TestFetchCI_lastDefaultBranchRunAsksForOneEscapedPage: the branch filter is
 // query-escaped, so a branch name holding characters a query gives meaning
-// to still names the whole branch, and only one run is asked for, since only
-// the newest is wanted.
-func TestFetchCI_lastDefaultBranchRunAsksForOneEscapedRun(t *testing.T) {
+// to still names the whole branch, and one full page is asked for, since the
+// newest runs on a branch name can all be forks' pull requests.
+func TestFetchCI_lastDefaultBranchRunAsksForOneEscapedPage(t *testing.T) {
 	t.Parallel()
 
 	const branch = "release/1.0+x&y=z #1"
@@ -456,8 +468,62 @@ func TestFetchCI_lastDefaultBranchRunAsksForOneEscapedRun(t *testing.T) {
 	if gotBranch != branch {
 		t.Errorf("branch filter = %q, want %q", gotBranch, branch)
 	}
-	if gotPerPage != "1" {
-		t.Errorf("per_page = %q, want 1", gotPerPage)
+	if gotPerPage != "100" {
+		t.Errorf("per_page = %q, want 100", gotPerPage)
+	}
+}
+
+// TestFetchCI_lastDefaultBranchRunSkipsForks: the branch filter matches a
+// run's head branch, so a fork's pull request from a branch it named main is
+// listed among the default branch's runs. The recency is the newest run of
+// the repository's own, skipping both a fork's run and one whose fork was
+// deleted (a null head repository, which cannot be shown to be this one).
+// The fork runs are the newest entries, so taking the first entry fails
+// here. A page of fork runs alone leaves the recency zero.
+func TestFetchCI_lastDefaultBranchRunSkipsForks(t *testing.T) {
+	t.Parallel()
+
+	const forkID int64 = 2
+	tests := []struct {
+		name string
+		runs []string
+		want time.Time
+	}{
+		{
+			name: "newest own run after fork runs",
+			runs: []string{
+				branchRun(4000007, "main", "pull_request", "2026-10-20T09:00:00Z", new(forkID)),
+				branchRun(4000006, "main", "pull_request", "2026-10-20T08:00:00Z", nil),
+				branchRun(4000005, "main", "schedule", "2026-10-20T07:00:00Z", new(ciRepoID)),
+			},
+			want: time.Date(2026, 10, 20, 7, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "only fork runs",
+			runs: []string{
+				branchRun(4000007, "main", "pull_request", "2026-10-20T09:00:00Z", new(forkID)),
+				branchRun(4000006, "main", "pull_request", "2026-10-20T08:00:00Z", nil),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, _ := newStorageClient(t, map[string]storagePage{
+				ciBase + "/actions/runs":             runsList(),
+				ciBase + "/actions/runs?branch=main": runsList(tt.runs...),
+			})
+			ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
+
+			if err := c.fetchCI(t.Context(), ciBase, "main", &ci); err != nil {
+				t.Fatalf("fetchCI() error = %v, want nil", err)
+			}
+
+			if !ci.LastDefaultBranchRun.Equal(tt.want) {
+				t.Errorf("LastDefaultBranchRun = %v, want %v", ci.LastDefaultBranchRun, tt.want)
+			}
+		})
 	}
 }
 
@@ -467,7 +533,7 @@ func TestFetchCI_noDefaultBranchRuns(t *testing.T) {
 	t.Parallel()
 
 	c, _ := newStorageClient(t, map[string]storagePage{
-		ciBase + "/actions/runs":             runsList(branchRun(4000001, "feature", "push", "2026-10-20T09:00:00Z")),
+		ciBase + "/actions/runs":             runsList(branchRun(4000001, "feature", "push", "2026-10-20T09:00:00Z", new(ciRepoID))),
 		ciBase + "/actions/runs?branch=main": runsList(),
 	})
 	ci := audit.CI{DefaultBranch: []audit.CICommit{{OID: ciOID}}}
