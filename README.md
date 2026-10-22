@@ -239,7 +239,9 @@ lint = "check-workflow-hermetic"
   `flake.lock`, since the tool records only flake.lock's GitHub-type nodes;
   any other kind (`git+https:`, say) is always reported `not locked`.
 - `lint` is the lint's command name, looked for in `flake.nix` and the gate
-  files.
+  files. A line whose first non-whitespace character is `#` is a comment and
+  is skipped; a trailing comment is not stripped, since telling a `#` that
+  starts one from a `#` inside a string or URL needs a shell or Nix parser.
 
 Both keys are required and must not be empty. Like `[identity]`, the table is
 required once any type or override judges `hermetic_nix`, and refused when
@@ -369,10 +371,10 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `[hermetic].flake` exactly (`no input`); `flake.lock` has a node for it,
   matched on `github:<owner>/<repo>` without regard to case, so a `git+https:`
   or other non-GitHub input is never found (`not locked`); `flake.nix`
-  mentions `[hermetic].lint`, a text stand-in for the default devShell
+  mentions `[hermetic].lint` outside a full-line `#` comment, a text stand-in for the default devShell
   carrying it, since the tool never evaluates Nix (`not in devShell`); and
   `run-all-checks`, a file directly under `.ci/`, or the `justfile` mentions
-  it (`not in gate`). The gate part shows the wiring exists, not that the
+  it outside a full-line `#` comment (`not in gate`). The gate part shows the wiring exists, not that the
   call is reachable. A `flake.nix` the tool could not read fails as
   `unreadable flake.nix`, with no other part named. n/a without a `flake.nix`,
   which the flake_nix row already reports. The report's Nix section shows it.

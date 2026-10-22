@@ -627,12 +627,12 @@
           "minLength": 1
         },
         "names_lint": {
-          "description": "flake.nix's text contains the configured hermetic-lint command name.",
+          "description": "flake.nix's text contains the configured hermetic-lint command name on a line that is not a full-line # comment (trailing comments are not stripped).",
           "type": "boolean",
           "const": true
         },
         "gate_files": {
-          "description": "The gate files (run-all-checks, the justfile, each file directly under .ci) whose text contains the configured hermetic-lint command name, by path, sorted.",
+          "description": "The gate files (run-all-checks, the justfile, each file directly under .ci) whose text contains the configured hermetic-lint command name on a line that is not a full-line # comment (trailing comments are not stripped), by path, sorted.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 },

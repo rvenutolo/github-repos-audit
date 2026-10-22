@@ -150,3 +150,67 @@ func TestGateFiles_ciSubdirectoryIsNotRead(t *testing.T) {
 		t.Errorf("gateFiles mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// TestNamesOutsideComments: a line whose first non-whitespace character is
+// '#' is a comment and names nothing; a trailing comment is not stripped, so
+// a mention before one still counts.
+func TestNamesOutsideComments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "full-line comment", text: "# check-x", want: false},
+		{name: "indented comment", text: "  # check-x", want: false},
+		{name: "tab-indented comment", text: "\t# check-x", want: false},
+		{name: "trailing comment keeps the mention", text: "run check-x # note", want: true},
+		{name: "comment then code", text: "# check-x\ncheck-x", want: true},
+		{name: "hash inside a string", text: "echo '#' check-x", want: true},
+		{name: "empty", text: "", want: false},
+		{name: "CRLF comment", text: "# check-x\r\nother\r\n", want: false},
+		{name: "CRLF code", text: "# note\r\ncheck-x\r\n", want: true},
+		{name: "absent", text: "other\n", want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := namesOutsideComments(tc.text, "check-x"); got != tc.want {
+				t.Errorf("namesOutsideComments(%q) = %v, want %v", tc.text, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGateFiles_commentOnlyMentionIsNotWiring: a gate file that mentions the
+// lint only in a comment does not run it.
+func TestGateFiles_commentOnlyMentionIsNotWiring(t *testing.T) {
+	t.Parallel()
+
+	f := &repoFiles{
+		Justfile: text("# lint-x is run elsewhere\ncheck:\n    true\n"),
+		CI:       &blobTree{Entries: []blobEntry{{Name: "check-01", Type: "blob", Object: text("lint-x\n")}}},
+	}
+	want := []string{".ci/check-01"}
+	if diff := cmp.Diff(want, gateFiles(f, "lint-x")); diff != "" {
+		t.Errorf("gateFiles mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestFlakeFacts_commentOnlyLintMention: flake.nix naming the lint only in a
+// comment does not put it in the devShell.
+func TestFlakeFacts_commentOnlyLintMention(t *testing.T) {
+	t.Parallel()
+
+	probe := Probe{Lint: "check-workflow-hermetic"}
+	commented := flakeFacts(&repoFiles{FlakeNix: text("{\n  # check-workflow-hermetic goes here\n}\n")}, probe)
+	if commented.NamesLint {
+		t.Error("NamesLint = true for a comment-only mention, want false")
+	}
+	live := flakeFacts(&repoFiles{FlakeNix: text("{\n  packages = [ check-workflow-hermetic ];\n}\n")}, probe)
+	if !live.NamesLint {
+		t.Error("NamesLint = false for a code mention, want true")
+	}
+}
