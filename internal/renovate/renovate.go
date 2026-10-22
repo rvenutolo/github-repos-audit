@@ -4,11 +4,12 @@
 // nix manager runs, and whether lock-file maintenance is on.
 //
 // Only presets in the audited account are followed. A built-in preset lives
-// in Renovate's source rather than on GitHub, and another owner's preset is
-// outside what this tool reads, so both are treated as setting nothing — a
-// repository relying on one alone shows "none" or "off" (":maintainLockFilesWeekly"
-// turns lock-file maintenance on in Renovate, but not here), which is
-// conservative and is fixed by stating the value explicitly.
+// in Renovate's source rather than on GitHub, so it cannot be fetched: a fixed
+// table (builtinLayer) knows the few that set lockFileMaintenance.enabled, and
+// every other built-in is treated as setting nothing. Another owner's preset
+// is outside what this tool reads and also sets nothing. A repository relying
+// on one of those alone shows "none" or "off", which is conservative and is
+// fixed by stating the value explicitly.
 //
 // The package does no I/O: the caller supplies Fetch, and the value is
 // returned exactly as written, because turning "7 days" into a verdict is
@@ -138,6 +139,11 @@ func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch)
 		return Result{}, err
 	}
 	res := Result{
+		// enabledManagers only narrows the managers Renovate runs; the nix
+		// manager defaults to disabled, so listing it there without
+		// nix.enabled leaves it off. Upstream declined to change that:
+		// doc-rot-exempt: upstream Renovate issue, cited as the reason nix stays off
+		// https://github.com/renovatebot/renovate/issues/9408
 		NixManager:          l.nix.value && (!l.managers.set || slices.Contains(l.managers.names, "nix")),
 		LockFileMaintenance: l.lockFile.value,
 	}
@@ -193,7 +199,10 @@ func (r resolver) layer(ctx context.Context, source, text string, stack []string
 func (r resolver) preset(ctx context.Context, ref string, stack []string) (layered, error) {
 	p, fallback, follow, problem := ParsePreset(ref, r.owner)
 	if !follow {
-		return layered{}, nil
+		// Built-ins land here (they have no owner/repo), as do other owners'
+		// presets; builtinLayer matches only the exact built-in names.
+		l, _ := builtinLayer(ref)
+		return l, nil
 	}
 	if problem != "" {
 		return layered{}, unresolvedError{fmt.Sprintf("preset %s: %s", ref, problem)}

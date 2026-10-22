@@ -390,7 +390,16 @@ Grouped by theme here; the report lists them in the fixed worklist order
   configuration, its `nix` manager runs, and either `lockFileMaintenance` is
   enabled or every `flake.lock` input is pinned by `rev` (the manager alone
   then moves each digest), all read from the effective configuration as
-  `renovate_min_release_age` is. A workflow counts when it runs on
+  `renovate_min_release_age` is, except that six of Renovate's built-in
+  presets are known to the tool for `lockFileMaintenance`:
+  `:maintainLockFilesWeekly`, `:maintainLockFilesMonthly` and
+  `:maintainLockFilesDisabled` (also spelled `default:…`),
+  `config:best-practices`, `config:semverAllWeekly` and
+  `config:semverAllMonthly`. They merge in `extends` order like any preset,
+  and the file's own keys win. `config:best-practices` is read as enabling
+  lock-file maintenance, which assumes Renovate v43 and later; a repository on
+  an older self-hosted Renovate reads as on when it is not. Every other
+  built-in preset reads as setting nothing. A workflow counts when it runs on
   `schedule` and a job runs `nix flake update`, uses
   `DeterminateSystems/update-flake-lock`, or uses a local composite action
   (`./` or `$/`) that runs `nix flake update`. With neither, it fails; a
