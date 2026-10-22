@@ -686,6 +686,30 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
+        "pull_request_branches": {
+          "description": "The `branches:` listed for `pull_request` under the map form of `on:`, in written order with repeats kept. GitHub matches them against the pull request's base branch. Absent when the trigger lists none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "pull_request_branches_ignore": {
+          "description": "The `branches-ignore:` listed for `pull_request` under the map form of `on:`, in written order with repeats kept. Absent when the trigger lists none; never present beside `pull_request_branches`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "pull_request_target_branches": {
+          "description": "The `branches:` listed for `pull_request_target` under the map form of `on:`, in written order with repeats kept. GitHub matches them against the pull request's base branch. Absent when the trigger lists none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "pull_request_target_branches_ignore": {
+          "description": "The `branches-ignore:` listed for `pull_request_target` under the map form of `on:`, in written order with repeats kept. Absent when the trigger lists none; never present beside `pull_request_target_branches`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
         "push_branches": {
           "description": "The `branches:` listed for `push` under the map form of `on:`, in written order with repeats kept, because a `!` pattern only excludes what the patterns before it matched. Absent when the trigger lists none.",
           "type": "array",

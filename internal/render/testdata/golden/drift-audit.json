@@ -440,6 +440,9 @@
             "pull_request",
             "push"
           ],
+          "pull_request_branches": [
+            "main"
+          ],
           "push_branches": [
             "main"
           ],
@@ -592,6 +595,9 @@
           "events": [
             "pull_request",
             "push"
+          ],
+          "pull_request_branches": [
+            "main"
           ],
           "push_branches": [
             "main"

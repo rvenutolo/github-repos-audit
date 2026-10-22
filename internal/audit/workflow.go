@@ -27,6 +27,21 @@ type Workflow struct {
 	// PullRequestTargetTypes is as PullRequestTypes, for
 	// `pull_request_target`, whose default set is the same.
 	PullRequestTargetTypes []string `json:"pull_request_target_types,omitzero"`
+	// PullRequestBranches is the `branches:` the map form of `on:` lists for
+	// `pull_request`, kept as PushBranches is. GitHub matches it against a
+	// pull request's base branch, so it says which branches a pull request
+	// must target to run the workflow. Absent when the trigger lists none,
+	// `branches: []` included, which admits every base branch.
+	PullRequestBranches []string `json:"pull_request_branches,omitzero"`
+	// PullRequestBranchesIgnore is as PullRequestBranches, for
+	// `branches-ignore:`. At most one of the two is set, as for push.
+	PullRequestBranchesIgnore []string `json:"pull_request_branches_ignore,omitzero"`
+	// PullRequestTargetBranches is as PullRequestBranches, for
+	// `pull_request_target`.
+	PullRequestTargetBranches []string `json:"pull_request_target_branches,omitzero"`
+	// PullRequestTargetBranchesIgnore is as PullRequestBranchesIgnore, for
+	// `pull_request_target`.
+	PullRequestTargetBranchesIgnore []string `json:"pull_request_target_branches_ignore,omitzero"`
 	// PushBranches is the `branches:` the map form of `on:` lists for
 	// `push`, in written order and with repeats kept: unlike a set of event
 	// types, the list is order-sensitive, because a `!` pattern excludes only

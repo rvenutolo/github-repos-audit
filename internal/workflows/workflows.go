@@ -68,7 +68,9 @@ func parseWorkflow(text string) (audit.Workflow, error) {
 	if err != nil {
 		return w, err
 	}
-	w.Events, w.PullRequestTypes, w.PullRequestTargetTypes = t.names, t.pullRequest, t.pullRequestTarget
+	w.Events, w.PullRequestTypes, w.PullRequestTargetTypes = t.names, t.pullRequest.types, t.pullRequestTarget.types
+	w.PullRequestBranches, w.PullRequestBranchesIgnore = t.pullRequest.branches, t.pullRequest.branchesIgnore
+	w.PullRequestTargetBranches, w.PullRequestTargetBranchesIgnore = t.pullRequestTarget.branches, t.pullRequestTarget.branchesIgnore
 	w.PushBranches, w.PushBranchesIgnore, w.PushTagFilter = t.push.branches, t.push.branchesIgnore, t.push.tagFilter
 	if w.Concurrency, err = concurrency(lookup(top, "concurrency"), "concurrency"); err != nil {
 		return w, err
@@ -164,25 +166,37 @@ func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
 	return uses, update, nil
 }
 
-// triggers is what `on:` says: the event names, the `types:` the two pull
-// request triggers list, and the ref filters of `push`.
+// triggers is what `on:` says: the event names, the `types:` and branch
+// filters of the two pull request triggers, and the ref filters of `push`.
 type triggers struct {
-	names, pullRequest, pullRequestTarget []string
-	push                                  pushFilter
+	names                          []string
+	pullRequest, pullRequestTarget pullRequestTrigger
+	push                           pushFilter
+}
+
+// branchFilter is which branches a trigger admits, as written.
+type branchFilter struct {
+	branches, branchesIgnore []string
+}
+
+// pullRequestTrigger is what one pull request trigger's settings say.
+type pullRequestTrigger struct {
+	types []string
+	branchFilter
 }
 
 // pushFilter is which refs `on.push` admits, as written.
 type pushFilter struct {
-	branches, branchesIgnore []string
-	tagFilter                bool
+	branchFilter
+	tagFilter bool
 }
 
 // events reduces the three forms of `on:` (one name, a list of names, a map
 // keyed by name) to the sorted, distinct names. A blank or null name is no
 // event, so it is dropped; with nothing left the result is nil, the same as
 // an absent `on:`. Only the map form can give a trigger settings, so only it
-// can list `types:` for `pull_request` and `pull_request_target`, and ref
-// filters for `push`.
+// can list `types:` and branch filters for `pull_request` and
+// `pull_request_target`, and ref filters for `push`.
 func events(n *yaml.Node) (triggers, error) {
 	var t triggers
 	switch {
@@ -209,9 +223,9 @@ func events(n *yaml.Node) (triggers, error) {
 			t.names = append(t.names, p.key)
 			switch p.key {
 			case "pull_request":
-				t.pullRequest, err = eventTypes(p.value, "on.pull_request")
+				t.pullRequest, err = pullRequestSettings(p.value, "on.pull_request")
 			case "pull_request_target":
-				t.pullRequestTarget, err = eventTypes(p.value, "on.pull_request_target")
+				t.pullRequestTarget, err = pullRequestSettings(p.value, "on.pull_request_target")
 			case "push":
 				t.push, err = pushFilters(p.value, "on.push")
 			}
@@ -224,25 +238,41 @@ func events(n *yaml.Node) (triggers, error) {
 	return t, nil
 }
 
-// eventTypes reads the `types:` of one trigger's settings: sorted, distinct,
+// pullRequestSettings reads the `types:` and branch filters of a pull
+// request trigger. Its `paths` filters are not read: they narrow when the
+// workflow runs for a pull request, not which base branches it can run for.
+func pullRequestSettings(n *yaml.Node, where string) (pullRequestTrigger, error) {
+	var t pullRequestTrigger
+	ps, err := settings(n, where)
+	if err != nil {
+		return t, err
+	}
+	if t.types, err = eventTypes(ps, where); err != nil {
+		return t, err
+	}
+	t.branchFilter, err = branchFilters(ps, n.Line, where)
+	return t, err
+}
+
+// settings returns the keys of one trigger's settings. Settings that are not
+// a mapping (null for a bare trigger) have none. pairs, not lookup, so a key
+// written twice is rejected rather than read as whichever comes first.
+func settings(n *yaml.Node, where string) ([]pair, error) {
+	if n.Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	return pairs(n, where)
+}
+
+// eventTypes reads the `types:` among one trigger's settings: sorted, distinct,
 // and nil when none are listed, `types: []` included, since omitzero would
 // write an empty non-nil slice as `[]` and "lists no types" has one spelling.
 // A scalar is a one-item list, as GitHub reads it; failing the whole file as
 // unreadable for a form GitHub runs would fail every check on it.
 //
-// Settings that are not a mapping (null for a bare trigger) list no types.
 // Only `types:` is read here, so a trigger's other shapes stay as unjudged as
 // they are for every other trigger.
-func eventTypes(n *yaml.Node, where string) ([]string, error) {
-	if n.Kind != yaml.MappingNode {
-		return nil, nil
-	}
-	// pairs, not lookup, so a `types:` written twice is rejected rather
-	// than read as whichever comes first.
-	ps, err := pairs(n, where)
-	if err != nil {
-		return nil, err
-	}
+func eventTypes(ps []pair, where string) ([]string, error) {
 	where += ".types"
 	var types []string
 	for _, p := range ps {
@@ -267,29 +297,48 @@ func eventTypes(n *yaml.Node, where string) ([]string, error) {
 	return distinct(types), nil
 }
 
-// pushFilters reads the ref filters of `on.push`. Branch patterns are kept
-// exactly as written, unsorted and with repeats, because `!` patterns are
-// order-sensitive; a scalar is a one-item list, and an empty list is nil, as
-// for eventTypes. Blank patterns (a null item) are dropped. Of the tag
-// filters only their presence (a non-null `tags:` or `tags-ignore:`, empty
-// included) is kept, since what matters downstream is
-// whether branch pushes can run the workflow at all.
+// pushFilters reads the ref filters of `on.push`: its branch filters, as
+// branchFilters reads them, and of the tag filters only their presence (a
+// non-null `tags:` or `tags-ignore:`, empty included), since what matters
+// downstream is whether branch pushes can run the workflow at all.
 //
-// Settings that are not a mapping (null for a bare trigger) filter nothing.
 // `paths` and the rest are not read, so they stay as unjudged as they are for
 // every other trigger.
 func pushFilters(n *yaml.Node, where string) (pushFilter, error) {
 	var f pushFilter
-	if n.Kind != yaml.MappingNode {
-		return f, nil
-	}
-	// pairs, not lookup, so a key written twice is rejected rather than
-	// read as whichever comes first.
-	ps, err := pairs(n, where)
+	ps, err := settings(n, where)
 	if err != nil {
 		return f, err
 	}
-	var hasBranches, hasIgnore bool
+	if f.branchFilter, err = branchFilters(ps, n.Line, where); err != nil {
+		return f, err
+	}
+	for _, p := range ps {
+		if p.key != "tags" && p.key != "tags-ignore" {
+			continue
+		}
+		if _, err := patterns(p.value, where+"."+p.key); err != nil {
+			return f, err
+		}
+		// Presence, not a non-empty list: an empty tag list is not a
+		// documented form, so it is read as the tag-only trigger it
+		// resembles rather than as one that admits every branch.
+		f.tagFilter = f.tagFilter || !absent(p.value)
+	}
+	return f, nil
+}
+
+// branchFilters reads the `branches:` and `branches-ignore:` among one
+// trigger's settings, which start on line. Patterns are kept exactly as written, unsorted and with
+// repeats, because `!` patterns are order-sensitive; a scalar is a one-item
+// list, and an empty list is nil, as for eventTypes. Blank patterns (a null
+// item) are dropped.
+func branchFilters(ps []pair, line int, where string) (branchFilter, error) {
+	var (
+		f                      branchFilter
+		err                    error
+		hasBranches, hasIgnore bool
+	)
 	for _, p := range ps {
 		switch p.key {
 		case "branches":
@@ -298,12 +347,6 @@ func pushFilters(n *yaml.Node, where string) (pushFilter, error) {
 		case "branches-ignore":
 			hasIgnore = true
 			f.branchesIgnore, err = patterns(p.value, where+".branches-ignore")
-		case "tags", "tags-ignore":
-			_, err = patterns(p.value, where+"."+p.key)
-			// Presence, not a non-empty list: an empty tag list is not a
-			// documented form, so it is read as the tag-only trigger it
-			// resembles rather than as one that admits every branch.
-			f.tagFilter = f.tagFilter || !absent(p.value)
 		}
 		if err != nil {
 			return f, err
@@ -312,7 +355,7 @@ func pushFilters(n *yaml.Node, where string) (pushFilter, error) {
 	// GitHub refuses the pair, and reading both would hide which of the two
 	// the author meant to apply.
 	if hasBranches && hasIgnore {
-		return f, fmt.Errorf("line %d: %s lists both branches and branches-ignore", n.Line, where)
+		return f, fmt.Errorf("line %d: %s lists both branches and branches-ignore", line, where)
 	}
 	return f, nil
 }
