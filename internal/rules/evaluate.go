@@ -397,6 +397,10 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 
 	case CheckRequiredChecks:
 		return observeRequiredChecks(r)
+	case CheckCIOnPR:
+		return observeCIOnPR(r)
+	case CheckCIOnPush:
+		return observeCIOnPush(r)
 
 	case CheckCIGreen:
 		return observeCIGreen(r)

@@ -273,6 +273,26 @@ Grouped by theme here; the report lists them in the fixed worklist order
   check other than the `merge-gate` placeholder (n/a wherever a direct push
   is allowed, since there is no gate to require anything), and whether the
   head commit's checks last reported success.
+- **ci_on_pr**, **ci_on_push** — whether some workflow runs when a pull
+  request is opened or updated (`pull_request` or `pull_request_target`
+  whose `types:` include `synchronize`, as the default set does), and
+  whether one such workflow also runs on a push to the repository's own
+  default branch. Both are judged from the workflow files, never from run
+  history, so an idle repository that is set up correctly passes. The push
+  trigger must sit on the same workflow as the pull-request trigger, so a
+  release workflow that runs only on a push to the default branch does not
+  count. The push trigger's `branches:` or `branches-ignore:` are matched
+  against the default branch with GitHub's filter pattern syntax, the last
+  matching `branches:` pattern deciding; a push trigger that lists only
+  `tags:` or `tags-ignore:` runs for tags alone and does not count. A
+  pattern this tool cannot read with certainty admits nothing.
+  `paths:` and `paths-ignore:` are ignored, since they narrow when the
+  workflow runs on the branch rather than whether it can, and `merge_group`
+  does not count, since a merge queue run saves its cache under a ref no
+  pull request reads. The `merge-gate.yml` placeholder never counts for
+  either. When nothing qualifies and a workflow could not be parsed, the
+  cell names the first such file, as `unreadable <file>`, since it may be
+  the missing CI.
 - **renovate**, **flake_nix** — whether the corresponding tooling file
   exists. The Renovate file is looked for at every path Renovate itself
   reads, in Renovate's order, and the first one found is the one reported and

@@ -55,15 +55,15 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 | Repository                                 | Go cache | Cache use | Cancel superseded | Timeouts | Artifacts |
 | ------------------------------------------ | -------- | --------- | ----------------- | -------- | --------- |
-| [alpha](https://github.com/gh-owner/alpha) | n/a      | n/a       | n/a               | n/a      | 0         |
-| [bravo](https://github.com/gh-owner/bravo) | n/a      | n/a       | n/a               | n/a      | 0         |
+| [alpha](https://github.com/gh-owner/alpha) | n/a      | n/a       | ✓                 | ✓        | 0         |
+| [bravo](https://github.com/gh-owner/bravo) | n/a      | n/a       | ✓                 | ✓        | 0         |
 
 ## Policy
 
-| Repository                                 | Direct push | Signed | Identity | CI workflows | Required checks | Tag ruleset | Secret scanning | Vuln. reporting |
-| ------------------------------------------ | ----------- | ------ | -------- | ------------ | --------------- | ----------- | --------------- | --------------- |
-| [alpha](https://github.com/gh-owner/alpha) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | default     | n/a             | n/a             |
-| [bravo](https://github.com/gh-owner/bravo) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | default     | n/a             | n/a             |
+| Repository                                 | Direct push | Signed | Identity | CI workflows | Required checks | PR CI | Push CI | Tag ruleset | Secret scanning | Vuln. reporting |
+| ------------------------------------------ | ----------- | ------ | -------- | ------------ | --------------- | ----- | ------- | ----------- | --------------- | --------------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | ✓     | ✓       | default     | n/a             | n/a             |
+| [bravo](https://github.com/gh-owner/bravo) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | ✓     | ✓       | default     | n/a             | n/a             |
 
 ## Activity
 
