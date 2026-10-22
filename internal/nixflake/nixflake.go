@@ -28,8 +28,8 @@ import (
 // evaluating the file.
 var inputURL = regexp.MustCompile(`url\s*=\s*"([^"]+)"`)
 
-// Inputs returns every input URL flake.nix names, as written, sorted and
-// without repeats.
+// Inputs returns every `url = "…"` binding flake.nix holds, inside `inputs`
+// or not, as written, sorted and without repeats.
 func Inputs(flakeNix string) []string {
 	matches := inputURL.FindAllStringSubmatch(flakeNix, -1)
 	// nil, not empty, when there are none: audit.Flake's omitzero leaves
@@ -123,7 +123,7 @@ func parseLock(text string) (LockFacts, error) {
 	}
 
 	if _, ok := root.Inputs["nixpkgs"]; ok {
-		name, err := lf.resolve(lf.Root, "nixpkgs", map[string]bool{})
+		name, err := lf.resolve(lf.Root, "nixpkgs", map[string]bool{}, map[string]string{})
 		if err != nil {
 			return facts, err
 		}
@@ -158,8 +158,15 @@ func parseLock(text string) (LockFacts, error) {
 // root, and a step of that path may itself follow, so resolution recurses;
 // seen holds the (node, input) pairs on the current chain, so a lock whose
 // follows loop back on themselves is an error rather than a stack overflow.
-func (lf lockFile) resolve(from, input string, seen map[string]bool) (string, error) {
+// memo holds the answers already found under the same key: paths that fan
+// into shared chains would otherwise be walked once per route, which grows
+// exponentially with depth. Only successes are kept, since a failure ends
+// the whole parse.
+func (lf lockFile) resolve(from, input string, seen map[string]bool, memo map[string]string) (string, error) {
 	key := from + "\x00" + input
+	if name, ok := memo[key]; ok {
+		return name, nil
+	}
 	if seen[key] {
 		return "", fmt.Errorf("input %q of node %q follows itself", input, from)
 	}
@@ -175,6 +182,7 @@ func (lf lockFile) resolve(from, input string, seen map[string]bool) (string, er
 		if _, ok := lf.Nodes[name]; !ok {
 			return "", fmt.Errorf("input %q of node %q names missing node %q", input, from, name)
 		}
+		memo[key] = name
 		return name, nil
 	}
 	var path []string
@@ -183,11 +191,12 @@ func (lf lockFile) resolve(from, input string, seen map[string]bool) (string, er
 	}
 	cur := lf.Root
 	for _, step := range path {
-		next, err := lf.resolve(cur, step, seen)
+		next, err := lf.resolve(cur, step, seen, memo)
 		if err != nil {
 			return "", err
 		}
 		cur = next
 	}
+	memo[key] = cur
 	return cur, nil
 }
