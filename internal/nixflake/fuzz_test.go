@@ -3,6 +3,8 @@ package nixflake_test
 import (
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/rvenutolo/github-repos-audit/internal/nixflake"
 )
 
@@ -21,8 +23,11 @@ func FuzzParseLock(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, text string) {
 		lock, problem := nixflake.ParseLock(text)
-		if problem != "" && (lock.AllRevPinned || !lock.NixpkgsLastModified.IsZero() || len(lock.LockedInputs) != 0) {
-			t.Errorf("ParseLock() = %+v with problem %q, want zero facts", lock, problem)
+		if problem == "" {
+			return
+		}
+		if diff := cmp.Diff(nixflake.LockFacts{}, lock); diff != "" {
+			t.Errorf("ParseLock() with problem %q carries facts (-want +got):\n%s", problem, diff)
 		}
 	})
 }

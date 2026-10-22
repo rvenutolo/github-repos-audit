@@ -316,7 +316,7 @@ func TestParseLock_fanInFollowsIsFast(t *testing.T) {
 
 	// Every hub input h_k follows a path whose last two steps both resolve
 	// h_(k-1) again, so resolving without remembering results costs twice as
-	// much per level and never finishes at this depth. Each input resolves
+	// much per level and does not finish within the test timeout at this depth. Each input resolves
 	// to the hub itself, which carries the date.
 	const levels = 30
 	inputs := []string{`"h_0": "hub"`}
