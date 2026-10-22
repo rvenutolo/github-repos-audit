@@ -60,10 +60,10 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## Policy
 
-| Repository                                 | Direct push | Signed | Identity | CI workflows | Required checks | PR CI | Push CI | Tag ruleset | Secret scanning | Vuln. reporting |
-| ------------------------------------------ | ----------- | ------ | -------- | ------------ | --------------- | ----- | ------- | ----------- | --------------- | --------------- |
-| [alpha](https://github.com/gh-owner/alpha) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | ✓     | ✓       | default     | n/a             | n/a             |
-| [bravo](https://github.com/gh-owner/bravo) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | ✓     | ✓       | default     | n/a             | n/a             |
+| Repository                                 | Direct push | Signed | Identity | CI workflows | Required checks | PR CI | Push CI | Up to date | Tag ruleset | Secret scanning | Vuln. reporting |
+| ------------------------------------------ | ----------- | ------ | -------- | ------------ | --------------- | ----- | ------- | ---------- | ----------- | --------------- | --------------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | ✓     | ✓       | ✓          | default     | n/a             | n/a             |
+| [bravo](https://github.com/gh-owner/bravo) | ✓ blocked   | ✓      | ✓        | ✓            | 2               | ✓     | ✓       | ✓          | default     | n/a             | n/a             |
 
 ## Activity
 

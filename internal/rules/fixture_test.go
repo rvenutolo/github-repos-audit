@@ -117,6 +117,7 @@ func fixture(name string, typ rules.Type) audit.Repo {
 			Known:          true,
 			Types:          []string{"pull_request", "required_signatures", "required_status_checks"},
 			RequiredChecks: []string{"gate (ubuntu-latest)", "commitlint"},
+			Strict:         true,
 		},
 		Settings: audit.Settings{
 			HasIssues:                     true,

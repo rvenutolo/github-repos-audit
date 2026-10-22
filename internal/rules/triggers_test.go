@@ -230,3 +230,79 @@ func TestCIOnPush_branchFilters(t *testing.T) {
 		})
 	}
 }
+
+// upToDateCell judges one tools repository, which standard-types.toml holds
+// to branch_up_to_date = "required", after mutate has changed its branch
+// facts, and returns the branch_up_to_date cell.
+func upToDateCell(t *testing.T, mutate func(*audit.Repo)) rules.Cell {
+	t.Helper()
+	r := fixture("alpha", "tools")
+	mutate(&r)
+	return mustEvaluateOne(t, r).Repos[0].Cell(rules.CheckBranchUpToDate)
+}
+
+// TestBranchUpToDate_strictWithMergeGatePasses: the placeholder counts here,
+// since making the strict flag bind a repository without CI is its job.
+func TestBranchUpToDate_strictWithMergeGatePasses(t *testing.T) {
+	t.Parallel()
+
+	cell := upToDateCell(t, func(r *audit.Repo) {
+		r.Branch.Strict = true
+		r.Branch.RequiredChecks = []string{"merge-gate"}
+	})
+	wantCell(t, cell, rules.Pass, "")
+}
+
+// TestBranchUpToDate_notStrictFails: required checks that a stale branch may
+// skip do not make a pull request prove it works against the default branch.
+func TestBranchUpToDate_notStrictFails(t *testing.T) {
+	t.Parallel()
+
+	cell := upToDateCell(t, func(r *audit.Repo) {
+		r.Branch.Strict = false
+		r.Branch.RequiredChecks = []string{"merge-gate"}
+	})
+	wantCell(t, cell, rules.Fail, "")
+}
+
+// TestBranchUpToDate_noChecksFails: the strict flag only binds a required
+// status checks rule that names at least one check.
+func TestBranchUpToDate_noChecksFails(t *testing.T) {
+	t.Parallel()
+
+	cell := upToDateCell(t, func(r *audit.Repo) {
+		r.Branch.Strict = true
+		r.Branch.RequiredChecks = nil
+	})
+	wantCell(t, cell, rules.Fail, "")
+}
+
+// TestBranchUpToDate_directPushIsNA: a repository that allows direct pushes
+// (the packages shape) has no merge to gate, so the check is withheld even
+// though the type says required.
+func TestBranchUpToDate_directPushIsNA(t *testing.T) {
+	t.Parallel()
+
+	cell := upToDateCell(t, func(r *audit.Repo) {
+		r.Branch.Types = []string{"required_signatures"}
+		r.Branch.Strict = false
+		r.Branch.RequiredChecks = nil
+	})
+	if cell.Verdict != rules.NA {
+		t.Errorf("verdict = %v, want NA under direct push", cell.Verdict)
+	}
+}
+
+// TestBranchUpToDate_emptyRepositoryIsNA: an empty repository has no branch
+// rules to read, which is no fact found wanting.
+func TestBranchUpToDate_emptyRepositoryIsNA(t *testing.T) {
+	t.Parallel()
+
+	cell := upToDateCell(t, func(r *audit.Repo) {
+		r.Empty = true
+		r.Branch = audit.BranchRules{Known: false}
+	})
+	if cell.Verdict != rules.NA {
+		t.Errorf("verdict = %v, want NA on an empty repository", cell.Verdict)
+	}
+}

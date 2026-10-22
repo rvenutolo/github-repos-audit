@@ -169,8 +169,9 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard
 			}
 		}
 
-		// Required checks are n/a wherever direct push is allowed.
-		if c == CheckRequiredChecks && pushCell.Value == directPushAllowed {
+		// Required checks and the up-to-date requirement are n/a wherever
+		// direct push is allowed: a pushed commit has no merge to gate.
+		if (c == CheckRequiredChecks || c == CheckBranchUpToDate) && pushCell.Value == directPushAllowed {
 			exp = expNA
 		}
 
@@ -401,6 +402,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observeCIOnPR(r)
 	case CheckCIOnPush:
 		return observeCIOnPush(r)
+	case CheckBranchUpToDate:
+		return observeUpToDate(r)
 
 	case CheckCIGreen:
 		return observeCIGreen(r)
@@ -458,6 +461,17 @@ func observeRequiredChecks(r audit.Repo) observation {
 		return observation{scalar: true}
 	}
 	return observation{ok: true, value: strconv.Itoa(own), scalar: true}
+}
+
+// observeUpToDate passes when a required-status-checks rule in force is strict
+// and names at least one check; strict binds nothing without a check. The
+// merge-gate placeholder counts: making the flag apply to a repository without
+// real CI is its job.
+func observeUpToDate(r audit.Repo) observation {
+	if !r.Branch.Known {
+		return observation{unknown: true}
+	}
+	return observation{ok: r.Branch.Strict && len(r.Branch.RequiredChecks) > 0, mark: true}
 }
 
 func observeCIGreen(r audit.Repo) observation {

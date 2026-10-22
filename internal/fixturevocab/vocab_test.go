@@ -505,7 +505,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.actions_storage\.(artifact_bytes|artifact_count|cache_limit_bytes|cache_usage_bytes)`,
 		`repos\[\]\.actions_storage\.caches\[\]\.size_bytes`,
 		`repos\[\]\.(branches|ci_state|default_branch|empty|license|open_pull_requests|published|topics|type|visibility)`,
-		`repos\[\]\.branch\.(known|types\[\])`,
+		`repos\[\]\.branch\.(known|strict|types\[\])`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.(author_bot|complete|pr_number|wait_seconds)`,
 		`repos\[\]\.ci\.(pull_requests|default_branch)\[\]\.jobs\[\]\.seconds`,
 		`repos\[\]\.files\.[a-z_]+`,

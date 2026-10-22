@@ -293,6 +293,13 @@ Grouped by theme here; the report lists them in the fixed worklist order
   either. When nothing qualifies and a workflow could not be parsed, the
   cell names the first such file, as `unreadable <file>`, since it may be
   the missing CI.
+- **branch_up_to_date** — whether the default branch's rules carry a
+  required-status-checks rule that is strict (a pull request must be up to
+  date with the default branch before it merges) and names at least one
+  check. The `merge-gate` placeholder counts here, since making the strict
+  flag apply to a repository without real CI is its job. n/a wherever a
+  direct push is allowed, since a pushed commit has no merge to gate, and for
+  an empty repository.
 - **renovate**, **flake_nix** — whether the corresponding tooling file
   exists. The Renovate file is looked for at every path Renovate itself
   reads, in Renovate's order, and the first one found is the one reported and

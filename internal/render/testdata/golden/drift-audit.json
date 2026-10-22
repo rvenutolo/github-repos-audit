@@ -4,6 +4,7 @@
   "types": {
     "config": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
@@ -62,6 +63,7 @@
     },
     "content": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "not_required",
       "changelog": "not_required",
@@ -120,6 +122,7 @@
     },
     "environment": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
@@ -178,6 +181,7 @@
     },
     "infra": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
@@ -236,6 +240,7 @@
     },
     "software": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "required",
@@ -294,6 +299,7 @@
     },
     "tools": {
       "artifact_storage": "info",
+      "branch_up_to_date": "required",
       "branches": "info",
       "cache_usage": "required",
       "changelog": "not_required",
@@ -485,7 +491,8 @@
         "required_checks": [
           "gate (ubuntu-latest)",
           "commitlint"
-        ]
+        ],
+        "strict": true
       },
       "settings": {
         "has_issues": true,
@@ -637,7 +644,8 @@
         "required_checks": [
           "gate (ubuntu-latest)",
           "commitlint"
-        ]
+        ],
+        "strict": true
       },
       "settings": {
         "has_issues": true,
