@@ -1083,6 +1083,11 @@
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
+        },
+        "strict": {
+          "description": "True when any required_status_checks rule in force asks for the branch to be up to date before merging. GitHub applies it only with at least one required check. Absent when false.",
+          "type": "boolean",
+          "const": true
         }
       }
     },

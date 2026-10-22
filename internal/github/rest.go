@@ -65,6 +65,9 @@ type branchRule struct {
 
 type ruleParameters struct {
 	RequiredStatusChecks []requiredStatusCheck `json:"required_status_checks"`
+	// StrictRequiredStatusChecksPolicy is "require branches to be up to date
+	// before merging".
+	StrictRequiredStatusChecksPolicy bool `json:"strict_required_status_checks_policy"`
 }
 
 type requiredStatusCheck struct {
@@ -241,11 +244,13 @@ func (c *Client) fetchBranchRules(ctx context.Context, base string, repo *audit.
 
 	types := make([]string, 0, len(rules))
 	var checks []string
+	strict := false
 	for _, r := range rules {
 		types = append(types, r.Type)
 		if r.Parameters == nil {
 			continue
 		}
+		strict = strict || r.Parameters.StrictRequiredStatusChecksPolicy
 		for _, check := range r.Parameters.RequiredStatusChecks {
 			checks = append(checks, check.Context)
 		}
@@ -255,6 +260,7 @@ func (c *Client) fetchBranchRules(ctx context.Context, base string, repo *audit.
 		Known:          true,
 		Types:          sortedUnique(types),
 		RequiredChecks: sortedUnique(checks),
+		Strict:         strict,
 	}
 	return nil
 }

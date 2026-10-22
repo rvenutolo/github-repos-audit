@@ -148,6 +148,7 @@ func wantShellScripts(t *testing.T) audit.Repo {
 				"check-06", "check-11", "check-14", "check-17", "check-30",
 				"check-31", "check-32", "check-33", "check-34", "check-35",
 			},
+			Strict: true,
 		},
 		Settings: audit.Settings{
 			HasIssues:                    true,
@@ -273,6 +274,7 @@ func wantWebApp(t *testing.T) audit.Repo {
 				"required_signatures", "required_status_checks",
 			},
 			RequiredChecks: []string{"check-36"},
+			Strict:         true,
 		},
 		Settings: audit.Settings{
 			HasIssues:           true,
@@ -1227,6 +1229,55 @@ func TestClient_Collect_directPushRepository(t *testing.T) {
 	}
 	if got[0].Files.Workflows != nil {
 		t.Errorf("Workflows = %v, want nil for a repository with no .github/workflows", got[0].Files.Workflows)
+	}
+}
+
+// TestClient_Collect_recordsStrictStatusChecks: Strict is true when any
+// required_status_checks rule in force asks for the branch to be up to date,
+// even if another such rule (from a second ruleset) does not, and false when
+// no rule does or there is no such rule at all.
+func TestClient_Collect_recordsStrictStatusChecks(t *testing.T) {
+	t.Parallel()
+
+	const rulesPath = "/repos/" + testOwner + "/web-app/rules/branches/main"
+	tests := []struct {
+		name string
+		repo string
+		body string // replaces the rules response when non-empty
+		want bool
+	}{
+		{name: "strict rule", repo: "web-app", want: true},
+		{name: "no status check rule", repo: "pkg-index", want: false},
+		{
+			name: "only a non-strict rule",
+			repo: "web-app",
+			body: `[{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"check-36"}]}}]`,
+			want: false,
+		},
+		{
+			name: "one strict and one non-strict rule",
+			repo: "web-app",
+			body: `[{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"check-36"}]}},` +
+				`{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":true,"required_status_checks":[{"context":"check-37"}]}}]`,
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			api := newFakeAPI(t)
+			if tt.body != "" {
+				api.failNext(rulesPath, scriptedFailure{status: http.StatusOK, body: tt.body})
+			}
+			got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{tt.repo}, github.Probe{})
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			if got[0].Branch.Strict != tt.want {
+				t.Errorf("Strict = %t, want %t", got[0].Branch.Strict, tt.want)
+			}
+		})
 	}
 }
 
