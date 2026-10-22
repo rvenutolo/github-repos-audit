@@ -204,7 +204,7 @@ func gateFiles(f *repoFiles, lint string) []string {
 // start a comment with '#', so a full-line comment is wiring that does not
 // run. A trailing comment is not stripped: telling a '#' that starts a
 // comment from one inside a string or a URL needs a shell or Nix parser, and
-// a mention before a trailing comment is far more often live than not.
+// a mention before a trailing '#' is taken as live.
 // Trimming whitespace also drops the '\r' of a CRLF line ending.
 func namesOutsideComments(text, name string) bool {
 	for line := range strings.SplitSeq(text, "\n") {

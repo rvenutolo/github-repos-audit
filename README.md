@@ -366,19 +366,20 @@ Grouped by theme here; the report lists them in the fixed worklist order
 - **secret_scanning**, **vuln_reporting** — the two security features
   GitHub can enable on a repository.
 - **hermetic_nix** — whether the repository runs the hermetic lint named in
-  `[hermetic]`. It passes when all of these hold, and otherwise names each
-  one that does not: `flake.nix` declares an input whose `url` is
+  `[hermetic]`. It passes when all of these hold, and otherwise names each one
+  that does not: `flake.nix` declares an input whose `url` is
   `[hermetic].flake` exactly (`no input`); `flake.lock` has a node for it,
   matched on `github:<owner>/<repo>`, the owner and repository without regard
   to case and the `github:` scheme as written, so a `git+https:` or other
-  non-GitHub input is never found (`not locked`); `flake.nix`
-  mentions `[hermetic].lint` outside a full-line `#` comment, a text stand-in for the default devShell
-  carrying it, since the tool never evaluates Nix (`not in devShell`); and
-  `run-all-checks`, a file directly under `.ci/`, or the `justfile` mentions
-  it outside a full-line `#` comment (`not in gate`). The gate part shows the wiring exists, not that the
-  call is reachable. A `flake.nix` the tool could not read fails as
-  `unreadable flake.nix`, with no other part named. n/a without a `flake.nix`,
-  which the flake_nix row already reports. The report's Nix section shows it.
+  non-GitHub input is never found (`not locked`); `flake.nix` mentions
+  `[hermetic].lint` outside a full-line `#` comment, which stands in for the
+  default devShell carrying it since the tool never evaluates Nix
+  (`not in devShell`); and `run-all-checks`, a file directly under `.ci/`, or
+  the `justfile` mentions it outside a full-line `#` comment (`not in gate`).
+  The gate part shows the wiring exists, not that the call is reachable. A
+  `flake.nix` the tool could not read fails as `unreadable flake.nix`, with no
+  other part named. n/a without a `flake.nix`, which the flake_nix row already
+  reports. The report's Nix section shows it.
 - **nix_lock_age** — how long ago `flake.lock` locked nixpkgs: the
   `lastModified` of the node the root's `nixpkgs` input resolves to,
   following `follows`, so a lock that names it `nixpkgs_2` is still found.
@@ -410,42 +411,41 @@ Grouped by theme here; the report lists them in the fixed worklist order
   workflow uses, is then named as `unreadable <path>`, since it may be the
   refresh the tool cannot see. n/a without a `flake.lock`. The report's Nix
   section shows it.
-- **nix_cache** — whether the default branch's Nix store is cached at a
-  useful size by a `nix-community/cache-nix-action` set up to stay bounded.
-  Caches are grouped into families by the first two `-`-separated segments of
-  their key (`nix-Linux`, `nix-macOS`), counting only caches saved from the
-  default branch, and the newest entry of each family must hold between
-  1 MB and 1.5 GB (decimal units). The cell shows the size of the first
-  family out of range, or else the largest (`✓ 206 MB`, `✗ 2.3 GB`,
-  `✗ empty (430 B)`), or `none on main`. A size over 1.5 GB is rounded up to
-  the next 0.1 GB, so it never reads as the passing bound; other sizes are
-  truncated. Any default-branch cache whose key
-  starts `nix-` is judged on size, whatever tool saved it. Every `cache-nix-action` step a job
-  runs, directly or through a local composite action, is then read, and the
-  cell names each problem once: `no gc-max-store-size` (none of
-  `gc-max-store-size`, `-linux` or `-macos`), `no purge` (`purge` is not
-  `true` in any case), `no purge selector` (none of `purge-prefixes`,
-  `purge-created`, `purge-last-accessed` or `purge-primary-key`), and
-  `no actions: write` (the job's `permissions:`, else the workflow's, else
-  the repository's default workflow permissions, do not grant it;
-  `write-all` does). A workflow, or a composite a job uses, that the tool
-  could not read is named as `unreadable <path>`. It passes only with every
-  size in range and no problem. n/a without a `flake.nix`, or when no workflow
-  of this repository's own (not a fork's pull request from a branch of the
-  same name) has run on the default branch in the last 7 days, since GitHub
-  evicts a cache nothing has restored for that long. The report's Nix section shows it.
-- **go_cache** — whether the default branch's Go cache holds something.
-  Caches whose key starts `go-` are grouped into families as for nix_cache
+- **nix_cache** — whether the default branch's Nix store is cached at a useful
+  size by a `nix-community/cache-nix-action` set up to stay bounded. Caches
+  are grouped into families by the first two `-`-separated segments of their
+  key (`nix-Linux`, `nix-macOS`), counting only caches saved from the default
+  branch, and the newest entry of each family must hold between 1 MB and 1.5
+  GB (decimal units). The cell shows the size of the first family out of
+  range, or else the largest (`✓ 206 MB`, `✗ 2.3 GB`, `✗ empty (430 B)`), or
+  `none on main`. A size over 1.5 GB is rounded up to the next 0.1 GB, so it
+  never reads as the passing bound; other sizes are truncated. Any
+  default-branch cache whose key starts `nix-` is judged on size, whatever
+  tool saved it. Every `cache-nix-action` step a job runs, directly or through
+  a local composite action, is then read, and the cell names each problem
+  once: `no gc-max-store-size` (none of `gc-max-store-size`, `-linux` or
+  `-macos`), `no purge` (`purge` is not `true` in any case),
+  `no purge selector` (none of `purge-prefixes`, `purge-created`,
+  `purge-last-accessed` or `purge-primary-key`), and `no actions: write` (the
+  job's `permissions:`, else the workflow's, else the repository's default
+  workflow permissions, do not grant it; `write-all` does). A workflow, or a
+  composite a job uses, that the tool could not read is named as
+  `unreadable <path>`. It passes only with every size in range and no problem.
+  n/a without a `flake.nix`, or when no workflow of this repository's own (not
+  a fork's pull request from a branch of the same name) has run on the default
+  branch in the last 7 days, since GitHub evicts a cache nothing has restored
+  for that long. The report's Nix section shows it.
+- **go_cache** — whether the default branch's Go cache holds something. Caches
+  whose key starts `go-` are grouped into families as for nix_cache
   (`go-Linux`, `go-macOS`), counting only caches saved from the default
-  branch, and the newest entry of each family must hold at least 1 MB
-  (decimal units): the newest is the one the next run restores, so a job
-  that built nothing but saved last fails it however full the older entries
-  are. There is no upper bound. The cell shows the first family below the
-  floor (`✗ empty (430 B)`), or else the largest (`✓ 206 MB`), or
-  `none on main`. n/a without a root `go.mod`, or when no workflow of this
-  repository's own (not a fork's pull request) has run on the default branch
-  in the last 7 days. The report's CI efficiency
-  section shows it.
+  branch, and the newest entry of each family must hold at least 1 MB (decimal
+  units): the newest is the one the next run restores, so a job that built
+  nothing but saved last fails it however full the older entries are. There is
+  no upper bound. The cell shows the first family below the floor
+  (`✗ empty (430 B)`), or else the largest (`✓ 206 MB`), or `none on main`.
+  n/a without a root `go.mod`, or when no workflow of this repository's own
+  (not a fork's pull request) has run on the default branch in the last 7
+  days. The report's CI efficiency section shows it.
 - **cache_usage** — whether the repository's Actions caches stay at or
   below 80% of the cache storage limit GitHub reports for it. Past the limit
   GitHub evicts the entries restored longest ago to make room for each new
