@@ -197,7 +197,9 @@ const cacheNixAction = "nix-community/cache-nix-action"
 // bound. Each runner OS restores its own family of entries (P4 in
 // cacheFamilies), and only the newest entry of each is restored, so that is
 // the one judged; the cell names the size of the worst family, the first
-// that is out of range or else the largest, then every setting problem.
+// that is out of range or else the largest, then every setting problem. A
+// size over the ceiling is shown rounded up, so it never reads as the passing
+// bound; every other size is truncated.
 //
 // It is n/a without a flake.nix, which has no store to cache, and when the
 // default branch has not run CI within the activity window, since GitHub has
@@ -223,8 +225,11 @@ func observeNixCache(r audit.Repo, now time.Time) observation {
 		worst = max(worst, size)
 	}
 	value := formatBytes(worst)
-	if worst < cacheFloor {
+	switch {
+	case worst < cacheFloor:
 		value = "empty (" + value + ")"
+	case worst > nixCacheCeiling:
+		value = formatBytesUp(worst)
 	}
 	return observation{
 		ok:    inRange && len(problems) == 0,

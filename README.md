@@ -416,8 +416,10 @@ Grouped by theme here; the report lists them in the fixed worklist order
   their key (`nix-Linux`, `nix-macOS`), counting only caches saved from the
   default branch, and the newest entry of each family must hold between
   1 MB and 1.5 GB (decimal units). The cell shows the size of the first
-  family out of range, or else the largest (`✓ 206 MB`, `✗ 2.2 GB`,
-  `✗ empty (430 B)`), or `none on main`. Any default-branch cache whose key
+  family out of range, or else the largest (`✓ 206 MB`, `✗ 2.3 GB`,
+  `✗ empty (430 B)`), or `none on main`. A size over 1.5 GB is rounded up to
+  the next 0.1 GB, so it never reads as the passing bound; other sizes are
+  truncated. Any default-branch cache whose key
   starts `nix-` is judged on size, whatever tool saved it. Every `cache-nix-action` step a job
   runs, directly or through a local composite action, is then read, and the
   cell names each problem once: `no gc-max-store-size` (none of
