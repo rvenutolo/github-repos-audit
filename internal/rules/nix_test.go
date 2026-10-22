@@ -170,6 +170,35 @@ func TestEvaluate_hermetic_noFlakeIsNA(t *testing.T) {
 	}
 }
 
+// TestEvaluate_hermetic_unreadableFlakeNix: a flake.nix the collector could
+// not read fails as unreadable and names no other part, even with the lock
+// and gate parts missing too, so the cell holds the one fix. With no
+// flake.nix at all the row is still n/a.
+func TestEvaluate_hermetic_unreadableFlakeNix(t *testing.T) {
+	t.Parallel()
+
+	t.Run("unreadable", func(t *testing.T) {
+		t.Parallel()
+
+		r := fixture("alpha", "tools")
+		r.Flake = audit.Flake{NixError: "flake.nix: not a text file"}
+		got := evaluateHermetic(t, r)
+		if got.Verdict != rules.Fail || got.Value != "unreadable flake.nix" || !got.Mark {
+			t.Errorf("cell = %v %q mark=%t, want a marked fail %q", got.Verdict, got.Value, got.Mark, "unreadable flake.nix")
+		}
+	})
+	t.Run("no flake.nix", func(t *testing.T) {
+		t.Parallel()
+
+		r := fixture("alpha", "tools")
+		r.Files.FlakeNix = false
+		r.Flake = audit.Flake{NixError: "flake.nix: not a text file"}
+		if got := evaluateHermetic(t, r); got.Verdict != rules.NA {
+			t.Errorf("cell = %v %q, want n/a", got.Verdict, got.Value)
+		}
+	})
+}
+
 // TestEvaluate_hermetic_reachesTheWorklist: a failing cell is a gap under its
 // own label.
 func TestEvaluate_hermetic_reachesTheWorklist(t *testing.T) {

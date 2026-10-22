@@ -46,16 +46,33 @@ func TestFlakeFacts_unreadableLock(t *testing.T) {
 	}
 }
 
-// TestFlakeFacts_unreadableFlakeNix: a flake.nix not read in full says
-// nothing, so neither an input nor the lint is recorded from part of it.
+// TestFlakeFacts_unreadableFlakeNix: a flake.nix not read in full is recorded
+// as unreadable, and neither an input nor the lint is recorded from part of
+// it. A missing flake.nix is not an error: files.flake_nix already reports
+// it, so nothing is recorded.
 func TestFlakeFacts_unreadableFlakeNix(t *testing.T) {
 	t.Parallel()
 
 	partial := text(`inputs.lint.url = "github:gh-owner/lint-flake"; check-workflow-hermetic`)
 	partial.IsTruncated = true
-	got := flakeFacts(&repoFiles{FlakeNix: partial}, Probe{Lint: "check-workflow-hermetic"})
-	if diff := cmp.Diff(audit.Flake{}, got); diff != "" {
-		t.Errorf("Flake mismatch (-want +got):\n%s", diff)
+	tests := []struct {
+		name  string
+		flake *fileBlob
+		want  audit.Flake
+	}{
+		{name: "truncated", flake: partial, want: audit.Flake{NixError: "flake.nix: too large to read in full"}},
+		{name: "binary", flake: &fileBlob{IsBinary: true}, want: audit.Flake{NixError: "flake.nix: not a text file"}},
+		{name: "missing", flake: nil, want: audit.Flake{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := flakeFacts(&repoFiles{FlakeNix: tc.flake}, Probe{Lint: "check-workflow-hermetic"})
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("Flake mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
 

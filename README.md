@@ -373,8 +373,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
   carrying it, since the tool never evaluates Nix (`not in devShell`); and
   `run-all-checks`, a file directly under `.ci/`, or the `justfile` mentions
   it (`not in gate`). The gate part shows the wiring exists, not that the
-  call is reachable. A `flake.nix` the tool could not read records nothing,
-  so it reads as `no input` and `not in devShell`. n/a without a `flake.nix`,
+  call is reachable. A `flake.nix` the tool could not read fails as
+  `unreadable flake.nix`, with no other part named. n/a without a `flake.nix`,
   which the flake_nix row already reports. The report's Nix section shows it.
 - **nix_lock_age** — how long ago `flake.lock` locked nixpkgs: the
   `lastModified` of the node the root's `nixpkgs` input resolves to,

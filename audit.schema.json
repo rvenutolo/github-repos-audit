@@ -582,7 +582,7 @@
       }
     },
     "flake": {
-      "description": "What flake.nix and flake.lock say, and which files name the configured hermetic-lint command. Absent when the repository has neither file and no gate file names the lint.",
+      "description": "What flake.nix and flake.lock say, and which files name the configured hermetic-lint command. Absent when nothing in either file was recorded and no gate file names the lint. That includes a readable flake.nix that binds no URL and names no lint, so files.flake_nix, not this object, says whether flake.nix exists.",
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,
@@ -618,6 +618,11 @@
         },
         "lock_error": {
           "description": "Why flake.lock could not be read. When present none of the other lock facts is.",
+          "type": "string",
+          "minLength": 1
+        },
+        "nix_error": {
+          "description": "Why flake.nix could not be read: a blob that is binary or too large to read in full. When present neither inputs nor names_lint is.",
           "type": "string",
           "minLength": 1
         },
