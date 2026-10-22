@@ -52,6 +52,16 @@ func TestEvaluate_jobTimeouts_everyJobSet(t *testing.T) {
 	wantCell(t, got, rules.Fail, "1 job")
 }
 
+// TestEvaluate_jobTimeouts_zeroCounts: timeout-minutes: 0 is set, so it
+// passes; the check asks that a timeout be declared, not that it be sensible.
+func TestEvaluate_jobTimeouts_zeroCounts(t *testing.T) {
+	t.Parallel()
+
+	wantPlainPass(t, timeoutCell(t,
+		jobsWorkflow(".github/workflows/ci.yml", audit.Job{ID: "check", TimeoutMinutes: "0"}),
+	))
+}
+
 // TestEvaluate_jobTimeouts_reusableJobExcluded: a job that calls a reusable
 // workflow cannot set timeout-minutes itself, since its steps run in the
 // called file, so it is neither counted nor enough on its own to make the

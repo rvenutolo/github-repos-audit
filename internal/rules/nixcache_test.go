@@ -1,6 +1,7 @@
 package rules_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -371,9 +372,10 @@ func TestFormatBytesUp(t *testing.T) {
 		{2_000_000_000, "2.0 GB"},
 		{2_000_000_001, "2.1 GB"},
 		{2_249_999_999, "2.3 GB"},
+		{9_950_000_001, "10.0 GB"},
 	}
 	for _, tc := range tests {
-		t.Run(tc.want, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d B", tc.size), func(t *testing.T) {
 			t.Parallel()
 			r := cachedFixture(mainCache("nix-Linux-abc", tc.size, cacheNow.Add(-time.Hour)))
 			got := nixCache(t, r)

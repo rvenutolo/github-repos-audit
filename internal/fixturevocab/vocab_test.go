@@ -367,8 +367,10 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^workflow_runs\[\]\.head_branch$`), matches(`^main$`), "the generic default branch"},
 	// A run's repository and head repository are repository objects, of which
 	// only the id is recorded, held to the same synthetic ids as the
-	// repository's own.
+	// repository's own. A run whose head repository was deleted records it
+	// as null, which carries no account data.
 	{regexp.MustCompile(`^workflow_runs\[\]\.(repository|head_repository)\.id$`), matches(`^1000\d{3}$`), "a synthetic repository id"},
+	{regexp.MustCompile(`^workflow_runs\[\]\.head_repository$`), isNil, "null (a deleted fork)"},
 	{regexp.MustCompile(`^jobs\[\]\.name$`), matches(ciJob), "a generic job name"},
 	{regexp.MustCompile(`^jobs\[\]\.(started_at|completed_at)$`), optional(matches(timestamp)), "null or a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.merged_at$`), matches(timestamp), "a timestamp"},
