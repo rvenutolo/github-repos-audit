@@ -339,16 +339,84 @@ const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUD
 	`(\.claude/)?(skills|skills/skill-\d{2}|skills/skill-\d{2}/SKILL\.md)|\.claude|\.claude/settings\.json|` +
 	`(\.claude/)?(commands|commands/command-\d{2}\.md)|hooks|hooks/(hooks\.json|hook-\d{2}\.sh))$`
 
+// The unreadable and problem fields below are written by the tool, but each
+// reason has a variable part: an index, a key or path taken from the file,
+// or a parser's error text. Any of those can carry account data (a parser
+// error quotes the bytes it choked on, a key or path names what a file is
+// for), so every reason is spelled out, its indices held to digits, its keys
+// and paths to the synthetic Claude names, and its parser text to the exact
+// error the fixtures produce. A new fixture that needs another reason adds
+// its exact wording here; nothing open-ended is accepted.
+
+// jsonError is the one encoding/json error the fixtures produce. The
+// parser's other errors quote the offending character or value, so they are
+// not admitted wholesale.
+const jsonError = `unexpected end of JSON input`
+
+// contentsProblem is every reason the contents API's answer is not a file's
+// text (internal/github/contents.go).
+const contentsProblem = `(not a file|too large to read|content is not valid base64)`
+
+// claudeDeclared is a path plugin.json may declare in a fixture: a synthetic
+// Claude file path, or a skills or commands directory under synthetic names.
+const claudeDeclared = `(` + claudePath + `|(skills|commands)(/(skill|command)-\d{2})?)`
+
+// pluginUnreadable is every reason claude.ParsePlugin gives for a manifest it
+// cannot read. A command's name is a commands object map key, so it is held
+// to the synthetic command names, and a path that breaks the "./" rule to
+// the synthetic declared paths, quoted as %q quotes them.
+const pluginUnreadable = `(not valid JSON: ` + jsonError + `|plugin\.json is not a JSON object|` +
+	`skills is not a path or a list of paths|skills holds an empty path|` +
+	`commands is not a path, a list of paths or an object|commands holds an empty path|` +
+	`commands\.command-\d{2} (is not an object|must set exactly one of source and content)|` +
+	`commands\.command-\d{2}\.(description is not a string|source is empty)|` +
+	`(skills|commands|hooks|commands\.command-\d{2}\.source) path "` + claudeDeclared + `" does not start with \./|` +
+	`hooks holds an empty path|hooks holds neither a path nor an object)`
+
 // marketplaceUnreadable is every reason the collector gives for a
-// marketplace it could not read; the parse problems carry no path.
+// marketplace it could not read (internal/github/marketplace.go and
+// claude.ParseMarketplace); the parse problems carry no path, only an entry's
+// index and one of the three source keys read as strings.
 const marketplaceUnreadable = `^(not among the audited repositories|no \.claude-plugin/marketplace\.json|` +
-	`\.claude-plugin/marketplace\.json: [^/]*)$`
+	`\.claude-plugin/marketplace\.json: (` + contentsProblem + `|not valid JSON: ` + jsonError + `|` +
+	`marketplace\.json is not a JSON object|plugins is not a list|` +
+	`plugins\[\d+\] (is not an object|has no name|has no source)|` +
+	`plugins\[\d+\]\.source\.(repo|ref|sha) is not a string))$`
 
 // marketplacePinProblem is one reason a pin lookup gave no usable answer, and
 // marketplaceProblem one or more of them joined as the collector joins them.
+// A manifest read at the pinned sha gives a contents problem, a manifest
+// problem or no name after its place.
 const marketplacePinProblem = `(not an audited repository|empty repository|no ref|unsafe ref|no sha|` +
 	`tag v\d+\.\d+\.\d+ does not resolve to a commit|` +
-	`(no )?\.claude-plugin/plugin\.json at (a{36}[0-9a-f]{4}|(0123456789abcdef){2}01234567)(: [^/]*)?)`
+	`no \.claude-plugin/plugin\.json at ` + marketplaceSHA + `|` +
+	`\.claude-plugin/plugin\.json at ` + marketplaceSHA + `: (` + contentsProblem + `|` + pluginUnreadable + `|no name))`
+
+// marketplaceSHA is a pin's sha in a fixture: one of the pattern oids.
+const marketplaceSHA = `(a{36}[0-9a-f]{4}|(0123456789abcdef){2}01234567)`
+
+// claudeHookPlace is where in a hooks value a shape problem sits: an event
+// Claude Code defines, a group index and a handler index.
+const claudeHookPlace = `hooks\.` + claudeHookEvent + `(\[\d+\](\.(matcher|hooks)|\.hooks\[\d+\])?)?`
+
+// claudeUnreadable is every reason the collector and internal/claude write
+// into a repository's Claude unreadable fields: the files-as-a-whole reasons,
+// a file that could not be read (always behind its path), a manifest's
+// problem (behind its path in the repository-wide field, bare in the
+// plugin's), a skill or command's frontmatter problem and a hooks shape
+// problem. A YAML parse error is not admitted: none of the fixtures
+// produces one, and the YAML parser's errors quote the offending text. The
+// frontmatter key a skill repeats is held to the keys the fixtures use.
+const claudeUnreadable = `^(too many Claude files|` + claudeMissing + `|` +
+	claudePath + `: (no such file|not a text file|too large to read in full)|` +
+	`(\.claude-plugin/plugin\.json: )?` + pluginUnreadable + `|` +
+	`the frontmatter is not closed by a --- line|the frontmatter is empty, not a mapping|` +
+	`the frontmatter is not a YAML mapping|` +
+	`the frontmatter repeats the key "(name|description|when_to_use|disable-model-invocation|user-invocable|hooks|version)"|` +
+	`not valid JSON: ` + jsonError + `|the file is not a JSON object|hooks is not an object keyed by event name|` +
+	claudeHookPlace + ` is not (a list|an object|a string)|` +
+	claudeHookPlace + `: (not an object|type is not a string|timeout is not a number|` +
+	`command is not a string|args is not a list|args holds a non-string))$`
 
 const marketplaceProblem = `^` + marketplacePinProblem + `(; ` + marketplacePinProblem + `)*$`
 
@@ -573,7 +641,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.(sha|tag_commit)$`), matches(oid), "a pattern oid"},
 	{regexp.MustCompile(`^claude_marketplace\.unreadable$`), matches(marketplaceUnreadable), "a marketplace problem in the collector's wording"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.problem$`), matches(marketplaceProblem), "a pin problem in the collector's wording"},
-	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(`^((` + claudePath + `: )?[^/]*|` + claudeMissing + `)$`), "a problem naming only a synthetic Claude path"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(claudeUnreadable), "a Claude problem in the tool's wording"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
 		`repos\[\]\.actions_storage\.(artifact_bytes|artifact_count|cache_limit_bytes|cache_usage_bytes)`,
@@ -923,7 +991,7 @@ const claudeProblem = `(too many Claude files|SKILL\.md|` + claudeMissing + `|` 
 // claudeMissing is the repository-wide problem for a path plugin.json
 // declares that the tree cannot answer. The path is the manifest's to name,
 // so it is held to the synthetic Claude paths and directory names.
-const claudeMissing = `plugin\.json declares unloadable path (` + claudePath + `|(skills|commands)(/(skill|command)-\d{2})?)`
+const claudeMissing = `plugin\.json declares unloadable path ` + claudeDeclared
 
 // claudePluginField is a manifest field the Plugin table's Manifest cell may
 // list as missing: one of the eight plugin.json fields the check requires.
@@ -1192,6 +1260,93 @@ func TestCheck_marketplaceFacts(t *testing.T) {
 		`{"claude_marketplace": {"repo": "plugin-market", "unreadable": "no such file somewhere/else"}}`,
 	} {
 		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
+			t.Errorf("check(%s) = no problems, want it refused", doc)
+		}
+	}
+}
+
+// TestCheck_problemsInTheToolsWording: an unreadable or problem field is
+// admitted only in a reason's exact wording, with its variable part drawn
+// from the synthetic names or the one parser error the fixtures produce.
+// Free text after a familiar prefix is what a real file or parser put there,
+// and may name what a repository is for.
+func TestCheck_problemsInTheToolsWording(t *testing.T) {
+	t.Parallel()
+
+	wrap := map[string]func(string) string{
+		"marketplace": func(v string) string {
+			return `{"claude_marketplace": {"repo": "plugin-market", "unreadable": ` + v + `}}`
+		},
+		"pin": func(v string) string {
+			return `{"claude_marketplace": {"repo": "plugin-market", "entries": [{"name": "plugin-kit", "problem": ` + v + `}]}}`
+		},
+		"claude": func(v string) string {
+			return `{"repos": [{"name": "plugin-kit", "claude": {"unreadable": ` + v + `}}]}`
+		},
+		"plugin": func(v string) string {
+			return `{"repos": [{"name": "plugin-kit", "claude": {"plugin": {"unreadable": ` + v + `}}}]}`
+		},
+		"command": func(v string) string {
+			return `{"repos": [{"name": "plugin-kit", "claude": {"commands": [{"unreadable": ` + v + `}]}}]}`
+		},
+		"hook": func(v string) string {
+			return `{"repos": [{"name": "plugin-kit", "claude": {"hooks": [{"unreadable": ` + v + `}]}}]}`
+		},
+	}
+	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002"
+	tests := []struct {
+		field, value string
+		ok           bool
+	}{
+		{"marketplace", "not among the audited repositories", true},
+		{"marketplace", ".claude-plugin/marketplace.json: not a file", true},
+		{"marketplace", ".claude-plugin/marketplace.json: not valid JSON: unexpected end of JSON input", true},
+		{"marketplace", ".claude-plugin/marketplace.json: plugins[3].source.ref is not a string", true},
+		{"marketplace", ".claude-plugin/marketplace.json: deploy media stack", false},
+		{"marketplace", ".claude-plugin/marketplace.json: not valid JSON: invalid character 'd' looking for beginning of value", false},
+		{"marketplace", ".claude-plugin/marketplace.json: plugins[x] has no name", false},
+		{"pin", "no .claude-plugin/plugin.json at " + sha, true},
+		{"pin", ".claude-plugin/plugin.json at " + sha + ": no name", true},
+		{"pin", ".claude-plugin/plugin.json at " + sha + ": too large to read", true},
+		{"pin", ".claude-plugin/plugin.json at " + sha + `: commands path "commands/command-01.md" does not start with ./`, true},
+		{"pin", "no ref; .claude-plugin/plugin.json at " + sha + ": not valid JSON: unexpected end of JSON input", true},
+		{"pin", ".claude-plugin/plugin.json at " + sha + ": deploy media stack", false},
+		{"pin", "no .claude-plugin/plugin.json at " + sha + ": no name", false},
+		{"pin", ".claude-plugin/plugin.json at " + sha + `: commands path "deploy/site.md" does not start with ./`, false},
+		{"claude", "too many Claude files", true},
+		{"claude", "plugin.json declares unloadable path commands/command-01.md", true},
+		{"claude", ".claude-plugin/plugin.json: not valid JSON: unexpected end of JSON input", true},
+		{"claude", ".claude-plugin/plugin.json: commands.command-02 must set exactly one of source and content", true},
+		{"claude", ".claude-plugin/plugin.json: not a text file", true},
+		{"claude", ".claude-plugin/plugin.json: deploy media stack", false},
+		{"claude", ".claude-plugin/plugin.json: commands.deploy-site is not an object", false},
+		{"claude", "plugin.json declares unloadable path deploy-site", false},
+		{"plugin", "not valid JSON: unexpected end of JSON input", true},
+		{"plugin", "commands.command-01.description is not a string", true},
+		{"plugin", "not valid JSON: invalid character 'd' looking for beginning of value", false},
+		{"command", "the frontmatter is not closed by a --- line", true},
+		{"command", "commands/command-01.md: no such file", true},
+		{"command", `the frontmatter repeats the key "name"`, true},
+		{"command", `the frontmatter repeats the key "deploy-target"`, false},
+		{"command", "frontmatter is not valid YAML: yaml: line 2: deploy media stack", false},
+		{"command", "deploy media stack", false},
+		{"hook", "hooks.PreToolUse[0].hooks[1]: timeout is not a number", true},
+		{"hook", "hooks.Stop is not a list", true},
+		{"hook", "hooks/hooks.json: too large to read in full", true},
+		{"hook", "hooks.DeployMedia is not a list", false},
+		{"hook", "hooks: yaml: unmarshal errors: deploy media stack", false},
+	}
+	for _, tc := range tests {
+		quoted, err := json.Marshal(tc.value)
+		if err != nil {
+			t.Fatalf("json.Marshal(%q): %v", tc.value, err)
+		}
+		doc := wrap[tc.field](string(quoted))
+		got := check(decode(t, []byte(doc)), snapshotRules)
+		if tc.ok && len(got) != 0 {
+			t.Errorf("check(%s) = %q, want it admitted", doc, got)
+		}
+		if !tc.ok && len(got) == 0 {
 			t.Errorf("check(%s) = no problems, want it refused", doc)
 		}
 	}
