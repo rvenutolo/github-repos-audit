@@ -133,12 +133,26 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 	for _, p := range layout.Skills {
 		skills = append(skills, parseSkillFile(texts, modes, p, claude.SkillName(p, manifest.Name), isPlugin(p)))
 	}
-	commands := make([]claude.Skill, 0, len(layout.Commands)+len(manifest.InlineCommands))
-	for _, p := range layout.Commands {
-		commands = append(commands, parseSkillFile(texts, modes, p, claude.CommandName(p), isPlugin(p)))
+	// entry marks a command plugin.json's commands object map declares, whose
+	// manifest entry may carry a description; a file found any other way has
+	// no entry, even when its name matches a key.
+	type command struct {
+		claude.Skill
+		entry bool
 	}
+	commands := make([]command, 0, len(layout.Commands)+len(layout.SourceCommands)+len(manifest.InlineCommands))
+	for _, p := range layout.Commands {
+		commands = append(commands, command{parseSkillFile(texts, modes, p, claude.CommandName(p), isPlugin(p)), false})
+	}
+	for _, n := range slices.Sorted(maps.Keys(layout.SourceCommands)) {
+		p := layout.SourceCommands[n]
+		commands = append(commands, command{parseSkillFile(texts, modes, p, n, isPlugin(p)), true})
+	}
+	// Files in path order, as audit.Claude promises; stable, so two names
+	// for one file stay in name order.
+	slices.SortStableFunc(commands, func(a, b command) int { return cmp.Compare(a.Path, b.Path) })
 	for _, n := range manifest.InlineCommands {
-		commands = append(commands, claude.ParseSkill(inlineCommandPath+n, n, manifest.InlineContent[n], true))
+		commands = append(commands, command{claude.ParseSkill(inlineCommandPath+n, n, manifest.InlineContent[n], true), true})
 	}
 
 	hooks := slices.Clone(manifest.Hooks)
@@ -164,13 +178,11 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 		wraps, description := "", ""
 		if s.Unreadable == "" {
 			wraps = claude.WrappedSkill(s.Body, skillNames)
-			// An inline command's path is the only one under the manifest's
-			// own path, and only it has a manifest description to carry.
-			if name, inline := strings.CutPrefix(s.Path, inlineCommandPath); inline {
-				description = manifest.InlineDescriptions[name]
+			if s.entry {
+				description = manifest.CommandDescriptions[s.Dir]
 			}
 		}
-		fact := skillFact(s, wraps)
+		fact := skillFact(s.Skill, wraps)
 		fact.ManifestDescription = description
 		out.Commands = append(out.Commands, fact)
 	}
@@ -194,6 +206,9 @@ func layoutPaths(l claude.Layout) []string {
 	}
 	paths = append(paths, l.Skills...)
 	paths = append(paths, l.Commands...)
+	for _, p := range l.SourceCommands {
+		paths = append(paths, p)
+	}
 	paths = append(paths, l.HookFiles...)
 	slices.Sort(paths)
 	return slices.Compact(paths)

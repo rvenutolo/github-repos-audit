@@ -2,7 +2,6 @@ package rules
 
 import (
 	"path"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -128,39 +127,75 @@ func branchAdmits(branches, ignore []string, branch string) bool {
 // ** matches any run of characters, * any run without a slash, ? and + make
 // the character before them optional or repeatable, [...] is a class of
 // letters, digits and ranges of them, a backslash makes the next character
-// literal, and every other character is literal. A pattern this cannot
-// translate matches nothing, so a filter the tool does not understand never
-// admits a branch it might not.
+// literal, and every other character is literal. The whole name must match.
+// A pattern this cannot parse matches nothing, so a filter the tool does not
+// understand never admits a branch it might not.
+//
+// It matches by hand rather than through a regular expression: branchAdmits
+// runs for every pattern of every workflow each trigger check reads, so a
+// compile per call would cost far more than the match, and keeping compiled
+// expressions between calls would take mutable package state.
 func matchFilter(pattern, name string) bool {
-	expr, ok := filterRegexp(pattern)
+	tokens, ok := parseFilter(pattern)
 	if !ok {
 		return false
 	}
-	re, err := regexp.Compile(expr)
-	if err != nil {
-		return false
-	}
-	return re.MatchString(name)
+	n := []rune(name)
+	m := filterMatch{tokens: tokens, name: n, failed: make([]bool, (len(tokens)+1)*(len(n)+1))}
+	return m.at(0, 0)
 }
 
-// filterRegexp translates a filter pattern to an anchored regular
-// expression, reporting false for a pattern it will not translate.
-func filterRegexp(pattern string) (string, bool) {
+// filterRun is what a star stands for: nothing (the token is one character
+// or class), any run without a slash (*), or any run at all (**).
+type filterRun int
+
+const (
+	noRun filterRun = iota
+	segmentRun
+	anyRun
+)
+
+// runeRange is the characters lo through hi, inclusive.
+type runeRange struct{ lo, hi rune }
+
+// filterToken is one element of a parsed pattern: a run, or one character or
+// class, which quant ('?' or '+', or 0 for neither) may qualify.
+type filterToken struct {
+	run    filterRun
+	ranges []runeRange
+	quant  rune
+}
+
+// admits reports whether one character of the name can be consumed by the
+// token: for a run, one more character of it.
+func (t filterToken) admits(c rune) bool {
+	switch t.run {
+	case segmentRun:
+		return c != '/'
+	case anyRun:
+		return true
+	case noRun:
+	}
+	return slices.ContainsFunc(t.ranges, func(r runeRange) bool { return r.lo <= c && c <= r.hi })
+}
+
+// parseFilter splits a filter pattern into tokens, reporting false for a
+// pattern it will not read.
+func parseFilter(pattern string) ([]filterToken, bool) {
 	p := []rune(pattern)
-	var b strings.Builder
-	b.WriteString(`^(?:`)
-	// quantifiable reports that the last thing written is a single character
-	// or class, which is all GitHub documents ? and + as applying to.
+	var tokens []filterToken
+	// quantifiable reports that the last token is a single character or
+	// class, which is all GitHub documents ? and + as applying to.
 	quantifiable := false
 	for i := 0; i < len(p); i++ {
 		switch c := p[i]; c {
 		case '*':
+			run := segmentRun
 			if i+1 < len(p) && p[i+1] == '*' {
-				b.WriteString(`.*`)
+				run = anyRun
 				i++
-			} else {
-				b.WriteString(`[^/]*`)
 			}
+			tokens = append(tokens, filterToken{run: run})
 			quantifiable = false
 		case '?', '+':
 			// doc-rot-exempt: an open question about GitHub's syntax, answered conservatively
@@ -168,9 +203,9 @@ func filterRegexp(pattern string) (string, bool) {
 			// another ? or +, or with nothing before them; such a pattern
 			// matches nothing until it does.
 			if !quantifiable {
-				return "", false
+				return nil, false
 			}
-			b.WriteRune(c)
+			tokens[len(tokens)-1].quant = c
 			quantifiable = false
 		case '[':
 			end := slices.Index(p[i+1:], ']')
@@ -178,10 +213,14 @@ func filterRegexp(pattern string) (string, bool) {
 			// TODO: GitHub documents a class only as letters, digits and
 			// ranges of them; an unclosed, empty or other class matches
 			// nothing until it says what one means.
-			if end <= 0 || !classBody(p[i+1:i+1+end]) {
-				return "", false
+			if end <= 0 {
+				return nil, false
 			}
-			b.WriteString(string(p[i : i+2+end]))
+			ranges, ok := classRanges(p[i+1 : i+1+end])
+			if !ok {
+				return nil, false
+			}
+			tokens = append(tokens, filterToken{ranges: ranges})
 			i += 1 + end
 			quantifiable = true
 		case '\\':
@@ -189,30 +228,95 @@ func filterRegexp(pattern string) (string, bool) {
 			// TODO: a trailing backslash escapes nothing, and GitHub does
 			// not say what it means; such a pattern matches nothing.
 			if i+1 == len(p) {
-				return "", false
+				return nil, false
 			}
 			i++
-			b.WriteString(regexp.QuoteMeta(string(p[i])))
+			tokens = append(tokens, filterToken{ranges: []runeRange{{p[i], p[i]}}})
 			quantifiable = true
 		default:
-			b.WriteString(regexp.QuoteMeta(string(c)))
+			tokens = append(tokens, filterToken{ranges: []runeRange{{c, c}}})
 			quantifiable = true
 		}
 	}
-	b.WriteString(`)$`)
-	return b.String(), true
+	return tokens, true
 }
 
-// classBody reports whether s, the inside of a [...] class, holds only
-// letters, digits and the hyphens of ranges, which is all GitHub documents
-// and all a regular expression class can take literally.
-func classBody(s []rune) bool {
+// classRanges reads the inside of a [...] class, which may hold only
+// letters, digits and the hyphens of ranges, all GitHub documents. A hyphen
+// between two characters makes a range, and one that cannot (first, last, or
+// straight after a range) is itself a member; a range that runs backwards
+// is refused, since it names no character anyone meant.
+func classRanges(s []rune) ([]runeRange, bool) {
 	for _, c := range s {
 		switch {
 		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '-':
 		default:
-			return false
+			return nil, false
 		}
 	}
-	return true
+	var ranges []runeRange
+	for i := 0; i < len(s); {
+		lo := s[i]
+		i++
+		if i+1 < len(s) && s[i] == '-' {
+			hi := s[i+1]
+			if hi < lo {
+				return nil, false
+			}
+			ranges = append(ranges, runeRange{lo, hi})
+			i += 2
+			continue
+		}
+		ranges = append(ranges, runeRange{lo, lo})
+	}
+	return ranges, true
+}
+
+// filterMatch matches tokens against name. failed records each (token,
+// position) pair already known not to match, so stars and + that could
+// consume a character either way are tried at most once per position and
+// the match stays polynomial in the pattern and name.
+type filterMatch struct {
+	tokens []filterToken
+	name   []rune
+	failed []bool
+}
+
+// at reports whether tokens[ti:] match name[ni:] in full.
+func (m *filterMatch) at(ti, ni int) bool {
+	if ti == len(m.tokens) {
+		return ni == len(m.name)
+	}
+	key := ti*(len(m.name)+1) + ni
+	if m.failed[key] {
+		return false
+	}
+	t := m.tokens[ti]
+	ok := false
+	switch {
+	case t.run != noRun:
+		for k := ni; ; k++ {
+			if m.at(ti+1, k) {
+				ok = true
+				break
+			}
+			if k == len(m.name) || !t.admits(m.name[k]) {
+				break
+			}
+		}
+	case t.quant == '+':
+		for k := ni; k < len(m.name) && t.admits(m.name[k]); k++ {
+			if m.at(ti+1, k+1) {
+				ok = true
+				break
+			}
+		}
+	default:
+		ok = t.quant == '?' && m.at(ti+1, ni) ||
+			ni < len(m.name) && t.admits(m.name[ni]) && m.at(ti+1, ni+1)
+	}
+	if !ok {
+		m.failed[key] = true
+	}
+	return ok
 }

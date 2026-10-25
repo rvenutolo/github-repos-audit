@@ -562,6 +562,7 @@ func TestClaudeFacts_declaredPathUnloadable(t *testing.T) {
 		{"commands", `{"name": "plugin-kit", "commands": "./commands"}`, "commands"},
 		{"skills", `{"name": "plugin-kit", "skills": ["./skills", "./extra/"]}`, "extra"},
 		{"command not markdown", `{"name": "plugin-kit", "commands": "./notes/command-01.txt"}`, "notes/command-01.txt"},
+		{"object-map source a directory", `{"name": "plugin-kit", "commands": {"command-01": {"source": "./notes"}}}`, "notes"},
 		{"hooks outside the repository", `{"name": "plugin-kit", "hooks": "./../hooks.json"}`, "../hooks.json"},
 	}
 	for _, tc := range tests {
@@ -583,5 +584,61 @@ func TestClaudeFacts_declaredPathUnloadable(t *testing.T) {
 				t.Errorf("queries mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+// TestClaudeFacts_sourceCommandNamedByKey: in the commands object map each key
+// is the command's name (https://code.claude.com/docs/en/plugins-reference,
+// "commands"), so a source command is known by its key, not by its file's
+// stem, and two keys naming one file are two commands. Naming it by the stem
+// would judge and report a command Claude Code does not offer.
+func TestClaudeFacts_sourceCommandNamedByKey(t *testing.T) {
+	t.Parallel()
+
+	const manifest, command = ".claude-plugin/plugin.json", "commands/command-01.md"
+	s := &claudeServer{blobs: map[string]*fileBlob{
+		manifest: text(`{"name": "plugin-kit", "commands": {` +
+			`"command-03": {"source": "./commands/command-01.md"}, ` +
+			`"command-02": {"source": "./commands/command-01.md"}}}`),
+		command: text("# Command\nPlaceholder body.\n"),
+	}}
+	got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest, command))
+	if err != nil {
+		t.Fatalf("claudeFacts() error = %v, want nil", err)
+	}
+	want := []audit.ClaudeSkill{
+		{Path: command, Dir: "command-02", Lines: 2},
+		{Path: command, Dir: "command-03", Lines: 2},
+	}
+	if diff := cmp.Diff(want, got.Commands); diff != "" {
+		t.Errorf("Commands mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestClaudeFacts_sourceCommandManifestDescription: a source entry's
+// description is what Claude Code shows for the command, so it is recorded
+// as an inline entry's is. A project command whose name matches the key has
+// no manifest entry, so it carries none: matching by name alone would pin
+// the plugin's text on a file it does not describe.
+func TestClaudeFacts_sourceCommandManifestDescription(t *testing.T) {
+	t.Parallel()
+
+	const manifest, command, project = ".claude-plugin/plugin.json", "commands/command-01.md", ".claude/commands/command-02.md"
+	s := &claudeServer{blobs: map[string]*fileBlob{
+		manifest: text(`{"name": "plugin-kit", "commands": {` +
+			`"command-02": {"source": "./commands/command-01.md", "description": "Placeholder entry description."}}}`),
+		command: text("# Command\nPlaceholder body.\n"),
+		project: text("# Command\nPlaceholder body.\n"),
+	}}
+	got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest, command, project))
+	if err != nil {
+		t.Fatalf("claudeFacts() error = %v, want nil", err)
+	}
+	want := []audit.ClaudeSkill{
+		{Path: project, Dir: "command-02", Lines: 2},
+		{Path: command, Dir: "command-02", Lines: 2, ManifestDescription: "Placeholder entry description."},
+	}
+	if diff := cmp.Diff(want, got.Commands); diff != "" {
+		t.Errorf("Commands mismatch (-want +got):\n%s", diff)
 	}
 }

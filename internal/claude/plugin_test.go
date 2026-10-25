@@ -110,16 +110,18 @@ func TestParsePlugin_components(t *testing.T) {
 		{"commands object map", `{"commands": {"about": {"content": "text"}, "status": {"source": "./c/s.md"}}}`, func(t *testing.T, p claude.Plugin) {
 			t.Helper()
 			if !p.CommandsSet || !cmp.Equal(p.InlineCommands, []string{"about"}) ||
-				!cmp.Equal(p.InlineContent, map[string]string{"about": "text"}) || !cmp.Equal(p.CommandPaths, []string{"c/s.md"}) {
+				!cmp.Equal(p.InlineContent, map[string]string{"about": "text"}) || p.CommandPaths != nil ||
+				!cmp.Equal(p.SourceCommands, map[string]string{"status": "c/s.md"}) {
 				t.Errorf("got %+v", p)
 			}
 		}},
 		{"commands object map descriptions", `{"commands": {"about": {"content": "text", "description": "About it"}, "bare": {"content": "x"}, "status": {"source": "./c/s.md", "description": "Status"}}}`, func(t *testing.T, p claude.Plugin) {
 			t.Helper()
-			// Only an inline command's description is recorded: a source
-			// command is a file with its own frontmatter.
-			if !cmp.Equal(p.InlineDescriptions, map[string]string{"about": "About it"}) {
-				t.Errorf("InlineDescriptions = %v", p.InlineDescriptions)
+			// Both an inline and a source entry's description is what
+			// Claude Code shows for the command; an entry without one has
+			// none recorded.
+			if !cmp.Equal(p.CommandDescriptions, map[string]string{"about": "About it", "status": "Status"}) {
+				t.Errorf("CommandDescriptions = %v", p.CommandDescriptions)
 			}
 		}},
 		{"skills string", `{"skills": "./extra"}`, func(t *testing.T, p claude.Plugin) {
@@ -186,24 +188,25 @@ func TestParsePlugin_components(t *testing.T) {
 func TestParsePlugin_unreadable(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		"invalid JSON":                      `{`,
-		"not an object":                     `[]`,
-		"skills a number":                   `{"skills": 1}`,
-		"skills a list of numbers":          `{"skills": [1]}`,
-		"commands a number":                 `{"commands": 1}`,
-		"commands entry not object":         `{"commands": {"a": "x"}}`,
-		"commands entry has both":           `{"commands": {"a": {"source": "./a.md", "content": "x"}}}`,
-		"commands entry has neither":        `{"commands": {"a": {}}}`,
-		"skills empty":                      `{"skills": ""}`,
-		"skills array with empty":           `{"skills": ["./a", ""]}`,
-		"commands empty":                    `{"commands": ""}`,
-		"commands array with empty":         `{"commands": [""]}`,
-		"commands source empty":             `{"commands": {"a": {"source": ""}}}`,
-		"commands description not a string": `{"commands": {"a": {"content": "x", "description": 1}}}`,
-		"hooks empty path":                  `{"hooks": ""}`,
-		"hooks array with empty":            `{"hooks": ["./h.json", ""]}`,
-		"hooks a number":                    `{"hooks": 1}`,
-		"hooks array of numbers":            `{"hooks": [1]}`,
+		"invalid JSON":                             `{`,
+		"not an object":                            `[]`,
+		"skills a number":                          `{"skills": 1}`,
+		"skills a list of numbers":                 `{"skills": [1]}`,
+		"commands a number":                        `{"commands": 1}`,
+		"commands entry not object":                `{"commands": {"a": "x"}}`,
+		"commands entry has both":                  `{"commands": {"a": {"source": "./a.md", "content": "x"}}}`,
+		"commands entry has neither":               `{"commands": {"a": {}}}`,
+		"skills empty":                             `{"skills": ""}`,
+		"skills array with empty":                  `{"skills": ["./a", ""]}`,
+		"commands empty":                           `{"commands": ""}`,
+		"commands array with empty":                `{"commands": [""]}`,
+		"commands source empty":                    `{"commands": {"a": {"source": ""}}}`,
+		"commands description not a string":        `{"commands": {"a": {"content": "x", "description": 1}}}`,
+		"commands source description not a string": `{"commands": {"a": {"source": "./a.md", "description": ["x"]}}}`,
+		"hooks empty path":                         `{"hooks": ""}`,
+		"hooks array with empty":                   `{"hooks": ["./h.json", ""]}`,
+		"hooks a number":                           `{"hooks": 1}`,
+		"hooks array of numbers":                   `{"hooks": [1]}`,
 		// Path rules: every component path starts with "./", and only skills
 		// also takes ".".
 		"skills without ./":          `{"skills": "extra"}`,

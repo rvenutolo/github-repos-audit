@@ -8,7 +8,8 @@ package audit
 type Claude struct {
 	// Skills is every SKILL.md Claude Code would load, sorted by path.
 	Skills []ClaudeSkill `json:"skills,omitzero"`
-	// Commands is every command file, sorted by path, then every inline
+	// Commands is every command file, sorted by path (by name for one file
+	// that several commands object map keys name), then every inline
 	// command a plugin.json declares, sorted by name.
 	Commands []ClaudeSkill `json:"commands,omitzero"`
 	// Hooks is every hook handler, from hook files, an inline plugin.json
@@ -35,8 +36,9 @@ type ClaudeSkill struct {
 	// for an inline command.
 	Path string `json:"path"`
 	// Dir is the name Claude Code knows it by: the skill's directory, the
-	// plugin's name for a root SKILL.md, or a command's name. Empty for the
-	// root SKILL.md of a plugin whose manifest sets no name.
+	// plugin's name for a root SKILL.md, or a command's name (its key, for an
+	// entry in plugin.json's commands object map). Empty for the root
+	// SKILL.md of a plugin whose manifest sets no name.
 	Dir string `json:"dir"`
 	// Name is the frontmatter `name`, empty when absent.
 	Name string `json:"name,omitzero"`
@@ -61,11 +63,12 @@ type ClaudeSkill struct {
 	// does nothing but wrap. Empty for a skill, and for a command naming no
 	// skill or several.
 	WrapsSkill string `json:"wraps_skill,omitzero"`
-	// ManifestDescription is, for an inline command, the `description` its
-	// plugin.json entry sets, which Claude Code shows for the command. It is
-	// recorded beside the frontmatter's rather than merged into
-	// HasDescription, so no check's verdict depends on it yet. Empty when
-	// the entry sets none, and for a file.
+	// ManifestDescription is, for a command plugin.json's commands object
+	// map declares (inline or by source), the `description` its entry sets,
+	// which Claude Code shows for the command. It is recorded beside the
+	// frontmatter's rather than merged into HasDescription, so no check's
+	// verdict depends on it yet. Empty when the entry sets none, and for a
+	// command found any other way.
 	ManifestDescription string `json:"manifest_description,omitzero"`
 	// Unreadable is why the file could not be read in full or parsed. When it
 	// is set only Path and Dir are.
