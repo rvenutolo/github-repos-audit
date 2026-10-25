@@ -173,6 +173,13 @@ func TestParsePlugin_unreadable(t *testing.T) {
 		"commands entry not object":  `{"commands": {"a": "x"}}`,
 		"commands entry has both":    `{"commands": {"a": {"source": "./a.md", "content": "x"}}}`,
 		"commands entry has neither": `{"commands": {"a": {}}}`,
+		"skills empty":               `{"skills": ""}`,
+		"skills array with empty":    `{"skills": ["./a", ""]}`,
+		"commands empty":             `{"commands": ""}`,
+		"commands array with empty":  `{"commands": [""]}`,
+		"commands source empty":      `{"commands": {"a": {"source": ""}}}`,
+		"hooks empty path":           `{"hooks": ""}`,
+		"hooks array with empty":     `{"hooks": ["./h.json", ""]}`,
 		"hooks a number":             `{"hooks": 1}`,
 		"hooks array of numbers":     `{"hooks": [1]}`,
 	}

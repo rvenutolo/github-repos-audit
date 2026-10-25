@@ -214,15 +214,40 @@ func resolve(command string, args []string, exec bool) (script string, interpret
 			return script, false, form
 		}
 	}
-	// The script is the first non-flag argument. A flag that takes code inline
-	// (-c, -e, -m, ...) means there is no script file to find.
-	for _, a := range rest {
-		if !strings.HasPrefix(a, "-") {
+	return interpreterScript(baseName(prog), rest)
+}
+
+// interpreterScript finds the script among an interpreter's arguments. deno and
+// bun take a `run` subcommand first. A flag that takes its value consumes the
+// next word, a flag that takes code inline means there is no script file, and
+// any other flag is skipped as a switch. A value-taking flag missing from this
+// table makes the next word look like the script, which fails a check on a
+// file that does not exist rather than passing one.
+func interpreterScript(interp string, args []string) (script string, interpreter bool, form string) {
+	if (interp == "deno" || interp == "bun") && len(args) > 0 && args[0] == "run" {
+		args = args[1:]
+	}
+	valueFlags := map[string][]string{
+		"python":  {"-W", "-X"},
+		"python3": {"-W", "-X"},
+		"node":    {"-r", "--require", "--import", "--loader"},
+		"ruby":    {"-r", "-I"},
+		"perl":    {"-I", "-M"},
+	}[interp]
+	inline := []string{"-c", "-e", "-E", "-p", "--eval", "--print", "--command"}
+	if interp == "python" || interp == "python3" {
+		inline = append(inline, "-m")
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case !strings.HasPrefix(a, "-"):
 			script, form = classify(a, true)
 			return script, script != "" || form != "", form
-		}
-		if slices.Contains([]string{"-c", "-e", "-E", "-m", "-p", "-r", "--eval", "--print", "--command"}, a) {
+		case slices.Contains(inline, a):
 			return "", false, ""
+		case slices.Contains(valueFlags, a):
+			i++
 		}
 	}
 	return "", false, ""
@@ -252,6 +277,11 @@ func placeholders() []struct{ prefix, form string } {
 func classify(word string, isArg bool) (script, form string) {
 	for _, p := range placeholders() {
 		if rest, ok := strings.CutPrefix(word, p.prefix); ok {
+			// An unbraced name is a prefix match only at a word boundary:
+			// $CLAUDE_PLUGIN_ROOT_X is a different variable.
+			if !strings.HasPrefix(p.prefix, "${") && rest != "" && !strings.HasPrefix(rest, "/") {
+				continue
+			}
 			if rest != "" && !strings.HasPrefix(rest, "/") {
 				return "", p.form
 			}

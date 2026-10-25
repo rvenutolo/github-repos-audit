@@ -64,7 +64,7 @@ func Discover(entries []filepaths.Entry, manifest *Plugin) Layout {
 		switch {
 		case isUnderClaudeDir(p, "skills", 2, "SKILL.md"):
 			skills[p] = true
-		case isUnderClaudeDir(p, "commands", 1, ""):
+		case isUnderClaudeDir(p, "commands", 0, ""):
 			if strings.HasSuffix(p, ".md") {
 				commands[p] = true
 			}
@@ -129,8 +129,8 @@ func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, ho
 	if files[defaultHooksPath] {
 		hooks[defaultHooksPath] = true
 	}
-	for _, h := range m.HooksFiles {
-		if files[h] {
+	for _, h := range append([]string{m.HooksFile}, m.HooksFiles...) {
+		if h != "" && files[h] {
 			hooks[h] = true
 		}
 	}
@@ -146,14 +146,27 @@ func SkillName(skillPath, pluginName string) string {
 	return path.Base(dir)
 }
 
-// CommandName is a command file's name: its stem.
+// CommandName is a command file's name. A project command's name is its path
+// below .claude/commands/ without ".md", with "/" replaced by ":" (so
+// frontend/component.md is frontend:component); a plugin's commands/ is flat,
+// so its name is the file stem.
 func CommandName(commandPath string) string {
-	return strings.TrimSuffix(path.Base(commandPath), path.Ext(commandPath))
+	name := strings.TrimSuffix(commandPath, path.Ext(commandPath))
+	const marker = ".claude/commands/"
+	if rest, ok := strings.CutPrefix(name, marker); ok {
+		return strings.ReplaceAll(rest, "/", ":")
+	}
+	if _, rest, ok := strings.Cut(name, "/"+marker); ok {
+		return strings.ReplaceAll(rest, "/", ":")
+	}
+	return path.Base(name)
 }
 
 // isUnderClaudeDir reports whether p is <anything>/.claude/<kind>/ followed by
-// exactly depth more segments, the last being leaf when leaf is not "". Only
-// the direct layout counts: Claude Code does not load deeper copies.
+// exactly depth more segments (any number, at least one, when depth is 0), the
+// last being leaf when leaf is not "". Skills count only in the direct layout,
+// because Claude Code does not load deeper copies; commands nest, and the
+// nesting becomes part of their name.
 func isUnderClaudeDir(p, kind string, depth int, leaf string) bool {
 	marker := ".claude/" + kind + "/"
 	var rest string
@@ -168,7 +181,7 @@ func isUnderClaudeDir(p, kind string, depth int, leaf string) bool {
 		rest = p[i+1+len(marker):]
 	}
 	segs := strings.Split(rest, "/")
-	if len(segs) != depth || slices.Contains(segs, "") {
+	if (depth != 0 && len(segs) != depth) || slices.Contains(segs, "") {
 		return false
 	}
 	return leaf == "" || segs[len(segs)-1] == leaf

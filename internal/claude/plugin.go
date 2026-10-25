@@ -74,6 +74,9 @@ func ParsePlugin(text string) Plugin {
 		}
 		p.SkillsSet = true
 		for _, s := range paths {
+			if s == "" {
+				return bad("skills holds an empty path")
+			}
 			p.SkillDirs = append(p.SkillDirs, cleanDeclared(s))
 		}
 	}
@@ -91,6 +94,9 @@ func ParsePlugin(text string) Plugin {
 		for _, item := range items {
 			switch h := item.(type) {
 			case string:
+				if h == "" {
+					return bad("hooks holds an empty path")
+				}
 				p.HooksFiles = append(p.HooksFiles, cleanDeclared(h))
 			case map[string]any:
 				p.Hooks = append(p.Hooks, ParseHooksValue(pluginManifestPath, h, true)...)
@@ -121,6 +127,9 @@ func (p *Plugin) readCommands(v any) string {
 			if hasContent {
 				p.InlineCommands = append(p.InlineCommands, name)
 			} else {
+				if source == "" {
+					return "commands." + name + ".source is empty"
+				}
 				p.CommandPaths = append(p.CommandPaths, cleanDeclared(source))
 			}
 		}
@@ -131,6 +140,9 @@ func (p *Plugin) readCommands(v any) string {
 		return "commands is not a path, a list of paths or an object"
 	}
 	for _, s := range paths {
+		if s == "" {
+			return "commands holds an empty path"
+		}
 		p.CommandPaths = append(p.CommandPaths, cleanDeclared(s))
 	}
 	return ""

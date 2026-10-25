@@ -118,8 +118,8 @@ func TestDiscover(t *testing.T) {
 		},
 		{
 			name:  "project commands are always included",
-			paths: []string{".claude/commands/y.md", "sub/.claude/commands/w.md", ".claude/commands/deep/v.md"},
-			want:  claude.Layout{Commands: []string{".claude/commands/y.md", "sub/.claude/commands/w.md"}},
+			paths: []string{".claude/commands/y.md", "sub/.claude/commands/w.md", ".claude/commands/deep/v.md", ".claude/commands/n.txt"},
+			want:  claude.Layout{Commands: []string{".claude/commands/deep/v.md", ".claude/commands/y.md", "sub/.claude/commands/w.md"}},
 		},
 		{
 			name:     "project commands survive a commands key",
@@ -143,6 +143,12 @@ func TestDiscover(t *testing.T) {
 			paths:    []string{"hooks/hooks.json", "config/h.json"},
 			manifest: &claude.Plugin{HooksFile: "config/h.json", HooksFiles: []string{"config/h.json", "config/gone.json", "hooks/hooks.json"}},
 			want:     claude.Layout{HookFiles: []string{"config/h.json", "hooks/hooks.json"}},
+		},
+		{
+			name:     "declared hooks file through HooksFile alone",
+			paths:    []string{"x.json"},
+			manifest: &claude.Plugin{HooksFile: "x.json"},
+			want:     claude.Layout{HookFiles: []string{"x.json"}},
 		},
 		{
 			name:  "settings files",
@@ -196,7 +202,15 @@ func TestSkillName(t *testing.T) {
 
 func TestCommandName(t *testing.T) {
 	t.Parallel()
-	if got := claude.CommandName("commands/sweep-rules.md"); got != "sweep-rules" {
-		t.Errorf("got %q", got)
+	tests := []struct{ path, want string }{
+		{"commands/sweep-rules.md", "sweep-rules"},
+		{".claude/commands/y.md", "y"},
+		{"sub/.claude/commands/frontend/component.md", "frontend:component"},
+		{".claude/commands/a/b/c.md", "a:b:c"},
+	}
+	for _, tc := range tests {
+		if got := claude.CommandName(tc.path); got != tc.want {
+			t.Errorf("CommandName(%q) = %q, want %q", tc.path, got, tc.want)
+		}
 	}
 }

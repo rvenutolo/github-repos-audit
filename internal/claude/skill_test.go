@@ -151,6 +151,7 @@ func TestParseSkill_unreadable(t *testing.T) {
 		"a YAML list":                 "---\n- a\n- b\n---\nbody\n",
 		"a YAML scalar":               "---\njust text\n---\n",
 		"YAML syntax error":           "---\nname: [unclosed\n---\nbody\n",
+		"duplicate top-level key":     "---\ndisable-model-invocation: true\ndisable-model-invocation: false\n---\n",
 		"empty frontmatter":           "---\n---\nbody\n",
 		"empty and unterminated":      "---\n",
 		"empty and closed at the end": "---\n---",

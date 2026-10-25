@@ -77,6 +77,11 @@ func ParseSkill(path, dir, text string, plugin bool) Skill {
 	}
 	for i := 0; i+1 < len(top.Content); i += 2 {
 		k, v := top.Content[i], deref(top.Content[i+1])
+		// yaml.Node accepts duplicate keys, which Claude Code's loader would
+		// resolve one way or the other; there is no safe verdict to give.
+		if _, dup := s.Keys[k.Value]; dup {
+			return bad("the frontmatter repeats the key %q", k.Value)
+		}
 		s.Keys[k.Value] = v.ShortTag()
 		switch k.Value {
 		case "name":
