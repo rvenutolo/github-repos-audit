@@ -199,7 +199,7 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 | Repository                                                           | Last push | CI      | Open PRs | Branches | Releases | Last release |
 | -------------------------------------------------------------------- | --------- | ------- | -------- | -------- | -------- | ------------ |
 | [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | 11d       | n/a     | 0        | 0        | 2        | 9d           |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | 11d       | PENDING | 0        | 3        | 2        | n/a          |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | 11d       | PENDING | 0        | 3        | 2        | 6mo          |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | never     | ✗       | 0        | 0        | 0        | n/a          |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 11d       | SUCCESS | 0        | 0        | 3        | 5mo          |
 | [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | 11d       | SUCCESS | 0        | 0        | 1        | 32d          |

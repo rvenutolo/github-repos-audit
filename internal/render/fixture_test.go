@@ -357,7 +357,10 @@ func fullSnapshot() *audit.Snapshot {
 	// marketplace, so its Plugin row carries the marketplace-row cells
 	// beside its own plugin checks. Being private, it is not judged on
 	// being listed.
-	tools.Releases = audit.Releases{Total: 2, LatestTag: "v1.2.0", LatestPublishedAt: at(2026, time.March, 5)}
+	tools.Releases = audit.Releases{
+		Total: 2, LastPublishedAt: at(2026, time.March, 5),
+		LatestTag: "v1.2.0", LatestPublishedAt: at(2026, time.March, 5),
+	}
 	tools.Claude = audit.Claude{
 		Plugin: audit.ClaudePlugin{
 			Present: true, Name: "plugin-kit", Version: "1.1.0", OwnMarketplace: true,

@@ -1144,6 +1144,7 @@
       "releases": {
         "total": 2,
         "drafts": 0,
+        "last_published_at": "2026-03-05T12:00:00Z",
         "latest_tag": "v1.2.0",
         "latest_published_at": "2026-03-05T12:00:00Z"
       },
