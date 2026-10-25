@@ -343,6 +343,9 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 	case CheckRenovate:
 		return pathObservation(r.Files.RenovateConfig)
 
+	case CheckRenovateAutomergeMajor:
+		return observeAutomergeMajor(r)
+
 	case CheckLicenseFile:
 		return pathObservation(r.Files.LicenseFile)
 	case CheckSecurityPolicy:

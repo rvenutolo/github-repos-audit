@@ -47,6 +47,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "required",
+      "renovate_automerge_major": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -105,6 +106,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "not_required",
+      "renovate_automerge_major": "required",
       "renovate_min_release_age": "not_required",
       "required_checks": "not_required",
       "secret_scanning": "public",
@@ -163,6 +165,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "required",
+      "renovate_automerge_major": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -221,6 +224,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "required",
+      "renovate_automerge_major": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -279,6 +283,7 @@
       "readme": "required",
       "releases": "required",
       "renovate": "required",
+      "renovate_automerge_major": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -337,6 +342,7 @@
       "readme": "required",
       "releases": "not_required",
       "renovate": "required",
+      "renovate_automerge_major": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -405,7 +411,8 @@
         "min_release_age": "7 days",
         "min_release_age_source": "renovate.json",
         "nix_manager": true,
-        "lock_file_maintenance": true
+        "lock_file_maintenance": true,
+        "automerge_major": true
       },
       "flake": {
         "has_lock": true,
@@ -549,7 +556,8 @@
         "min_release_age": "7 days",
         "min_release_age_source": "renovate.json",
         "nix_manager": true,
-        "lock_file_maintenance": true
+        "lock_file_maintenance": true,
+        "automerge_major": true
       },
       "flake": {
         "has_lock": true,

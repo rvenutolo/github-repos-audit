@@ -82,7 +82,7 @@ func fixture(name string, typ rules.Type) audit.Repo {
 		// Renovate refreshes flake.lock: its nix manager runs, with lock-file
 		// maintenance.
 		Renovate: audit.Renovate{
-			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json",
+			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json", AutomergeMajor: true,
 			NixManager: true, LockFileMaintenance: true,
 		},
 		// ci.yml runs on pull requests and on a push to the default branch,

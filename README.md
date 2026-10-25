@@ -297,6 +297,17 @@ Grouped by theme here; the report lists them in the fixed worklist order
   Renovate itself cannot read (say `"7 dayz"`), which `audit.json` records
   verbatim as `min_release_age`. n/a without a Renovate configuration, which
   the renovate row already reports.
+- **renovate_automerge_major** — whether Renovate merges every major update
+  on its own, judged the way Renovate orders its settings: top-level
+  `automerge`, then `major.automerge`, then each `packageRules` entry that
+  matches all majors, the last one that sets `automerge` winning. A rule
+  narrowed to some packages, managers or files does not make a pass, and one
+  that holds some majors back fails. Majors that are disabled or need
+  dashboard approval fail too, as they do not land on their own. The
+  `packageRules` of presets come before the repository's own. Shows
+  `unresolved` when a preset is missing or does not parse, as
+  `renovate_min_release_age` does; `audit.json` records the verdict as
+  `automerge_major`. n/a without a Renovate configuration.
 - **homepage**, **topics**, **community_files** — repository metadata that
   only matters once a repository is meant to be found: a homepage URL, any
   topics, and how many of a security policy, contributing guide and code of
