@@ -111,7 +111,8 @@ func countedCell(items []item) observation {
 // not truncated in the skill listing, so the other skill checks leave it out.
 //
 // The hook checks apply once the repository has a hook, and each is n/a when
-// no hook is one it judges. A hook file that could not be read fails all five.
+// no hook is one it judges. A hook file that could not be read fails all five,
+// except that hook_plugin_root skips one outside a plugin.
 func observeClaude(c Check, r audit.Repo, _ evalContext) observation {
 	cl := r.Claude
 	if cl.Unreadable != "" {
@@ -163,7 +164,13 @@ func observeClaude(c Check, r audit.Repo, _ evalContext) observation {
 			return h.ScriptMode != "" && (h.Interpreter || h.ScriptMode == "100755"), true
 		}))
 	case CheckHookPluginRoot:
-		return countedCell(hookItems(cl.Hooks, func(h audit.ClaudeHook) (bool, bool) {
+		// Only plugin hooks are judged, so an unreadable source outside a
+		// plugin (a project settings file) holds nothing this check would
+		// judge even once read, and is left out rather than failing it.
+		plugin := slices.DeleteFunc(slices.Clone(cl.Hooks), func(h audit.ClaudeHook) bool {
+			return h.Unreadable != "" && !h.Plugin
+		})
+		return countedCell(hookItems(plugin, func(h audit.ClaudeHook) (bool, bool) {
 			if !h.Plugin || !runsScript(h) {
 				return false, false
 			}
@@ -290,7 +297,8 @@ func runsScript(h audit.ClaudeHook) bool {
 // hookItems judges each hook with judge, which returns whether the hook
 // passes and whether the check applies to it at all. A hook the check does
 // not apply to is left out of the count, but a hook file that could not be
-// read is always counted: its hooks are unknown, so none of them can pass.
+// read is always counted: its hooks are unknown, so none of them can pass. A
+// caller whose check could never judge a source drops it before calling.
 // A hook is named by its file and event.
 func hookItems(hooks []audit.ClaudeHook, judge func(audit.ClaudeHook) (ok, applies bool)) []item {
 	var out []item

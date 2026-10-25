@@ -1239,7 +1239,9 @@ func TestBlock_claudeSection(t *testing.T) {
 		// The unexecutable script and the tool hook without a matcher or timeout
 		// fail; the SessionStart hook needs no matcher and is not counted there.
 		"github-repos-audit": {"2/2", "✗ 1/2 .claude/settings.json PostToolUse", "n/a", "✗ 1/2 .claude/settings.json PostToolUse", "✗ 0/1 .claude/settings.json PostToolUse"},
-		"web-app":            {unreadableHooks, unreadableHooks, unreadableHooks, unreadableHooks, unreadableHooks},
+		// Its unreadable hooks file is a project settings file, which the
+		// plugin-root check would never judge.
+		"web-app": {unreadableHooks, unreadableHooks, "n/a", unreadableHooks, unreadableHooks},
 	}
 	if diff := cmp.Diff(wantHookRows, tableRows(got[hooksAt:nix])); diff != "" {
 		t.Errorf("Hooks rows mismatch (-want +got):\n%s", diff)

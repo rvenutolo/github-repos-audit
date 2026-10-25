@@ -358,7 +358,8 @@ func fullSnapshot() *audit.Snapshot {
 	cfg.Settings.HasWiki = true // the one deviation on wiki
 	// Its one skill's frontmatter is never closed, so every skill check
 	// that judges it fails as unreadable; its hooks file is not JSON, so
-	// every hook check does too.
+	// every hook check does too, except the plugin-root check, which never
+	// judges a project settings file.
 	cfg.Claude = audit.Claude{
 		Skills: []audit.ClaudeSkill{{
 			Path: ".claude/skills/skill-01/SKILL.md", Dir: "skill-01",

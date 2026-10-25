@@ -586,6 +586,30 @@ func TestObserveClaude_hooks(t *testing.T) {
 			all(fail("unreadable hooks/hooks.json")),
 		},
 		{
+			// hook_plugin_root judges only plugin hooks, so a project
+			// settings file it would never judge is not its to fail.
+			"an unreadable project settings file is skipped by the plugin-root check",
+			hooks(audit.ClaudeHook{Source: ".claude/settings.json", Unreadable: "not valid JSON: x"}),
+			map[rules.Check]claudeWant{
+				rules.CheckHookKnownEvents:       fail("unreadable .claude/settings.json"),
+				rules.CheckHookCommandExecutable: fail("unreadable .claude/settings.json"),
+				rules.CheckHookPluginRoot:        na,
+				rules.CheckHookTimeout:           fail("unreadable .claude/settings.json"),
+				rules.CheckHookMatcher:           fail("unreadable .claude/settings.json"),
+			},
+		},
+		{
+			"an unreadable project settings file beside a good plugin hook",
+			hooks(goodHook(), audit.ClaudeHook{Source: ".claude/settings.json", Unreadable: "not valid JSON: x"}),
+			map[rules.Check]claudeWant{
+				rules.CheckHookKnownEvents:       fail("unreadable .claude/settings.json"),
+				rules.CheckHookCommandExecutable: fail("unreadable .claude/settings.json"),
+				rules.CheckHookPluginRoot:        pass("1/1"),
+				rules.CheckHookTimeout:           fail("unreadable .claude/settings.json"),
+				rules.CheckHookMatcher:           fail("unreadable .claude/settings.json"),
+			},
+		},
+		{
 			"unreadable Claude files fail every hook check",
 			withClaude(audit.Claude{Unreadable: "too many Claude files"}),
 			all(fail("unreadable too many Claude files")),

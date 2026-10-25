@@ -599,7 +599,8 @@ declares that is not tracked, fails every hook check as `unreadable <path>`.
 - **hook_plugin_root** — whether every plugin `command` hook that runs a file
   of the repository names it through `${CLAUDE_PLUGIN_ROOT}`; a relative or
   absolute path breaks once the plugin is installed elsewhere. Hooks outside a
-  plugin, such as those in `.claude/settings.json`, are skipped.
+  plugin, such as those in `.claude/settings.json`, are skipped, even when
+  that file cannot be read; the other hook checks still fail on it.
 - **hook_timeout** — whether every hook sets an explicit `timeout`. Judged for
   every handler type.
 - **hook_matcher** — whether every hook on an event whose matcher is a tool

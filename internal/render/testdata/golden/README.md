@@ -41,7 +41,6 @@ Hand-written prose.
 - **Command file only wraps a skill** (1) — github-repos-audit
 - **Hook on an unknown event** (1) — web-app
 - **Hook script missing or not executable** (2) — github-repos-audit, web-app
-- **Plugin hook path not under ${CLAUDE_PLUGIN_ROOT}** (1) — web-app
 - **Hook without a timeout** (2) — github-repos-audit, web-app
 - **Tool hook without a matcher** (2) — github-repos-audit, web-app
 
@@ -113,11 +112,11 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 
 ### Hooks
 
-| Repository                                                           | Events                             | Executable                              | Plugin root                        | Timeout                                 | Matcher                                 |
-| -------------------------------------------------------------------- | ---------------------------------- | --------------------------------------- | ---------------------------------- | --------------------------------------- | --------------------------------------- |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | 2/2                                | ✗ 1/2 .claude/settings.json PostToolUse | n/a                                | ✗ 1/2 .claude/settings.json PostToolUse | ✗ 0/1 .claude/settings.json PostToolUse |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 1/1                                | 1/1                                     | 1/1                                | 1/1                                     | 1/1                                     |
-| [web-app](https://github.com/gh-owner/web-app)                       | ✗ unreadable .claude/settings.json | ✗ unreadable .claude/settings.json      | ✗ unreadable .claude/settings.json | ✗ unreadable .claude/settings.json      | ✗ unreadable .claude/settings.json      |
+| Repository                                                           | Events                             | Executable                              | Plugin root | Timeout                                 | Matcher                                 |
+| -------------------------------------------------------------------- | ---------------------------------- | --------------------------------------- | ----------- | --------------------------------------- | --------------------------------------- |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | 2/2                                | ✗ 1/2 .claude/settings.json PostToolUse | n/a         | ✗ 1/2 .claude/settings.json PostToolUse | ✗ 0/1 .claude/settings.json PostToolUse |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 1/1                                | 1/1                                     | 1/1         | 1/1                                     | 1/1                                     |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✗ unreadable .claude/settings.json | ✗ unreadable .claude/settings.json      | n/a         | ✗ unreadable .claude/settings.json      | ✗ unreadable .claude/settings.json      |
 
 ## Nix
 
