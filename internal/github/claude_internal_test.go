@@ -334,13 +334,13 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 		},
 		"hooks": [
 			"./extra/hooks.json",
-			{"Stop": [{"hooks": [{"type": "prompt"}]}]}
+			{"Stop": [{"hooks": [{"type": "prompt", "command": "echo PAYLOAD_RAN"}]}]}
 		]
 	}`
 	projectSkill := "---\nname: skill-03\ndescription: Placeholder description.\nhooks:\n  SessionStart:\n" +
 		"    - hooks:\n        - type: command\n          command: ./hooks/missing.sh\n---\nPlaceholder body.\n"
 	settings := `{"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "bash hooks/hook-01.sh"}]}]}}`
-	extra := `{"hooks": {"Notification": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/hook-01.sh"}]}]}}`
+	extra := `{"hooks": {"Notification": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/hook-01.sh", "args": ["--quiet"]}]}]}}`
 	s := &claudeServer{blobs: map[string]*fileBlob{
 		".claude-plugin/plugin.json":       text(manifest),
 		".claude/settings.json":            text(settings),
@@ -393,14 +393,15 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 			{Source: ".claude-plugin/plugin.json", Plugin: true, Event: "Stop", Type: "prompt"},
 			{
 				Source: ".claude/settings.json", Event: "PreToolUse", Type: "command", Matcher: "Edit",
-				Script: "hooks/hook-01.sh", Interpreter: true, PathForm: "relative", ScriptMode: "100755",
+				Command: "bash hooks/hook-01.sh", Script: "hooks/hook-01.sh", Interpreter: true, PathForm: "relative", ScriptMode: "100755",
 			},
 			{
 				Source: ".claude/skills/skill-03/SKILL.md", Event: "SessionStart", Type: "command",
-				Script: "hooks/missing.sh", PathForm: "relative",
+				Command: "./hooks/missing.sh", Script: "hooks/missing.sh", PathForm: "relative",
 			},
 			{
 				Source: "extra/hooks.json", Plugin: true, Event: "Notification", Type: "command",
+				Command: "${CLAUDE_PLUGIN_ROOT}/hooks/hook-01.sh", Args: []string{"--quiet"},
 				Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
 			},
 		},
@@ -512,7 +513,7 @@ func TestClaudeFacts_untypedHookRunsItsScript(t *testing.T) {
 		t.Fatalf("claudeFacts() error = %v, want nil", err)
 	}
 	want := []audit.ClaudeHook{{
-		Source: settings, Event: "Stop",
+		Source: settings, Event: "Stop", Command: `"$CLAUDE_PROJECT_DIR"/.claude/hooks/hook-01.sh`,
 		Script: ".claude/hooks/hook-01.sh", PathForm: "project_dir", ScriptMode: "100644",
 	}}
 	if diff := cmp.Diff(want, got.Hooks); diff != "" {

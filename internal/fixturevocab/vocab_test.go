@@ -556,6 +556,11 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.claude\.(skills|commands)\[\]\.(dir|name|wraps_skill)$`), matches(`^((skill|command)-\d{2}|plugin-kit)$`), "a synthetic skill or command name"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.source$`), matches(`^` + claudePath + `$`), "a synthetic Claude file path"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.script$`), matches(`^hooks/hook-\d{2}\.sh$`), "a synthetic hook script"},
+	// A hook command is free text in a real repository, so a fixture's is
+	// held to a synthetic script, optionally through an interpreter and a
+	// path placeholder, and its exec-form args to bare flags.
+	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.command$`), matches(`^((bash|sh) )?("?\$\{?CLAUDE_(PLUGIN_ROOT|PROJECT_DIR)\}?"?/)?hooks/hook-\d{2}\.sh$`), "a synthetic hook script command"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.args\[\]$`), matches(`^--[a-z]+(-[a-z]+)*$`), "a bare flag"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.matcher$`), matches(`^[A-Za-z|*]*$`), "a tool-name matcher"},
 	{regexp.MustCompile(`^repos\[\]\.releases\.latest_tag$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.plugin\.name$`), isFakeRepo, "a fake repository name"},

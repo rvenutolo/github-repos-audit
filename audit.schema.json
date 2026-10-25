@@ -1031,6 +1031,16 @@
           "type": "boolean",
           "const": true
         },
+        "command": {
+          "description": "A command handler's `command` as written. Absent when unset or empty, and for other handler types.",
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "description": "A command handler's `args` as written, which makes it the exec form. Absent for the shell form; an empty list still selects the exec form.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "script": {
           "description": "The repository file a command handler runs. Absent when it names none.",
           "type": "string",

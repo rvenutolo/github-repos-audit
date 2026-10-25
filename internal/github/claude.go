@@ -242,6 +242,8 @@ func hookFact(h claude.Hook, modes map[string]string) audit.ClaudeHook {
 		Matcher:     h.Matcher,
 		Timeout:     h.Timeout,
 		TimeoutSet:  h.TimeoutSet,
+		Command:     h.Command,
+		Args:        h.Args,
 		Script:      h.Script,
 		Interpreter: h.Interpreter,
 		PathForm:    h.PathForm,

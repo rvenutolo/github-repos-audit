@@ -90,6 +90,15 @@ type ClaudeHook struct {
 	// explicit zero from an absent key.
 	Timeout    float64 `json:"timeout,omitzero"`
 	TimeoutSet bool    `json:"timeout_set,omitzero"`
+	// Command is a command handler's `command` as written, empty when
+	// absent and for other handler types, whose command key is not theirs
+	// to run.
+	Command string `json:"command,omitzero"`
+	// Args is a command handler's `args` as written, which makes it the
+	// exec form: Command is the program and Args its arguments, with no
+	// shell between. An empty list is kept, since it still selects the exec
+	// form; absent means the shell form.
+	Args []string `json:"args,omitzero"`
 	// Script is the repository file a command handler runs, empty when it
 	// names none.
 	Script string `json:"script,omitzero"`

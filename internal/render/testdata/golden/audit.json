@@ -592,6 +592,7 @@
             "matcher": "Bash",
             "timeout": 10,
             "timeout_set": true,
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/hook-01.sh",
             "script": "hooks/hook-01.sh",
             "path_form": "plugin_root",
             "script_mode": "100755"
@@ -1034,6 +1035,7 @@
             "source": ".claude/settings.json",
             "event": "PostToolUse",
             "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/hook-01.sh",
             "script": "hooks/hook-01.sh",
             "path_form": "project_dir",
             "script_mode": "100644"
@@ -1044,6 +1046,10 @@
             "type": "command",
             "timeout": 5,
             "timeout_set": true,
+            "command": "${CLAUDE_PROJECT_DIR}/hooks/hook-02.sh",
+            "args": [
+              "--quiet"
+            ],
             "script": "hooks/hook-02.sh",
             "path_form": "project_dir",
             "script_mode": "100755"
