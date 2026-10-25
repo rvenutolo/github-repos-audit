@@ -242,8 +242,9 @@ branch once, and, for every entry whose `source` is a GitHub repository the
 run audits, looks up whether the pinned `ref` is a release, the commit that
 tag resolves to (annotated tags followed), and the `name` in
 `.claude-plugin/plugin.json` at the pinned `sha`. An entry pointing anywhere
-else costs no request, as does an entry naming an empty repository or a `ref`
-with a `.`, `..` or empty path segment. A marketplace repository that is not
+else costs no request, as does an entry naming an empty repository. An entry
+whose `ref` has a `.`, `..` or empty path segment costs no tag or release
+request. A marketplace repository that is not
 among the audited repositories (archived, a fork, or missing), or a
 `marketplace.json` that is absent or does not parse, does not stop the run:
 `audit.json` records why under `claude_marketplace.unreadable`. Without the

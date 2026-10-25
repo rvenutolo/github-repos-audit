@@ -127,9 +127,9 @@ type ClaudeMarketplace struct {
 	Repo string `json:"repo"`
 	// Unreadable is why the marketplace could not be read: the repository
 	// is not among the audited repositories, or its marketplace.json is
-	// absent or not in the shape Claude Code loads. When it is set there are no entries, so
-	// every marketplace check fails as unreadable rather than judging part of
-	// the file.
+	// absent or not in the shape Claude Code loads. When it is set there are
+	// no entries, so every marketplace check fails as unreadable rather than
+	// judging part of the file.
 	Unreadable string `json:"unreadable,omitzero"`
 	// Entries is every plugins entry, in the file's order.
 	Entries []MarketplaceEntry `json:"entries,omitzero"`
