@@ -294,15 +294,18 @@ func TestCollect_presetPathAndRefAreEscaped(t *testing.T) {
 // TestCollect_presetPathThatLeavesTheEndpointIsUnresolved: a preset path or
 // repository with a ".", ".." or empty segment would, once joined into the
 // URL, name another endpoint than the contents read. It is never requested:
-// the config reads as unresolved, which is a fact, not an abort.
+// the config reads as unresolved, which is a fact, not an abort. The reason
+// names the repository when it is the repository that was refused, since
+// "invalid path" would send the reader looking at a path that is fine.
 func TestCollect_presetPathThatLeavesTheEndpointIsUnresolved(t *testing.T) {
 	t.Parallel()
 
-	for _, ref := range []string{
-		"github>gh-owner/preset-store//../go",
-		"github>gh-owner/preset-store//dir/./go",
-		"github>gh-owner/preset-store//dir//go",
-		"github>gh-owner/..",
+	for ref, reason := range map[string]string{
+		"github>gh-owner/preset-store//../go":    "invalid path",
+		"github>gh-owner/preset-store//dir/./go": "invalid path",
+		"github>gh-owner/preset-store//dir//go":  "invalid path",
+		"github>gh-owner/..":                     "invalid preset name ..",
+		"github>gh-owner/.":                      "invalid preset name .",
 	} {
 		t.Run(ref, func(t *testing.T) {
 			t.Parallel()
@@ -314,7 +317,7 @@ func TestCollect_presetPathThatLeavesTheEndpointIsUnresolved(t *testing.T) {
 				"is_binary":    false,
 			})
 			got := collectFlake(t, api)
-			if want := "preset " + ref + ": invalid path"; !strings.Contains(got.MinReleaseAgeError, want) {
+			if want := "preset " + ref + ": " + reason; !strings.Contains(got.MinReleaseAgeError, want) {
 				t.Errorf("MinReleaseAgeError = %q, want it to contain %q", got.MinReleaseAgeError, want)
 			}
 			// Everything else the run asks is about mixedCase-flake itself.

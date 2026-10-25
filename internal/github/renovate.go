@@ -72,6 +72,12 @@ func newPresetCache(c *Client) *presetCache {
 // fetch is a renovate.Fetch. A 404 is renovate.ProblemNotFound, the problem
 // on which the resolver falls back to renovate.json.
 func (p *presetCache) fetch(ctx context.Context, preset renovate.Preset) (string, string, error) {
+	// fetchContents would refuse this too, but as an invalid path, which
+	// points the reader at the preset's file name when the fault is the
+	// repository name written in the extends entry.
+	if _, ok := escapeSegments(preset.Repo); !ok {
+		return "", "invalid preset name " + preset.Repo, nil
+	}
 	// GitHub repository names are case-insensitive; paths and refs are not.
 	// NUL cannot occur in any of the three, so the key is unambiguous.
 	key := strings.ToLower(preset.Repo) + "\x00" + preset.Path + "\x00" + preset.Ref
