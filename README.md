@@ -161,10 +161,11 @@ and the generated report. These steps describe how that repository is wired up.
 ## `repos.toml` reference
 
 `repos.toml` is the only file you hand-maintain. It needs at least one
-`[types.<name>]` and one `[repos.<name>]`; `[identity]` and `[claude]` are
-optional. A key the
-tool does not know, anywhere in the file, is an error rather than ignored, so
-a misspelling such as `publish = true` cannot pass unnoticed.
+`[types.<name>]` and one `[repos.<name>]`. `[identity]` is required once any
+type or override judges `git_identity`, and refused otherwise; `[claude]` is
+optional. A key the tool does not know, anywhere in the file, is an error
+rather than ignored, so a misspelling such as `publish = true` cannot pass
+unnoticed.
 
 `[types.<name>]` defines a category of repository and what it expects. A type
 lists every check the tool knows, each set to one of:
@@ -564,8 +565,10 @@ a whole (more of them than the tool reads in one repository, a
 skills or commands directory that is not there), every one of them fails
 as `unreadable <reason>`, except marketplace_entries_valid and
 marketplace_complete, which judge the marketplace file rather than the
-repository's own. The report's Claude section
-shows them, listing only the repositories that carry any.
+repository's own. The report's Claude section shows them, listing only the
+repositories that carry any. The hook, plugin and marketplace checks
+further down apply on their own terms: the paragraph before each group says
+when, and the plugin and marketplace checks need no skill or command file.
 
 - **skill_slash_only** — whether every skill and command file sets
   `disable-model-invocation: true`, so it runs only when someone types its
@@ -678,7 +681,8 @@ is added once it is made public.
   `plugin.json` at that `sha` is the entry's `name`. The cell shows the `ref`
   when all three hold, and otherwise names what is wrong:
   `v1.2.0 is not a release`, `sha is not v1.2.0`, `name differs`, `no ref` or
-  `no sha`. n/a when the plugin is not listed.
+  `no sha`. `name differs` also covers a pinned `sha` with no readable
+  `plugin.json` name. n/a when the plugin is not listed.
 - **plugin_pin_current** — whether the pinned `ref` is the latest release or
   ahead of it, compared as semantic versions as plugin_version_matches_tag
   compares them: a pin to a prerelease newer than the latest release passes
