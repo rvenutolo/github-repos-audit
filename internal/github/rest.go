@@ -80,6 +80,7 @@ type gitTree struct {
 	Tree []struct {
 		Path string `json:"path"`
 		Type string `json:"type"`
+		Mode string `json:"mode"`
 	} `json:"tree"`
 	Truncated bool `json:"truncated"`
 }
@@ -285,7 +286,7 @@ func (c *Client) fetchTree(ctx context.Context, base, oid string) ([]filepaths.E
 		case "tree":
 			entries = append(entries, filepaths.Entry{Path: e.Path, Dir: true})
 		case "blob":
-			entries = append(entries, filepaths.Entry{Path: e.Path})
+			entries = append(entries, filepaths.Entry{Path: e.Path, Mode: e.Mode})
 		}
 	}
 	return entries, nil

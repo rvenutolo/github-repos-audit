@@ -368,7 +368,7 @@ var apiRules = []rule{
 		`has_discussions`, `has_pages`, `is_template`, `allow_forking`, `web_commit_signoff_required`,
 		`paused`, `verified_allowed`, `can_approve_pull_request_reviews`,
 		`default_workflow_permissions`, `enabled`, `github_owned_allowed`, `sha_pinning_required`,
-		`open_issues_count`, `truncated`, `message`, `documentation_url`, `status`, `\[\]\.type`, `tree\[\]\.type`,
+		`open_issues_count`, `truncated`, `message`, `documentation_url`, `status`, `\[\]\.type`, `tree\[\]\.type`, `tree\[\]\.mode`,
 		`\[\]\.ruleset_source_type`,
 		// A ruleset parameter's value is never account data (a branch-name
 		// pattern, a boolean, a count): keep accepts it unconditionally;
