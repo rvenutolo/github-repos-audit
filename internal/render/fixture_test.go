@@ -280,8 +280,9 @@ func fullSnapshot() *audit.Snapshot {
 	kit.License = "MIT"
 	// No commitlint config, so the two spellings stay tied two to two.
 	kit.Files.Commitlint = ""
+	// GitHub reported no push protection for it, so the setting is n/a here
+	// and stays tied one to one across the account: no consensus.
 	kit.Settings.SecretScanning = "enabled"
-	kit.Settings.SecretScanningPushProtection = "enabled"
 	kit.Settings.PrivateVulnerabilityReporting = new(true)
 	kit.Settings.ActionsAccessLevel = ""
 	kit.Claude = audit.Claude{Plugin: audit.ClaudePlugin{

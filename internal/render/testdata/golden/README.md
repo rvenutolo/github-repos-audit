@@ -221,9 +221,15 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 
 ## Settings exceptions
 
-- **cipher-lib** — secret-scanning push protection `disabled`, usually `enabled`
 - **mixedCase-flake** — projects `enabled`, usually `disabled`
 - **web-app** — wiki `enabled`, usually `disabled`
+
+### No consensus
+
+The most common value covers half or fewer of the repositories these apply to,
+so there is no norm to measure against.
+
+- secret-scanning push protection
 
 ## Overrides
 
