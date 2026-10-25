@@ -29,6 +29,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -94,6 +99,11 @@
       "gitignore": "required",
       "go_cache": "not_required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "not_required",
       "justfile": "not_required",
       "last_push": "info",
@@ -159,6 +169,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -224,6 +239,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -289,6 +309,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -354,6 +379,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -496,6 +526,20 @@
             "description_chars": 80,
             "disable_model_invocation": true,
             "lines": 45
+          }
+        ],
+        "hooks": [
+          {
+            "source": "hooks/hooks.json",
+            "plugin": true,
+            "event": "PreToolUse",
+            "type": "command",
+            "matcher": "Bash",
+            "timeout": 10,
+            "timeout_set": true,
+            "script": "hooks/hook-01.sh",
+            "path_form": "plugin_root",
+            "script_mode": "100755"
           }
         ]
       },
@@ -889,6 +933,26 @@
             "lines": 6,
             "wraps_skill": "skill-01"
           }
+        ],
+        "hooks": [
+          {
+            "source": ".claude/settings.json",
+            "event": "PostToolUse",
+            "type": "command",
+            "script": "hooks/hook-01.sh",
+            "path_form": "project_dir",
+            "script_mode": "100644"
+          },
+          {
+            "source": ".claude/settings.json",
+            "event": "SessionStart",
+            "type": "command",
+            "timeout": 5,
+            "timeout_set": true,
+            "script": "hooks/hook-02.sh",
+            "path_form": "project_dir",
+            "script_mode": "100755"
+          }
         ]
       },
       "ci_state": "PENDING",
@@ -1171,6 +1235,12 @@
             "path": ".claude/skills/skill-01/SKILL.md",
             "dir": "skill-01",
             "unreadable": "no YAML frontmatter: the file does not start with ---"
+          }
+        ],
+        "hooks": [
+          {
+            "source": ".claude/settings.json",
+            "unreadable": "not valid JSON: unexpected end of JSON input"
           }
         ]
       },

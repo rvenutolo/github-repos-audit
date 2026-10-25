@@ -1200,16 +1200,23 @@ func TestBlock_claudeSection(t *testing.T) {
 		t.Errorf("Skills columns mismatch (-want +got):\n%s", diff)
 	}
 
-	rows := map[string][]string{}
-	section := got[claude:nix]
-	for line := range strings.SplitSeq(section, "\n") {
-		if !strings.HasPrefix(line, "| [") {
-			continue
-		}
-		cells := splitRow(line)
-		name, _, _ := strings.Cut(strings.TrimPrefix(cells[0], "["), "]")
-		rows[name] = cells[1:]
+	hooksAt := strings.Index(got, "### Hooks\n")
+	if hooksAt < claude || hooksAt > nix {
+		t.Fatalf("want ### Hooks inside the Claude section:\n%s", got)
 	}
+	tableRows := func(section string) map[string][]string {
+		out := map[string][]string{}
+		for line := range strings.SplitSeq(section, "\n") {
+			if !strings.HasPrefix(line, "| [") {
+				continue
+			}
+			cells := splitRow(line)
+			name, _, _ := strings.Cut(strings.TrimPrefix(cells[0], "["), "]")
+			out[name] = cells[1:]
+		}
+		return out
+	}
+	rows := tableRows(got[claude:hooksAt])
 	const unreadable = "✗ unreadable .claude/skills/skill-01/SKILL.md"
 	wantRows := map[string][]string{
 		"mixedCase-flake": {"1/1", "1/1", "1/1", "1/1", "n/a", "45"},
@@ -1220,6 +1227,22 @@ func TestBlock_claudeSection(t *testing.T) {
 	}
 	if diff := cmp.Diff(wantRows, rows); diff != "" {
 		t.Errorf("Skills rows mismatch (-want +got):\n%s", diff)
+	}
+
+	wantHooks := []string{"Repository", "Events", "Executable", "Plugin root", "Timeout", "Matcher"}
+	if diff := cmp.Diff(wantHooks, sectionTable(t, got, "### Hooks")); diff != "" {
+		t.Errorf("Hooks columns mismatch (-want +got):\n%s", diff)
+	}
+	const unreadableHooks = "✗ unreadable .claude/settings.json"
+	wantHookRows := map[string][]string{
+		"mixedCase-flake": {"1/1", "1/1", "1/1", "1/1", "1/1"},
+		// The unexecutable script and the tool hook without a matcher or timeout
+		// fail; the SessionStart hook needs no matcher and is not counted there.
+		"github-repos-audit": {"2/2", "✗ 1/2 .claude/settings.json PostToolUse", "n/a", "✗ 1/2 .claude/settings.json PostToolUse", "✗ 0/1 .claude/settings.json PostToolUse"},
+		"web-app":            {unreadableHooks, unreadableHooks, unreadableHooks, unreadableHooks, unreadableHooks},
+	}
+	if diff := cmp.Diff(wantHookRows, tableRows(got[hooksAt:nix])); diff != "" {
+		t.Errorf("Hooks rows mismatch (-want +got):\n%s", diff)
 	}
 }
 

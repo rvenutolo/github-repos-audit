@@ -850,14 +850,31 @@ func checkDriftLine(n int, line string) []string {
 // may list: the synthetic names the Claude facts use.
 const claudeCellName = `((skill|command)-\d{2}|plugin-kit)`
 
+// claudeHookName is a hook a Claude section cell may list: its file and
+// event, the file a synthetic path and the event one Claude Code defines or a
+// typo of one (the reports name the event as written).
+const claudeHookName = `(` + claudePath + ` [A-Za-z]+)`
+
+// claudeProblem is every reason the tool itself writes into a Claude
+// unreadable field (internal/github/claude.go and internal/claude), as it
+// appears after `unreadable ` in a cell: the files-as-a-whole reason, a
+// plugin manifest's problem behind its path, and the bare SKILL.md some
+// reasons name. Text a file's own content could shape is not matched, so
+// foreign prose in a cell is caught.
+const claudeProblem = `(too many Claude files|SKILL\.md|` +
+	`\.claude-plugin/plugin\.json: (not valid JSON[^/]*|plugin\.json is not a JSON object|` +
+	`skills is not a path or a list of paths|skills holds an empty path|` +
+	`hooks holds an empty path|hooks holds neither a path nor an object))`
+
 // claudeCell is every shape a Claude section cell may take: n/a, a bare
 // number, a count (with a cross and the failing names after it when any
-// fail), or unreadable with a synthetic path or text naming no path. The
-// cells list skill and command names, which in a real report say what a
-// repository is for, so they are held to the synthetic names, the way
-// the recorded Claude facts are.
-var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|✗ \d+/\d+ ` + claudeCellName + `(, ` + claudeCellName + `)*|` +
-	`(✗ )?unreadable (` + claudePath + `|[^/]*))$`)
+// fail), or unreadable with a synthetic path or one of the tool's own
+// reasons. The cells list skill, command and hook names, which in a real
+// report say what a repository is for, so they are held to the synthetic
+// names, the way the recorded Claude facts are.
+var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|` +
+	`✗ \d+/\d+ (` + claudeCellName + `(, ` + claudeCellName + `)*|` + claudeHookName + `(, ` + claudeHookName + `)*)|` +
+	`(✗ )?unreadable (` + claudePath + `|` + claudeProblem + `))$`)
 
 func checkMarkdown(text string) []string {
 	var problems []string
@@ -1235,6 +1252,16 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Slash-only | Description |\n" +
 			"| --- | --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 deploy-site | 1/1 |",
+		"a real-shaped hook file in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Events |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 scripts/deploy-site.json PreToolUse |",
+		"free prose after unreadable in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Events |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable deploy-site is broken |",
 		"a real-shaped path in an unreadable Claude cell": "" +
 			"## Claude\n\n" +
 			"| Repository | Slash-only |\n" +
@@ -1267,6 +1294,12 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| --- | --- | --- | --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/3 command-01, skill-02 | 2/2 | n/a | 612 |\n" +
 			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable too many Claude files | n/a | unreadable skills/skill-01/SKILL.md |",
+		"a Claude Hooks table": "" +
+			"## Claude\n\n" +
+			"| Repository | Events | Executable | Plugin root | Timeout | Matcher |\n" +
+			"| --- | --- | --- | --- | --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 hooks/hooks.json PreToolUSe, .claude/settings.json Stop | 2/2 | n/a | ✗ 0/1 .claude/settings.json PostToolUse | 1/1 |\n" +
+			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/settings.json | ✗ unreadable .claude-plugin/plugin.json: not valid JSON: x | ✗ unreadable too many Claude files | ✗ unreadable SKILL.md | n/a |",
 		"an empty description cell": "" +
 			"| Repository | Description |\n" +
 			"| --- | --- |\n" +

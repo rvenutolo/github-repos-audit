@@ -540,9 +540,9 @@ shows them, listing only the repositories that carry any.
 
 - **skill_slash_only** — whether every skill and command file sets
   `disable-model-invocation: true`, so it runs only when someone types its
-  `/` command. Only the YAML boolean `true` counts: Claude Code also accepts
-  `yes`, `on` or a quoted `"true"`, but the verdict must not depend on its
-  version. A file that also sets `user-invocable: false` fails, since it
+  `/` command. Only the YAML boolean `true` counts: Claude Code accepts
+  `yes`, `on`, `1` and similar spellings, but the audit holds the value to the
+  YAML boolean so the verdict does not depend on the Claude Code version. A file that also sets `user-invocable: false` fails, since it
   then cannot be run at all.
 - **skill_name_matches_dir** — whether every skill's frontmatter `name`
   equals its directory name. A missing `name` fails, even though Claude Code
@@ -570,6 +570,34 @@ shows them, listing only the repositories that carry any.
   budget and move detail into reference files beside it, as both the skills
   documentation and the Agent Skills specification advise. It takes only `info` or
   `not_required`.
+
+The hook checks apply once the repository has a hook, wherever it is
+declared: a hooks file, an inline `plugin.json` `hooks` object, or a skill's
+or command's frontmatter. A cell counts hooks the way the skill cells count
+files, naming a failing hook by its file and event (`✗ 1/3 hooks/hooks.json
+PreToolUse`). A hooks file that cannot be read fails every hook check as
+`unreadable <path>`.
+
+- **hook_known_events** — whether every hook's event is one the
+  [hooks documentation](https://code.claude.com/docs/en/hooks) lists. A
+  misspelled event never fires, so the hook silently never runs. Judged for
+  every handler type.
+- **hook_command_executable** — whether every `command` hook that runs a file
+  of the repository (directly, or through `${CLAUDE_PLUGIN_ROOT}` or
+  `$CLAUDE_PROJECT_DIR`) names a tracked file with git mode `100755`. When the
+  first word is an interpreter (`bash`, `sh`, `python3`, `node`, ...) the
+  script is read, not executed, so it must be tracked but need not be
+  executable. A command naming no repository file (`jq ...`) is skipped.
+- **hook_plugin_root** — whether every plugin `command` hook that runs a file
+  of the repository names it through `${CLAUDE_PLUGIN_ROOT}`; a relative or
+  absolute path breaks once the plugin is installed elsewhere. Hooks outside a
+  plugin, such as those in `.claude/settings.json`, are skipped.
+- **hook_timeout** — whether every hook sets an explicit `timeout`. Judged for
+  every handler type.
+- **hook_matcher** — whether every hook on an event whose matcher is a tool
+  name (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
+  `PermissionRequest`, `PermissionDenied`) sets a non-empty `matcher`. Hooks on
+  other events are skipped.
 
 ## Cache lists
 

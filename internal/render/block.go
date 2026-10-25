@@ -278,6 +278,13 @@ func claudeGroups() []pathGroup {
 			{"No wrappers", rules.CheckSkillNoWrapperCommands},
 			{"Longest SKILL.md", rules.CheckSkillSize},
 		}},
+		{"Hooks", []pathColumn{
+			{"Events", rules.CheckHookKnownEvents},
+			{"Executable", rules.CheckHookCommandExecutable},
+			{"Plugin root", rules.CheckHookPluginRoot},
+			{"Timeout", rules.CheckHookTimeout},
+			{"Matcher", rules.CheckHookMatcher},
+		}},
 	}
 }
 

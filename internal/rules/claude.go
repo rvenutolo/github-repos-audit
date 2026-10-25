@@ -109,6 +109,9 @@ func countedCell(items []item) observation {
 // and skill_known_keys because Claude Code can invoke them on its own as it
 // does skills; a command's name is not a directory and its description is
 // not truncated in the skill listing, so the other skill checks leave it out.
+//
+// The hook checks apply once the repository has a hook, and each is n/a when
+// no hook is one it judges. A hook file that could not be read fails all five.
 func observeClaude(c Check, r audit.Repo, _ evalContext) observation {
 	cl := r.Claude
 	if cl.Unreadable != "" {
@@ -145,6 +148,37 @@ func observeClaude(c Check, r audit.Repo, _ evalContext) observation {
 		// A slash-only skill is its own / command, so a command file that
 		// only invokes it is a second name for the same thing.
 		return countedCell(skillItems(cl.Commands, func(s audit.ClaudeSkill) bool { return s.WrapsSkill == "" }))
+	case CheckHookKnownEvents:
+		return countedCell(hookItems(cl.Hooks, func(h audit.ClaudeHook) (bool, bool) {
+			return slices.Contains(knownHookEvents(), h.Event), true
+		}))
+	case CheckHookCommandExecutable:
+		// An interpreter reads its script, so only a tracked file is needed;
+		// anything else is run, so it must also carry the execute bit.
+		return countedCell(hookItems(cl.Hooks, func(h audit.ClaudeHook) (bool, bool) {
+			if !runsScript(h) {
+				return false, false
+			}
+			return h.ScriptMode != "" && (h.Interpreter || h.ScriptMode == "100755"), true
+		}))
+	case CheckHookPluginRoot:
+		return countedCell(hookItems(cl.Hooks, func(h audit.ClaudeHook) (bool, bool) {
+			if !h.Plugin || !runsScript(h) {
+				return false, false
+			}
+			return h.PathForm == "plugin_root", true
+		}))
+	case CheckHookTimeout:
+		return countedCell(hookItems(cl.Hooks, func(h audit.ClaudeHook) (bool, bool) {
+			return h.TimeoutSet, true
+		}))
+	case CheckHookMatcher:
+		return countedCell(hookItems(cl.Hooks, func(h audit.ClaudeHook) (bool, bool) {
+			if !slices.Contains(toolMatcherEvents(), h.Event) {
+				return false, false
+			}
+			return h.Matcher != "", true
+		}))
 	}
 	// CheckSkillSize, the one Claude check left. It closes the function
 	// rather than taking a case of its own because observe hands nothing
@@ -212,4 +246,62 @@ func observeSkillSize(skills []audit.ClaudeSkill) observation {
 		longest = max(longest, s.Lines)
 	}
 	return observation{ok: true, value: strconv.Itoa(longest), scalar: true}
+}
+
+// knownHookEvents is every hook event name Claude Code defines, from the
+// lifecycle table at https://code.claude.com/docs/en/hooks. An event outside
+// it is a typo, and Claude Code never fires it, so the hook silently never
+// runs.
+//
+// It is a function rather than a package variable so no mutable global backs
+// the rules.
+func knownHookEvents() []string {
+	return []string{
+		"SessionStart", "Setup", "UserPromptSubmit", "UserPromptExpansion",
+		"PreToolUse", "PermissionRequest", "PermissionDenied", "PostToolUse",
+		"PostToolUseFailure", "PostToolBatch", "Notification", "MessageDisplay",
+		"SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "Stop",
+		"StopFailure", "TeammateIdle", "InstructionsLoaded", "ConfigChange",
+		"CwdChanged", "DirectoryAdded", "FileChanged", "WorktreeCreate",
+		"WorktreeRemove", "PreCompact", "PostCompact", "PreModelSwitch",
+		"PostModelSwitch", "Elicitation", "ElicitationResult", "SessionEnd",
+	}
+}
+
+// toolMatcherEvents are the events whose matcher filters on a tool name, per
+// the matcher table at https://code.claude.com/docs/en/hooks. An empty
+// matcher there fires the hook on every tool, which is rarely meant. The
+// other events match on something else (how a session started, an agent
+// type) or take no matcher, so an empty one is ordinary.
+func toolMatcherEvents() []string {
+	return []string{"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "PermissionDenied"}
+}
+
+// runsScript reports a command handler that names a repository file. Other
+// handler types (http, prompt, agent, mcp_tool) run no script, so a path
+// recorded on one is not judged. An absent type is judged: a command is the
+// handler Claude Code expects when a hook names a file, and skipping it
+// would pass a hook nobody looked at.
+func runsScript(h audit.ClaudeHook) bool {
+	return h.Script != "" && (h.Type == "" || h.Type == "command")
+}
+
+// hookItems judges each hook with judge, which returns whether the hook
+// passes and whether the check applies to it at all. A hook the check does
+// not apply to is left out of the count, but a hook file that could not be
+// read is always counted: its hooks are unknown, so none of them can pass.
+// A hook is named by its file and event.
+func hookItems(hooks []audit.ClaudeHook, judge func(audit.ClaudeHook) (ok, applies bool)) []item {
+	var out []item
+	for _, h := range hooks {
+		name := h.Source + " " + h.Event
+		if h.Unreadable != "" {
+			out = append(out, item{name: name, unreadable: h.Source})
+			continue
+		}
+		if ok, applies := judge(h); applies {
+			out = append(out, item{name: name, ok: ok})
+		}
+	}
+	return out
 }

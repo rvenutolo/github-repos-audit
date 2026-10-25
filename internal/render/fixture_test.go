@@ -217,7 +217,14 @@ func fullSnapshot() *audit.Snapshot {
 	}
 	// One slash-only skill that passes every skill check, and no command
 	// file, so its wrapper cell is n/a.
-	soft.Claude = audit.Claude{Skills: []audit.ClaudeSkill{projectSkill("skill-01", 45)}}
+	// Its one hook passes every hook check, plugin-root path included.
+	soft.Claude = audit.Claude{
+		Skills: []audit.ClaudeSkill{projectSkill("skill-01", 45)},
+		Hooks: []audit.ClaudeHook{{
+			Source: "hooks/hooks.json", Plugin: true, Event: "PreToolUse", Type: "command", Matcher: "Bash",
+			Timeout: 10, TimeoutSet: true, Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
+		}},
+	}
 	soft.Rulesets = []audit.Ruleset{
 		{Name: "ruleset-02", Target: "TAG", Enforcement: "ACTIVE", Include: []string{"refs/tags/v*"}},
 		{
@@ -314,6 +321,19 @@ func fullSnapshot() *audit.Snapshot {
 			Keys:             map[string]string{"description": "!!str", "disable-model-invocation": "!!bool"},
 			DescriptionChars: 30, DisableModelInvocation: true, Lines: 6, WrapsSkill: "skill-01",
 		}},
+		// Two project hooks: one on a tool event with no matcher, no timeout
+		// and a script that is not executable, and one that passes. Neither is
+		// a plugin hook, so the plugin-root cell is n/a.
+		Hooks: []audit.ClaudeHook{
+			{
+				Source: ".claude/settings.json", Event: "PostToolUse", Type: "command",
+				Script: "hooks/hook-01.sh", PathForm: "project_dir", ScriptMode: "100644",
+			},
+			{
+				Source: ".claude/settings.json", Event: "SessionStart", Type: "command",
+				Timeout: 5, TimeoutSet: true, Script: "hooks/hook-02.sh", PathForm: "project_dir", ScriptMode: "100755",
+			},
+		},
 	}
 	// Consistently the wrong identity, beside GitHub's own web-flow committer.
 	tools.Identities = []audit.Identity{
@@ -337,11 +357,15 @@ func fullSnapshot() *audit.Snapshot {
 	cfg.Flake = audit.Flake{}
 	cfg.Settings.HasWiki = true // the one deviation on wiki
 	// Its one skill has no frontmatter, so every skill check that judges it
-	// fails as unreadable.
-	cfg.Claude = audit.Claude{Skills: []audit.ClaudeSkill{{
-		Path: ".claude/skills/skill-01/SKILL.md", Dir: "skill-01",
-		Unreadable: "no YAML frontmatter: the file does not start with ---",
-	}}}
+	// fails as unreadable; its hooks file is not JSON, so every hook check
+	// does too.
+	cfg.Claude = audit.Claude{
+		Skills: []audit.ClaudeSkill{{
+			Path: ".claude/skills/skill-01/SKILL.md", Dir: "skill-01",
+			Unreadable: "no YAML frontmatter: the file does not start with ---",
+		}},
+		Hooks: []audit.ClaudeHook{{Source: ".claude/settings.json", Unreadable: "not valid JSON: unexpected end of JSON input"}},
+	}
 	// A preset it extends is missing, so its release age is unresolved.
 	cfg.Renovate = audit.Renovate{MinReleaseAgeError: "preset github>gh-owner/preset-store:go: not found"}
 	// Its own commits and web-UI merges: canonical and accepted, a pass.

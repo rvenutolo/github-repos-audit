@@ -75,6 +75,11 @@ const (
 	CheckSkillKnownKeys
 	CheckSkillDescriptionLength
 	CheckSkillNoWrapperCommands
+	CheckHookKnownEvents
+	CheckHookCommandExecutable
+	CheckHookPluginRoot
+	CheckHookTimeout
+	CheckHookMatcher
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
@@ -145,6 +150,11 @@ var checkNames = [...]string{
 	CheckSkillKnownKeys:         "skill_known_keys",
 	CheckSkillDescriptionLength: "skill_description_length",
 	CheckSkillNoWrapperCommands: "skill_no_wrapper_commands",
+	CheckHookKnownEvents:        "hook_known_events",
+	CheckHookCommandExecutable:  "hook_command_executable",
+	CheckHookPluginRoot:         "hook_plugin_root",
+	CheckHookTimeout:            "hook_timeout",
+	CheckHookMatcher:            "hook_matcher",
 	CheckLastReleaseAge:         "last_release_age",
 	CheckLastPush:               "last_push",
 	CheckOpenPRs:                "open_prs",
