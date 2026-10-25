@@ -329,7 +329,8 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 		"name": "plugin-kit",
 		"commands": {
 			"command-02": {"content": "---\ndescription: Placeholder description.\n---\nRun skill-01 then skill-03.\n"},
-			"command-01": {"content": "---\ndescription: Placeholder description.\n---\nUse skill-01.\n"}
+			"command-01": {"content": "---\ndescription: Placeholder description.\n---\nUse skill-01.\n", "description": "Placeholder entry description."},
+			"command-03": {"content": "---\n: [\n---\nBroken.\n", "description": "Placeholder entry description."}
 		},
 		"hooks": [
 			"./extra/hooks.json",
@@ -363,6 +364,10 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 			Keys: map[string]string{"description": "!!str"}, HasDescription: true, DescriptionChars: 24, Lines: lines, WrapsSkill: wraps,
 		}
 	}
+	withDescription := func(s audit.ClaudeSkill, d string) audit.ClaudeSkill {
+		s.ManifestDescription = d
+		return s
+	}
 	skill := func(p, name string, lines int, keys ...string) audit.ClaudeSkill {
 		k := map[string]string{"name": "!!str", "description": "!!str"}
 		for _, key := range keys {
@@ -377,7 +382,13 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 		},
 		// The default commands/ is not scanned: the manifest's commands key
 		// replaces it. command-02 names two skills, so it wraps neither.
-		Commands: []audit.ClaudeSkill{inline("command-01", 4, "skill-01"), inline("command-02", 4, "")},
+		// The manifest entry's description is recorded for a readable inline
+		// command only: an unreadable one carries nothing but Path and Dir.
+		Commands: []audit.ClaudeSkill{
+			withDescription(inline("command-01", 4, "skill-01"), "Placeholder entry description."),
+			inline("command-02", 4, ""),
+			{Path: ".claude-plugin/plugin.json#commands/command-03", Dir: "command-03", Unreadable: "frontmatter is not valid YAML: yaml: did not find expected key"},
+		},
 		Hooks: []audit.ClaudeHook{
 			{Source: ".claude-plugin/plugin.json", Plugin: true, Event: "Stop", Type: "prompt"},
 			{

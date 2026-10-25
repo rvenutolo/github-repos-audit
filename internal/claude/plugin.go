@@ -20,10 +20,13 @@ type Plugin struct {
 	CommandsSet    bool              // the commands key is present (replaces the default scan)
 	InlineCommands []string          // names of object-map commands with inline content
 	InlineContent  map[string]string // inline command name -> its content
-	HooksFile      string            // first declared hooks path
-	HooksFiles     []string          // every declared hooks path
-	Hooks          []Hook            // inline hooks object
-	Unreadable     string
+	// InlineDescriptions maps an inline command's name to the description
+	// its manifest entry gives it, for the commands that set one.
+	InlineDescriptions map[string]string
+	HooksFile          string   // first declared hooks path
+	HooksFiles         []string // every declared hooks path
+	Hooks              []Hook   // inline hooks object
+	Unreadable         string
 }
 
 // requiredFields lists the keys plugin_manifest_fields asks for.
@@ -130,6 +133,14 @@ func (p *Plugin) readCommands(v any) string {
 			}
 			source, hasSource := entry["source"].(string)
 			content, hasContent := entry["content"].(string)
+			description, hasDescription := "", false
+			if d, present := entry["description"]; present {
+				// The reference types description as a string, and Claude
+				// Code fails a manifest with a type mismatch.
+				if description, hasDescription = d.(string); !hasDescription {
+					return "commands." + name + ".description is not a string"
+				}
+			}
 			// The reference: an entry sets exactly one of source or content.
 			if hasSource == hasContent {
 				return "commands." + name + " must set exactly one of source and content"
@@ -140,6 +151,12 @@ func (p *Plugin) readCommands(v any) string {
 					p.InlineContent = map[string]string{}
 				}
 				p.InlineContent[name] = content
+				if hasDescription {
+					if p.InlineDescriptions == nil {
+						p.InlineDescriptions = map[string]string{}
+					}
+					p.InlineDescriptions[name] = description
+				}
 			} else {
 				if source == "" {
 					return "commands." + name + ".source is empty"

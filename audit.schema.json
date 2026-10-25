@@ -979,6 +979,11 @@
           "type": "string",
           "minLength": 1
         },
+        "manifest_description": {
+          "description": "For an inline command, the `description` its plugin.json entry sets. Absent when the entry sets none, and for a file.",
+          "type": "string",
+          "minLength": 1
+        },
         "unreadable": {
           "description": "Why the file could not be read in full or parsed. When present nothing but path and dir is.",
           "type": "string",

@@ -161,11 +161,18 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 	}
 	for _, s := range commands {
 		hooks = append(hooks, s.Hooks...)
-		wraps := ""
+		wraps, description := "", ""
 		if s.Unreadable == "" {
 			wraps = claude.WrappedSkill(s.Body, skillNames)
+			// An inline command's path is the only one under the manifest's
+			// own path, and only it has a manifest description to carry.
+			if name, inline := strings.CutPrefix(s.Path, inlineCommandPath); inline {
+				description = manifest.InlineDescriptions[name]
+			}
 		}
-		out.Commands = append(out.Commands, skillFact(s, wraps))
+		fact := skillFact(s, wraps)
+		fact.ManifestDescription = description
+		out.Commands = append(out.Commands, fact)
 	}
 
 	// Stable, so the handlers of one event in one file keep the order they
