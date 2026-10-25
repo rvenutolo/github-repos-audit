@@ -530,9 +530,11 @@ paths its `.claude-plugin/plugin.json` names. They apply once a repository
 has a skill or a command file, and each is n/a when the repository has none
 of the files it judges. A cell that counts reads `passing/total` (`3/3`);
 when any fail it names them after the count, in path order
-(`✗ 1/3 skill-01`). A file whose frontmatter is missing, not closed by
-`---` or not a YAML mapping cannot pass anything, so every check that
-judges it fails as `unreadable <path>`; when the repository's Claude files
+(`✗ 1/3 skill-01`). A file with no frontmatter at all (its first line is
+not `---`) is read as having no keys, and fails the checks that need one. A
+file whose frontmatter is not closed by `---`, is not a YAML mapping or
+repeats a key cannot pass anything, so every check that judges it fails as
+`unreadable <path>`; when the repository's Claude files
 cannot be read as a whole (more of them than the tool reads in one
 repository, or a `plugin.json` whose layout cannot be decided), every one
 of them fails as `unreadable <reason>`. The report's Claude section

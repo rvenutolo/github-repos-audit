@@ -18,23 +18,28 @@ type Skill struct {
 	Path                   string
 	Dir                    string            // name the skill is known by (directory or file stem)
 	Name                   string            // frontmatter name, "" when absent
-	Keys                   map[string]string // frontmatter key -> YAML short tag ("!!str", "!!bool", "!!map", ...)
+	Keys                   map[string]string // frontmatter key -> YAML short tag ("!!str", "!!bool", "!!map", ...); nil without frontmatter
 	DescriptionChars       int               // utf8 rune count of description + when_to_use
 	DisableModelInvocation bool              // YAML boolean true, nothing else
 	UserInvocableFalse     bool              // YAML boolean false
 	Lines                  int               // line count of the whole file
 	Hooks                  []Hook            // frontmatter hooks, Source = Path
-	Body                   string            // text after the frontmatter (not recorded in audit.json)
+	Body                   string            // text after the frontmatter, or all of it without one (not recorded in audit.json)
 	Unreadable             string            // reason; when set, every other field is zero except Path and Dir
 }
 
 const fence = "---"
 
 // ParseSkill reads one skill or command file. plugin says whether the file is
-// part of a plugin, which marks the hooks it declares. A file that does not
-// open with a `---` line, never closes it, or whose frontmatter is not a YAML
-// mapping is unreadable: Claude Code would load it without its metadata, so
-// no check may pass on it.
+// part of a plugin, which marks the hooks it declares.
+//
+// A file whose first line is not `---` has no frontmatter, which Claude Code
+// accepts: it loads the file with no metadata. Such a file is readable with
+// no keys and the whole text as its body, so each check judges what it lacks
+// (no name, no description, not slash-only) and fails it on its merits.
+// Frontmatter that opens but never closes, is not a YAML mapping or repeats
+// a key is unreadable instead: what the author meant to set is unknown, so no
+// check may pass on it.
 func ParseSkill(path, dir, text string, plugin bool) Skill {
 	bad := func(format string, args ...any) Skill {
 		return Skill{Path: path, Dir: dir, Unreadable: fmt.Sprintf(format, args...)}
@@ -42,8 +47,11 @@ func ParseSkill(path, dir, text string, plugin bool) Skill {
 	// A CRLF file is the same file; normalising keeps the fence match exact.
 	norm := strings.ReplaceAll(text, "\r\n", "\n")
 	rest, ok := strings.CutPrefix(norm, fence+"\n")
+	if !ok && norm != fence {
+		return Skill{Path: path, Dir: dir, Lines: lineCount(norm), Body: norm}
+	}
 	if !ok {
-		return bad("no YAML frontmatter: the file does not start with ---")
+		return bad("the frontmatter is not closed by a --- line")
 	}
 	var front, body string
 	switch {
@@ -139,10 +147,10 @@ func isBool(n *yaml.Node, want string) bool {
 }
 
 // lineCount counts lines the way an editor does: a last line without a
-// newline still counts. Its text always opens with a fence, so is never empty.
+// newline still counts, and an empty file has none.
 func lineCount(text string) int {
 	n := strings.Count(text, "\n")
-	if !strings.HasSuffix(text, "\n") {
+	if text != "" && !strings.HasSuffix(text, "\n") {
 		n++
 	}
 	return n

@@ -463,3 +463,25 @@ func TestClaudeFacts_wrapsAnUnreadableSkill(t *testing.T) {
 		t.Errorf("Commands = %+v, want command-01 wrapping skill-01", got.Commands)
 	}
 }
+
+// TestClaudeFacts_commandWithoutFrontmatter: Claude Code loads a command file
+// with no frontmatter, so it is readable with no keys rather than unreadable,
+// and its whole text is the body that can wrap a skill. Recording it as
+// unreadable would mask every other failure the repository has.
+func TestClaudeFacts_commandWithoutFrontmatter(t *testing.T) {
+	t.Parallel()
+
+	const skill, command = ".claude/skills/skill-01/SKILL.md", ".claude/commands/command-01.md"
+	s := &claudeServer{blobs: map[string]*fileBlob{
+		skill:   text("---\nname: skill-01\ndescription: Placeholder description.\n---\nbody\n"),
+		command: text("# Command\nUse skill-01.\n"),
+	}}
+	got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "skill-pack", files(command, skill))
+	if err != nil {
+		t.Fatalf("claudeFacts() error = %v, want nil", err)
+	}
+	want := []audit.ClaudeSkill{{Path: command, Dir: "command-01", Lines: 2, WrapsSkill: "skill-01"}}
+	if diff := cmp.Diff(want, got.Commands); diff != "" {
+		t.Errorf("Commands mismatch (-want +got):\n%s", diff)
+	}
+}

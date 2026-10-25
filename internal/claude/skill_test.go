@@ -145,9 +145,8 @@ func TestParseSkill_body(t *testing.T) {
 func TestParseSkill_unreadable(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		"no frontmatter":              "# Title\nbody\n",
-		"empty file":                  "",
 		"not closed":                  "---\nname: a\nbody\n",
+		"a lone opening fence":        "---",
 		"a YAML list":                 "---\n- a\n- b\n---\nbody\n",
 		"a YAML scalar":               "---\njust text\n---\n",
 		"YAML syntax error":           "---\nname: [unclosed\n---\nbody\n",
@@ -166,6 +165,37 @@ func TestParseSkill_unreadable(t *testing.T) {
 			}
 			if diff := cmp.Diff(want, s); diff != "" {
 				t.Errorf("other facts must be zero (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// A file that does not open with a --- line has no frontmatter, which Claude
+// Code loads as a skill or command with no metadata. It is readable, with no
+// keys, so each check judges the missing keys on their merits. Keys stays nil
+// rather than empty so audit.json omits it, as its schema requires.
+func TestParseSkill_noFrontmatter(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, text string
+		lines      int
+	}{
+		{"plain markdown", "# Title\nbody\n", 2},
+		{"CRLF markdown", "# Title\r\nbody\r\n", 2},
+		{"a fence that is not the first line", "\n---\nname: a\n---\n", 4},
+		{"a longer rule is not a fence", "----\nname: a\n", 2},
+		{"empty file", "", 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := claude.ParseSkill("p/SKILL.md", "p", tc.text, true)
+			want := claude.Skill{
+				Path: "p/SKILL.md", Dir: "p", Lines: tc.lines,
+				Body: strings.ReplaceAll(tc.text, "\r\n", "\n"),
+			}
+			if diff := cmp.Diff(want, s); diff != "" {
+				t.Errorf("(-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -1234,7 +1234,7 @@
           {
             "path": ".claude/skills/skill-01/SKILL.md",
             "dir": "skill-01",
-            "unreadable": "no YAML frontmatter: the file does not start with ---"
+            "unreadable": "the frontmatter is not closed by a --- line"
           }
         ],
         "hooks": [

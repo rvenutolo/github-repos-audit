@@ -356,13 +356,13 @@ func fullSnapshot() *audit.Snapshot {
 	cfg.Files.FlakeNix = false
 	cfg.Flake = audit.Flake{}
 	cfg.Settings.HasWiki = true // the one deviation on wiki
-	// Its one skill has no frontmatter, so every skill check that judges it
-	// fails as unreadable; its hooks file is not JSON, so every hook check
-	// does too.
+	// Its one skill's frontmatter is never closed, so every skill check
+	// that judges it fails as unreadable; its hooks file is not JSON, so
+	// every hook check does too.
 	cfg.Claude = audit.Claude{
 		Skills: []audit.ClaudeSkill{{
 			Path: ".claude/skills/skill-01/SKILL.md", Dir: "skill-01",
-			Unreadable: "no YAML frontmatter: the file does not start with ---",
+			Unreadable: "the frontmatter is not closed by a --- line",
 		}},
 		Hooks: []audit.ClaudeHook{{Source: ".claude/settings.json", Unreadable: "not valid JSON: unexpected end of JSON input"}},
 	}

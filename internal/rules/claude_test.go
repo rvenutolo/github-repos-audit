@@ -230,10 +230,25 @@ func TestObserveClaude_skills(t *testing.T) {
 			want: map[rules.Check]claudeWant{rules.CheckSkillSlashOnly: fail("1/3 command-01, skill-01")},
 		},
 		{
+			// What internal/claude records for a file with no frontmatter:
+			// readable, with no keys. It fails what it lacks rather than
+			// failing everything as unreadable.
+			name: "a skill without frontmatter fails on its merits",
+			repo: skills(audit.ClaudeSkill{Path: "skills/skill-01/SKILL.md", Dir: "skill-01", Lines: 4}),
+			want: map[rules.Check]claudeWant{
+				rules.CheckSkillSlashOnly:         fail("0/1 skill-01"),
+				rules.CheckSkillNameMatchesDir:    fail("0/1 skill-01"),
+				rules.CheckSkillKnownKeys:         pass("1/1"),
+				rules.CheckSkillDescriptionLength: fail("0/1 skill-01"),
+				rules.CheckSkillNoWrapperCommands: na,
+				rules.CheckSkillSize:              {rules.Info, "4"},
+			},
+		},
+		{
 			name: "an unreadable skill fails every check that judges it",
 			repo: skills(goodSkill("skill-01"), audit.ClaudeSkill{
 				Path: "skills/skill-02/SKILL.md", Dir: "skill-02",
-				Unreadable: "no YAML frontmatter: the file does not start with ---",
+				Unreadable: "the frontmatter is not closed by a --- line",
 			}),
 			want: map[rules.Check]claudeWant{
 				rules.CheckSkillSlashOnly:         fail("unreadable skills/skill-02/SKILL.md"),
