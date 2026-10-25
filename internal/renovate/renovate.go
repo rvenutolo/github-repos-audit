@@ -1,11 +1,13 @@
-// Package renovate decides three facts about a Renovate configuration, each as
+// Package renovate decides four facts about a Renovate configuration, each as
 // Renovate itself would merge it from the repository's own file and the
 // presets it extends: the effective top-level minimumReleaseAge, whether the
-// nix manager runs, and whether lock-file maintenance is on.
+// nix manager runs, whether lock-file maintenance is on, and whether major
+// updates merge on their own.
 //
 // Only presets in the audited account are followed. A built-in preset lives
 // in Renovate's source rather than on GitHub, so it cannot be fetched: a fixed
-// table (builtinLayer) knows the few that set lockFileMaintenance.enabled, and
+// table (builtinLayer) knows the few that set lockFileMaintenance.enabled or
+// the automerge, approval and enablement of majors, and
 // every other built-in is treated as setting nothing. Another owner's preset
 // is outside what this tool reads and also sets nothing. A repository relying
 // on one of those alone shows "none" or "off", which is conservative and is
@@ -57,6 +59,9 @@ type Result struct {
 	NixManager bool
 	// LockFileMaintenance is lockFileMaintenance.enabled true.
 	LockFileMaintenance bool
+	// AutomergeMajor is true only when, after the merge, every major update
+	// is auto-merged and nothing disables or gates it.
+	AutomergeMajor bool
 	// Unresolved is why the configuration could not be decided; when set,
 	// the others are empty or false. A wrong-typed manager key never sets
 	// it: that leaves only its own fact false.
@@ -71,6 +76,12 @@ type layered struct {
 	nix        flag
 	lockFile   flag
 	managers   managerList
+	automerge  automergeLayer
+	// rules is packageRules. Unlike every other key it is concatenated, not
+	// replaced: Renovate's mergeChildConfig appends the child's packageRules
+	// to the parent's, preset rules first and the own file's last.
+	// https://github.com/renovatebot/renovate/blob/main/lib/config/utils.ts
+	rules []pkgRule
 }
 
 // over lays o on top of l, key by key, the way a later layer overrides an
@@ -88,6 +99,8 @@ func (l *layered) over(o layered) {
 	if o.managers.set {
 		l.managers = o.managers
 	}
+	l.automerge.over(o.automerge)
+	l.rules = append(l.rules, o.rules...)
 }
 
 // assignment is what one layer says about minimumReleaseAge.
@@ -106,8 +119,8 @@ type flag struct {
 }
 
 // managerList is what one layer says about enabledManagers. Renovate replaces
-// an array wholesale rather than appending to it, so a later layer's list is
-// the whole list.
+// this array wholesale rather than appending to it, so a later layer's list is
+// the whole list. (packageRules is the array that does append.)
 type managerList struct {
 	set   bool
 	names []string
@@ -125,8 +138,8 @@ type resolver struct {
 }
 
 // Resolve returns the effective configuration (see Result: the top-level
-// minimumReleaseAge, whether the nix manager runs, and whether lock-file
-// maintenance is on) for a repository whose Renovate configuration at
+// minimumReleaseAge, whether the nix manager runs, whether lock-file
+// maintenance is on, and whether majors auto-merge) for a repository whose Renovate configuration at
 // rootPath has the text rootText.
 func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch) (Result, error) {
 	r := resolver{owner: owner, fetch: fetch}
@@ -147,6 +160,7 @@ func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch)
 		// https://github.com/renovatebot/renovate/issues/9408
 		NixManager:          l.nix.value && (!l.managers.set || slices.Contains(l.managers.names, "nix")),
 		LockFileMaintenance: l.lockFile.value,
+		AutomergeMajor:      majorsAutoMerge(l.automerge, l.rules),
 	}
 	if l.releaseAge.set && l.releaseAge.value != "" {
 		res.MinReleaseAge, res.Source = l.releaseAge.value, l.releaseAge.source
@@ -236,8 +250,8 @@ func (r resolver) preset(ctx context.Context, ref string, stack []string) (layer
 
 // ownLayer reads every key this package merges from the file's own text, not
 // its presets. Only minimumReleaseAge can make the layer unresolved: its
-// reason is published as min_release_age_error, so the manager keys must not
-// add reasons of their own to it.
+// reason is published as min_release_age_error, so the manager and automerge
+// keys must not add reasons of their own to it.
 func ownLayer(source string, cfg map[string]any) (layered, error) {
 	releaseAge, err := ownAssignment(source, cfg)
 	if err != nil {
@@ -248,6 +262,8 @@ func ownLayer(source string, cfg map[string]any) (layered, error) {
 		nix:        ownFlag(cfg, "nix"),
 		lockFile:   ownFlag(cfg, "lockFileMaintenance"),
 		managers:   ownManagers(cfg),
+		automerge:  ownAutomerge(cfg),
+		rules:      ownRules(cfg),
 	}, nil
 }
 

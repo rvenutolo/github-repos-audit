@@ -429,6 +429,11 @@
           "description": "Whether lockFileMaintenance.enabled is true after the same merge, which for this key also reads the built-in presets the README lists under nix_lock_refresh. Absent when off, unset, of the wrong type or unresolved.",
           "type": "boolean",
           "const": true
+        },
+        "automerge_major": {
+          "description": "Whether Renovate merges every major update on its own after the same merge: automerge on for majors, with nothing disabling them, requiring Dependency Dashboard approval for them, or holding some of them in a narrower packageRule. Absent when off, unset, of the wrong type or unresolved.",
+          "type": "boolean",
+          "const": true
         }
       }
     },

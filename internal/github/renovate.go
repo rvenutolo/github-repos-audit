@@ -39,6 +39,7 @@ func (c *Client) renovateFacts(
 		MinReleaseAgeError:  res.Unresolved,
 		NixManager:          res.NixManager,
 		LockFileMaintenance: res.LockFileMaintenance,
+		AutomergeMajor:      res.AutomergeMajor,
 	}, nil
 }
 

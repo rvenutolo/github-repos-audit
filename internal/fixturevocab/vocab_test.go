@@ -482,7 +482,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.releases\.(drafts|total)`,
 		// A duration such as "7 days" is never account data.
 		`repos\[\]\.renovate\.min_release_age`,
-		`repos\[\]\.renovate\.(lock_file_maintenance|nix_manager)`,
+		`repos\[\]\.renovate\.(automerge_major|lock_file_maintenance|nix_manager)`,
 		`repos\[\]\.rulesets\[\]\.(enforcement|include\[\]|rules\[\]|target)`,
 		`repos\[\]\.settings\.[a-z_]+`,
 		`repos\[\]\.settings\.allowed_actions\.(github_owned_allowed|verified_allowed)`,

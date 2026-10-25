@@ -162,6 +162,12 @@ type Renovate struct {
 	// presets the README lists under nix_lock_refresh. False when off, unset,
 	// of the wrong type, or unresolved.
 	LockFileMaintenance bool `json:"lock_file_maintenance,omitzero"`
+	// AutomergeMajor is whether Renovate merges every major update on its
+	// own after the same merge: automerge on for majors, with nothing
+	// disabling them, requiring Dependency Dashboard approval for them, or
+	// holding some of them in a narrower packageRule. False when off,
+	// unset, of the wrong type, or unresolved.
+	AutomergeMajor bool `json:"automerge_major,omitzero"`
 }
 
 // Files records the outcome of every file-existence probe. A probe answers
