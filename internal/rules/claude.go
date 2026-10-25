@@ -383,13 +383,15 @@ func observePlugin(c Check, r audit.Repo) observation {
 		return observation{unknown: true}
 	}
 	version := cmp.Or(p.Version, "none")
-	ok, valid := semverAtLeast(p.Version, tag)
+	order, valid := semverCompare(p.Version, tag)
 	switch {
 	case !valid:
 		return observation{value: version + " ? " + tag, mark: true}
-	case version == strings.TrimPrefix(tag, "v"):
+	case order == 0:
+		// Equal precedence is the release itself, build metadata or not,
+		// so it reads as a match rather than as ahead.
 		return observation{ok: true, value: version}
-	case ok:
+	case order > 0:
 		// Ahead passes, so a nightly run between a release pull request's
 		// merge and its publish does not fail.
 		return observation{ok: true, value: version + " ≥ " + tag}
@@ -397,20 +399,20 @@ func observePlugin(c Check, r audit.Repo) observation {
 	return observation{value: version + " < " + tag, mark: true}
 }
 
-// semverAtLeast reports whether version is the same as or later than tag with
-// its leading v removed, comparing them as Semantic Versioning 2.0.0 orders
-// them (https://semver.org): numeric core first, then a version with no
+// semverCompare orders version against tag with its leading v removed, as
+// cmp.Compare does, comparing them as Semantic Versioning 2.0.0 orders them
+// (https://semver.org): numeric core first, then a version with no
 // prerelease ahead of one with, then prerelease identifiers one by one.
 // Build metadata does not take part. valid is false when either side is not
-// a semantic version, and ok is then false too. It is local because the
+// a semantic version, and the order is then 0. It is local because the
 // module would be the project's only use of golang.org/x/mod.
-func semverAtLeast(version, tag string) (ok, valid bool) {
+func semverCompare(version, tag string) (order int, valid bool) {
 	a, aok := parseSemver(version)
 	b, bok := parseSemver(strings.TrimPrefix(tag, "v"))
 	if !aok || !bok {
-		return false, false
+		return 0, false
 	}
-	return a.compare(b) >= 0, true
+	return a.compare(b), true
 }
 
 // semver holds each numeric part as its digits rather than an int: semver
@@ -661,7 +663,7 @@ func pinCurrent(ref string, rel audit.Releases, now time.Time) observation {
 	if ref == rel.LatestTag {
 		return observation{ok: true, value: ref}
 	}
-	if ahead, _ := semverAtLeast(strings.TrimPrefix(ref, "v"), rel.LatestTag); ahead {
+	if order, valid := semverCompare(strings.TrimPrefix(ref, "v"), rel.LatestTag); valid && order >= 0 {
 		return observation{ok: true, value: ref + " ≥ " + rel.LatestTag}
 	}
 	value := ref + " → " + cmp.Or(rel.LatestTag, "none")

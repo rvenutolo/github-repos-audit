@@ -745,6 +745,18 @@ func TestObserveClaude_plugin(t *testing.T) {
 			row(pass(""), pass(""), fail(""), na),
 		},
 		{
+			// Build metadata takes no part in precedence, so the version is
+			// the release, not ahead of it.
+			"a version with build metadata matches its release",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "1.2.0+build" }),
+			row(pass(""), pass(""), pass(""), pass("1.2.0+build")),
+		},
+		{
+			"a tag with build metadata matches its version",
+			plugin("v1.2.0+build", nil),
+			row(pass(""), pass(""), pass(""), pass("1.2.0")),
+		},
+		{
 			"a version ahead of the release passes",
 			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "1.3.0" }),
 			row(pass(""), pass(""), pass(""), pass("1.3.0 ≥ v1.2.0")),

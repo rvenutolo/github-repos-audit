@@ -662,7 +662,10 @@ and are n/a elsewhere. A `plugin.json` that cannot be read fails all four as
   whatever the repository's type says about the releases it expects.
 - **plugin_version_matches_tag** — whether the `version` in `plugin.json` is
   the same as or ahead of the latest release's tag with its `v` removed,
-  compared as [semantic versions](https://semver.org). Ahead passes, so a run
+  compared as [semantic versions](https://semver.org). The same version
+  passes and the cell reads it alone, build metadata included
+  (`1.2.0+build` against `v1.2.0`), since build metadata takes no part in
+  the comparison. Ahead passes, so a run
   between a release pull request's merge and its publish does not fail; the
   cell reads `1.3.0 ≥ v1.2.0`. Behind fails (`1.1.0 < v1.2.0`). A version or
   tag that is not a semantic version fails and shows both raw values
