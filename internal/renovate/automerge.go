@@ -157,7 +157,7 @@ func ownRule(obj map[string]any) pkgRule {
 		key = "updateTypes"
 	}
 	if v, has := obj[key]; has {
-		list, ok := v.([]any)
+		list, ok := updateTypeList(v)
 		if !ok || len(list) == 0 {
 			r.malformed = true
 		}
@@ -185,6 +185,21 @@ func ownRule(obj map[string]any) pkgRule {
 	r.approval, b3 = ownTri(obj, "dependencyDashboardApproval")
 	r.malformed = r.malformed || b1 || b2 || b3
 	return r
+}
+
+// updateTypeList reads a matchUpdateTypes or legacy updateTypes value. The
+// option allows a string, which Renovate's config massaging turns into a
+// one-element list before any rule matches, so a bare "major" reaches majors
+// exactly as ["major"] does; ok is false for any other non-list.
+// https://github.com/renovatebot/renovate/blob/main/lib/config/massage.ts
+func updateTypeList(v any) (list []any, ok bool) {
+	switch v := v.(type) {
+	case []any:
+		return v, true
+	case string:
+		return []any{v}, true
+	}
+	return nil, false
 }
 
 // majorsAutoMerge follows the order Renovate applies them in: top-level

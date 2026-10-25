@@ -126,7 +126,17 @@ func TestResolve_automergeMajor(t *testing.T) {
 		{"wrong type major", `{"automerge": true, "major": "x"}`, false},
 		{"wrong type major.automerge", `{"major": {"automerge": "true"}}`, false},
 		{"wrong type enabled", `{"automerge": true, "major": {"enabled": "false"}}`, false},
-		{"wrong type matchUpdateTypes", `{"automerge": true, "packageRules": [{"matchUpdateTypes": "major", "automerge": true}]}`, false},
+		// Renovate reads a bare string where it allows one as a one-element
+		// list, and matchUpdateTypes (and updateTypes, migrated to it) allows one.
+		{"string matchUpdateTypes major", `{"packageRules": [{"matchUpdateTypes": "major", "automerge": true}]}`, true},
+		{"string updateTypes major", `{"packageRules": [{"updateTypes": "major", "automerge": true}]}`, true},
+		{"string matchUpdateTypes minor", `{"packageRules": [{"matchUpdateTypes": "minor", "automerge": true}]}`, false},
+		{
+			"string updateTypes major hold",
+			`{"automerge": true, "packageRules": [{"updateTypes": "major", "automerge": false}]}`, false,
+		},
+		{"wrong type matchUpdateTypes", `{"automerge": true, "packageRules": [{"matchUpdateTypes": 5, "automerge": true}]}`, false},
+		{"wrong type updateTypes", `{"automerge": true, "packageRules": [{"updateTypes": {}, "automerge": true}]}`, false},
 		{"malformed packageRules", `{"packageRules": "x", "automerge": true}`, false},
 		{"malformed rule", `{"packageRules": ["x"], "automerge": true}`, false},
 		{"wrong type rule automerge", `{"automerge": true, "packageRules": [{"automerge": "no"}]}`, false},

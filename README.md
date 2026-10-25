@@ -327,7 +327,9 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `automerge`, then `major.automerge`, then each `packageRules` entry that
   matches all majors, the last one that sets `automerge` winning. A rule
   needs a selector (`matchUpdateTypes` or another `match*`/`exclude*` key);
-  one with none is malformed and fails. A rule narrowed to some packages,
+  one with none is malformed and fails. `matchUpdateTypes`, and the legacy
+  `updateTypes` Renovate migrates to it, take a list or a single string. A
+  rule narrowed to some packages,
   managers or files does not make a pass, and one that holds some majors
   back fails wherever it sits in the list, even before a later broad rule
   that would override it in Renovate. Majors that are disabled or need
