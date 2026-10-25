@@ -110,7 +110,8 @@ func TestParsePlugin_components(t *testing.T) {
 		{"commands object map", `{"commands": {"about": {"content": "text"}, "status": {"source": "./c/s.md"}}}`, func(t *testing.T, p claude.Plugin) {
 			t.Helper()
 			if !p.CommandsSet || !cmp.Equal(p.InlineCommands, []string{"about"}) ||
-				!cmp.Equal(p.InlineContent, map[string]string{"about": "text"}) || !cmp.Equal(p.CommandPaths, []string{"c/s.md"}) {
+				!cmp.Equal(p.InlineContent, map[string]string{"about": "text"}) || p.CommandPaths != nil ||
+				!cmp.Equal(p.SourceCommands, map[string]string{"status": "c/s.md"}) {
 				t.Errorf("got %+v", p)
 			}
 		}},

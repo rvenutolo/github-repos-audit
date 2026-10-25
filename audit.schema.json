@@ -904,7 +904,7 @@
           "items": { "$ref": "#/$defs/claude_skill" }
         },
         "commands": {
-          "description": "Every command file, sorted by path, then every inline command plugin.json declares, sorted by name.",
+          "description": "Every command file, sorted by path (by name for one file that several commands object map keys name), then every inline command plugin.json declares, sorted by name.",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/claude_skill" }
@@ -935,7 +935,7 @@
           "minLength": 1
         },
         "dir": {
-          "description": "The name Claude Code knows it by: the skill's directory, the plugin's name for a root SKILL.md, or the command's name. Empty for the root SKILL.md of a plugin whose manifest sets no name.",
+          "description": "The name Claude Code knows it by: the skill's directory, the plugin's name for a root SKILL.md, or the command's name (its key, for an entry in plugin.json's commands object map). Empty for the root SKILL.md of a plugin whose manifest sets no name.",
           "type": "string"
         },
         "name": {

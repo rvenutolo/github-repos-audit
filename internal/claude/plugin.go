@@ -16,10 +16,15 @@ type Plugin struct {
 	Fields         []string          // required fields present by the presence rules, sorted
 	SkillDirs      []string          // declared skills paths, cleaned, repository-relative
 	SkillsSet      bool              // the skills key is present
-	CommandPaths   []string          // declared commands file/dir paths; nil when the key is absent
+	CommandPaths   []string          // declared commands file/dir paths; nil when the key is absent or an object map
 	CommandsSet    bool              // the commands key is present (replaces the default scan)
 	InlineCommands []string          // names of object-map commands with inline content
 	InlineContent  map[string]string // inline command name -> its content
+	// SourceCommands maps an object-map command's name to its source path,
+	// cleaned, for the entries that set source. The key is the name, not the
+	// file's stem: the reference makes each key the command name, and two
+	// keys may name one file.
+	SourceCommands map[string]string
 	// InlineDescriptions maps an inline command's name to the description
 	// its manifest entry gives it, for the commands that set one.
 	InlineDescriptions map[string]string
@@ -164,7 +169,10 @@ func (p *Plugin) readCommands(v any) string {
 				if !strings.HasPrefix(source, "./") {
 					return notRelative("commands."+name+".source", source)
 				}
-				p.CommandPaths = append(p.CommandPaths, cleanDeclared(source))
+				if p.SourceCommands == nil {
+					p.SourceCommands = map[string]string{}
+				}
+				p.SourceCommands[name] = cleanDeclared(source)
 			}
 		}
 		return ""

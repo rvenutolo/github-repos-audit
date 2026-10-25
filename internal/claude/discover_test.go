@@ -137,6 +137,20 @@ func TestDiscover(t *testing.T) {
 			want:     claude.Layout{Missing: []string{"../a.md"}},
 		},
 		{
+			// Named by the key, so the file is not also in Commands under
+			// its stem; two keys may name one file.
+			name:     "object-map source commands",
+			paths:    []string{"commands/x.md", "cmds/a.md"},
+			manifest: &claude.Plugin{CommandsSet: true, SourceCommands: map[string]string{"one": "cmds/a.md", "two": "cmds/a.md"}},
+			want:     claude.Layout{SourceCommands: map[string]string{"one": "cmds/a.md", "two": "cmds/a.md"}},
+		},
+		{
+			name:     "an object-map source that is a directory, not markdown or outside the repository is missing",
+			paths:    []string{"cmds/a.md", "cmds/b.txt"},
+			manifest: &claude.Plugin{CommandsSet: true, SourceCommands: map[string]string{"d": "cmds", "t": "cmds/b.txt", "o": "../a.md"}},
+			want:     claude.Layout{Missing: []string{"../a.md", "cmds", "cmds/b.txt"}},
+		},
+		{
 			name:     "a declared skills directory that does not exist is missing",
 			paths:    []string{"skills/c/SKILL.md"},
 			manifest: &claude.Plugin{SkillDirs: []string{"extra", "."}, SkillsSet: true},

@@ -21,12 +21,17 @@ type Layout struct {
 	PluginManifest string   // ".claude-plugin/plugin.json" when tracked, else ""
 	OwnMarketplace bool     // .claude-plugin/marketplace.json is tracked
 	Skills         []string // SKILL.md paths, sorted
-	Commands       []string // command .md paths, sorted
+	Commands       []string // command .md paths, sorted, each named by CommandName
+	// SourceCommands is plugin.json's object-map commands that set source:
+	// name -> the .md file it names. They are kept apart from Commands
+	// because their name is the map key, not anything the path says.
+	SourceCommands map[string]string
 	HookFiles      []string // hooks/hooks.json, tracked **/.claude/settings.json and declared hooks paths, sorted
 	// Missing is every path plugin.json declares that nothing in the tree
 	// can answer, sorted: a skills or commands directory that is not one, a
-	// command that is neither a directory nor a .md path, or any declared
-	// path outside the repository. Claude Code cannot load what such a path
+	// command that is neither a directory nor a .md path (an object-map
+	// source names one file, so for it a directory is not one either), or
+	// any declared path outside the repository. Claude Code cannot load what such a path
 	// names, and there is no file to record as unreadable in its place.
 	Missing []string
 }
@@ -80,8 +85,12 @@ func Discover(entries []filepaths.Entry, manifest *Plugin) Layout {
 	}
 
 	missing := map[string]bool{}
+	sources := map[string]string{}
 	if manifest != nil {
-		discoverPlugin(files, dirs, manifest, skills, commands, hooks, missing)
+		discoverPlugin(files, dirs, manifest, skills, commands, hooks, missing, sources)
+	}
+	if len(sources) > 0 {
+		l.SourceCommands = sources
 	}
 
 	l.Skills = sortedKeys(skills)
@@ -97,7 +106,7 @@ func Discover(entries []filepaths.Entry, manifest *Plugin) Layout {
 // any path outside the repository go to missing instead, because there is
 // no file to read in their place. Dropping either would let a plugin Claude
 // Code cannot load read as one with nothing to judge.
-func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, hooks, missing map[string]bool) {
+func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, hooks, missing map[string]bool, sources map[string]string) {
 	addSkills := func(root string) {
 		for p := range files {
 			rest, ok := cut(p, root)
@@ -130,6 +139,15 @@ func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, ho
 				commands[p] = true
 			}
 		}
+	}
+	for name, src := range m.SourceCommands {
+		// The reference's source is "Path to the command's Markdown file",
+		// so a directory has no one file to be the command.
+		if !strings.HasSuffix(src, ".md") || !inRepo(src) {
+			missing[src] = true
+			continue
+		}
+		sources[name] = src
 	}
 	for _, c := range m.CommandPaths {
 		switch {
