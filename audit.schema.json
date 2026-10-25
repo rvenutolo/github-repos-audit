@@ -917,7 +917,7 @@
         },
         "plugin": { "$ref": "#/$defs/claude_plugin" },
         "unreadable": {
-          "description": "A problem with the Claude files as a whole: \"too many Claude files\", a plugin manifest whose layout cannot be decided, or \"plugin.json declares missing <path>\".",
+          "description": "A problem with the Claude files as a whole: \"too many Claude files\", a plugin manifest whose layout cannot be decided, or \"plugin.json declares unloadable path <path>\".",
           "type": "string",
           "minLength": 1
         }
@@ -979,6 +979,11 @@
           "type": "string",
           "minLength": 1
         },
+        "manifest_description": {
+          "description": "For an inline command, the `description` its plugin.json entry sets. Absent when the entry sets none, and for a file.",
+          "type": "string",
+          "minLength": 1
+        },
         "unreadable": {
           "description": "Why the file could not be read in full or parsed. When present nothing but path and dir is.",
           "type": "string",
@@ -1025,6 +1030,16 @@
           "description": "The handler sets `timeout`.",
           "type": "boolean",
           "const": true
+        },
+        "command": {
+          "description": "A command handler's `command` as written. Absent when unset or empty, and for other handler types.",
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "description": "A command handler's `args` as written, which makes it the exec form. Absent for the shell form; an empty list still selects the exec form.",
+          "type": "array",
+          "items": { "type": "string" }
         },
         "script": {
           "description": "The repository file a command handler runs. Absent when it names none.",

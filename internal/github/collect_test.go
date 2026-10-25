@@ -679,9 +679,13 @@ func TestClient_Collect_claude(t *testing.T) {
 				Hooks: []audit.ClaudeHook{
 					{
 						Source: "hooks/hooks.json", Plugin: true, Event: "PreToolUse", Type: "command", Matcher: "Bash",
-						Timeout: 30, TimeoutSet: true, Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
+						Timeout: 30, TimeoutSet: true, Command: "${CLAUDE_PLUGIN_ROOT}/hooks/hook-01.sh",
+						Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
 					},
-					{Source: "skills/skill-02/SKILL.md", Plugin: true, Event: "PostToolUse", Type: "command", Matcher: "Write"},
+					{
+						Source: "skills/skill-02/SKILL.md", Plugin: true, Event: "PostToolUse", Type: "command", Matcher: "Write",
+						Command: "echo PAYLOAD_RAN",
+					},
 				},
 				Plugin: audit.ClaudePlugin{
 					Present: true,

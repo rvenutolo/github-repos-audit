@@ -31,9 +31,12 @@ const (
 // tooManyClaudeFiles is the repository-wide problem past claudeFilesMax.
 const tooManyClaudeFiles = "too many Claude files"
 
-// missingDeclared prefixes the repository-wide problem for a path plugin.json
-// declares that the tree cannot answer.
-const missingDeclared = "plugin.json declares missing "
+// unloadableDeclared prefixes the repository-wide problem for a path plugin.json
+// declares that the tree cannot answer: a skills or commands directory that
+// is not there, a command that is neither a directory nor a .md file, or a
+// path outside the repository. "Missing" would misdescribe the last two, so
+// the reason names what they share: Claude Code cannot load them.
+const unloadableDeclared = "plugin.json declares unloadable path "
 
 // inlineCommandPath is the path recorded for a command whose text lives in
 // plugin.json itself, so it reads as a place in the manifest.
@@ -70,9 +73,16 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 		return audit.Claude{}, err
 	}
 
+	modes := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if !e.Dir {
+			modes[e.Path] = e.Mode
+		}
+	}
+
 	var manifest claude.Plugin
 	if layout.PluginManifest != "" {
-		text, problem := blobText(texts[layout.PluginManifest], layout.PluginManifest)
+		text, problem := claudeText(texts, modes, layout.PluginManifest)
 		if problem == "" {
 			manifest = claude.ParsePlugin(text)
 			problem = manifest.Unreadable
@@ -97,7 +107,7 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 		// Claude Code cannot load; so, as with a manifest that cannot be
 		// read, the whole repository is unreadable.
 		if len(layout.Missing) > 0 {
-			out.Unreadable = missingDeclared + layout.Missing[0]
+			out.Unreadable = unloadableDeclared + layout.Missing[0]
 			return out, nil
 		}
 		var more []string
@@ -117,21 +127,15 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 		maps.Copy(texts, moreTexts)
 	}
 
-	modes := make(map[string]string, len(entries))
-	for _, e := range entries {
-		if !e.Dir {
-			modes[e.Path] = e.Mode
-		}
-	}
 	isPlugin := func(p string) bool { return layout.PluginManifest != "" && !isProjectPath(p) }
 
 	var skills []claude.Skill
 	for _, p := range layout.Skills {
-		skills = append(skills, parseSkillFile(texts, p, claude.SkillName(p, manifest.Name), isPlugin(p)))
+		skills = append(skills, parseSkillFile(texts, modes, p, claude.SkillName(p, manifest.Name), isPlugin(p)))
 	}
 	commands := make([]claude.Skill, 0, len(layout.Commands)+len(manifest.InlineCommands))
 	for _, p := range layout.Commands {
-		commands = append(commands, parseSkillFile(texts, p, claude.CommandName(p), isPlugin(p)))
+		commands = append(commands, parseSkillFile(texts, modes, p, claude.CommandName(p), isPlugin(p)))
 	}
 	for _, n := range manifest.InlineCommands {
 		commands = append(commands, claude.ParseSkill(inlineCommandPath+n, n, manifest.InlineContent[n], true))
@@ -139,7 +143,7 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 
 	hooks := slices.Clone(manifest.Hooks)
 	for _, p := range layout.HookFiles {
-		text, problem := blobText(texts[p], p)
+		text, problem := claudeText(texts, modes, p)
 		if problem != "" {
 			hooks = append(hooks, claude.Hook{Source: p, Plugin: isPlugin(p), Unreadable: problem})
 			continue
@@ -157,11 +161,18 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 	}
 	for _, s := range commands {
 		hooks = append(hooks, s.Hooks...)
-		wraps := ""
+		wraps, description := "", ""
 		if s.Unreadable == "" {
 			wraps = claude.WrappedSkill(s.Body, skillNames)
+			// An inline command's path is the only one under the manifest's
+			// own path, and only it has a manifest description to carry.
+			if name, inline := strings.CutPrefix(s.Path, inlineCommandPath); inline {
+				description = manifest.InlineDescriptions[name]
+			}
 		}
-		out.Commands = append(out.Commands, skillFact(s, wraps))
+		fact := skillFact(s, wraps)
+		fact.ManifestDescription = description
+		out.Commands = append(out.Commands, fact)
 	}
 
 	// Stable, so the handlers of one event in one file keep the order they
@@ -196,8 +207,8 @@ func isProjectPath(p string) bool {
 }
 
 // parseSkillFile parses one skill or command file from what was read.
-func parseSkillFile(texts map[string]*fileBlob, path, dir string, plugin bool) claude.Skill {
-	text, problem := blobText(texts[path], path)
+func parseSkillFile(texts map[string]*fileBlob, modes map[string]string, path, dir string, plugin bool) claude.Skill {
+	text, problem := claudeText(texts, modes, path)
 	if problem != "" {
 		return claude.Skill{Path: path, Dir: dir, Unreadable: problem}
 	}
@@ -231,6 +242,8 @@ func hookFact(h claude.Hook, modes map[string]string) audit.ClaudeHook {
 		Matcher:     h.Matcher,
 		Timeout:     h.Timeout,
 		TimeoutSet:  h.TimeoutSet,
+		Command:     h.Command,
+		Args:        h.Args,
 		Script:      h.Script,
 		Interpreter: h.Interpreter,
 		PathForm:    h.PathForm,
@@ -240,6 +253,18 @@ func hookFact(h claude.Hook, modes map[string]string) audit.ClaudeHook {
 		fact.ScriptMode = modes[h.Script]
 	}
 	return fact
+}
+
+// claudeText is blobText for a Claude file, with one reason of its own: a
+// path plugin.json declares that is not a tracked file (absent, or a
+// directory) has no such file, which says more than "not a text file" about
+// a file that is not there to be text or not. modes holds every tracked
+// file.
+func claudeText(texts map[string]*fileBlob, modes map[string]string, path string) (text, problem string) {
+	if _, tracked := modes[path]; !tracked {
+		return "", path + ": no such file"
+	}
+	return blobText(texts[path], path)
 }
 
 // readClaudeFiles reads paths at HEAD, claudeFilesPerQuery to a query, and

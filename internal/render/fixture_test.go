@@ -230,7 +230,8 @@ func fullSnapshot() *audit.Snapshot {
 		Skills: []audit.ClaudeSkill{projectSkill("skill-01", 45)},
 		Hooks: []audit.ClaudeHook{{
 			Source: "hooks/hooks.json", Plugin: true, Event: "PreToolUse", Type: "command", Matcher: "Bash",
-			Timeout: 10, TimeoutSet: true, Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
+			Timeout: 10, TimeoutSet: true, Command: `"${CLAUDE_PLUGIN_ROOT}"/hooks/hook-01.sh`,
+			Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
 		}},
 	}
 	soft.Rulesets = []audit.Ruleset{
@@ -378,10 +379,12 @@ func fullSnapshot() *audit.Snapshot {
 		Hooks: []audit.ClaudeHook{
 			{
 				Source: ".claude/settings.json", Event: "PostToolUse", Type: "command",
-				Script: "hooks/hook-01.sh", PathForm: "project_dir", ScriptMode: "100644",
+				Command: `"$CLAUDE_PROJECT_DIR"/hooks/hook-01.sh`,
+				Script:  "hooks/hook-01.sh", PathForm: "project_dir", ScriptMode: "100644",
 			},
 			{
 				Source: ".claude/settings.json", Event: "SessionStart", Type: "command",
+				Command: "${CLAUDE_PROJECT_DIR}/hooks/hook-02.sh", Args: []string{"--quiet"},
 				Timeout: 5, TimeoutSet: true, Script: "hooks/hook-02.sh", PathForm: "project_dir", ScriptMode: "100755",
 			},
 		},

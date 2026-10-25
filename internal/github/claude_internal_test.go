@@ -329,17 +329,18 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 		"name": "plugin-kit",
 		"commands": {
 			"command-02": {"content": "---\ndescription: Placeholder description.\n---\nRun skill-01 then skill-03.\n"},
-			"command-01": {"content": "---\ndescription: Placeholder description.\n---\nUse skill-01.\n"}
+			"command-01": {"content": "---\ndescription: Placeholder description.\n---\nUse skill-01.\n", "description": "Placeholder entry description."},
+			"command-03": {"content": "---\n: [\n---\nBroken.\n", "description": "Placeholder entry description."}
 		},
 		"hooks": [
 			"./extra/hooks.json",
-			{"Stop": [{"hooks": [{"type": "prompt"}]}]}
+			{"Stop": [{"hooks": [{"type": "prompt", "command": "echo PAYLOAD_RAN"}]}]}
 		]
 	}`
 	projectSkill := "---\nname: skill-03\ndescription: Placeholder description.\nhooks:\n  SessionStart:\n" +
 		"    - hooks:\n        - type: command\n          command: ./hooks/missing.sh\n---\nPlaceholder body.\n"
 	settings := `{"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "bash hooks/hook-01.sh"}]}]}}`
-	extra := `{"hooks": {"Notification": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/hook-01.sh"}]}]}}`
+	extra := `{"hooks": {"Notification": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/hook-01.sh", "args": ["--quiet"]}]}]}}`
 	s := &claudeServer{blobs: map[string]*fileBlob{
 		".claude-plugin/plugin.json":       text(manifest),
 		".claude/settings.json":            text(settings),
@@ -363,6 +364,10 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 			Keys: map[string]string{"description": "!!str"}, HasDescription: true, DescriptionChars: 24, Lines: lines, WrapsSkill: wraps,
 		}
 	}
+	withDescription := func(s audit.ClaudeSkill, d string) audit.ClaudeSkill {
+		s.ManifestDescription = d
+		return s
+	}
 	skill := func(p, name string, lines int, keys ...string) audit.ClaudeSkill {
 		k := map[string]string{"name": "!!str", "description": "!!str"}
 		for _, key := range keys {
@@ -377,19 +382,26 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 		},
 		// The default commands/ is not scanned: the manifest's commands key
 		// replaces it. command-02 names two skills, so it wraps neither.
-		Commands: []audit.ClaudeSkill{inline("command-01", 4, "skill-01"), inline("command-02", 4, "")},
+		// The manifest entry's description is recorded for a readable inline
+		// command only: an unreadable one carries nothing but Path and Dir.
+		Commands: []audit.ClaudeSkill{
+			withDescription(inline("command-01", 4, "skill-01"), "Placeholder entry description."),
+			inline("command-02", 4, ""),
+			{Path: ".claude-plugin/plugin.json#commands/command-03", Dir: "command-03", Unreadable: "frontmatter is not valid YAML: yaml: did not find expected key"},
+		},
 		Hooks: []audit.ClaudeHook{
 			{Source: ".claude-plugin/plugin.json", Plugin: true, Event: "Stop", Type: "prompt"},
 			{
 				Source: ".claude/settings.json", Event: "PreToolUse", Type: "command", Matcher: "Edit",
-				Script: "hooks/hook-01.sh", Interpreter: true, PathForm: "relative", ScriptMode: "100755",
+				Command: "bash hooks/hook-01.sh", Script: "hooks/hook-01.sh", Interpreter: true, PathForm: "relative", ScriptMode: "100755",
 			},
 			{
 				Source: ".claude/skills/skill-03/SKILL.md", Event: "SessionStart", Type: "command",
-				Script: "hooks/missing.sh", PathForm: "relative",
+				Command: "./hooks/missing.sh", Script: "hooks/missing.sh", PathForm: "relative",
 			},
 			{
 				Source: "extra/hooks.json", Plugin: true, Event: "Notification", Type: "command",
+				Command: "${CLAUDE_PLUGIN_ROOT}/hooks/hook-01.sh", Args: []string{"--quiet"},
 				Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
 			},
 		},
@@ -501,7 +513,7 @@ func TestClaudeFacts_untypedHookRunsItsScript(t *testing.T) {
 		t.Fatalf("claudeFacts() error = %v, want nil", err)
 	}
 	want := []audit.ClaudeHook{{
-		Source: settings, Event: "Stop",
+		Source: settings, Event: "Stop", Command: `"$CLAUDE_PROJECT_DIR"/.claude/hooks/hook-01.sh`,
 		Script: ".claude/hooks/hook-01.sh", PathForm: "project_dir", ScriptMode: "100644",
 	}}
 	if diff := cmp.Diff(want, got.Hooks); diff != "" {
@@ -524,11 +536,11 @@ func TestClaudeFacts_declaredFileNotTracked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claudeFacts() error = %v, want nil", err)
 	}
-	_, commandProblem := blobText(nil, "commands/command-01.md")
-	_, hooksProblem := blobText(nil, "hooks/hooks.json")
+	// The reason says the file is missing, not that it is not text: nothing
+	// is there to be text or not.
 	want := audit.Claude{
-		Commands: []audit.ClaudeSkill{{Path: "commands/command-01.md", Dir: "command-01", Unreadable: commandProblem}},
-		Hooks:    []audit.ClaudeHook{{Source: "hooks/hooks.json", Plugin: true, Unreadable: hooksProblem}},
+		Commands: []audit.ClaudeSkill{{Path: "commands/command-01.md", Dir: "command-01", Unreadable: "commands/command-01.md: no such file"}},
+		Hooks:    []audit.ClaudeHook{{Source: "hooks/hooks.json", Plugin: true, Unreadable: "hooks/hooks.json: no such file"}},
 		Plugin:   audit.ClaudePlugin{Present: true, Name: "plugin-kit", Fields: []string{"name"}},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
@@ -536,29 +548,33 @@ func TestClaudeFacts_declaredFileNotTracked(t *testing.T) {
 	}
 }
 
-// TestClaudeFacts_declaredDirectoryMissing: a skills or commands directory the
-// manifest declares but the tree does not hold has no file to record as
-// unreadable, so the repository's Claude files are unreadable as a whole, as
-// they are when the manifest itself cannot be read, and nothing more is read.
-func TestClaudeFacts_declaredDirectoryMissing(t *testing.T) {
+// TestClaudeFacts_declaredPathUnloadable: a skills or commands directory the
+// manifest declares but the tree does not hold, a tracked command path that
+// is not a .md file, and a path outside the repository have no file to record
+// as unreadable, so the repository's Claude files are unreadable as a whole,
+// as they are when the manifest itself cannot be read, and nothing more is
+// read.
+func TestClaudeFacts_declaredPathUnloadable(t *testing.T) {
 	t.Parallel()
 
 	const manifest = ".claude-plugin/plugin.json"
 	tests := []struct{ name, manifest, missing string }{
 		{"commands", `{"name": "plugin-kit", "commands": "./commands"}`, "commands"},
 		{"skills", `{"name": "plugin-kit", "skills": ["./skills", "./extra/"]}`, "extra"},
+		{"command not markdown", `{"name": "plugin-kit", "commands": "./notes/command-01.txt"}`, "notes/command-01.txt"},
+		{"hooks outside the repository", `{"name": "plugin-kit", "hooks": "./../hooks.json"}`, "../hooks.json"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := &claudeServer{blobs: map[string]*fileBlob{manifest: text(tc.manifest)}}
-			got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest, "skills/skill-01/SKILL.md"))
+			got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest, "skills/skill-01/SKILL.md", "notes/command-01.txt"))
 			if err != nil {
 				t.Fatalf("claudeFacts() error = %v, want nil", err)
 			}
 			want := audit.Claude{
 				Plugin:     audit.ClaudePlugin{Present: true, Name: "plugin-kit", Fields: []string{"name"}},
-				Unreadable: "plugin.json declares missing " + tc.missing,
+				Unreadable: "plugin.json declares unloadable path " + tc.missing,
 			}
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Errorf("claudeFacts() mismatch (-want +got):\n%s", diff)

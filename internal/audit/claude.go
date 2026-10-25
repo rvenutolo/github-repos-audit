@@ -20,7 +20,9 @@ type Claude struct {
 	Plugin ClaudePlugin `json:"plugin,omitzero"`
 	// Unreadable is a problem with the repository's Claude files as a whole:
 	// too many to read, a plugin manifest whose layout cannot be decided, or
-	// one that declares a path the tree has nothing at to read.
+	// one that declares a path Claude Code cannot load (a directory that is
+	// not there, a command that is not a .md file, or a path outside the
+	// repository).
 	// When it is set nothing else but Plugin is, so every check reading
 	// these facts fails as unreadable rather than judging part of them.
 	Unreadable string `json:"unreadable,omitzero"`
@@ -59,6 +61,12 @@ type ClaudeSkill struct {
 	// does nothing but wrap. Empty for a skill, and for a command naming no
 	// skill or several.
 	WrapsSkill string `json:"wraps_skill,omitzero"`
+	// ManifestDescription is, for an inline command, the `description` its
+	// plugin.json entry sets, which Claude Code shows for the command. It is
+	// recorded beside the frontmatter's rather than merged into
+	// HasDescription, so no check's verdict depends on it yet. Empty when
+	// the entry sets none, and for a file.
+	ManifestDescription string `json:"manifest_description,omitzero"`
 	// Unreadable is why the file could not be read in full or parsed. When it
 	// is set only Path and Dir are.
 	Unreadable string `json:"unreadable,omitzero"`
@@ -82,6 +90,15 @@ type ClaudeHook struct {
 	// explicit zero from an absent key.
 	Timeout    float64 `json:"timeout,omitzero"`
 	TimeoutSet bool    `json:"timeout_set,omitzero"`
+	// Command is a command handler's `command` as written, empty when
+	// absent and for other handler types, whose command key is not theirs
+	// to run.
+	Command string `json:"command,omitzero"`
+	// Args is a command handler's `args` as written, which makes it the
+	// exec form: Command is the program and Args its arguments, with no
+	// shell between. An empty list is kept, since it still selects the exec
+	// form; absent means the shell form.
+	Args []string `json:"args,omitzero"`
 	// Script is the repository file a command handler runs, empty when it
 	// names none.
 	Script string `json:"script,omitzero"`
