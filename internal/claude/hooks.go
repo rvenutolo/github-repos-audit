@@ -231,30 +231,48 @@ func interpreterScript(interp string, args []string) (script string, interpreter
 	if (interp == "deno" || interp == "bun") && len(args) > 0 && args[0] == "run" {
 		args = args[1:]
 	}
-	valueFlags := map[string][]string{
-		"python":  {"-W", "-X"},
-		"python3": {"-W", "-X"},
-		"node":    {"-r", "--require", "--import", "--loader"},
-		"ruby":    {"-r", "-I"},
-		"perl":    {"-I", "-M"},
-	}[interp]
-	inline := []string{"-c", "-e", "-E", "-p", "--eval", "--print", "--command"}
-	if interp == "python" || interp == "python3" {
-		inline = append(inline, "-m")
-	}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case !strings.HasPrefix(a, "-"):
 			script, form = classify(a, true)
 			return script, script != "" || form != "", form
-		case slices.Contains(inline, a):
+		case takesInlineCode(interp, a):
 			return "", false, ""
-		case slices.Contains(valueFlags, a):
+		case takesValue(interp, a):
 			i++
 		}
 	}
 	return "", false, ""
+}
+
+// takesInlineCode reports a flag after which interp runs code from the
+// command line, or a module (python's -m), rather than a script file.
+// Switches rather than tables built per call, and no package-level map, so
+// nothing can mutate them.
+func takesInlineCode(interp, flag string) bool {
+	switch flag {
+	case "-c", "-e", "-E", "-p", "--eval", "--print", "--command":
+		return true
+	case "-m":
+		return interp == "python" || interp == "python3"
+	}
+	return false
+}
+
+// takesValue reports a flag of interp that consumes the next word.
+func takesValue(interp, flag string) bool {
+	switch interp {
+	case "python", "python3":
+		return flag == "-W" || flag == "-X"
+	case "node":
+		return flag == "-r" || flag == "--require" || flag == "--import" || flag == "--loader"
+	case "ruby":
+		return flag == "-r" || flag == "-I"
+	case "perl":
+		return flag == "-I" || flag == "-M"
+	}
+	return false
 }
 
 func isInterpreter(word string) bool { return slices.Contains(interpreters(), baseName(word)) }
