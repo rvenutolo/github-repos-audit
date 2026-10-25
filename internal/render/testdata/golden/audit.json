@@ -523,6 +523,7 @@
               "disable-model-invocation": "!!bool",
               "name": "!!str"
             },
+            "has_description": true,
             "description_chars": 80,
             "disable_model_invocation": true,
             "lines": 45
@@ -903,6 +904,7 @@
               "disable-model-invocation": "!!bool",
               "name": "!!str"
             },
+            "has_description": true,
             "description_chars": 80,
             "disable_model_invocation": true,
             "lines": 120
@@ -916,6 +918,7 @@
               "disable-model-invocation": "!!str",
               "name": "!!str"
             },
+            "has_description": true,
             "description_chars": 1600,
             "lines": 612
           }
@@ -928,6 +931,7 @@
               "description": "!!str",
               "disable-model-invocation": "!!bool"
             },
+            "has_description": true,
             "description_chars": 30,
             "disable_model_invocation": true,
             "lines": 6,

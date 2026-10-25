@@ -19,6 +19,7 @@ type Skill struct {
 	Dir                    string            // name the skill is known by (directory or file stem)
 	Name                   string            // frontmatter name, "" when absent
 	Keys                   map[string]string // frontmatter key -> YAML short tag ("!!str", "!!bool", "!!map", ...); nil without frontmatter
+	HasDescription         bool              // description is a YAML string with text other than whitespace
 	DescriptionChars       int               // utf8 rune count of description + when_to_use
 	DisableModelInvocation bool              // YAML boolean true, nothing else
 	UserInvocableFalse     bool              // YAML boolean false
@@ -99,6 +100,12 @@ func ParseSkill(path, dir, text string, plugin bool) Skill {
 		case "description", "when_to_use":
 			if v.Kind == yaml.ScalarNode && v.ShortTag() != "!!null" {
 				s.DescriptionChars += utf8.RuneCountInString(v.Value)
+			}
+			// The key alone is not a description: `description:` is null and
+			// a list or an empty string gives the skill listing nothing to
+			// show, so only a string with text in it counts.
+			if k.Value == "description" {
+				s.HasDescription = v.Kind == yaml.ScalarNode && v.ShortTag() == "!!str" && strings.TrimSpace(v.Value) != ""
 			}
 		case "disable-model-invocation":
 			s.DisableModelInvocation = isBool(v, "true")

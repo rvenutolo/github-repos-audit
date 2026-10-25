@@ -1273,7 +1273,7 @@ func TestBlock_claudeCellsAreEscaped(t *testing.T) {
 	r := baseRepo("alpha", "tools")
 	r.Claude = audit.Claude{Skills: []audit.ClaudeSkill{{
 		Path: ".claude/skills/a|b/SKILL.md", Dir: "a|b", Name: "a|b",
-		Keys: map[string]string{"description": "!!str"}, DescriptionChars: 10, Lines: 3,
+		Keys: map[string]string{"description": "!!str"}, HasDescription: true, DescriptionChars: 10, Lines: 3,
 	}}}
 	snap := &audit.Snapshot{
 		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),

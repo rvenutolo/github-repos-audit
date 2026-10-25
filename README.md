@@ -557,8 +557,10 @@ shows them, listing only the repositories that carry any.
   or `version`, and whether `disable-model-invocation` and `user-invocable`
   are YAML booleans and `agent` a string. Claude Code ignores any other key,
   so a setting meant to take effect silently does nothing.
-- **skill_description_length** — whether every skill has a `description`,
-  and whether it and `when_to_use` together hold at most 1536 characters.
+- **skill_description_length** — whether every skill has a `description`
+  that is a YAML string with text in it (a key with no value, an empty
+  string or a list does not count), and whether it and `when_to_use`
+  together hold at most 1536 characters.
   Past that Claude Code truncates them in the skill listing it shows the
   model. Command files are not judged.
 - **skill_no_wrapper_commands** — whether no command file only invokes a

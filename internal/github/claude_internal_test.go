@@ -360,7 +360,7 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 	inline := func(name string, lines int, wraps string) audit.ClaudeSkill {
 		return audit.ClaudeSkill{
 			Path: ".claude-plugin/plugin.json#commands/" + name, Dir: name,
-			Keys: map[string]string{"description": "!!str"}, DescriptionChars: 24, Lines: lines, WrapsSkill: wraps,
+			Keys: map[string]string{"description": "!!str"}, HasDescription: true, DescriptionChars: 24, Lines: lines, WrapsSkill: wraps,
 		}
 	}
 	skill := func(p, name string, lines int, keys ...string) audit.ClaudeSkill {
@@ -368,7 +368,7 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 		for _, key := range keys {
 			k[key] = "!!map"
 		}
-		return audit.ClaudeSkill{Path: p, Dir: name, Name: name, Keys: k, DescriptionChars: 24, Lines: lines}
+		return audit.ClaudeSkill{Path: p, Dir: name, Name: name, Keys: k, HasDescription: true, DescriptionChars: 24, Lines: lines}
 	}
 	want := audit.Claude{
 		Skills: []audit.ClaudeSkill{

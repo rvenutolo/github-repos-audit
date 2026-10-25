@@ -558,7 +558,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.workflow_facts\[\]\.jobs\[\]\.reusable`,
 		// Frontmatter key tags, counts, flags, Claude Code's own event names
 		// and handler types, path forms, git modes and manifest field names.
-		`repos\[\]\.claude\.(skills|commands)\[\]\.(keys\.[a-z_-]+|description_chars|disable_model_invocation|user_invocable_false|lines)`,
+		`repos\[\]\.claude\.(skills|commands)\[\]\.(keys\.[a-z_-]+|has_description|description_chars|disable_model_invocation|user_invocable_false|lines)`,
 		`repos\[\]\.claude\.hooks\[\]\.(plugin|event|type|timeout|timeout_set|interpreter|path_form|script_mode)`,
 		`repos\[\]\.claude\.plugin\.(present|version|fields\[\]|own_marketplace)`,
 	),

@@ -918,6 +918,11 @@
           "minProperties": 1,
           "additionalProperties": { "type": "string", "minLength": 1 }
         },
+        "has_description": {
+          "description": "`description` is a YAML string holding more than whitespace.",
+          "type": "boolean",
+          "const": true
+        },
         "description_chars": {
           "description": "The combined length in characters of `description` and `when_to_use`.",
           "type": "integer",

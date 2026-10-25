@@ -29,6 +29,7 @@ func goodSkill(dir string) audit.ClaudeSkill {
 		Keys: map[string]string{
 			"name": "!!str", "description": "!!str", "disable-model-invocation": "!!bool",
 		},
+		HasDescription:         true,
 		DescriptionChars:       40,
 		DisableModelInvocation: true,
 		Lines:                  30,
@@ -42,6 +43,7 @@ func goodCommand(dir string) audit.ClaudeSkill {
 		Path:                   "commands/" + dir + ".md",
 		Dir:                    dir,
 		Keys:                   map[string]string{"description": "!!str", "disable-model-invocation": "!!bool"},
+		HasDescription:         true,
 		DescriptionChars:       20,
 		DisableModelInvocation: true,
 		Lines:                  5,
@@ -193,6 +195,7 @@ func TestObserveClaude_skills(t *testing.T) {
 			name: "a skill with no description fails",
 			repo: skills(mutate(goodSkill("skill-01"), func(s *audit.ClaudeSkill) {
 				delete(s.Keys, "description")
+				s.HasDescription = false
 				s.DescriptionChars = 0
 			})),
 			want: map[rules.Check]claudeWant{rules.CheckSkillDescriptionLength: fail("0/1 skill-01")},
@@ -201,7 +204,30 @@ func TestObserveClaude_skills(t *testing.T) {
 			name: "a when_to_use with no description still fails",
 			repo: skills(mutate(goodSkill("skill-01"), func(s *audit.ClaudeSkill) {
 				delete(s.Keys, "description")
+				s.HasDescription = false
 				s.Keys["when_to_use"] = "!!str"
+			})),
+			want: map[rules.Check]claudeWant{rules.CheckSkillDescriptionLength: fail("0/1 skill-01")},
+		},
+		{
+			// What internal/claude records for `description:` with no
+			// value, `description: ""` or `description: [a]`: the key is
+			// there, but it says nothing.
+			name: "a description key with no text fails",
+			repo: skills(mutate(goodSkill("skill-01"), func(s *audit.ClaudeSkill) {
+				s.Keys["description"] = "!!null"
+				s.HasDescription = false
+				s.DescriptionChars = 0
+			})),
+			want: map[rules.Check]claudeWant{rules.CheckSkillDescriptionLength: fail("0/1 skill-01")},
+		},
+		{
+			name: "a description list fails even with when_to_use text",
+			repo: skills(mutate(goodSkill("skill-01"), func(s *audit.ClaudeSkill) {
+				s.Keys["description"] = "!!seq"
+				s.Keys["when_to_use"] = "!!str"
+				s.HasDescription = false
+				s.DescriptionChars = 12
 			})),
 			want: map[rules.Check]claudeWant{rules.CheckSkillDescriptionLength: fail("0/1 skill-01")},
 		},

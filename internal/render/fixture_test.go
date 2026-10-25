@@ -318,8 +318,8 @@ func fullSnapshot() *audit.Snapshot {
 		Skills: []audit.ClaudeSkill{projectSkill("skill-01", 120), quoted},
 		Commands: []audit.ClaudeSkill{{
 			Path: ".claude/commands/command-01.md", Dir: "command-01",
-			Keys:             map[string]string{"description": "!!str", "disable-model-invocation": "!!bool"},
-			DescriptionChars: 30, DisableModelInvocation: true, Lines: 6, WrapsSkill: "skill-01",
+			Keys:           map[string]string{"description": "!!str", "disable-model-invocation": "!!bool"},
+			HasDescription: true, DescriptionChars: 30, DisableModelInvocation: true, Lines: 6, WrapsSkill: "skill-01",
 		}},
 		// Two project hooks: one on a tool event with no matcher, no timeout
 		// and a script that is not executable, and one that passes. Neither is
@@ -395,6 +395,7 @@ func projectSkill(dir string, lines int) audit.ClaudeSkill {
 		Keys: map[string]string{
 			"name": "!!str", "description": "!!str", "disable-model-invocation": "!!bool",
 		},
+		HasDescription:         true,
 		DescriptionChars:       80,
 		DisableModelInvocation: true,
 		Lines:                  lines,

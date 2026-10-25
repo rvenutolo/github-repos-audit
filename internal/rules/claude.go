@@ -139,10 +139,11 @@ func observeClaude(c Check, r audit.Repo, _ evalContext) observation {
 	case CheckSkillDescriptionLength:
 		// DescriptionChars counts when_to_use too, so a skill with only that
 		// key could pass on length; without a description the listing has
-		// nothing to say about the skill, which fails it.
+		// nothing to say about the skill, which fails it. The key alone is
+		// not enough: one with no value, an empty string or a list says
+		// nothing either.
 		return countedCell(skillItems(cl.Skills, func(s audit.ClaudeSkill) bool {
-			_, has := s.Keys["description"]
-			return has && s.DescriptionChars <= SkillDescriptionMax
+			return s.HasDescription && s.DescriptionChars <= SkillDescriptionMax
 		}))
 	case CheckSkillNoWrapperCommands:
 		// A slash-only skill is its own / command, so a command file that

@@ -40,6 +40,10 @@ type ClaudeSkill struct {
 	// Keys is every frontmatter key, mapped to the YAML tag of its value
 	// ("!!str", "!!bool", "!!map", ...), so a quoted "true" stays a string.
 	Keys map[string]string `json:"keys,omitzero"`
+	// HasDescription reports a `description` that is a YAML string holding
+	// more than whitespace. A key present with no value, an empty string or
+	// a list says nothing in the skill listing, so it does not count.
+	HasDescription bool `json:"has_description,omitzero"`
 	// DescriptionChars is the combined length in characters of
 	// `description` and `when_to_use`.
 	DescriptionChars int `json:"description_chars,omitzero"`

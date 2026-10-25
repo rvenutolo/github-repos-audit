@@ -198,6 +198,7 @@ func skillFact(s claude.Skill, wraps string) audit.ClaudeSkill {
 		Dir:                    s.Dir,
 		Name:                   s.Name,
 		Keys:                   s.Keys,
+		HasDescription:         s.HasDescription,
 		DescriptionChars:       s.DescriptionChars,
 		DisableModelInvocation: s.DisableModelInvocation,
 		UserInvocableFalse:     s.UserInvocableFalse,

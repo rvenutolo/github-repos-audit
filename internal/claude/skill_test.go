@@ -105,6 +105,41 @@ func TestParseSkill(t *testing.T) {
 	}
 }
 
+// TestParseSkill_hasDescription: only a description that is a YAML string
+// with text in it is one; a key with no value, an empty or blank string, or
+// a list gives the skill listing nothing to show.
+func TestParseSkill_hasDescription(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		front string
+		want  bool
+	}{
+		"text":             {"description: x", true},
+		"quoted text":      {`description: "x"`, true},
+		"block text":       {"description: |\n  x", true},
+		"null":             {"description:", false},
+		"explicit null":    {"description: null", false},
+		"empty string":     {`description: ""`, false},
+		"blank string":     {`description: "  "`, false},
+		"a list":           {"description: [a]", false},
+		"a mapping":        {"description:\n  a: b", false},
+		"a number":         {"description: 5", false},
+		"only when_to_use": {"when_to_use: x", false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := claude.ParseSkill("p/SKILL.md", "p", "---\n"+tc.front+"\n---\n", false)
+			if s.Unreadable != "" {
+				t.Fatalf("unreadable: %s", s.Unreadable)
+			}
+			if s.HasDescription != tc.want {
+				t.Errorf("HasDescription = %v, want %v", s.HasDescription, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseSkill_lines(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
