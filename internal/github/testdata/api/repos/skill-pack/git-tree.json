@@ -1,0 +1,41 @@
+{
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0022",
+  "tree": [
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": ".claude",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": ".claude/skills",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": ".claude/skills/skill-01",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": ".claude/skills/skill-01/SKILL.md",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": ".claude/skills/skill-02",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": ".claude/skills/skill-02/SKILL.md",
+      "mode": "100644",
+      "type": "blob"
+    }
+  ],
+  "truncated": false
+}

@@ -31,12 +31,14 @@ const fakeOwner = "gh-owner"
 // "preset-store" is the repository the API fixtures' Renovate configs extend
 // presets from; no fixture directory of its own exists. "lint-flake" is a
 // flake the API fixtures' flake.lock names as an input; it has no fixture
-// directory either.
+// directory either. "plugin-kit" is a Claude Code plugin and "skill-pack" a
+// repository of project skills; "plugin-market" is a plugin marketplace.
 var fakeRepos = []string{
 	"blank-repo", "cipher-lib", "compiler-config", "config-files", "go-linter",
 	"hook-guard", "java-demo", "media-server", "mixedCase-flake", "pkg-index",
 	"private-notes", "recipe-site", "shell-scripts", "updater", "web-app",
 	"github-repos-audit", "alpha", "bravo", "preset-store", "lint-flake",
+	"plugin-kit", "skill-pack", "plugin-market",
 }
 
 // fakeIdentityNames and fakeIdentityEmails are the only git identities a
@@ -267,6 +269,51 @@ const renovateProbes = `(renovate_json|renovate_jsonc|renovate_json5|renovate_gi
 // fileProbes is the alternation of the file query's single-file probes.
 const fileProbes = `(flake_lock)`
 
+// claudeFileWords is every word a Claude file fixture's text may use beyond
+// the synthetic names claudeFileName matches: frontmatter, manifest and hook
+// keys, Claude Code's own event and tool names, and the placeholder prose.
+// A Claude file is free text a real repository writes its own way, so its
+// fixtures are held to a closed vocabulary rather than to a pattern a real
+// skill's prose could slip past.
+var claudeFileWords = []string{
+	"---", "-", "name", "description", "when_to_use", "disable-model-invocation", "user-invocable", "hooks", "true", "false",
+	"$schema", "version", "author", "license", "homepage", "repository", "commands", "skills", "source", "content",
+	"https", "example.com", "github.com", "anthropic.com", "claude-code", "plugin.schema.json", "MIT",
+	"PreToolUse", "PostToolUse", "matcher", "type", "command", "timeout", "Bash", "Write",
+	"$", "CLAUDE_PLUGIN_ROOT", "echo", "PAYLOAD_RAN",
+	"Placeholder", "description.", "body.", "Use", "the", "skill.", "Pat", "Example",
+}
+
+// claudeFileName matches the synthetic names a Claude file fixture may use
+// for its own skills, commands and scripts, and a version number.
+var claudeFileName = regexp.MustCompile(`^((skill|command|hook)-\d{2}(\.sh|\.md)?|\d+(\.\d+)*)$`)
+
+// claudeWord splits a Claude file's text into the words claudeFileWords
+// rules on: runs of letters, digits and the punctuation names are made of.
+var claudeWord = regexp.MustCompile(`[A-Za-z0-9_.$-]+`)
+
+// isFakeClaudeText holds a Claude file fixture's text to claudeFileWords,
+// the synthetic names and the fake vocabulary.
+func isFakeClaudeText(v any) bool {
+	s, ok := str(v)
+	if !ok {
+		return false
+	}
+	for _, w := range claudeWord.FindAllString(s, -1) {
+		if !slices.Contains(claudeFileWords, w) && !claudeFileName.MatchString(w) &&
+			!slices.Contains(fakeRepos, w) && w != fakeOwner {
+			return false
+		}
+	}
+	return true
+}
+
+// claudePath is every Claude file path a golden may record: the synthetic
+// paths of the API fixtures' Claude files, and an inline command's place in
+// the manifest.
+const claudePath = `(\.claude-plugin/plugin\.json(#commands/command-\d{2})?|(\.claude/)?skills/skill-\d{2}/SKILL\.md|` +
+	`(\.claude/)?commands/command-\d{2}\.md|\.claude/settings\.json|hooks/hooks\.json)`
+
 // isFakeBase64Content decodes a contents-API content field — base64 wrapped
 // with newlines, as GitHub sends it — and holds the text to namesOnlyFakeRepos.
 // Content that does not decode is rejected: it cannot be checked.
@@ -286,7 +333,11 @@ const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUD
 	`\.markdownlint-cli2\.jsonc|\.prettierrc\.json|\.editorconfig-checker\.json|lychee\.toml|mkdocs\.yml|` +
 	`stacks|stacks/media|stacks/media/docker-compose\.yml|vendor/sub|` +
 	`\.github|\.github/(SECURITY\.md|renovate\.json|workflows|workflows/(ci|workflow-33)\.yml|` +
-	`zizmor\.yml|codecov\.yml|CODEOWNERS|pull_request_template\.md))$`
+	`zizmor\.yml|codecov\.yml|CODEOWNERS|pull_request_template\.md)|` +
+	// Claude Code files, under synthetic skill, command and hook names.
+	`\.claude-plugin|\.claude-plugin/(plugin|marketplace)\.json|` +
+	`(\.claude/)?(skills|skills/skill-\d{2}|skills/skill-\d{2}/SKILL\.md)|\.claude|\.claude/settings\.json|` +
+	`(\.claude/)?(commands|commands/command-\d{2}\.md)|hooks|hooks/(hooks\.json|hook-\d{2}\.sh))$`
 
 var apiRules = []rule{
 	{regexp.MustCompile(`^(\[\]\.)?name$`), isFakeRepo, "a fake repository name"},
@@ -314,6 +365,9 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^data\.repository\.actions\.entries\[\]\.object\.entries\[\]\.name$`), matches(`^(action\.ya?ml|README\.md)$`), "an action file name"},
 	{regexp.MustCompile(`^data\.repository\.` + fileProbes + `\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
 	{regexp.MustCompile(`^data\.repository\.(workflows|actions\.entries\[\]\.object)\.entries\[\]\.object\.text$`), optional(isFakeFileText), "null or text naming only gh-owner/<fake> repositories"},
+	// The Claude file query: one aliased object per file, fN, whose text is
+	// held to the Claude file vocabulary.
+	{regexp.MustCompile(`^data\.repository\.f\d+\.text$`), optional(isFakeClaudeText), "null or text in the Claude file vocabulary"},
 	{regexp.MustCompile(`required_status_checks\[\]\.context$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
@@ -386,6 +440,7 @@ var apiRules = []rule{
 		`data\.repository\.`+fileProbes+`\.(is_truncated|is_binary)`,
 		`data\.repository\.(workflows|actions\.entries\[\]\.object)\.entries\[\]\.(type|object\.is_truncated|object\.is_binary)`,
 		`data\.repository\.actions\.entries\[\]\.type`,
+		`data\.repository\.f\d+\.(is_truncated|is_binary)`,
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
 		// A pull request number, a run's event, a run's or job's status and a
 		// list's total are counts and enums.
@@ -412,6 +467,8 @@ var apiRules = []rule{
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
 		`data\.repository\.`+renovateProbes,
 		`data\.repository\.(`+fileProbes+`|actions)`,
+		// A Claude file the query found nothing at.
+		`data\.repository\.f\d+`,
 		// A null actor: GitHub could not resolve who wrote or committed it.
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.nodes\[\]\.(author|committer)`,
 		// A deleted account's pull request.
@@ -468,6 +525,17 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.(jobs\[\]\.)?concurrency\.cancel_in_progress$`), matches(`^(true|false)$`), "a literal cancel-in-progress"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.timeout_minutes$`), matches(`^[0-9]+$`), "a literal timeout in minutes"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
+	// Recorded Claude facts: the synthetic Claude file paths and names the
+	// API fixtures use, a hook script under the synthetic hook names, and a
+	// problem that names a synthetic path, if any, before text with no path
+	// in it. A real skill or command name says what a repository is for.
+	{regexp.MustCompile(`^repos\[\]\.claude\.(skills|commands)\[\]\.path$`), matches(`^` + claudePath + `$`), "a synthetic Claude file path"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.(skills|commands)\[\]\.(dir|name|wraps_skill)$`), matches(`^((skill|command)-\d{2}|plugin-kit)$`), "a synthetic skill or command name"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.source$`), matches(`^` + claudePath + `$`), "a synthetic Claude file path"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.script$`), matches(`^hooks/hook-\d{2}\.sh$`), "a synthetic hook script"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.matcher$`), matches(`^[A-Za-z|*]*$`), "a tool-name matcher"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.plugin\.name$`), isFakeRepo, "a fake repository name"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(`^(` + claudePath + `: )?[^/]*$`), "a problem naming only a synthetic Claude path"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
 		`repos\[\]\.actions_storage\.(artifact_bytes|artifact_count|cache_limit_bytes|cache_usage_bytes)`,
@@ -488,6 +556,11 @@ var snapshotRules = []rule{
 		`repos\[\]\.settings\.allowed_actions\.(github_owned_allowed|verified_allowed)`,
 		`repos\[\]\.workflow_facts\[\]\.(jobs\[\]\.)?concurrency\.set`,
 		`repos\[\]\.workflow_facts\[\]\.jobs\[\]\.reusable`,
+		// Frontmatter key tags, counts, flags, Claude Code's own event names
+		// and handler types, path forms, git modes and manifest field names.
+		`repos\[\]\.claude\.(skills|commands)\[\]\.(keys\.[a-z_-]+|description_chars|disable_model_invocation|user_invocable_false|lines)`,
+		`repos\[\]\.claude\.hooks\[\]\.(plugin|event|type|timeout|timeout_set|interpreter|path_form|script_mode)`,
+		`repos\[\]\.claude\.plugin\.(present|version|fields\[\]|own_marketplace)`,
 	),
 }
 
@@ -901,6 +974,9 @@ func TestCheck_rejectsAccountData(t *testing.T) {
 		{name: "flake.lock naming a real repository", doc: `{"data": {"repository": {"flake_lock": {"text": "{\"original\": {\"owner\": \"gh-owner\", \"repo\": \"real-repo\"}}"}}}}`},
 		{name: "a workflow using a real action", doc: `{"data": {"repository": {"workflows": {"entries": [{"object": {"text": "- uses: someone/real-action@v1"}}]}}}}`},
 		{name: "a history cursor that is not synthetic", doc: `{"data": {"repository": {"object": {"history": {"page_info": {"end_cursor": "Y3Vyc29yOnYyOpK5"}}}}}}`},
+		{name: "a Claude skill with a real name", doc: `{"data": {"repository": {"f0": {"text": "---\nname: deploy-media\n---\n"}}}}`},
+		{name: "a Claude manifest naming a real repository", doc: `{"data": {"repository": {"f1": {"text": "{\"repository\": \"https://github.com/someone/real-repo\"}"}}}}`},
+		{name: "a Claude tree path outside the vocabulary", doc: `{"tree": [{"path": ".claude/skills/deploy-media/SKILL.md"}]}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

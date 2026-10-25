@@ -600,6 +600,157 @@ func TestClient_Collect_emptyRepoSkipsFilesQuery(t *testing.T) {
 	}
 }
 
+// TestClient_Collect_claude covers the Claude file reads end to end. plugin-kit
+// is a plugin: its manifest is read first, and only then are the skills,
+// command and hooks file its layout implies read, in a second query.
+// skill-pack has project skills only, one of them too large to read in full.
+func TestClient_Collect_claude(t *testing.T) {
+	t.Parallel()
+
+	const description = "Placeholder description."
+	tests := []struct {
+		name string
+		want audit.Claude
+		// paths is what each Claude query asks for, in order.
+		paths [][]string
+	}{
+		{
+			name: "plugin-kit",
+			want: audit.Claude{
+				Skills: []audit.ClaudeSkill{
+					{
+						Path:                   "skills/skill-01/SKILL.md",
+						Dir:                    "skill-01",
+						Name:                   "skill-01",
+						Keys:                   map[string]string{"name": "!!str", "description": "!!str", "disable-model-invocation": "!!bool"},
+						DescriptionChars:       len(description),
+						DisableModelInvocation: true,
+						Lines:                  7,
+					},
+					{
+						Path:               "skills/skill-02/SKILL.md",
+						Dir:                "skill-02",
+						Name:               "skill-02",
+						Keys:               map[string]string{"name": "!!str", "description": "!!str", "user-invocable": "!!bool", "hooks": "!!map"},
+						DescriptionChars:   len(description),
+						UserInvocableFalse: true,
+						Lines:              13,
+					},
+				},
+				Commands: []audit.ClaudeSkill{{
+					Path:             "commands/command-01.md",
+					Dir:              "command-01",
+					Keys:             map[string]string{"description": "!!str"},
+					DescriptionChars: len(description),
+					Lines:            5,
+					WrapsSkill:       "skill-01",
+				}},
+				Hooks: []audit.ClaudeHook{
+					{
+						Source: "hooks/hooks.json", Plugin: true, Event: "PreToolUse", Type: "command", Matcher: "Bash",
+						Timeout: 30, TimeoutSet: true, Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
+					},
+					{Source: "skills/skill-02/SKILL.md", Plugin: true, Event: "PostToolUse", Type: "command", Matcher: "Write"},
+				},
+				Plugin: audit.ClaudePlugin{
+					Present: true,
+					Name:    "plugin-kit",
+					Version: "1.2.0",
+					Fields: []string{
+						"$schema", "author", "description", "homepage", "license", "name", "repository", "version",
+					},
+					OwnMarketplace: true,
+				},
+			},
+			paths: [][]string{
+				{".claude-plugin/plugin.json"},
+				{"commands/command-01.md", "hooks/hooks.json", "skills/skill-01/SKILL.md", "skills/skill-02/SKILL.md"},
+			},
+		},
+		{
+			name: "skill-pack",
+			want: audit.Claude{
+				Skills: []audit.ClaudeSkill{
+					{
+						Path:             ".claude/skills/skill-01/SKILL.md",
+						Dir:              "skill-01",
+						Name:             "skill-01",
+						Keys:             map[string]string{"name": "!!str", "description": "!!str"},
+						DescriptionChars: len(description),
+						Lines:            6,
+					},
+					{
+						Path:       ".claude/skills/skill-02/SKILL.md",
+						Dir:        "skill-02",
+						Unreadable: ".claude/skills/skill-02/SKILL.md: too large to read in full",
+					},
+				},
+			},
+			paths: [][]string{{".claude/skills/skill-01/SKILL.md", ".claude/skills/skill-02/SKILL.md"}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			api := newFakeAPI(t)
+			got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{tc.name})
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			if diff := cmp.Diff(tc.want, got[0].Claude); diff != "" {
+				t.Errorf("Claude mismatch (-want +got):\n%s", diff)
+			}
+
+			// Every path travels as a variable; none is part of the
+			// document, so a file name can never be read as query text.
+			var asked [][]string
+			documents, variables := api.graphQLDocuments(), api.graphQLVariables()
+			for i, doc := range documents {
+				if !strings.HasPrefix(doc, "query ClaudeFiles") {
+					continue
+				}
+				var paths []string
+				for j := 0; ; j++ {
+					v, ok := variables[i]["e"+strconv.Itoa(j)]
+					if !ok {
+						break
+					}
+					path, found := strings.CutPrefix(v, "HEAD:")
+					if !found {
+						t.Errorf("variable e%d = %q, want a HEAD: expression", j, v)
+					}
+					if strings.Contains(doc, path) {
+						t.Errorf("the Claude query document contains the path %q", path)
+					}
+					paths = append(paths, path)
+				}
+				asked = append(asked, paths)
+			}
+			if diff := cmp.Diff(tc.paths, asked); diff != "" {
+				t.Errorf("Claude query paths mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestClient_Collect_claudeQueryFailureAborts: a Claude file query that fails
+// fails the run, as the file query does, rather than recording the files as
+// unreadable on GitHub's say-so.
+func TestClient_Collect_claudeQueryFailureAborts(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	api.failClaude(scriptedFailure{status: http.StatusOK, body: `{"errors": [{"type": "FORBIDDEN", "message": "denied"}]}`})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"skill-pack"})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Errorf("Collect() error = %v, want the Claude query's error", err)
+	}
+	if got != nil {
+		t.Errorf("Collect() = %v, want no repositories", got)
+	}
+}
+
 // TestClient_Collect_filesQueryFailureAborts: the file query fails the way
 // the repository query does. Every other request is passed on to the
 // fixtures, so the failure is the file query's alone.
@@ -874,7 +1025,7 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 		t.Fatalf("Discover: %v", err)
 	}
 	if _, err := client.Collect(t.Context(),
-		[]string{"shell-scripts", "web-app", "pkg-index", "blank-repo", "mixedCase-flake"}); err != nil {
+		[]string{"shell-scripts", "web-app", "pkg-index", "blank-repo", "mixedCase-flake", "plugin-kit"}); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 
@@ -920,6 +1071,9 @@ func TestClient_Collect_isReadOnly(t *testing.T) {
 	// The file query is a second document, held to the same rule.
 	if !slices.ContainsFunc(documents, func(d string) bool { return strings.HasPrefix(d, "query RepoFiles") }) {
 		t.Error("no file query recorded; the assertion below did not cover it")
+	}
+	if !slices.ContainsFunc(documents, func(d string) bool { return strings.HasPrefix(d, "query ClaudeFiles") }) {
+		t.Error("no Claude file query recorded; the assertion below did not cover it")
 	}
 	for _, doc := range documents {
 		fields := strings.Fields(doc)

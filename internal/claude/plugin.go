@@ -13,15 +13,16 @@ import (
 // layout rules need.
 type Plugin struct {
 	Name, Version  string
-	Fields         []string // required fields present by the presence rules, sorted
-	SkillDirs      []string // declared skills paths, cleaned, repository-relative
-	SkillsSet      bool     // the skills key is present
-	CommandPaths   []string // declared commands file/dir paths; nil when the key is absent
-	CommandsSet    bool     // the commands key is present (replaces the default scan)
-	InlineCommands []string // names of object-map commands with inline content
-	HooksFile      string   // first declared hooks path
-	HooksFiles     []string // every declared hooks path
-	Hooks          []Hook   // inline hooks object
+	Fields         []string          // required fields present by the presence rules, sorted
+	SkillDirs      []string          // declared skills paths, cleaned, repository-relative
+	SkillsSet      bool              // the skills key is present
+	CommandPaths   []string          // declared commands file/dir paths; nil when the key is absent
+	CommandsSet    bool              // the commands key is present (replaces the default scan)
+	InlineCommands []string          // names of object-map commands with inline content
+	InlineContent  map[string]string // inline command name -> its content
+	HooksFile      string            // first declared hooks path
+	HooksFiles     []string          // every declared hooks path
+	Hooks          []Hook            // inline hooks object
 	Unreadable     string
 }
 
@@ -119,13 +120,17 @@ func (p *Plugin) readCommands(v any) string {
 				return "commands." + name + " is not an object"
 			}
 			source, hasSource := entry["source"].(string)
-			_, hasContent := entry["content"].(string)
+			content, hasContent := entry["content"].(string)
 			// The reference: an entry sets exactly one of source or content.
 			if hasSource == hasContent {
 				return "commands." + name + " must set exactly one of source and content"
 			}
 			if hasContent {
 				p.InlineCommands = append(p.InlineCommands, name)
+				if p.InlineContent == nil {
+					p.InlineContent = map[string]string{}
+				}
+				p.InlineContent[name] = content
 			} else {
 				if source == "" {
 					return "commands." + name + ".source is empty"

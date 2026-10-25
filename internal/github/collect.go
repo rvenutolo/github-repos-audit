@@ -64,10 +64,13 @@ func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, err
 // Then come the Actions storage reads, four requests plus one per further
 // hundred caches or artifacts (see fetchStorage); one recursive tree read at
 // the head commit, which is where every file path the report records is
-// found; and last the second GraphQL query, filesQuery, for the text of the
-// workflow, composite-action and flake.lock files. All three are skipped for
-// an empty repository: it has no files, and with no commit no workflow can
-// have run to store anything.
+// found; then the Claude file queries for the skills, commands, hooks and
+// plugin manifest that tree names, none for a repository without any and
+// one more round for a plugin, whose manifest decides what else to read (see
+// claudeFacts); and last the second GraphQL query, filesQuery, for the text
+// of the workflow, composite-action and flake.lock files. All of these are
+// skipped for an empty repository: it has no files, and with no commit no
+// workflow can have run to store anything.
 func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache) (audit.Repo, error) {
 	gql, err := c.fetchRepository(ctx, name)
 	if err != nil {
@@ -93,7 +96,7 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 		return audit.Repo{}, err
 	}
 	// An empty repository has no commit to list, so it costs no storage
-	// reads, no tree request and no file query.
+	// reads, no tree request, no Claude file query and no file query.
 	if repo.HeadOID == "" {
 		return repo, nil
 	}
@@ -105,6 +108,9 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 		return audit.Repo{}, err
 	}
 	recordPaths(&repo.Files, filepaths.Find(entries))
+	if repo.Claude, err = c.claudeFacts(ctx, name, entries); err != nil {
+		return audit.Repo{}, err
+	}
 	files, err := c.fetchFiles(ctx, name)
 	if err != nil {
 		return audit.Repo{}, err

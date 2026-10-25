@@ -1,0 +1,26 @@
+{
+  "data": {
+    "repository": {
+      "f0": {
+        "text": "---\ndescription: Placeholder description.\n---\n\nUse the skill-01 skill.\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "f1": {
+        "text": "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"${CLAUDE_PLUGIN_ROOT}/hooks/hook-01.sh\",\n            \"timeout\": 30\n          }\n        ]\n      }\n    ]\n  }\n}\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "f2": {
+        "text": "---\nname: skill-01\ndescription: Placeholder description.\ndisable-model-invocation: true\n---\n\nPlaceholder body.\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "f3": {
+        "text": "---\nname: skill-02\ndescription: Placeholder description.\nuser-invocable: false\nhooks:\n  PostToolUse:\n    - matcher: Write\n      hooks:\n        - type: command\n          command: echo PAYLOAD_RAN\n---\n\nPlaceholder body.\n",
+        "is_truncated": false,
+        "is_binary": false
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "data": {
+    "repository": {
+      "f0": {
+        "text": "{\n  \"$schema\": \"https://anthropic.com/claude-code/plugin.schema.json\",\n  \"name\": \"plugin-kit\",\n  \"version\": \"1.2.0\",\n  \"description\": \"Placeholder description.\",\n  \"author\": {\n    \"name\": \"Pat Example\"\n  },\n  \"license\": \"MIT\",\n  \"homepage\": \"https://example.com/plugin-kit\",\n  \"repository\": \"https://github.com/gh-owner/plugin-kit\"\n}\n",
+        "is_truncated": false,
+        "is_binary": false
+      }
+    }
+  }
+}

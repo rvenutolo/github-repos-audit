@@ -1,0 +1,16 @@
+{
+  "data": {
+    "repository": {
+      "f0": {
+        "text": "---\nname: skill-01\ndescription: Placeholder description.\n---\n\nPlaceholder body.\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "f1": {
+        "text": "---\nname: skill-02\n",
+        "is_truncated": true,
+        "is_binary": false
+      }
+    }
+  }
+}
