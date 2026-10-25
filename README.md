@@ -658,6 +658,45 @@ and are n/a elsewhere. A `plugin.json` that cannot be read fails all four as
   (`abc ? v1.2.0`). n/a when there is no release, which plugin_releases
   already reports.
 
+The marketplace checks read the marketplace `[claude]` configures and are
+n/a everywhere without one. An entry's `source` points at a repository when
+its owner is the audited account and its name an audited repository, both
+matched regardless of case. A marketplace that cannot be read fails every
+marketplace check that applies as `unreadable <marketplace>`. The first three
+judge a public repository that tracks `.claude-plugin/plugin.json`, and are
+n/a for a private one: only public plugins are listed, and a private plugin
+is added once it is made public.
+
+- **plugin_listed** — whether the marketplace has an entry whose source is
+  this repository. Only the first such entry is judged.
+- **plugin_pin_valid** — whether the entry's `ref` is a release of this
+  repository, its `sha` is the commit that tag resolves to, and the `name` in
+  `plugin.json` at that `sha` is the entry's `name`. The cell shows the `ref`
+  when all three hold, and otherwise names what is wrong:
+  `v1.2.0 is not a release`, `sha is not v1.2.0`, `name differs`, `no ref` or
+  `no sha`. n/a when the plugin is not listed.
+- **plugin_pin_current** — whether the pinned `ref` is the latest release.
+  Behind shows as `v1.1.0 → v1.2.0` and passes until the latest release has
+  been published for more than 7 days; Renovate auto-merges every pin bump
+  within about a day, so a week behind means the bump pipeline is broken. A
+  pin when the repository has no latest release fails (`v1.1.0 → none`). n/a
+  when the plugin is not listed or the pin is not valid.
+
+The last two judge the marketplace file as a whole and apply only to the
+marketplace repository's row, which the Plugin table lists even when that
+repository is not a plugin itself.
+
+- **marketplace_entries_valid** — whether every entry's source is a public
+  audited repository and no entry carries a `version`, which `plugin.json`
+  owns. An entry pointing outside the audited set (another owner, a fork, an
+  archived repository, one `repos.toml` does not name, or a source that is
+  not a GitHub repository) fails. The cell counts the entries and names the
+  ones that fail (`✗ 2/3 skill-pack`). n/a when the marketplace has no
+  entries.
+- **marketplace_complete** — whether every public audited repository that
+  tracks `.claude-plugin/plugin.json` has an entry. The cell names the ones
+  that do not.
+
 ## Cache lists
 
 Under its table, after the lists behind the ci_cancel_superseded and

@@ -78,6 +78,11 @@ var gapLabels = map[Check]string{
 	CheckPluginNoOwnMarketplace:  "Plugin repository has its own marketplace.json",
 	CheckPluginReleases:          "Plugin has no release",
 	CheckPluginVersionMatchesTag: "Plugin version behind its latest release",
+	CheckPluginListed:            "Plugin not listed in the marketplace",
+	CheckPluginPinValid:          "Marketplace pin is not a valid release",
+	CheckPluginPinCurrent:        "Marketplace pin over a week behind the latest release",
+	CheckMarketplaceEntriesValid: "Marketplace has invalid entries",
+	CheckMarketplaceComplete:     "Marketplace is missing a public plugin",
 }
 
 // communityFiles names the three community health files, in the order the

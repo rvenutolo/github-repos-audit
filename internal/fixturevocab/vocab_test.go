@@ -919,13 +919,41 @@ const claudePluginCell = `(✗ ` + claudePluginField + `(, ` + claudePluginField
 	`✗ [0-9]+\.[0-9]+\.[0-9]+ < v[0-9]+\.[0-9]+\.[0-9]+|` +
 	`✗ (none|[0-9][0-9A-Za-z.+-]*) \? v[0-9][0-9A-Za-z.+-]*)`
 
+// claudeTag is a release tag a marketplace cell may show: v and a semver
+// core, the shape every fixture pin and release tag takes.
+const claudeTag = `v[0-9]+\.[0-9]+\.[0-9]+`
+
+// claudePinProblem is one thing plugin_pin_valid names as wrong with a pin,
+// in the tool's own wording.
+const claudePinProblem = `(no ref|no sha|name differs|` + claudeTag + ` is not a release|sha is not ` + claudeTag + `)`
+
+// claudeMarketCell is every shape the marketplace cells take beyond the bare
+// marks and counts: a pin's tag, a pin behind the latest release (or behind
+// none), the pin problems, the entries marketplace_entries_valid fails and
+// the plugins marketplace_complete misses (fake repository names, or an
+// unnamed entry's place in the file), and an unreadable marketplace, named
+// by its fake repository.
+func claudeMarketCell() string {
+	quoted := make([]string, 0, len(fakeRepos))
+	for _, name := range fakeRepos {
+		quoted = append(quoted, regexp.QuoteMeta(name))
+	}
+	repo := `(` + strings.Join(quoted, "|") + `)`
+	entry := `(` + repo + `|entry \d+)`
+	return `((✗ )?` + claudeTag + `( → (` + claudeTag + `|none))?|` +
+		`✗ ` + claudePinProblem + `(, ` + claudePinProblem + `)*|` +
+		`✗ \d+/\d+ ` + entry + `(, ` + entry + `)*|` +
+		`✗ ` + repo + `(, ` + repo + `)*|` +
+		`(✗ )?unreadable ` + repo + `)`
+}
+
 // claudeCell is every shape a Claude section cell may take: n/a, a bare
 // number, a count (with a cross and the failing names after it when any
-// fail), or unreadable with a synthetic path or one of the tool's own
-// reasons. The cells list skill, command and hook names, which in a real
-// report say what a repository is for, so they are held to the synthetic
-// names, the way the recorded Claude facts are.
-var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|` + claudePluginCell + `|` +
+// fail), the plugin and marketplace cells, or unreadable with a synthetic
+// path or one of the tool's own reasons. The cells list skill, command and
+// hook names, which in a real report say what a repository is for, so they
+// are held to the synthetic names, the way the recorded Claude facts are.
+var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|` + claudePluginCell + `|` + claudeMarketCell() + `|` +
 	`✗ \d+/\d+ (` + claudeCellName + `(, ` + claudeCellName + `)*|` + claudeHookName + `(, ` + claudeHookName + `)*)|` +
 	`(✗ )?unreadable (` + claudePath + `|` + claudeProblem + `))$`)
 
@@ -1344,6 +1372,26 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Version = tag |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ is the deploy site ? v1.2.0 |",
+		"a real-shaped marketplace entry in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Entries valid |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 deploy-site |",
+		"a real-shaped missing plugin in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Complete |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ plugin-kit, deploy-site |",
+		"a real-shaped unreadable marketplace in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Listed |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable deploy-site |",
+		"prose in place of a pin problem": "" +
+			"## Claude\n\n" +
+			"| Repository | Pin valid |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ name differs from deploy-site |",
 		"free prose after unreadable in a Claude cell": "" +
 			"## Claude\n\n" +
 			"| Repository | Events |\n" +
@@ -1395,6 +1443,17 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| [alpha](https://github.com/gh-owner/alpha) | ✓ | ✓ | ✗ | ✗ 1.1.0 < v1.2.0 |\n" +
 			"| [bravo](https://github.com/gh-owner/bravo) | ✓ | ✓ | ✓ | ✗ 1.2 ? v1.2.0 |\n" +
 			"| [plugin-kit](https://github.com/gh-owner/plugin-kit) | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json |",
+		"a Claude Plugin table's marketplace cells": "" +
+			"## Claude\n\n" +
+			"| Repository | Listed | Pin valid | Pin current | Entries valid | Complete |\n" +
+			"| --- | --- | --- | --- | --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✓ | v1.2.0 | v1.1.0 → v1.2.0 | n/a | n/a |\n" +
+			"| [alpha](https://github.com/gh-owner/alpha) | ✓ | v1.1.0 | ✗ v1.1.0 → v1.2.0 | n/a | n/a |\n" +
+			"| [bravo](https://github.com/gh-owner/bravo) | ✓ | ✗ v1.1.0 is not a release, sha is not v1.1.0, name differs | n/a | n/a | n/a |\n" +
+			"| [cipher-lib](https://github.com/gh-owner/cipher-lib) | ✓ | ✗ no ref, no sha, name differs | n/a | n/a | n/a |\n" +
+			"| [go-linter](https://github.com/gh-owner/go-linter) | ✓ | v1.1.0 | ✗ v1.1.0 → none | n/a | n/a |\n" +
+			"| [plugin-market](https://github.com/gh-owner/plugin-market) | n/a | n/a | n/a | ✗ 1/3 skill-pack, entry 3 | ✗ plugin-kit, web-app |\n" +
+			"| [plugin-kit](https://github.com/gh-owner/plugin-kit) | ✗ unreadable plugin-market | ✗ unreadable plugin-market | ✗ unreadable plugin-market | n/a | n/a |",
 		"a Claude Hooks table": "" +
 			"## Claude\n\n" +
 			"| Repository | Events | Executable | Plugin root | Timeout | Matcher |\n" +

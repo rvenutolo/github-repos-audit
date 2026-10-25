@@ -84,6 +84,11 @@ const (
 	CheckPluginNoOwnMarketplace
 	CheckPluginReleases
 	CheckPluginVersionMatchesTag
+	CheckPluginListed
+	CheckPluginPinValid
+	CheckPluginPinCurrent
+	CheckMarketplaceEntriesValid
+	CheckMarketplaceComplete
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
@@ -163,6 +168,11 @@ var checkNames = [...]string{
 	CheckPluginNoOwnMarketplace:  "plugin_no_own_marketplace",
 	CheckPluginReleases:          "plugin_releases",
 	CheckPluginVersionMatchesTag: "plugin_version_matches_tag",
+	CheckPluginListed:            "plugin_listed",
+	CheckPluginPinValid:          "plugin_pin_valid",
+	CheckPluginPinCurrent:        "plugin_pin_current",
+	CheckMarketplaceEntriesValid: "marketplace_entries_valid",
+	CheckMarketplaceComplete:     "marketplace_complete",
 	CheckLastReleaseAge:          "last_release_age",
 	CheckLastPush:                "last_push",
 	CheckOpenPRs:                 "open_prs",

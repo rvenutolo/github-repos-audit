@@ -2,6 +2,7 @@ package rules_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/rules"
@@ -892,4 +893,365 @@ func TestObserveClaude_pluginSemver(t *testing.T) {
 			}
 		})
 	}
+}
+
+// marketplaceChecks is every marketplace-dependent check, in the Plugin
+// sub-table's column order.
+var marketplaceChecks = []rules.Check{
+	rules.CheckPluginListed,
+	rules.CheckPluginPinValid,
+	rules.CheckPluginPinCurrent,
+	rules.CheckMarketplaceEntriesValid,
+	rules.CheckMarketplaceComplete,
+}
+
+// pinSHA is the commit the marketplace fixtures pin and their tags resolve to.
+const pinSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001"
+
+// marketPlugin is a public plugin repository whose latest release is v1.2.0,
+// published the given time before cacheNow.
+func marketPlugin(name string, age time.Duration) audit.Repo {
+	r := public(fixture(name, "tools"))
+	r.Claude = audit.Claude{Plugin: audit.ClaudePlugin{Present: true, Name: name, Version: "1.2.0", Fields: allPluginFields()}}
+	r.Releases.LatestTag = "v1.2.0"
+	r.Releases.LatestPublishedAt = cacheNow.Add(-age)
+	return r
+}
+
+// pinEntry is a marketplace entry pinning gh-owner/<repo> validly to ref.
+func pinEntry(repo, ref string) audit.MarketplaceEntry {
+	return audit.MarketplaceEntry{
+		Name: repo, Repo: "gh-owner/" + repo, Ref: ref, SHA: pinSHA,
+		ReleaseTag: true, TagCommit: pinSHA, PluginName: repo,
+	}
+}
+
+// evaluateMarket judges repos, plus a public plugin-market repository holding
+// the marketplace m when m names it, as of cacheNow for the account gh-owner.
+func evaluateMarket(t *testing.T, m audit.ClaudeMarketplace, repos ...audit.Repo) *rules.Report {
+	t.Helper()
+	repos = append(repos, public(fixture("plugin-market", "tools")))
+	rep, err := rules.Evaluate(&audit.Snapshot{
+		GeneratedAt: cacheNow, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),
+		Repos: repos, Marketplace: m,
+	})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v, want nil", err)
+	}
+	return rep
+}
+
+// marketCell is the named repository's cell for c.
+func marketCell(t *testing.T, rep *rules.Report, name string, c rules.Check) rules.Cell {
+	t.Helper()
+	for i := range rep.Repos {
+		if rep.Repos[i].Repo.Name == name {
+			return rep.Repos[i].Cell(c)
+		}
+	}
+	t.Fatalf("no repository %q in the report", name)
+	return rules.Cell{}
+}
+
+func TestObserveClaude_marketplace(t *testing.T) {
+	t.Parallel()
+
+	na := claudeWant{rules.NA, ""}
+	pass := func(v string) claudeWant { return claudeWant{rules.Pass, v} }
+	fail := func(v string) claudeWant { return claudeWant{rules.Fail, v} }
+	market := func(entries ...audit.MarketplaceEntry) audit.ClaudeMarketplace {
+		return audit.ClaudeMarketplace{Repo: "plugin-market", Entries: entries}
+	}
+	mutate := func(e audit.MarketplaceEntry, f func(*audit.MarketplaceEntry)) audit.MarketplaceEntry {
+		f(&e)
+		return e
+	}
+	const day = 24 * time.Hour
+	fresh := marketPlugin("plugin-kit", 3*day)
+	private := marketPlugin("skill-pack", 3*day)
+	private.Visibility = "private"
+	noPlugin := public(fixture("skill-pack", "tools"))
+	unreadableClaude := marketPlugin("plugin-kit", 3*day)
+	unreadableClaude.Claude.Unreadable = "too many Claude files"
+
+	// rows is what a test expects of each named repository's five cells, in
+	// marketplaceChecks order.
+	type rows map[string][5]claudeWant
+	plugin := func(listed, valid, current claudeWant) [5]claudeWant {
+		return [5]claudeWant{listed, valid, current, na, na}
+	}
+	marketRow := func(entries, complete claudeWant) [5]claudeWant {
+		return [5]claudeWant{na, na, na, entries, complete}
+	}
+	allNA := [5]claudeWant{na, na, na, na, na}
+
+	tests := []struct {
+		name   string
+		market audit.ClaudeMarketplace
+		repos  []audit.Repo
+		want   rows
+	}{
+		{
+			"no marketplace configured is n/a everywhere",
+			audit.ClaudeMarketplace{},
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": allNA, "plugin-market": allNA},
+		},
+		{
+			"no marketplace configured is n/a even beside unreadable Claude files",
+			audit.ClaudeMarketplace{},
+			[]audit.Repo{unreadableClaude},
+			rows{"plugin-kit": allNA, "plugin-market": allNA},
+		},
+		{
+			"a listed plugin pinned to its latest release passes",
+			market(pinEntry("plugin-kit", "v1.2.0")),
+			[]audit.Repo{fresh},
+			rows{
+				"plugin-kit":    plugin(pass(""), pass("v1.2.0"), pass("v1.2.0")),
+				"plugin-market": marketRow(pass("1/1"), pass("")),
+			},
+		},
+		{
+			"owner and name match case-insensitively",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) { e.Repo = "GH-Owner/Plugin-Kit" })),
+			[]audit.Repo{fresh},
+			rows{
+				"plugin-kit":    plugin(pass(""), pass("v1.2.0"), pass("v1.2.0")),
+				"plugin-market": marketRow(pass("1/1"), pass("")),
+			},
+		},
+		{
+			"a public plugin not listed fails listing and completeness",
+			market(),
+			[]audit.Repo{fresh},
+			rows{
+				"plugin-kit":    plugin(fail(""), na, na),
+				"plugin-market": marketRow(na, fail("plugin-kit")),
+			},
+		},
+		{
+			"an entry naming another owner's repository does not list the plugin",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) {
+				e.Repo = "someone/plugin-kit"
+				e.Problem = "not an audited repository"
+			})),
+			[]audit.Repo{fresh},
+			rows{
+				"plugin-kit":    plugin(fail(""), na, na),
+				"plugin-market": marketRow(fail("0/1 plugin-kit"), fail("plugin-kit")),
+			},
+		},
+		{
+			"a private plugin is not judged on listing, and its entry is invalid",
+			market(pinEntry("skill-pack", "v1.2.0")),
+			[]audit.Repo{private},
+			rows{
+				"skill-pack":    plugin(na, na, na),
+				"plugin-market": marketRow(fail("0/1 skill-pack"), pass("")),
+			},
+		},
+		{
+			"a repository that is not a plugin is n/a",
+			market(),
+			[]audit.Repo{noPlugin},
+			rows{"skill-pack": allNA, "plugin-market": marketRow(na, pass(""))},
+		},
+		{
+			"a pin that is not a release fails",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) { e.ReleaseTag = false })),
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": plugin(pass(""), fail("v1.2.0 is not a release"), na)},
+		},
+		{
+			"a pin with no ref fails",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) {
+				*e = audit.MarketplaceEntry{Name: "plugin-kit", Repo: "gh-owner/plugin-kit", Problem: "no ref; no sha"}
+			})),
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": plugin(pass(""), fail("no ref, no sha, name differs"), na)},
+		},
+		{
+			"a sha that is not the tag's commit fails",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) {
+				e.TagCommit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002"
+			})),
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": plugin(pass(""), fail("sha is not v1.2.0"), na)},
+		},
+		{
+			"a tag that resolves to no commit fails",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) { e.TagCommit = "" })),
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": plugin(pass(""), fail("sha is not v1.2.0"), na)},
+		},
+		{
+			"a plugin name that differs from the entry's fails",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) { e.PluginName = "skill-pack" })),
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": plugin(pass(""), fail("name differs"), na)},
+		},
+		{
+			"an unread plugin name fails",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) { e.PluginName = "" })),
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": plugin(pass(""), fail("name differs"), na)},
+		},
+		{
+			"every pin problem is named",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) {
+				e.ReleaseTag, e.TagCommit, e.PluginName = false, "", ""
+			})),
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": plugin(pass(""), fail("v1.2.0 is not a release, sha is not v1.2.0, name differs"), na)},
+		},
+		{
+			"a pin behind a release three days old passes",
+			market(pinEntry("plugin-kit", "v1.1.0")),
+			[]audit.Repo{fresh},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), pass("v1.1.0 → v1.2.0"))},
+		},
+		{
+			"a pin behind a release eight days old fails",
+			market(pinEntry("plugin-kit", "v1.1.0")),
+			[]audit.Repo{marketPlugin("plugin-kit", 8*day)},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), fail("v1.1.0 → v1.2.0"))},
+		},
+		{
+			"a pin behind a release exactly a week old passes",
+			market(pinEntry("plugin-kit", "v1.1.0")),
+			[]audit.Repo{marketPlugin("plugin-kit", 7*day)},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), pass("v1.1.0 → v1.2.0"))},
+		},
+		{
+			"a valid pin with no latest release fails",
+			market(pinEntry("plugin-kit", "v1.1.0")),
+			[]audit.Repo{func() audit.Repo {
+				r := marketPlugin("plugin-kit", 3*day)
+				r.Releases.LatestTag, r.Releases.LatestPublishedAt = "", time.Time{}
+				return r
+			}()},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), fail("v1.1.0 → none"))},
+		},
+		{
+			"an entry carrying a version is invalid",
+			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) { e.HasVersion = true })),
+			[]audit.Repo{fresh},
+			rows{"plugin-market": marketRow(fail("0/1 plugin-kit"), pass(""))},
+		},
+		{
+			"an entry outside the audited set is invalid, named in file order",
+			market(
+				pinEntry("plugin-kit", "v1.2.0"),
+				audit.MarketplaceEntry{Name: "web-app", Repo: "gh-owner/web-app", Problem: "not an audited repository"},
+				audit.MarketplaceEntry{Name: "cipher-lib"},
+			),
+			[]audit.Repo{fresh},
+			rows{"plugin-market": marketRow(fail("1/3 web-app, cipher-lib"), pass(""))},
+		},
+		{
+			"an entry with neither a name nor a repository is named by its position",
+			market(audit.MarketplaceEntry{}),
+			[]audit.Repo{noPlugin},
+			rows{"plugin-market": marketRow(fail("0/1 entry 1"), pass(""))},
+		},
+		{
+			"unreadable Claude files fail the plugin's checks as unreadable",
+			market(pinEntry("plugin-kit", "v1.2.0")),
+			[]audit.Repo{unreadableClaude},
+			rows{
+				"plugin-kit": plugin(
+					fail("unreadable too many Claude files"), fail("unreadable too many Claude files"),
+					fail("unreadable too many Claude files"),
+				),
+				"plugin-market": marketRow(pass("1/1"), pass("")),
+			},
+		},
+		{
+			"an unreadable marketplace fails every plugin and the marketplace row",
+			audit.ClaudeMarketplace{Repo: "plugin-market", Unreadable: "no .claude-plugin/marketplace.json"},
+			[]audit.Repo{fresh, noPlugin},
+			rows{
+				"plugin-kit": plugin(
+					fail("unreadable plugin-market"), fail("unreadable plugin-market"), fail("unreadable plugin-market"),
+				),
+				"skill-pack":    allNA,
+				"plugin-market": marketRow(fail("unreadable plugin-market"), fail("unreadable plugin-market")),
+			},
+		},
+		{
+			"an unreadable marketplace leaves a private plugin n/a",
+			audit.ClaudeMarketplace{Repo: "plugin-market", Unreadable: "no .claude-plugin/marketplace.json"},
+			[]audit.Repo{private},
+			rows{"skill-pack": allNA},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rep := evaluateMarket(t, tt.market, tt.repos...)
+			for name, want := range tt.want {
+				for i, c := range marketplaceChecks {
+					got := marketCell(t, rep, name, c)
+					if got.Verdict != want[i].verdict || got.Value != want[i].value {
+						t.Errorf("%s %s = %v %q, want %v %q", name, c, got.Verdict, got.Value, want[i].verdict, want[i].value)
+					}
+					if got.Verdict == rules.Fail && got.Value != "" && !got.Mark {
+						t.Errorf("%s %s: a failing value should carry a mark", name, c)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestObserveClaude_marketplaceGaps(t *testing.T) {
+	t.Parallel()
+
+	const day = 24 * time.Hour
+	lagging := pinEntry("plugin-kit", "v1.1.0")
+	invalid := lagging
+	invalid.TagCommit = ""
+	rep := evaluateMarket(t,
+		audit.ClaudeMarketplace{Repo: "plugin-market", Entries: []audit.MarketplaceEntry{
+			lagging, repoint(invalid, "skill-pack"),
+			{Name: "web-app", Repo: "gh-owner/web-app", HasVersion: true, Problem: "not an audited repository"},
+		}},
+		marketPlugin("plugin-kit", 8*day), marketPlugin("skill-pack", day), marketPlugin("cipher-lib", day),
+	)
+
+	want := map[rules.Check]string{
+		rules.CheckPluginListed:            "Plugin not listed in the marketplace",
+		rules.CheckPluginPinValid:          "Marketplace pin is not a valid release",
+		rules.CheckPluginPinCurrent:        "Marketplace pin over a week behind the latest release",
+		rules.CheckMarketplaceEntriesValid: "Marketplace has invalid entries",
+		rules.CheckMarketplaceComplete:     "Marketplace is missing a public plugin",
+	}
+	wantRepos := map[rules.Check]string{
+		rules.CheckPluginListed:            "cipher-lib",
+		rules.CheckPluginPinValid:          "skill-pack",
+		rules.CheckPluginPinCurrent:        "plugin-kit",
+		rules.CheckMarketplaceEntriesValid: "plugin-market",
+		rules.CheckMarketplaceComplete:     "plugin-market",
+	}
+	got := map[rules.Check]string{}
+	for _, g := range rep.Gaps {
+		if _, ok := want[g.Check]; ok {
+			got[g.Check] = g.Label
+			if len(g.Repos) != 1 || g.Repos[0] != wantRepos[g.Check] {
+				t.Errorf("gap %s repos = %v, want [%s]", g.Check, g.Repos, wantRepos[g.Check])
+			}
+		}
+	}
+	for c, label := range want {
+		if got[c] != label {
+			t.Errorf("gap %s label = %q, want %q", c, got[c], label)
+		}
+	}
+}
+
+// repoint is e re-pointed at gh-owner/<repo> under that name.
+func repoint(e audit.MarketplaceEntry, repo string) audit.MarketplaceEntry {
+	e.Name, e.Repo, e.PluginName = repo, "gh-owner/"+repo, repo
+	return e
 }

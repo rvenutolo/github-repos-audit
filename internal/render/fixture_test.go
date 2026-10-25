@@ -225,8 +225,7 @@ func fullSnapshot() *audit.Snapshot {
 	// marketplace of its own, and a version equal to its latest release's tag.
 	soft.Claude = audit.Claude{
 		Plugin: audit.ClaudePlugin{
-			Present: true, Name: "plugin-kit", Version: "1.2.0",
-			Fields: []string{"$schema", "author", "description", "homepage", "license", "name", "repository", "version"},
+			Present: true, Name: "plugin-kit", Version: "1.2.0", Fields: pluginFields(),
 		},
 		Skills: []audit.ClaudeSkill{projectSkill("skill-01", 45)},
 		Hooks: []audit.ClaudeHook{{
@@ -263,6 +262,35 @@ func fullSnapshot() *audit.Snapshot {
 	content.Settings.ActionsAccessLevel = ""
 	// Only someone else has committed: nothing of the owner's to list.
 	content.Identities = []audit.Identity{{Name: "Robin Other", Email: "robin@example.org"}}
+	// It is a plugin the marketplace lists validly, but pinned a release
+	// behind one published ten days before the render, so its pin has lagged
+	// past the week the pin check allows.
+	content.Claude = audit.Claude{Plugin: audit.ClaudePlugin{
+		Present: true, Name: "cipher-lib", Version: "1.2.0", Fields: pluginFields(),
+	}}
+	content.Releases = audit.Releases{
+		Total: 2, LastPublishedAt: at(2026, time.August, 26),
+		LatestTag: "v1.2.0", LatestPublishedAt: at(2026, time.August, 26),
+	}
+
+	// A public plugin that passes every plugin check of its own but is
+	// missing from the marketplace.
+	kit := baseRepo("plugin-kit", "tools")
+	kit.Visibility = "public"
+	kit.License = "MIT"
+	// No commitlint config, so the two spellings stay tied two to two.
+	kit.Files.Commitlint = ""
+	kit.Settings.SecretScanning = "enabled"
+	kit.Settings.SecretScanningPushProtection = "enabled"
+	kit.Settings.PrivateVulnerabilityReporting = new(true)
+	kit.Settings.ActionsAccessLevel = ""
+	kit.Claude = audit.Claude{Plugin: audit.ClaudePlugin{
+		Present: true, Name: "plugin-kit", Version: "1.0.0", Fields: pluginFields(),
+	}}
+	kit.Releases = audit.Releases{
+		Total: 1, LastPublishedAt: at(2026, time.August, 3),
+		LatestTag: "v1.0.0", LatestPublishedAt: at(2026, time.August, 3),
+	}
 
 	// A private tools repository with a CI run in flight and no real gate.
 	tools := baseRepo("github-repos-audit", "tools")
@@ -324,7 +352,10 @@ func fullSnapshot() *audit.Snapshot {
 	quoted.DisableModelInvocation = false
 	quoted.DescriptionChars = rules.SkillDescriptionMax + 64
 	// It is a plugin too, behind its latest release, missing two manifest
-	// fields and carrying a marketplace of its own.
+	// fields and carrying a marketplace of its own: it is the account's
+	// marketplace, so its Plugin row carries the marketplace-row cells
+	// beside its own plugin checks. Being private, it is not judged on
+	// being listed.
 	tools.Releases = audit.Releases{Total: 2, LatestTag: "v1.2.0", LatestPublishedAt: at(2026, time.March, 5)}
 	tools.Claude = audit.Claude{
 		Plugin: audit.ClaudePlugin{
@@ -399,8 +430,39 @@ func fullSnapshot() *audit.Snapshot {
 		Owner:       "gh-owner",
 		Types:       standardTypes(),
 		Identity:    fixtureIdentity(),
-		Repos:       []audit.Repo{soft, content, tools, empty, cfg},
+		Repos:       []audit.Repo{soft, content, tools, empty, cfg, kit},
+		// One entry pins the software repository to its latest release,
+		// one pins the content repository a release behind, and one names
+		// a repository outside the audit and carries a version; the public
+		// plugin-kit has no entry.
+		Marketplace: audit.ClaudeMarketplace{
+			Repo: "github-repos-audit",
+			Entries: []audit.MarketplaceEntry{
+				{
+					Name: "plugin-kit", Repo: "gh-owner/mixedCase-flake", Ref: "v1.2.0", SHA: pinSHA(1),
+					ReleaseTag: true, TagCommit: pinSHA(1), PluginName: "plugin-kit",
+				},
+				{
+					Name: "cipher-lib", Repo: "gh-owner/cipher-lib", Ref: "v1.1.0", SHA: pinSHA(2),
+					ReleaseTag: true, TagCommit: pinSHA(2), PluginName: "cipher-lib",
+				},
+				{
+					Name: "skill-pack", Repo: "gh-owner/skill-pack", Ref: "v1.0.0", SHA: pinSHA(3),
+					HasVersion: true, Problem: "not an audited repository",
+				},
+			},
+		},
 	}
+}
+
+// pluginFields is every manifest field plugin_manifest_fields requires.
+func pluginFields() []string {
+	return []string{"$schema", "author", "description", "homepage", "license", "name", "repository", "version"}
+}
+
+// pinSHA is the nth fake commit a marketplace entry pins.
+func pinSHA(n int) string {
+	return fmt.Sprintf("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa%04d", n)
 }
 
 // projectSkill is a skill under .claude/skills that passes every skill

@@ -78,7 +78,11 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 		return nil, fmt.Errorf("evaluate: identity: %w", err)
 	}
 
-	ev := evalContext{now: snap.GeneratedAt}
+	ev := evalContext{now: snap.GeneratedAt, owner: snap.Owner, marketplace: snap.Marketplace}
+	ev.repos = make(map[string]audit.Repo, len(snap.Repos))
+	for _, r := range snap.Repos {
+		ev.repos[strings.ToLower(r.Name)] = r
+	}
 	rep := &Report{GeneratedAt: snap.GeneratedAt, Owner: snap.Owner, Drift: snap.Drift}
 	rep.Repos = make([]RepoReport, 0, len(snap.Repos))
 	for _, r := range snap.Repos {
@@ -114,11 +118,22 @@ func compareNames(a, b string) int {
 }
 
 // evalContext is what every repository is judged against beyond its own
-// facts and its type: the run's instant.
+// facts and its type: the run's instant, and the account-wide facts the
+// marketplace checks compare each repository with.
 type evalContext struct {
 	// The run's instant: the snapshot's GeneratedAt, so the same audit.json
 	// evaluates to the same report whenever it is read.
 	now time.Time
+	// owner is the account every audited repository belongs to, which a
+	// marketplace entry's source must name to point at one of them.
+	owner string
+	// marketplace is the configured plugin marketplace; zero when repos.toml
+	// configures none.
+	marketplace audit.ClaudeMarketplace
+	// repos is every audited repository by its lowercased name, since GitHub
+	// names, like the marketplace sources that cite them, match regardless of
+	// case.
+	repos map[string]audit.Repo
 }
 
 // evaluateRepo produces one cell for every check. std is the compiled identity
@@ -331,7 +346,9 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		CheckSkillDescriptionLength, CheckSkillNoWrapperCommands, CheckSkillSize,
 		CheckHookKnownEvents, CheckHookCommandExecutable, CheckHookPluginRoot,
 		CheckHookTimeout, CheckHookMatcher, CheckPluginManifestFields,
-		CheckPluginNoOwnMarketplace, CheckPluginReleases, CheckPluginVersionMatchesTag:
+		CheckPluginNoOwnMarketplace, CheckPluginReleases, CheckPluginVersionMatchesTag,
+		CheckPluginListed, CheckPluginPinValid, CheckPluginPinCurrent,
+		CheckMarketplaceEntriesValid, CheckMarketplaceComplete:
 		return observeClaude(c, r, ev)
 
 	case CheckTopics:
