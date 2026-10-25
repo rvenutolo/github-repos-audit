@@ -508,3 +508,64 @@ func TestClaudeFacts_untypedHookRunsItsScript(t *testing.T) {
 		t.Errorf("Hooks mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// TestClaudeFacts_declaredFileNotTracked: a hooks file and a command file the
+// manifest declares but the tree does not hold are still read, find nothing,
+// and are recorded as unreadable. Dropping them would leave a plugin Claude
+// Code cannot load reading as having no hooks or commands at all.
+func TestClaudeFacts_declaredFileNotTracked(t *testing.T) {
+	t.Parallel()
+
+	const manifest = ".claude-plugin/plugin.json"
+	s := &claudeServer{blobs: map[string]*fileBlob{
+		manifest: text(`{"name": "plugin-kit", "hooks": "./hooks/hooks.json", "commands": ["./commands/command-01.md"]}`),
+	}}
+	got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest))
+	if err != nil {
+		t.Fatalf("claudeFacts() error = %v, want nil", err)
+	}
+	_, commandProblem := blobText(nil, "commands/command-01.md")
+	_, hooksProblem := blobText(nil, "hooks/hooks.json")
+	want := audit.Claude{
+		Commands: []audit.ClaudeSkill{{Path: "commands/command-01.md", Dir: "command-01", Unreadable: commandProblem}},
+		Hooks:    []audit.ClaudeHook{{Source: "hooks/hooks.json", Plugin: true, Unreadable: hooksProblem}},
+		Plugin:   audit.ClaudePlugin{Present: true, Name: "plugin-kit", Fields: []string{"name"}},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("claudeFacts() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestClaudeFacts_declaredDirectoryMissing: a skills or commands directory the
+// manifest declares but the tree does not hold has no file to record as
+// unreadable, so the repository's Claude files are unreadable as a whole, as
+// they are when the manifest itself cannot be read, and nothing more is read.
+func TestClaudeFacts_declaredDirectoryMissing(t *testing.T) {
+	t.Parallel()
+
+	const manifest = ".claude-plugin/plugin.json"
+	tests := []struct{ name, manifest, missing string }{
+		{"commands", `{"name": "plugin-kit", "commands": "./commands"}`, "commands"},
+		{"skills", `{"name": "plugin-kit", "skills": ["./skills", "./extra/"]}`, "extra"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := &claudeServer{blobs: map[string]*fileBlob{manifest: text(tc.manifest)}}
+			got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest, "skills/skill-01/SKILL.md"))
+			if err != nil {
+				t.Fatalf("claudeFacts() error = %v, want nil", err)
+			}
+			want := audit.Claude{
+				Plugin:     audit.ClaudePlugin{Present: true, Name: "plugin-kit", Fields: []string{"name"}},
+				Unreadable: "plugin.json declares missing " + tc.missing,
+			}
+			if diff := cmp.Diff(want, got); diff != "" {
+				t.Errorf("claudeFacts() mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff([][]string{{manifest}}, s.asked()); diff != "" {
+				t.Errorf("queries mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

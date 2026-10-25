@@ -105,10 +105,48 @@ func TestDiscover(t *testing.T) {
 			want:     claude.Layout{Commands: []string{"cmds/a.md", "cmds/b.md"}},
 		},
 		{
-			name:     "declared command file",
+			// A declared command file that is not tracked is still listed:
+			// reading it finds nothing, so it is recorded as unreadable
+			// rather than dropped from a plugin Claude Code cannot load.
+			name:     "declared command file, tracked or not",
 			paths:    []string{"cmds/a.md", "cmds/b.md"},
 			manifest: &claude.Plugin{CommandsSet: true, CommandPaths: []string{"cmds/a.md", "missing.md"}},
-			want:     claude.Layout{Commands: []string{"cmds/a.md"}},
+			want:     claude.Layout{Commands: []string{"cmds/a.md", "missing.md"}},
+		},
+		{
+			name:     "the plugin root declared as the commands directory",
+			paths:    []string{"a.md", "commands/x.md", "sub/b.md"},
+			manifest: &claude.Plugin{CommandsSet: true, CommandPaths: []string{"."}},
+			want:     claude.Layout{Commands: []string{"a.md"}},
+		},
+		{
+			name:     "a declared commands directory that does not exist is missing",
+			paths:    []string{"commands/x.md"},
+			manifest: &claude.Plugin{CommandsSet: true, CommandPaths: []string{"cmds"}},
+			want:     claude.Layout{Missing: []string{"cmds"}},
+		},
+		{
+			name:     "a declared command that is a tracked file but not markdown is missing",
+			paths:    []string{"cmds/a.txt"},
+			manifest: &claude.Plugin{CommandsSet: true, CommandPaths: []string{"cmds/a.txt"}},
+			want:     claude.Layout{Missing: []string{"cmds/a.txt"}},
+		},
+		{
+			name:     "a declared command file outside the repository is missing",
+			manifest: &claude.Plugin{CommandsSet: true, CommandPaths: []string{"../a.md"}},
+			want:     claude.Layout{Missing: []string{"../a.md"}},
+		},
+		{
+			name:     "a declared skills directory that does not exist is missing",
+			paths:    []string{"skills/c/SKILL.md"},
+			manifest: &claude.Plugin{SkillDirs: []string{"extra", "."}, SkillsSet: true},
+			want:     claude.Layout{Skills: []string{"skills/c/SKILL.md"}, Missing: []string{"extra"}},
+		},
+		{
+			name:     "a declared skills path that is a file is missing",
+			paths:    []string{"extra"},
+			manifest: &claude.Plugin{SkillDirs: []string{"extra"}, SkillsSet: true},
+			want:     claude.Layout{Missing: []string{"extra"}},
 		},
 		{
 			name:     "inline-only commands find no files",
@@ -139,10 +177,17 @@ func TestDiscover(t *testing.T) {
 			want:  claude.Layout{},
 		},
 		{
-			name:     "declared hooks file",
+			// As with a command file, a declared hooks file that is not
+			// tracked is listed so reading it records it as unreadable.
+			name:     "declared hooks file, tracked or not",
 			paths:    []string{"hooks/hooks.json", "config/h.json"},
 			manifest: &claude.Plugin{HooksFile: "config/h.json", HooksFiles: []string{"config/h.json", "config/gone.json", "hooks/hooks.json"}},
-			want:     claude.Layout{HookFiles: []string{"config/h.json", "hooks/hooks.json"}},
+			want:     claude.Layout{HookFiles: []string{"config/gone.json", "config/h.json", "hooks/hooks.json"}},
+		},
+		{
+			name:     "a declared hooks file outside the repository is missing",
+			manifest: &claude.Plugin{HooksFile: "/etc/h.json", HooksFiles: []string{"/etc/h.json", ".."}},
+			want:     claude.Layout{Missing: []string{"..", "/etc/h.json"}},
 		},
 		{
 			name:     "declared hooks file through HooksFile alone",

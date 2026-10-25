@@ -22,7 +22,13 @@ type Layout struct {
 	OwnMarketplace bool     // .claude-plugin/marketplace.json is tracked
 	Skills         []string // SKILL.md paths, sorted
 	Commands       []string // command .md paths, sorted
-	HookFiles      []string // hooks/hooks.json and tracked **/.claude/settings.json, sorted
+	HookFiles      []string // hooks/hooks.json, tracked **/.claude/settings.json and declared hooks paths, sorted
+	// Missing is every path plugin.json declares that nothing in the tree
+	// can answer, sorted: a skills or commands directory that is not one, a
+	// command that is neither a directory nor a .md path, or any declared
+	// path outside the repository. Claude Code cannot load what such a path
+	// names, and there is no file to record as unreadable in its place.
+	Missing []string
 }
 
 // Discover applies Claude Code's loading rules to a tree. manifest is the
@@ -73,17 +79,25 @@ func Discover(entries []filepaths.Entry, manifest *Plugin) Layout {
 		}
 	}
 
+	missing := map[string]bool{}
 	if manifest != nil {
-		discoverPlugin(files, dirs, manifest, skills, commands, hooks)
+		discoverPlugin(files, dirs, manifest, skills, commands, hooks, missing)
 	}
 
 	l.Skills = sortedKeys(skills)
 	l.Commands = sortedKeys(commands)
 	l.HookFiles = sortedKeys(hooks)
+	l.Missing = sortedKeys(missing)
 	return l
 }
 
-func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, hooks map[string]bool) {
+// discoverPlugin adds what the manifest names. A declared file the tree does
+// not hold is kept, so reading it records it as unreadable; a declared
+// directory the tree does not hold, a command that is not a .md file, and
+// any path outside the repository go to missing instead, because there is
+// no file to read in their place. Dropping either would let a plugin Claude
+// Code cannot load read as one with nothing to judge.
+func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, hooks, missing map[string]bool) {
 	addSkills := func(root string) {
 		for p := range files {
 			rest, ok := cut(p, root)
@@ -94,6 +108,10 @@ func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, ho
 	}
 	addSkills("skills")
 	for _, d := range m.SkillDirs {
+		if d != "." && !dirs[d] {
+			missing[d] = true
+			continue
+		}
 		addSkills(d)
 		// A declared directory may hold SKILL.md directly.
 		if f := join(d, "SKILL.md"); files[f] {
@@ -115,14 +133,16 @@ func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, ho
 	}
 	for _, c := range m.CommandPaths {
 		switch {
-		case files[c] && strings.HasSuffix(c, ".md"):
-			commands[c] = true
-		case dirs[c]:
+		case dirs[c] || c == ".":
 			for p := range files {
 				if rest, ok := cut(p, c); ok && !strings.Contains(rest, "/") && strings.HasSuffix(rest, ".md") {
 					commands[p] = true
 				}
 			}
+		case strings.HasSuffix(c, ".md") && inRepo(c):
+			commands[c] = true
+		default:
+			missing[c] = true
 		}
 	}
 
@@ -130,10 +150,21 @@ func discoverPlugin(files, dirs map[string]bool, m *Plugin, skills, commands, ho
 		hooks[defaultHooksPath] = true
 	}
 	for _, h := range append([]string{m.HooksFile}, m.HooksFiles...) {
-		if h != "" && files[h] {
+		switch {
+		case h == "":
+		case inRepo(h) && h != ".":
 			hooks[h] = true
+		default:
+			missing[h] = true
 		}
 	}
+}
+
+// inRepo reports whether a cleaned declared path stays inside the repository.
+// One that leaves it cannot be a tracked file, and reading it would ask
+// GitHub for a path no repository has.
+func inRepo(p string) bool {
+	return p != ".." && !strings.HasPrefix(p, "../") && !strings.HasPrefix(p, "/")
 }
 
 // SkillName is the name a skill at skillPath is known by: its parent

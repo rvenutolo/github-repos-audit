@@ -534,10 +534,12 @@ when any fail it names them after the count, in path order
 not `---`) is read as having no keys, and fails the checks that need one. A
 file whose frontmatter is not closed by `---`, is not a YAML mapping or
 repeats a key cannot pass anything, so every check that judges it fails as
-`unreadable <path>`; when the repository's Claude files
-cannot be read as a whole (more of them than the tool reads in one
-repository, or a `plugin.json` whose layout cannot be decided), every one
-of them fails as `unreadable <reason>`. The report's Claude section
+`unreadable <path>`, and so does a command file `plugin.json` declares
+that is not tracked. When the repository's Claude files cannot be read as
+a whole (more of them than the tool reads in one repository, a
+`plugin.json` whose layout cannot be decided, or one that declares a
+skills or commands directory that is not there), every one of them fails
+as `unreadable <reason>`. The report's Claude section
 shows them, listing only the repositories that carry any.
 
 - **skill_slash_only** — whether every skill and command file sets
@@ -579,8 +581,8 @@ The hook checks apply once the repository has a hook, wherever it is
 declared: a hooks file, an inline `plugin.json` `hooks` object, or a skill's
 or command's frontmatter. A cell counts hooks the way the skill cells count
 files, naming a failing hook by its file and event (`✗ 1/3 hooks/hooks.json
-PreToolUse`). A hooks file that cannot be read fails every hook check as
-`unreadable <path>`.
+PreToolUse`). A hooks file that cannot be read, including one `plugin.json`
+declares that is not tracked, fails every hook check as `unreadable <path>`.
 
 - **hook_known_events** — whether every hook's event is one the
   [hooks documentation](https://code.claude.com/docs/en/hooks) lists. A

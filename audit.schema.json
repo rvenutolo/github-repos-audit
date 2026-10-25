@@ -886,7 +886,7 @@
         },
         "plugin": { "$ref": "#/$defs/claude_plugin" },
         "unreadable": {
-          "description": "A problem with the Claude files as a whole: \"too many Claude files\", or a plugin manifest whose layout cannot be decided.",
+          "description": "A problem with the Claude files as a whole: \"too many Claude files\", a plugin manifest whose layout cannot be decided, or \"plugin.json declares missing <path>\".",
           "type": "string",
           "minLength": 1
         }

@@ -31,6 +31,10 @@ const (
 // tooManyClaudeFiles is the repository-wide problem past claudeFilesMax.
 const tooManyClaudeFiles = "too many Claude files"
 
+// missingDeclared prefixes the repository-wide problem for a path plugin.json
+// declares that the tree cannot answer.
+const missingDeclared = "plugin.json declares missing "
+
 // inlineCommandPath is the path recorded for a command whose text lives in
 // plugin.json itself, so it reads as a place in the manifest.
 const inlineCommandPath = ".claude-plugin/plugin.json#commands/"
@@ -88,6 +92,14 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 		// A repository with no manifest must not be run through the plugin
 		// rules, which would load a top-level skills/ Claude Code ignores.
 		layout = claude.Discover(entries, &manifest)
+		// A declared directory that is not there has no file to record as
+		// unreadable in its place, and judging the rest would pass a plugin
+		// Claude Code cannot load; so, as with a manifest that cannot be
+		// read, the whole repository is unreadable.
+		if len(layout.Missing) > 0 {
+			out.Unreadable = missingDeclared + layout.Missing[0]
+			return out, nil
+		}
 		var more []string
 		for _, p := range layoutPaths(layout) {
 			if _, read := texts[p]; !read {

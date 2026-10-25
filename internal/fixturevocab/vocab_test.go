@@ -535,7 +535,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.script$`), matches(`^hooks/hook-\d{2}\.sh$`), "a synthetic hook script"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.matcher$`), matches(`^[A-Za-z|*]*$`), "a tool-name matcher"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.plugin\.name$`), isFakeRepo, "a fake repository name"},
-	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(`^(` + claudePath + `: )?[^/]*$`), "a problem naming only a synthetic Claude path"},
+	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(`^((` + claudePath + `: )?[^/]*|` + claudeMissing + `)$`), "a problem naming only a synthetic Claude path"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
 		`repos\[\]\.actions_storage\.(artifact_bytes|artifact_count|cache_limit_bytes|cache_usage_bytes)`,
@@ -861,10 +861,15 @@ const claudeHookName = `(` + claudePath + ` [A-Za-z]+)`
 // plugin manifest's problem behind its path, and the bare SKILL.md some
 // reasons name. Text a file's own content could shape is not matched, so
 // foreign prose in a cell is caught.
-const claudeProblem = `(too many Claude files|SKILL\.md|` +
+const claudeProblem = `(too many Claude files|SKILL\.md|` + claudeMissing + `|` +
 	`\.claude-plugin/plugin\.json: (not valid JSON[^/]*|plugin\.json is not a JSON object|` +
 	`skills is not a path or a list of paths|skills holds an empty path|` +
 	`hooks holds an empty path|hooks holds neither a path nor an object))`
+
+// claudeMissing is the repository-wide problem for a path plugin.json
+// declares that the tree cannot answer. The path is the manifest's to name,
+// so it is held to the synthetic Claude paths and directory names.
+const claudeMissing = `plugin\.json declares missing (` + claudePath + `|(skills|commands)(/(skill|command)-\d{2})?)`
 
 // claudeCell is every shape a Claude section cell may take: n/a, a bare
 // number, a count (with a cross and the failing names after it when any
@@ -1262,6 +1267,11 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Events |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable deploy-site is broken |",
+		"a real-shaped path a manifest declares missing in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Slash-only |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable plugin.json declares missing deploy-site |",
 		"a real-shaped path in an unreadable Claude cell": "" +
 			"## Claude\n\n" +
 			"| Repository | Slash-only |\n" +
@@ -1293,7 +1303,8 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Slash-only | Description | No wrappers | Longest SKILL.md |\n" +
 			"| --- | --- | --- | --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/3 command-01, skill-02 | 2/2 | n/a | 612 |\n" +
-			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable too many Claude files | n/a | unreadable skills/skill-01/SKILL.md |",
+			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable too many Claude files | n/a | unreadable skills/skill-01/SKILL.md |\n" +
+			"| [bravo](https://github.com/gh-owner/bravo) | ✗ unreadable plugin.json declares missing commands | ✗ unreadable plugin.json declares missing skills/skill-02 | n/a | ✗ unreadable plugin.json declares missing commands/command-01.md |",
 		"a Claude Hooks table": "" +
 			"## Claude\n\n" +
 			"| Repository | Events | Executable | Plugin root | Timeout | Matcher |\n" +
