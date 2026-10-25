@@ -745,6 +745,18 @@ func TestObserveClaude_plugin(t *testing.T) {
 			row(pass(""), pass(""), fail(""), na),
 		},
 		{
+			// Build metadata takes no part in precedence, so the version is
+			// the release, not ahead of it.
+			"a version with build metadata matches its release",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "1.2.0+build" }),
+			row(pass(""), pass(""), pass(""), pass("1.2.0+build")),
+		},
+		{
+			"a tag with build metadata matches its version",
+			plugin("v1.2.0+build", nil),
+			row(pass(""), pass(""), pass(""), pass("1.2.0")),
+		},
+		{
 			"a version ahead of the release passes",
 			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "1.3.0" }),
 			row(pass(""), pass(""), pass(""), pass("1.3.0 ≥ v1.2.0")),
@@ -868,6 +880,26 @@ func TestObserveClaude_pluginSemver(t *testing.T) {
 		{"1.0.0-beta.11", "v1.0.0-beta.2", rules.Pass},
 		{"1.0.0-beta", "v1.0.0-alpha", rules.Pass},
 		{"1.0.0-rc.1", "v1.0.0", rules.Fail},
+		// An identifier is numeric only when it is all digits: a hyphen-led
+		// one is alphanumeric, so it sorts above any number and against
+		// another in ASCII order, not by the number it looks like.
+		{"1.0.0-1", "v1.0.0--1", rules.Fail},
+		{"1.0.0--1", "v1.0.0-1", rules.Pass},
+		{"1.0.0--2", "v1.0.0--1", rules.Pass},
+		{"1.0.0--1", "v1.0.0--2", rules.Fail},
+		{"1.0.0--01", "v0.9.0", rules.Pass},
+		// Semver puts no bound on a number, so one too long for an int is
+		// still a number: longer is larger, and it sorts below any
+		// alphanumeric identifier.
+		{"1.0.0-100000000000000000000", "v1.0.0-99999999999999999999", rules.Pass},
+		{"1.0.0-99999999999999999999", "v1.0.0-100000000000000000000", rules.Fail},
+		{"1.0.0-99999999999999999999", "v1.0.0-alpha", rules.Fail},
+		{"1.0.0-alpha", "v1.0.0-99999999999999999999", rules.Pass},
+		{"99999999999999999999.0.0", "v1.0.0", rules.Pass},
+		{"100000000000000000000.0.0", "v99999999999999999999.0.0", rules.Pass},
+		{"99999999999999999999.0.0", "v100000000000000000000.0.0", rules.Fail},
+		{"1.99999999999999999999.0", "v1.99999999999999999998.0", rules.Pass},
+		{"1.0.99999999999999999998", "v1.0.99999999999999999999", rules.Fail},
 		// Not versions.
 		{"1.2", "v1.2.0", rules.Fail},
 		{"1.2.0.0", "v1.2.0", rules.Fail},
@@ -880,7 +912,10 @@ func TestObserveClaude_pluginSemver(t *testing.T) {
 		{"1.2.0-rc_1", "v1.2.0", rules.Fail},
 		{"v1.2.0", "v1.2.0", rules.Fail},
 		{"1.2.0", "vv1.2.0", rules.Fail},
-		{"99999999999999999999.0.0", "v1.0.0", rules.Fail},
+		// A leading zero makes a numeric identifier invalid however long it
+		// is, so this is no version at all rather than one ahead of v0.9.0.
+		{"1.0.0-099999999999999999999", "v0.9.0", rules.Fail},
+		{"099999999999999999999.0.0", "v0.9.0", rules.Fail},
 	}
 	for _, tt := range tests {
 		t.Run(tt.version+" vs "+tt.tag, func(t *testing.T) {
@@ -1175,6 +1210,28 @@ func TestObserveClaude_marketplace(t *testing.T) {
 			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), fail("v1.1.0 → none"))},
 		},
 		{
+			// With no date, nothing says the latest release is within its
+			// week, so a pin behind it cannot be vouched for.
+			"a pin behind an undated latest release fails",
+			market(pinEntry("plugin-kit", "v1.1.0")),
+			[]audit.Repo{func() audit.Repo {
+				r := marketPlugin("plugin-kit", 3*day)
+				r.Releases.LatestPublishedAt = time.Time{}
+				return r
+			}()},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), fail("v1.1.0 → v1.2.0"))},
+		},
+		{
+			"a pin on an undated latest release passes",
+			market(pinEntry("plugin-kit", "v1.2.0")),
+			[]audit.Repo{func() audit.Repo {
+				r := marketPlugin("plugin-kit", 3*day)
+				r.Releases.LatestPublishedAt = time.Time{}
+				return r
+			}()},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.2.0"), pass("v1.2.0"))},
+		},
+		{
 			"an entry carrying a version is invalid",
 			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) { e.HasVersion = true })),
 			[]audit.Repo{fresh},
@@ -1189,6 +1246,37 @@ func TestObserveClaude_marketplace(t *testing.T) {
 			),
 			[]audit.Repo{fresh},
 			rows{"plugin-market": marketRow(fail("1/3 web-app, cipher-lib"), pass(""))},
+		},
+		{
+			// Its pin is never judged, since the plugin checks are n/a on a
+			// repository that is not a plugin, so the entry itself fails.
+			"an entry pointing at a repository that is not a plugin is invalid",
+			market(pinEntry("plugin-kit", "v1.2.0"), pinEntry("skill-pack", "v1.0.0")),
+			[]audit.Repo{fresh, noPlugin},
+			rows{
+				"skill-pack":    allNA,
+				"plugin-market": marketRow(fail("1/2 skill-pack"), pass("")),
+			},
+		},
+		{
+			"an entry pointing at a plugin whose plugin.json is unreadable is still a plugin's",
+			market(pinEntry("skill-pack", "v1.0.0")),
+			[]audit.Repo{unreadableManifest},
+			rows{"plugin-market": marketRow(pass("1/1"), pass(""))},
+		},
+		{
+			// Unreadable Claude files leave whether the repository is a
+			// plugin unknown, so the entry can neither pass nor fail.
+			"an entry pointing at a repository whose Claude files are unreadable is unreadable",
+			market(pinEntry("plugin-kit", "v1.2.0"), pinEntry("skill-pack", "v1.0.0")),
+			[]audit.Repo{fresh, unreadableMarket},
+			rows{"plugin-market": marketRow(fail("unreadable skill-pack"), pass(""))},
+		},
+		{
+			"an entry that fails on its own is not made unreadable by its target's Claude files",
+			market(mutate(pinEntry("skill-pack", "v1.0.0"), func(e *audit.MarketplaceEntry) { e.HasVersion = true })),
+			[]audit.Repo{unreadableMarket},
+			rows{"plugin-market": marketRow(fail("0/1 skill-pack"), pass(""))},
 		},
 		{
 			"an entry with neither a name nor a repository is named by its position",

@@ -383,13 +383,15 @@ func observePlugin(c Check, r audit.Repo) observation {
 		return observation{unknown: true}
 	}
 	version := cmp.Or(p.Version, "none")
-	ok, valid := semverAtLeast(p.Version, tag)
+	order, valid := semverCompare(p.Version, tag)
 	switch {
 	case !valid:
 		return observation{value: version + " ? " + tag, mark: true}
-	case version == strings.TrimPrefix(tag, "v"):
+	case order == 0:
+		// Equal precedence is the release itself, build metadata or not,
+		// so it reads as a match rather than as ahead.
 		return observation{ok: true, value: version}
-	case ok:
+	case order > 0:
 		// Ahead passes, so a nightly run between a release pull request's
 		// merge and its publish does not fail.
 		return observation{ok: true, value: version + " ≥ " + tag}
@@ -397,24 +399,27 @@ func observePlugin(c Check, r audit.Repo) observation {
 	return observation{value: version + " < " + tag, mark: true}
 }
 
-// semverAtLeast reports whether version is the same as or later than tag with
-// its leading v removed, comparing them as Semantic Versioning 2.0.0 orders
-// them (https://semver.org): numeric core first, then a version with no
+// semverCompare orders version against tag with its leading v removed, as
+// cmp.Compare does, comparing them as Semantic Versioning 2.0.0 orders them
+// (https://semver.org): numeric core first, then a version with no
 // prerelease ahead of one with, then prerelease identifiers one by one.
 // Build metadata does not take part. valid is false when either side is not
-// a semantic version, and ok is then false too. It is local because the
+// a semantic version, and the order is then 0. It is local because the
 // module would be the project's only use of golang.org/x/mod.
-func semverAtLeast(version, tag string) (ok, valid bool) {
+func semverCompare(version, tag string) (order int, valid bool) {
 	a, aok := parseSemver(version)
 	b, bok := parseSemver(strings.TrimPrefix(tag, "v"))
 	if !aok || !bok {
-		return false, false
+		return 0, false
 	}
-	return a.compare(b) >= 0, true
+	return a.compare(b), true
 }
 
+// semver holds each numeric part as its digits rather than an int: semver
+// puts no bound on a number, and a version too long for an int is still a
+// version.
 type semver struct {
-	core [3]int
+	core [3]string
 	pre  []string
 }
 
@@ -431,11 +436,10 @@ func parseSemver(s string) (semver, bool) {
 		return v, false
 	}
 	for i, p := range parts {
-		n, ok := numericIdent(p)
-		if !ok {
+		if !isDigits(p) || leadingZero(p) {
 			return v, false
 		}
-		v.core[i] = n
+		v.core[i] = p
 	}
 	if hasPre {
 		v.pre = strings.Split(pre, ".")
@@ -443,7 +447,7 @@ func parseSemver(s string) (semver, bool) {
 			if id == "" || strings.Trim(id, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-") != "" {
 				return v, false
 			}
-			if _, numeric := strconv.Atoi(id); numeric == nil && len(id) > 1 && id[0] == '0' {
+			if isDigits(id) && leadingZero(id) {
 				return v, false
 			}
 		}
@@ -451,18 +455,30 @@ func parseSemver(s string) (semver, bool) {
 	return v, true
 }
 
-// numericIdent parses a version number without a sign or a leading zero.
-func numericIdent(s string) (int, bool) {
-	if s == "" || (len(s) > 1 && s[0] == '0') || strings.Trim(s, "0123456789") != "" {
-		return 0, false
-	}
-	n, err := strconv.Atoi(s)
-	return n, err == nil
+// isDigits reports a numeric identifier: one or more ASCII digits and
+// nothing else. A parse to int would also take a sign, so `-1`, which semver
+// reads as alphanumeric, would pass for a number, and would refuse a number
+// too long for an int.
+func isDigits(s string) bool {
+	return s != "" && strings.Trim(s, "0123456789") == ""
+}
+
+// leadingZero reports a numeric identifier semver forbids: more than one
+// digit, the first a zero.
+func leadingZero(s string) bool {
+	return len(s) > 1 && s[0] == '0'
+}
+
+// compareNumeric orders two numeric identifiers by value. With no leading
+// zeros, the longer one is the larger, and two of a length order as their
+// digits do.
+func compareNumeric(a, b string) int {
+	return cmp.Or(cmp.Compare(len(a), len(b)), strings.Compare(a, b))
 }
 
 func (a semver) compare(b semver) int {
 	for i := range a.core {
-		if c := cmp.Compare(a.core[i], b.core[i]); c != 0 {
+		if c := compareNumeric(a.core[i], b.core[i]); c != 0 {
 			return c
 		}
 	}
@@ -485,14 +501,13 @@ func (a semver) compare(b semver) int {
 // comparePre orders two prerelease identifiers: numeric ones numerically and
 // below any alphanumeric one, alphanumeric ones in ASCII order.
 func comparePre(a, b string) int {
-	an, aerr := strconv.Atoi(a)
-	bn, berr := strconv.Atoi(b)
+	an, bn := isDigits(a), isDigits(b)
 	switch {
-	case aerr == nil && berr == nil:
-		return cmp.Compare(an, bn)
-	case aerr == nil:
+	case an && bn:
+		return compareNumeric(a, b)
+	case an:
 		return -1
-	case berr == nil:
+	case bn:
 		return 1
 	}
 	return strings.Compare(a, b)
@@ -648,7 +663,7 @@ func pinCurrent(ref string, rel audit.Releases, now time.Time) observation {
 	if ref == rel.LatestTag {
 		return observation{ok: true, value: ref}
 	}
-	if ahead, _ := semverAtLeast(strings.TrimPrefix(ref, "v"), rel.LatestTag); ahead {
+	if order, valid := semverCompare(strings.TrimPrefix(ref, "v"), rel.LatestTag); valid && order >= 0 {
 		return observation{ok: true, value: ref + " ≥ " + rel.LatestTag}
 	}
 	value := ref + " → " + cmp.Or(rel.LatestTag, "none")
@@ -659,18 +674,31 @@ func pinCurrent(ref string, rel audit.Releases, now time.Time) observation {
 }
 
 // entryItems judges each marketplace entry for marketplace_entries_valid: its
-// source must be a public audited repository, and it must carry no version,
-// which plugin.json owns. An entry outside the audited set (another owner,
-// a fork, an archived repository, one repos.toml does not name, a source that
-// is not a GitHub repository) fails on the owner and name alone. An entry is
-// named by its name, else its source, else its place in the file.
+// source must be a public audited repository that is a plugin, as isPlugin
+// decides, and it must carry no version, which plugin.json owns. An entry
+// outside the audited set (another owner, a fork, an archived repository,
+// one repos.toml does not name, a source that is not a GitHub repository)
+// fails on the owner and name alone. One pointing at a repository that is
+// not a plugin fails too: the plugin checks are n/a there, so its pin would
+// otherwise never be judged. An entry is named by its name, else its source,
+// else its place in the file.
+//
+// When the target's Claude files could not be read and no plugin.json was
+// recorded, whether it is a plugin is unknown, as it is for the plugin-row
+// checks, so an entry that passes on everything else is unreadable, named by
+// its target repository, rather than failed or passed on a guess.
 func entryItems(entries []audit.MarketplaceEntry, ev evalContext) []item {
 	out := make([]item, 0, len(entries))
 	for i, e := range entries {
+		name := cmp.Or(e.Name, e.Repo, fmt.Sprintf("entry %d", i+1))
 		src, inAccount := entrySource(e, ev.owner)
 		repo, audited := ev.repos[src]
 		ok := inAccount && audited && repo.Visibility == "public" && !e.HasVersion
-		out = append(out, item{name: cmp.Or(e.Name, e.Repo, fmt.Sprintf("entry %d", i+1)), ok: ok})
+		if ok && !isPlugin(repo) && repo.Claude.Unreadable != "" {
+			out = append(out, item{name: name, unreadable: repo.Name})
+			continue
+		}
+		out = append(out, item{name: name, ok: ok && isPlugin(repo)})
 	}
 	return out
 }
