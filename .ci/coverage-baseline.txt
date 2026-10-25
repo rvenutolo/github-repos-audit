@@ -8,13 +8,14 @@
 github.com/rvenutolo/github-repos-audit 100.0%
 github.com/rvenutolo/github-repos-audit/cmd/github-repos-audit 94.8%
 github.com/rvenutolo/github-repos-audit/internal/audit n/a
+github.com/rvenutolo/github-repos-audit/internal/claude 100.0%
 github.com/rvenutolo/github-repos-audit/internal/config 100.0%
 github.com/rvenutolo/github-repos-audit/internal/filepaths 100.0%
 github.com/rvenutolo/github-repos-audit/internal/fixturevocab n/a
 github.com/rvenutolo/github-repos-audit/internal/github 99.3%
 github.com/rvenutolo/github-repos-audit/internal/nixflake 100.0%
-github.com/rvenutolo/github-repos-audit/internal/render 97.5%
-github.com/rvenutolo/github-repos-audit/internal/renovate 99.3%
-github.com/rvenutolo/github-repos-audit/internal/rules 99.1%
+github.com/rvenutolo/github-repos-audit/internal/render 97.6%
+github.com/rvenutolo/github-repos-audit/internal/renovate 99.6%
+github.com/rvenutolo/github-repos-audit/internal/rules 99.3%
 github.com/rvenutolo/github-repos-audit/internal/schema 87.3%
 github.com/rvenutolo/github-repos-audit/internal/workflows 100.0%

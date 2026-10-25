@@ -11,9 +11,11 @@ import (
 )
 
 // Entry is one path in a repository's tree at HEAD, slash-separated, relative
-// to the root.
+// to the root. Mode is the git mode the tree API reports ("100644", "100755",
+// "120000", ...) and is empty for a directory.
 type Entry struct {
 	Path string
+	Mode string
 	Dir  bool
 }
 

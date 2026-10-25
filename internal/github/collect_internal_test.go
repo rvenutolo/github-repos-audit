@@ -14,6 +14,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
+	"github.com/rvenutolo/github-repos-audit/internal/filepaths"
 )
 
 // TestRepository_releases exercises the five-node window releases() explains:
@@ -493,5 +494,44 @@ func TestClient_postGraphQL_undecodableData(t *testing.T) {
 	c := graphQLServer(t, `{"data":{"repository":"not an object"}}`)
 	if _, err := c.fetchRepository(t.Context(), "web-app"); err == nil || !strings.Contains(err.Error(), "decode data") {
 		t.Errorf("fetchRepository() error = %v, want a decode-data error", err)
+	}
+}
+
+// TestFetchTree_recordsFileModes: the git mode of a file is what tells a hook
+// script that can be executed from one that cannot, so fetchTree keeps it for
+// files and leaves it empty for a directory.
+func TestFetchTree_recordsFileModes(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		body := `{"tree": [
+			{"path": "hooks", "type": "tree", "mode": "040000"},
+			{"path": "hooks/x.sh", "type": "blob", "mode": "100755"},
+			{"path": "README.md", "type": "blob", "mode": "100644"},
+			{"path": "link", "type": "blob", "mode": "120000"},
+			{"path": "sub", "type": "commit", "mode": "160000"}
+		], "truncated": false}`
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Errorf("write body: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(Options{Owner: "gh-owner", Token: "token", BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	got, err := c.fetchTree(context.Background(), "/repos/gh-owner/shell-scripts", "aaaa")
+	if err != nil {
+		t.Fatalf("fetchTree: %v", err)
+	}
+	want := []filepaths.Entry{
+		{Path: "hooks", Dir: true},
+		{Path: "hooks/x.sh", Mode: "100755"},
+		{Path: "README.md", Mode: "100644"},
+		{Path: "link", Mode: "120000"},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("entries mismatch (-want +got):\n%s", diff)
 	}
 }

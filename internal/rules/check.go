@@ -70,11 +70,22 @@ const (
 	CheckCacheUsage
 	CheckCICancelSuperseded
 	CheckJobTimeouts
+	CheckSkillSlashOnly
+	CheckSkillNameMatchesDir
+	CheckSkillKnownKeys
+	CheckSkillDescriptionLength
+	CheckSkillNoWrapperCommands
+	CheckHookKnownEvents
+	CheckHookCommandExecutable
+	CheckHookPluginRoot
+	CheckHookTimeout
+	CheckHookMatcher
 	CheckLastReleaseAge
 	CheckLastPush
 	CheckOpenPRs
 	CheckBranches
 	CheckArtifactStorage
+	CheckSkillSize
 )
 
 // checkNames maps each check to the identifier used in repos.toml overrides
@@ -134,11 +145,22 @@ var checkNames = [...]string{
 	CheckCacheUsage:             "cache_usage",
 	CheckCICancelSuperseded:     "ci_cancel_superseded",
 	CheckJobTimeouts:            "job_timeouts",
+	CheckSkillSlashOnly:         "skill_slash_only",
+	CheckSkillNameMatchesDir:    "skill_name_matches_dir",
+	CheckSkillKnownKeys:         "skill_known_keys",
+	CheckSkillDescriptionLength: "skill_description_length",
+	CheckSkillNoWrapperCommands: "skill_no_wrapper_commands",
+	CheckHookKnownEvents:        "hook_known_events",
+	CheckHookCommandExecutable:  "hook_command_executable",
+	CheckHookPluginRoot:         "hook_plugin_root",
+	CheckHookTimeout:            "hook_timeout",
+	CheckHookMatcher:            "hook_matcher",
 	CheckLastReleaseAge:         "last_release_age",
 	CheckLastPush:               "last_push",
 	CheckOpenPRs:                "open_prs",
 	CheckBranches:               "branches",
 	CheckArtifactStorage:        "artifact_storage",
+	CheckSkillSize:              "skill_size",
 }
 
 // String returns the check's identifier as it is written in repos.toml.
@@ -173,12 +195,14 @@ func ParseCheck(name string) (Check, bool) {
 
 // ValueOnly reports whether a check carries a value and never a pass or a
 // fail: the last release, the last push, the open pull requests, the branch
-// count and the artifact storage. Such a check can be shown or left out, but
-// never required, because nothing about it can be missing.
+// count, the artifact storage and the longest SKILL.md. Such a check can be
+// shown or left out, but never required, because nothing about it can be
+// missing.
 func (c Check) ValueOnly() bool {
 	//nolint:exhaustive // every other check carries a pass or a fail
 	switch c {
-	case CheckLastReleaseAge, CheckLastPush, CheckOpenPRs, CheckBranches, CheckArtifactStorage:
+	case CheckLastReleaseAge, CheckLastPush, CheckOpenPRs, CheckBranches, CheckArtifactStorage,
+		CheckSkillSize:
 		return true
 	default:
 		return false

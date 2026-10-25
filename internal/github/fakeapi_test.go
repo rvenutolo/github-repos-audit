@@ -67,13 +67,19 @@ type fakeAPI struct {
 	documents []string
 	variables []map[string]string
 	failures  map[string][]scriptedFailure
+	// claudeQueries counts each repository's Claude file queries, which is
+	// what numbers the fixture that answers the next one.
+	claudeQueries map[string]int
+	// claudeFailure, when set, answers every Claude file query instead of
+	// its fixture.
+	claudeFailure *scriptedFailure
 }
 
 // newFakeAPI starts a server backed by testdata/api and stops it with the test.
 func newFakeAPI(t *testing.T) *fakeAPI {
 	t.Helper()
 
-	f := &fakeAPI{t: t, failures: map[string][]scriptedFailure{}}
+	f := &fakeAPI{t: t, failures: map[string][]scriptedFailure{}, claudeQueries: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /graphql", f.handleGraphQL)
 	mux.HandleFunc("GET /user", func(w http.ResponseWriter, _ *http.Request) {
@@ -137,6 +143,14 @@ func (f *fakeAPI) failNext(path string, answers ...scriptedFailure) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.failures[path] = append(f.failures[path], answers...)
+}
+
+// failClaude makes every Claude file query answer answer, which no path-keyed
+// failNext can do: the query shares /graphql with the ones before it.
+func (f *fakeAPI) failClaude(answer scriptedFailure) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.claudeFailure = &answer
 }
 
 // serveFailure answers with the next scripted failure for path, if there is
@@ -260,6 +274,26 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 	// only its operation name tells the two apart.
 	if strings.Contains(body.Query, "query RepoFiles") {
 		f.serve(w, dir, "graphql-files")
+		return
+	}
+	// A repository's Claude files can take more than one query (the plugin
+	// manifest decides what else to read), so each is its own file, numbered
+	// in the order the collector sends them.
+	if strings.Contains(body.Query, "query ClaudeFiles") {
+		f.mu.Lock()
+		f.claudeQueries[body.Variables["name"]]++
+		n := f.claudeQueries[body.Variables["name"]]
+		failure := f.claudeFailure
+		f.mu.Unlock()
+		if failure != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(failure.status)
+			if _, err := w.Write([]byte(failure.body)); err != nil {
+				f.t.Errorf("write scripted Claude failure: %v", err)
+			}
+			return
+		}
+		f.serve(w, dir, "graphql-claude-"+strconv.Itoa(n))
 		return
 	}
 	f.serve(w, dir, "graphql")

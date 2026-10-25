@@ -51,6 +51,7 @@ func Block(rep *rules.Report, now func() time.Time) (string, error) {
 	writeSection(&b, metadataSection(rep))
 	writeSection(&b, treeSection(rep))
 	writeSection(&b, filePathsSection(rep))
+	writeSection(&b, claudeSection(rep))
 	writeSection(&b, nixSection(rep, at))
 	writeSection(&b, ciEfficiencySection(rep))
 	writeSection(&b, policySection(rep))
@@ -253,6 +254,93 @@ func filePathsSection(rep *rules.Report) string {
 		return ""
 	}
 	return "## File paths\n\n" + filePathsIntro + "\n\n" + strings.TrimSuffix(b.String(), "\n")
+}
+
+// claudeIntro is one line on purpose, like driftIntro: the block is
+// committed unformatted.
+const claudeIntro = "Only repositories with Claude Code skills, commands, hooks or a plugin are listed, " +
+	"plus the configured plugin marketplace."
+
+// claudeGroups splits the Claude Code checks into sub-tables by what they
+// read. Each group is a table of its own because most repositories carry
+// skills without a plugin or hooks without skills, and one wide table would
+// be mostly n/a.
+//
+// It is a function rather than a package variable so no mutable global backs
+// the render.
+func claudeGroups() []pathGroup {
+	return []pathGroup{
+		{"Skills", []pathColumn{
+			{"Slash-only", rules.CheckSkillSlashOnly},
+			{"Name = dir", rules.CheckSkillNameMatchesDir},
+			{"Known keys", rules.CheckSkillKnownKeys},
+			{"Description", rules.CheckSkillDescriptionLength},
+			{"No wrappers", rules.CheckSkillNoWrapperCommands},
+			{"Longest SKILL.md", rules.CheckSkillSize},
+		}},
+		{"Hooks", []pathColumn{
+			{"Events", rules.CheckHookKnownEvents},
+			{"Executable", rules.CheckHookCommandExecutable},
+			{"Plugin root", rules.CheckHookPluginRoot},
+			{"Timeout", rules.CheckHookTimeout},
+			{"Matcher", rules.CheckHookMatcher},
+		}},
+	}
+}
+
+// claudeSection shows how each repository's Claude Code tooling measures up,
+// one sub-table per group. Unlike File paths, a sub-table lists only the
+// repositories where one of its checks has something to say: a repository
+// without skills is n/a in every Skills column, and a row of nothing but n/a
+// for each such repository would bury the few that carry any. A group with
+// no rows is dropped, and with none left so is the section.
+//
+// A cell names the skills and command files at fault, and those names are
+// directories and files the owner chose, so each cell is escaped like any
+// free-text cell: a pipe in a name would end the cell.
+func claudeSection(rep *rules.Report) string {
+	var b strings.Builder
+	for _, g := range claudeGroups() {
+		headers := make([]string, 0, len(g.columns)+1)
+		headers = append(headers, "Repository")
+		for _, c := range g.columns {
+			headers = append(headers, c.header)
+		}
+		t := newTable(headers...)
+		for i := range rep.Repos {
+			r := &rep.Repos[i]
+			if !anyApplies(r, g.columns) {
+				continue
+			}
+			row := make([]string, 0, len(headers))
+			row = append(row, repoLink(rep.Owner, r.Repo.Name))
+			for _, c := range g.columns {
+				row = append(row, escape(cell(r.Cell(c.check))))
+			}
+			t.add(row...)
+		}
+		body := t.String()
+		if body == "" {
+			continue
+		}
+		b.WriteString("### " + g.title + "\n\n" + body + "\n")
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return "## Claude\n\n" + claudeIntro + "\n\n" + strings.TrimSuffix(b.String(), "\n")
+}
+
+// anyApplies reports whether any of the columns' cells is more than a bare
+// n/a: judged, informational, or an n/a still carrying its value.
+func anyApplies(r *rules.RepoReport, columns []pathColumn) bool {
+	for _, c := range columns {
+		cl := r.Cell(c.check)
+		if cl.Verdict != rules.NA || (cl.Scalar && cl.Value != "") {
+			return true
+		}
+	}
+	return false
 }
 
 // nixSection shows how each repository uses Nix beyond having a flake.nix,

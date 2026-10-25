@@ -1,0 +1,76 @@
+{
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0021",
+  "tree": [
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": ".claude-plugin",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": ".claude-plugin/plugin.json",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "commands",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": "commands/command-01.md",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "hooks",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": "hooks/hook-01.sh",
+      "mode": "100755",
+      "type": "blob"
+    },
+    {
+      "path": "hooks/hooks.json",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "skills",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": "skills/skill-01",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": "skills/skill-01/SKILL.md",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "skills/skill-02",
+      "mode": "040000",
+      "type": "tree"
+    },
+    {
+      "path": "skills/skill-02/SKILL.md",
+      "mode": "100644",
+      "type": "blob"
+    }
+  ],
+  "truncated": false
+}

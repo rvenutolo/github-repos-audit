@@ -144,7 +144,10 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 // useful size, while a side job in the tools repository saved an empty one
 // last, so the CI efficiency section carries a fail too, as it does for
 // the tools repository's pull-request workflows that run on after a newer
-// push supersedes them and for its job with no timeout.
+// push supersedes them and for its job with no timeout. Three repositories
+// carry Claude Code skills: one passing, one failing every skill check but
+// the name, and one whose skill cannot be read; the other two carry none,
+// so the Skills table leaves them out.
 func fullSnapshot() *audit.Snapshot {
 	// A published, public software repository, missing two community files.
 	soft := baseRepo("mixedCase-flake", "software")
@@ -211,6 +214,16 @@ func fullSnapshot() *audit.Snapshot {
 		{Name: "Pat Example", Email: "pat@example.com"},
 		{Name: "Patrick Example", Email: "patrick@example.org"},
 		{Name: "renovate[bot]", Email: "29139614+renovate[bot]@users.noreply.github.com"},
+	}
+	// One slash-only skill that passes every skill check, and no command
+	// file, so its wrapper cell is n/a.
+	// Its one hook passes every hook check, plugin-root path included.
+	soft.Claude = audit.Claude{
+		Skills: []audit.ClaudeSkill{projectSkill("skill-01", 45)},
+		Hooks: []audit.ClaudeHook{{
+			Source: "hooks/hooks.json", Plugin: true, Event: "PreToolUse", Type: "command", Matcher: "Bash",
+			Timeout: 10, TimeoutSet: true, Script: "hooks/hook-01.sh", PathForm: "plugin_root", ScriptMode: "100755",
+		}},
 	}
 	soft.Rulesets = []audit.Ruleset{
 		{Name: "ruleset-02", Target: "TAG", Enforcement: "ACTIVE", Include: []string{"refs/tags/v*"}},
@@ -293,6 +306,35 @@ func fullSnapshot() *audit.Snapshot {
 			},
 		},
 	}
+	// Two skills and a command file. The second skill quotes its
+	// disable-model-invocation, which is a string and so neither sets it nor
+	// has the type the key needs, and its description runs past the limit;
+	// the command file does nothing but wrap the first skill.
+	quoted := projectSkill("skill-02", 612)
+	quoted.Keys["disable-model-invocation"] = "!!str"
+	quoted.DisableModelInvocation = false
+	quoted.DescriptionChars = rules.SkillDescriptionMax + 64
+	tools.Claude = audit.Claude{
+		Skills: []audit.ClaudeSkill{projectSkill("skill-01", 120), quoted},
+		Commands: []audit.ClaudeSkill{{
+			Path: ".claude/commands/command-01.md", Dir: "command-01",
+			Keys:           map[string]string{"description": "!!str", "disable-model-invocation": "!!bool"},
+			HasDescription: true, DescriptionChars: 30, DisableModelInvocation: true, Lines: 6, WrapsSkill: "skill-01",
+		}},
+		// Two project hooks: one on a tool event with no matcher, no timeout
+		// and a script that is not executable, and one that passes. Neither is
+		// a plugin hook, so the plugin-root cell is n/a.
+		Hooks: []audit.ClaudeHook{
+			{
+				Source: ".claude/settings.json", Event: "PostToolUse", Type: "command",
+				Script: "hooks/hook-01.sh", PathForm: "project_dir", ScriptMode: "100644",
+			},
+			{
+				Source: ".claude/settings.json", Event: "SessionStart", Type: "command",
+				Timeout: 5, TimeoutSet: true, Script: "hooks/hook-02.sh", PathForm: "project_dir", ScriptMode: "100755",
+			},
+		},
+	}
 	// Consistently the wrong identity, beside GitHub's own web-flow committer.
 	tools.Identities = []audit.Identity{
 		{Name: "GitHub", Email: "noreply@github.com"},
@@ -314,6 +356,17 @@ func fullSnapshot() *audit.Snapshot {
 	cfg.Files.FlakeNix = false
 	cfg.Flake = audit.Flake{}
 	cfg.Settings.HasWiki = true // the one deviation on wiki
+	// Its one skill's frontmatter is never closed, so every skill check
+	// that judges it fails as unreadable; its hooks file is not JSON, so
+	// every hook check does too, except the plugin-root check, which never
+	// judges a project settings file.
+	cfg.Claude = audit.Claude{
+		Skills: []audit.ClaudeSkill{{
+			Path: ".claude/skills/skill-01/SKILL.md", Dir: "skill-01",
+			Unreadable: "the frontmatter is not closed by a --- line",
+		}},
+		Hooks: []audit.ClaudeHook{{Source: ".claude/settings.json", Unreadable: "not valid JSON: unexpected end of JSON input"}},
+	}
 	// A preset it extends is missing, so its release age is unresolved.
 	cfg.Renovate = audit.Renovate{MinReleaseAgeError: "preset github>gh-owner/preset-store:go: not found"}
 	// Its own commits and web-UI merges: canonical and accepted, a pass.
@@ -329,6 +382,24 @@ func fullSnapshot() *audit.Snapshot {
 		Types:       standardTypes(),
 		Identity:    fixtureIdentity(),
 		Repos:       []audit.Repo{soft, content, tools, empty, cfg},
+	}
+}
+
+// projectSkill is a skill under .claude/skills that passes every skill
+// check: slash-only, named for its directory, with only known keys and a
+// short description.
+func projectSkill(dir string, lines int) audit.ClaudeSkill {
+	return audit.ClaudeSkill{
+		Path: ".claude/skills/" + dir + "/SKILL.md",
+		Dir:  dir,
+		Name: dir,
+		Keys: map[string]string{
+			"name": "!!str", "description": "!!str", "disable-model-invocation": "!!bool",
+		},
+		HasDescription:         true,
+		DescriptionChars:       80,
+		DisableModelInvocation: true,
+		Lines:                  lines,
 	}
 }
 

@@ -3,6 +3,7 @@
   "tree": [
     {
       "path": "renovate.json",
+      "mode": "100644",
       "type": "blob"
     },
     {

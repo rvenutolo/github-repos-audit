@@ -151,11 +151,22 @@
               "cache_usage",
               "ci_cancel_superseded",
               "job_timeouts",
+              "skill_slash_only",
+              "skill_name_matches_dir",
+              "skill_known_keys",
+              "skill_description_length",
+              "skill_no_wrapper_commands",
+              "hook_known_events",
+              "hook_command_executable",
+              "hook_plugin_root",
+              "hook_timeout",
+              "hook_matcher",
               "last_release_age",
               "last_push",
               "open_prs",
               "branches",
-              "artifact_storage"
+              "artifact_storage",
+              "skill_size"
             ]
           },
           "additionalProperties": {
@@ -240,6 +251,7 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/composite_action" }
         },
+        "claude": { "$ref": "#/$defs/claude" },
         "ci_state": {
           "description": "The statusCheckRollup state of the head commit. Absent when the rollup was null, which means no check has run on that commit.",
           "type": "string",
@@ -315,11 +327,22 @@
         "cache_usage",
         "ci_cancel_superseded",
         "job_timeouts",
+        "skill_slash_only",
+        "skill_name_matches_dir",
+        "skill_known_keys",
+        "skill_description_length",
+        "skill_no_wrapper_commands",
+        "hook_known_events",
+        "hook_command_executable",
+        "hook_plugin_root",
+        "hook_timeout",
+        "hook_matcher",
         "last_release_age",
         "last_push",
         "open_prs",
         "branches",
-        "artifact_storage"
+        "artifact_storage",
+        "skill_size"
       ],
       "properties": {
         "readme": { "$ref": "#/$defs/expectation" },
@@ -374,11 +397,22 @@
         "cache_usage": { "$ref": "#/$defs/expectation" },
         "ci_cancel_superseded": { "$ref": "#/$defs/expectation" },
         "job_timeouts": { "$ref": "#/$defs/expectation" },
+        "skill_slash_only": { "$ref": "#/$defs/expectation" },
+        "skill_name_matches_dir": { "$ref": "#/$defs/expectation" },
+        "skill_known_keys": { "$ref": "#/$defs/expectation" },
+        "skill_description_length": { "$ref": "#/$defs/expectation" },
+        "skill_no_wrapper_commands": { "$ref": "#/$defs/expectation" },
+        "hook_known_events": { "$ref": "#/$defs/expectation" },
+        "hook_command_executable": { "$ref": "#/$defs/expectation" },
+        "hook_plugin_root": { "$ref": "#/$defs/expectation" },
+        "hook_timeout": { "$ref": "#/$defs/expectation" },
+        "hook_matcher": { "$ref": "#/$defs/expectation" },
         "last_release_age": { "$ref": "#/$defs/info_expectation" },
         "last_push": { "$ref": "#/$defs/info_expectation" },
         "open_prs": { "$ref": "#/$defs/info_expectation" },
         "branches": { "$ref": "#/$defs/info_expectation" },
-        "artifact_storage": { "$ref": "#/$defs/info_expectation" }
+        "artifact_storage": { "$ref": "#/$defs/info_expectation" },
+        "skill_size": { "$ref": "#/$defs/info_expectation" }
       }
     },
     "expectation": {
@@ -823,6 +857,220 @@
           "description": "Some step's `run:` contains \"nix flake update\".",
           "type": "boolean",
           "const": true
+        }
+      }
+    },
+    "claude": {
+      "description": "What the repository's Claude Code skills, command files, hooks and plugin manifest say. Absent when it has none of them. When unreadable is present nothing but plugin is.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "skills": {
+          "description": "Every SKILL.md Claude Code would load, sorted by path.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/claude_skill" }
+        },
+        "commands": {
+          "description": "Every command file, sorted by path, then every inline command plugin.json declares, sorted by name.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/claude_skill" }
+        },
+        "hooks": {
+          "description": "Every hook handler, from hook files, an inline plugin.json hooks object and skill or command frontmatter, sorted by source then event.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/claude_hook" }
+        },
+        "plugin": { "$ref": "#/$defs/claude_plugin" },
+        "unreadable": {
+          "description": "A problem with the Claude files as a whole: \"too many Claude files\", a plugin manifest whose layout cannot be decided, or \"plugin.json declares missing <path>\".",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "claude_skill": {
+      "description": "One skill or command file. A command file is recorded in a skill's shape.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "dir"],
+      "properties": {
+        "path": {
+          "description": "The file's path, or .claude-plugin/plugin.json#commands/<name> for an inline command.",
+          "type": "string",
+          "minLength": 1
+        },
+        "dir": {
+          "description": "The name Claude Code knows it by: the skill's directory, the plugin's name for a root SKILL.md, or the command's name. Empty for the root SKILL.md of a plugin whose manifest sets no name.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The frontmatter `name`. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "keys": {
+          "description": "Every frontmatter key, mapped to the YAML tag of its value, such as \"!!str\" or \"!!bool\".",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "has_description": {
+          "description": "`description` is a YAML string holding more than whitespace.",
+          "type": "boolean",
+          "const": true
+        },
+        "description_chars": {
+          "description": "The combined length in characters of `description` and `when_to_use`.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "disable_model_invocation": {
+          "description": "`disable-model-invocation` is the YAML boolean true.",
+          "type": "boolean",
+          "const": true
+        },
+        "user_invocable_false": {
+          "description": "`user-invocable` is the YAML boolean false.",
+          "type": "boolean",
+          "const": true
+        },
+        "lines": {
+          "description": "The file's line count.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "wraps_skill": {
+          "description": "For a command, the one skill its body names. Absent for a skill, and for a command naming no skill or several.",
+          "type": "string",
+          "minLength": 1
+        },
+        "unreadable": {
+          "description": "Why the file could not be read in full or parsed. When present nothing but path and dir is.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "claude_hook": {
+      "description": "One handler of one hook event.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "description": "The file the hook is declared in.",
+          "type": "string",
+          "minLength": 1
+        },
+        "plugin": {
+          "description": "A plugin declares the hook: in a plugin hooks file, the manifest, or a plugin skill's frontmatter.",
+          "type": "boolean",
+          "const": true
+        },
+        "event": {
+          "description": "The hook event name as written.",
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "description": "The handler type as written, such as command, http, mcp_tool, prompt or agent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "matcher": {
+          "description": "The group's matcher. Absent when unset or empty.",
+          "type": "string",
+          "minLength": 1
+        },
+        "timeout": {
+          "description": "The handler's timeout in seconds. Absent when unset or zero; timeout_set tells the two apart.",
+          "type": "number"
+        },
+        "timeout_set": {
+          "description": "The handler sets `timeout`.",
+          "type": "boolean",
+          "const": true
+        },
+        "script": {
+          "description": "The repository file a command handler runs. Absent when it names none.",
+          "type": "string",
+          "minLength": 1
+        },
+        "interpreter": {
+          "description": "The script is handed to an interpreter, which reads it rather than executing it.",
+          "type": "boolean",
+          "const": true
+        },
+        "path_form": {
+          "description": "How the command names its program. Absent for a bare command on PATH.",
+          "type": "string",
+          "enum": ["plugin_root", "project_dir", "relative", "absolute"]
+        },
+        "script_mode": {
+          "description": "The git mode of the tracked file at script, such as \"100755\". Absent when script is not a tracked file.",
+          "type": "string",
+          "pattern": "^[0-7]{6}$"
+        },
+        "unreadable": {
+          "description": "Why the hooks could not be read. When present nothing but source and plugin is.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "claude_plugin": {
+      "description": "What .claude-plugin/plugin.json says. Absent when there is none.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "present": {
+          "description": ".claude-plugin/plugin.json is tracked.",
+          "type": "boolean",
+          "const": true
+        },
+        "name": {
+          "description": "The manifest's `name`. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "description": "The manifest's `version`. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "description": "Every required manifest field present, sorted.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "$schema",
+              "author",
+              "description",
+              "homepage",
+              "license",
+              "name",
+              "repository",
+              "version"
+            ]
+          }
+        },
+        "own_marketplace": {
+          "description": ".claude-plugin/marketplace.json is tracked beside the manifest.",
+          "type": "boolean",
+          "const": true
+        },
+        "unreadable": {
+          "description": "Why the manifest could not be read in full or parsed. When present name, version and fields are absent.",
+          "type": "string",
+          "minLength": 1
         }
       }
     },

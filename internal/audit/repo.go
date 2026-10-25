@@ -116,6 +116,9 @@ type Repo struct {
 	// Actions is every composite action in .github/actions, one per
 	// directory holding an action.yml or action.yaml, sorted by path.
 	Actions []CompositeAction `json:"composite_actions,omitzero"`
+	// Claude is what the repository's Claude Code skills, command files,
+	// hooks and plugin manifest say. Zero when it has none of them.
+	Claude Claude `json:"claude,omitzero"`
 	// CIState is the statusCheckRollup state of the head commit: SUCCESS,
 	// FAILURE, PENDING, ERROR or EXPECTED. Empty when the rollup was null,
 	// which means no check has run on that commit.

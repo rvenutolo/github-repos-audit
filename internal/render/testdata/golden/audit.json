@@ -29,6 +29,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -53,6 +58,12 @@
       "secret_scanning": "public",
       "security_policy": "not_required",
       "signed_commits": "required",
+      "skill_description_length": "required",
+      "skill_known_keys": "required",
+      "skill_name_matches_dir": "required",
+      "skill_no_wrapper_commands": "required",
+      "skill_size": "info",
+      "skill_slash_only": "required",
       "tag_ruleset": "required",
       "topics": "public_published",
       "treefmt": "not_required",
@@ -88,6 +99,11 @@
       "gitignore": "required",
       "go_cache": "not_required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "not_required",
       "justfile": "not_required",
       "last_push": "info",
@@ -112,6 +128,12 @@
       "secret_scanning": "public",
       "security_policy": "not_required",
       "signed_commits": "required",
+      "skill_description_length": "required",
+      "skill_known_keys": "required",
+      "skill_name_matches_dir": "required",
+      "skill_no_wrapper_commands": "required",
+      "skill_size": "info",
+      "skill_slash_only": "required",
       "tag_ruleset": "required",
       "topics": "public_published",
       "treefmt": "not_required",
@@ -147,6 +169,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -171,6 +198,12 @@
       "secret_scanning": "public",
       "security_policy": "not_required",
       "signed_commits": "required",
+      "skill_description_length": "required",
+      "skill_known_keys": "required",
+      "skill_name_matches_dir": "required",
+      "skill_no_wrapper_commands": "required",
+      "skill_size": "info",
+      "skill_slash_only": "required",
       "tag_ruleset": "required",
       "topics": "public_published",
       "treefmt": "not_required",
@@ -206,6 +239,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -230,6 +268,12 @@
       "secret_scanning": "public",
       "security_policy": "not_required",
       "signed_commits": "required",
+      "skill_description_length": "required",
+      "skill_known_keys": "required",
+      "skill_name_matches_dir": "required",
+      "skill_no_wrapper_commands": "required",
+      "skill_size": "info",
+      "skill_slash_only": "required",
       "tag_ruleset": "required",
       "topics": "public_published",
       "treefmt": "required",
@@ -265,6 +309,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -289,6 +338,12 @@
       "secret_scanning": "public",
       "security_policy": "public_published",
       "signed_commits": "required",
+      "skill_description_length": "required",
+      "skill_known_keys": "required",
+      "skill_name_matches_dir": "required",
+      "skill_no_wrapper_commands": "required",
+      "skill_size": "info",
+      "skill_slash_only": "required",
       "tag_ruleset": "required",
       "topics": "public_published",
       "treefmt": "not_required",
@@ -324,6 +379,11 @@
       "gitignore": "required",
       "go_cache": "required",
       "homepage": "public_published",
+      "hook_command_executable": "required",
+      "hook_known_events": "required",
+      "hook_matcher": "required",
+      "hook_plugin_root": "required",
+      "hook_timeout": "required",
       "job_timeouts": "required",
       "justfile": "required",
       "last_push": "info",
@@ -348,6 +408,12 @@
       "secret_scanning": "public",
       "security_policy": "not_required",
       "signed_commits": "required",
+      "skill_description_length": "required",
+      "skill_known_keys": "required",
+      "skill_name_matches_dir": "required",
+      "skill_no_wrapper_commands": "required",
+      "skill_size": "info",
+      "skill_slash_only": "required",
       "tag_ruleset": "required",
       "topics": "public_published",
       "treefmt": "not_required",
@@ -446,6 +512,38 @@
           ]
         }
       ],
+      "claude": {
+        "skills": [
+          {
+            "path": ".claude/skills/skill-01/SKILL.md",
+            "dir": "skill-01",
+            "name": "skill-01",
+            "keys": {
+              "description": "!!str",
+              "disable-model-invocation": "!!bool",
+              "name": "!!str"
+            },
+            "has_description": true,
+            "description_chars": 80,
+            "disable_model_invocation": true,
+            "lines": 45
+          }
+        ],
+        "hooks": [
+          {
+            "source": "hooks/hooks.json",
+            "plugin": true,
+            "event": "PreToolUse",
+            "type": "command",
+            "matcher": "Bash",
+            "timeout": 10,
+            "timeout_set": true,
+            "script": "hooks/hook-01.sh",
+            "path_form": "plugin_root",
+            "script_mode": "100755"
+          }
+        ]
+      },
       "ci_state": "SUCCESS",
       "ci": {
         "pull_requests": [
@@ -795,6 +893,72 @@
           ]
         }
       ],
+      "claude": {
+        "skills": [
+          {
+            "path": ".claude/skills/skill-01/SKILL.md",
+            "dir": "skill-01",
+            "name": "skill-01",
+            "keys": {
+              "description": "!!str",
+              "disable-model-invocation": "!!bool",
+              "name": "!!str"
+            },
+            "has_description": true,
+            "description_chars": 80,
+            "disable_model_invocation": true,
+            "lines": 120
+          },
+          {
+            "path": ".claude/skills/skill-02/SKILL.md",
+            "dir": "skill-02",
+            "name": "skill-02",
+            "keys": {
+              "description": "!!str",
+              "disable-model-invocation": "!!str",
+              "name": "!!str"
+            },
+            "has_description": true,
+            "description_chars": 1600,
+            "lines": 612
+          }
+        ],
+        "commands": [
+          {
+            "path": ".claude/commands/command-01.md",
+            "dir": "command-01",
+            "keys": {
+              "description": "!!str",
+              "disable-model-invocation": "!!bool"
+            },
+            "has_description": true,
+            "description_chars": 30,
+            "disable_model_invocation": true,
+            "lines": 6,
+            "wraps_skill": "skill-01"
+          }
+        ],
+        "hooks": [
+          {
+            "source": ".claude/settings.json",
+            "event": "PostToolUse",
+            "type": "command",
+            "script": "hooks/hook-01.sh",
+            "path_form": "project_dir",
+            "script_mode": "100644"
+          },
+          {
+            "source": ".claude/settings.json",
+            "event": "SessionStart",
+            "type": "command",
+            "timeout": 5,
+            "timeout_set": true,
+            "script": "hooks/hook-02.sh",
+            "path_form": "project_dir",
+            "script_mode": "100755"
+          }
+        ]
+      },
       "ci_state": "PENDING",
       "ci": {
         "pull_requests": [
@@ -1069,6 +1233,21 @@
           ]
         }
       ],
+      "claude": {
+        "skills": [
+          {
+            "path": ".claude/skills/skill-01/SKILL.md",
+            "dir": "skill-01",
+            "unreadable": "the frontmatter is not closed by a --- line"
+          }
+        ],
+        "hooks": [
+          {
+            "source": ".claude/settings.json",
+            "unreadable": "not valid JSON: unexpected end of JSON input"
+          }
+        ]
+      },
       "ci_state": "SUCCESS",
       "releases": {
         "total": 0,
