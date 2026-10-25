@@ -871,7 +871,7 @@
           "minLength": 1
         },
         "dir": {
-          "description": "The name Claude Code knows it by: the skill's directory, the plugin's name for a root SKILL.md, or the command's name.",
+          "description": "The name Claude Code knows it by: the skill's directory, the plugin's name for a root SKILL.md, or the command's name. Empty for the root SKILL.md of a plugin whose manifest sets no name.",
           "type": "string"
         },
         "name": {

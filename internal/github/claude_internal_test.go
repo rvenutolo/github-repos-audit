@@ -441,3 +441,25 @@ func TestClaudeFacts_queryFailure(t *testing.T) {
 		})
 	}
 }
+
+// TestClaudeFacts_wrapsAnUnreadableSkill: a skill's name comes from its path,
+// so a command that names a skill whose file cannot be read still wraps it.
+// Leaving WrapsSkill empty would let the command pass as more than a wrapper.
+func TestClaudeFacts_wrapsAnUnreadableSkill(t *testing.T) {
+	t.Parallel()
+
+	const skill, command = ".claude/skills/skill-01/SKILL.md", ".claude/commands/command-01.md"
+	truncated := text("---\nname: skill-01\n")
+	truncated.IsTruncated = true
+	s := &claudeServer{blobs: map[string]*fileBlob{
+		skill:   truncated,
+		command: text("---\ndescription: Placeholder description.\n---\nUse skill-01.\n"),
+	}}
+	got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "skill-pack", files(command, skill))
+	if err != nil {
+		t.Fatalf("claudeFacts() error = %v, want nil", err)
+	}
+	if len(got.Commands) != 1 || got.Commands[0].WrapsSkill != "skill-01" {
+		t.Errorf("Commands = %+v, want command-01 wrapping skill-01", got.Commands)
+	}
+}

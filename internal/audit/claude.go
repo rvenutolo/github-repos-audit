@@ -32,7 +32,8 @@ type ClaudeSkill struct {
 	// for an inline command.
 	Path string `json:"path"`
 	// Dir is the name Claude Code knows it by: the skill's directory, the
-	// plugin's name for a root SKILL.md, or a command's name.
+	// plugin's name for a root SKILL.md, or a command's name. Empty for the
+	// root SKILL.md of a plugin whose manifest sets no name.
 	Dir string `json:"dir"`
 	// Name is the frontmatter `name`, empty when absent.
 	Name string `json:"name,omitzero"`

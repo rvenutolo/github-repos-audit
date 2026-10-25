@@ -17,8 +17,9 @@ import (
 // The Claude file query's bounds. Every file is one aliased object() with its
 // whole text, and GitHub bounds what one query may cost and how long it may
 // run (https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api),
-// so a repository's files are read claudeFilesPerQuery at a time. Past
-// claudeFilesMax the files are not read at all: a repository with that many
+// so a repository's files are read claudeFilesPerQuery at a time.
+// claudeFilesMax counts every file read or asked for, across both rounds;
+// past it the files are not read any further: a repository with that many
 // is recorded as unreadable rather than costing a run a stack of heavy
 // queries. Both numbers are the design's starting point, not a measured
 // limit; the live render against every repository is what confirms them.
@@ -138,9 +139,9 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 	for _, s := range skills {
 		hooks = append(hooks, s.Hooks...)
 		out.Skills = append(out.Skills, skillFact(s, ""))
-		if s.Unreadable == "" {
-			skillNames = append(skillNames, s.Dir)
-		}
+		// A skill's name comes from its path, so an unreadable skill can
+		// still be the one a command wraps.
+		skillNames = append(skillNames, s.Dir)
 	}
 	for _, s := range commands {
 		hooks = append(hooks, s.Hooks...)
