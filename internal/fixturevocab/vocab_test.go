@@ -846,12 +846,30 @@ func checkDriftLine(n int, line string) []string {
 	return problems
 }
 
+// claudeCellName is a skill, command or plugin name a Claude section cell
+// may list: the synthetic names the Claude facts use.
+const claudeCellName = `((skill|command)-\d{2}|plugin-kit)`
+
+// claudeCell is every shape a Claude section cell may take: n/a, a bare
+// number, a count (with a cross and the failing names after it when any
+// fail), or unreadable with a synthetic path or text naming no path. The
+// cells list skill and command names, which in a real report say what a
+// repository is for, so they are held to the synthetic names, the way
+// the recorded Claude facts are.
+var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|✗ \d+/\d+ ` + claudeCellName + `(, ` + claudeCellName + `)*|` +
+	`(✗ )?unreadable (` + claudePath + `|[^/]*))$`)
+
 func checkMarkdown(text string) []string {
 	var problems []string
 	lines := strings.Split(text, "\n")
 	// inDrift is true from the "## Configuration drift" heading to the next
 	// heading; blank lines inside it are separators and carry no text.
 	inDrift := false
+	// inClaude is true from the "## Claude" heading to the next level-two
+	// heading. Its Skills table has a Description column too, but that one
+	// holds a count, not a repository description, so its cells are held to
+	// claudeCell instead.
+	inClaude := false
 	descCol := -1 // index of the current table's Description column, if any; -1 outside a table or when it has none.
 	inTable := false
 	// inIdentities is true from the "## Git identities" heading until the blank
@@ -862,6 +880,7 @@ func checkMarkdown(text string) []string {
 		switch {
 		case strings.HasPrefix(line, "## "):
 			inDrift = line == "## Configuration drift"
+			inClaude = line == "## Claude"
 			inIdentities, identityLines = line == "## Git identities", 0
 		case inIdentities && strings.TrimSpace(line) == "":
 			inIdentities = identityLines == 0 // the blank below the heading
@@ -926,7 +945,7 @@ func checkMarkdown(text string) []string {
 			// text against the fake vocabulary or isDescription.
 			descCol = -1
 			for col, header := range cells {
-				if header == "Description" {
+				if header == "Description" && !inClaude {
 					descCol = col
 					break
 				}
@@ -938,6 +957,13 @@ func checkMarkdown(text string) []string {
 		}
 		if name := tableCellName(cells[0]); !slices.Contains(fakeRepos, name) {
 			problems = append(problems, fmt.Sprintf("line %d: a table Repository cell outside the fake vocabulary", n))
+		}
+		if inClaude {
+			for _, c := range cells[1:] {
+				if !claudeCell.MatchString(c) {
+					problems = append(problems, fmt.Sprintf("line %d: a Claude cell outside the fake vocabulary", n))
+				}
+			}
 		}
 		if descCol >= 0 && descCol < len(cells) {
 			desc := strings.ReplaceAll(cells[descCol], `\|`, "|")
@@ -1204,6 +1230,16 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 		"free prose in the drift section": "" +
 			"## Configuration drift\n\n" +
 			"marker-repo has no entry.",
+		"a real-shaped skill name in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Slash-only | Description |\n" +
+			"| --- | --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 deploy-site | 1/1 |",
+		"a real-shaped path in an unreadable Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Slash-only |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable .claude/skills/deploy-site/SKILL.md |",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1225,6 +1261,12 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Description |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | the web-app repository |",
+		"a Claude table, whose Description column is a count": "" +
+			"## Claude\n\n" +
+			"| Repository | Slash-only | Description | No wrappers | Longest SKILL.md |\n" +
+			"| --- | --- | --- | --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/3 command-01, skill-02 | 2/2 | n/a | 612 |\n" +
+			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable too many Claude files | n/a | unreadable skills/skill-01/SKILL.md |",
 		"an empty description cell": "" +
 			"| Repository | Description |\n" +
 			"| --- | --- |\n" +

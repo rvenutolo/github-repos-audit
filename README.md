@@ -176,9 +176,9 @@ lists every check the tool knows, each set to one of:
 | `public_published` | expected only when the repository is public and published |
 | `info`             | shown, never judged                                       |
 
-`direct_push` takes `blocked` or `allowed` instead, and the five value-only
-checks — `last_release_age`, `last_push`, `open_prs`, `branches` and
-`artifact_storage` — take only `info` or `not_required`. `renovate_min_release_age` takes a duration
+`direct_push` takes `blocked` or `allowed` instead, and the six value-only
+checks — `last_release_age`, `last_push`, `open_prs`, `branches`,
+`artifact_storage` and `skill_size` — take only `info` or `not_required`. `renovate_min_release_age` takes a duration
 instead — `"7 days"`, `"48 hours"`, `"1 week"` (a positive whole number with
 no leading zero, a single space, then minute, hour, day or week, singular or
 plural) — or `not_required` or `info`; an
@@ -520,6 +520,56 @@ with a directory is a repository-relative path, and a directory match ends
 in `/`. The File paths section of the report marks a path that differs from
 the one most of the account uses for the same check; with no single most
 common path, nothing is marked.
+
+### Claude Code
+
+These judge the skills (`SKILL.md`) and command files a repository carries
+for Claude Code, found where Claude Code loads them: under a `.claude`
+directory at any depth, and in a plugin's `skills/` and `commands/` or the
+paths its `.claude-plugin/plugin.json` names. They apply once a repository
+has a skill or a command file, and each is n/a when the repository has none
+of the files it judges. A cell that counts reads `passing/total` (`3/3`);
+when any fail it names them after the count, in path order
+(`✗ 1/3 skill-01`). A file whose frontmatter is missing, not closed by
+`---` or not a YAML mapping cannot pass anything, so every check that
+judges it fails as `unreadable <path>`; when the repository's Claude files
+cannot be read as a whole (more of them than the tool reads in one
+repository, or a `plugin.json` whose layout cannot be decided), every one
+of them fails as `unreadable <reason>`. The report's Claude section
+shows them, listing only the repositories that carry any.
+
+- **skill_slash_only** — whether every skill and command file sets
+  `disable-model-invocation: true`, so it runs only when someone types its
+  `/` command. Only the YAML boolean `true` counts: Claude Code also accepts
+  `yes`, `on` or a quoted `"true"`, but the verdict must not depend on its
+  version. A file that also sets `user-invocable: false` fails, since it
+  then cannot be run at all.
+- **skill_name_matches_dir** — whether every skill's frontmatter `name`
+  equals its directory name. A missing `name` fails, even though Claude Code
+  falls back to the directory, so that a rename has to touch both. Command
+  files are not judged.
+- **skill_known_keys** — whether every frontmatter key of every skill and
+  command file is one Claude Code's
+  [skills documentation](https://code.claude.com/docs/en/skills) or the
+  [Agent Skills specification](https://agentskills.io/specification) lists,
+  or `version`, and whether `disable-model-invocation` and `user-invocable`
+  are YAML booleans and `agent` a string. Claude Code ignores any other key,
+  so a setting meant to take effect silently does nothing.
+- **skill_description_length** — whether every skill has a `description`,
+  and whether it and `when_to_use` together hold at most 1536 characters.
+  Past that Claude Code truncates them in the skill listing it shows the
+  model. Command files are not judged.
+- **skill_no_wrapper_commands** — whether no command file only invokes a
+  skill: a command file that names exactly one skill of the repository is a
+  wrapper, whatever else it says, since a slash-only skill is already its
+  own `/` command and any extra steps belong in the skill. n/a without a
+  command file.
+- **skill_size** — a plain fact, never judged: the longest `SKILL.md`'s line
+  count, or `unreadable <path>` when a skill cannot be read. Claude Code
+  loads the whole file when a skill runs, so keep it within a 500-line
+  budget and move detail into reference files beside it, as both the skills
+  documentation and the Agent Skills specification advise. It takes only `info` or
+  `not_required`.
 
 ## Cache lists
 

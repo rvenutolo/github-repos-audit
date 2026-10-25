@@ -64,6 +64,11 @@ var gapLabels = map[Check]string{
 	CheckCacheUsage:             "Actions cache above 80% of its limit",
 	CheckCICancelSuperseded:     "Pull-request workflows without cancel-in-progress",
 	CheckJobTimeouts:            "Jobs without timeout-minutes",
+	CheckSkillSlashOnly:         "Skill can run without its / command",
+	CheckSkillNameMatchesDir:    "Skill name differs from its directory",
+	CheckSkillKnownKeys:         "Skill frontmatter has unknown or mistyped keys",
+	CheckSkillDescriptionLength: "Skill description too long",
+	CheckSkillNoWrapperCommands: "Command file only wraps a skill",
 }
 
 // communityFiles names the three community health files, in the order the

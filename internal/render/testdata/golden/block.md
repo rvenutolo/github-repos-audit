@@ -28,6 +28,11 @@
 - **Go cache missing or empty on the default branch** (1) — github-repos-audit
 - **Pull-request workflows without cancel-in-progress** (1) — github-repos-audit
 - **Jobs without timeout-minutes** (1) — github-repos-audit
+- **Skill can run without its / command** (2) — github-repos-audit, web-app
+- **Skill name differs from its directory** (1) — web-app
+- **Skill frontmatter has unknown or mistyped keys** (2) — github-repos-audit, web-app
+- **Skill description too long** (2) — github-repos-audit, web-app
+- **Command file only wraps a skill** (1) — github-repos-audit
 
 ## Metadata
 
@@ -82,6 +87,18 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [go-linter](https://github.com/gh-owner/go-linter)                   | n/a       | n/a           | n/a        | n/a                                | n/a       |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 | [web-app](https://github.com/gh-owner/web-app)                       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+
+## Claude
+
+Only repositories with Claude Code skills, commands, hooks or a plugin are listed, plus the configured plugin marketplace.
+
+### Skills
+
+| Repository                                                           | Slash-only                                    | Name = dir                                    | Known keys                                    | Description                                   | No wrappers      | Longest SKILL.md                            |
+| -------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------- | --------------------------------------------- | --------------------------------------------- | ---------------- | ------------------------------------------- |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ 2/3 skill-02                                | 2/2                                           | ✗ 2/3 skill-02                                | ✗ 1/2 skill-02                                | ✗ 0/1 command-01 | 612                                         |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 1/1                                           | 1/1                                           | 1/1                                           | 1/1                                           | n/a              | 45                                          |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable .claude/skills/skill-01/SKILL.md | n/a              | unreadable .claude/skills/skill-01/SKILL.md |
 
 ## Nix
 

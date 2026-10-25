@@ -1171,3 +1171,96 @@ func TestMarkedDateCell(t *testing.T) {
 		})
 	}
 }
+
+// claudeIntro is the line under the Claude heading.
+const claudeIntro = "Only repositories with Claude Code skills, commands, hooks or a plugin are listed, " +
+	"plus the configured plugin marketplace."
+
+// TestBlock_claudeSection: the Claude section sits right after File paths,
+// opens with its intro, and its Skills table carries a row only for a
+// repository with skills or command files, each cell a count that names the
+// files at fault, unreadable, or n/a.
+func TestBlock_claudeSection(t *testing.T) {
+	t.Parallel()
+
+	got, err := render.Block(evaluate(t, fullSnapshot()), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+
+	paths := strings.Index(got, "## File paths\n")
+	claude := strings.Index(got, "## Claude\n\n"+claudeIntro+"\n\n### Skills\n")
+	nix := strings.Index(got, "## Nix\n")
+	if paths < 0 || claude < 0 || nix < 0 || paths >= claude || claude >= nix {
+		t.Fatalf("want ## File paths, then ## Claude with its intro and ### Skills, then ## Nix:\n%s", got)
+	}
+
+	want := []string{"Repository", "Slash-only", "Name = dir", "Known keys", "Description", "No wrappers", "Longest SKILL.md"}
+	if diff := cmp.Diff(want, sectionTable(t, got, "### Skills")); diff != "" {
+		t.Errorf("Skills columns mismatch (-want +got):\n%s", diff)
+	}
+
+	rows := map[string][]string{}
+	section := got[claude:nix]
+	for line := range strings.SplitSeq(section, "\n") {
+		if !strings.HasPrefix(line, "| [") {
+			continue
+		}
+		cells := splitRow(line)
+		name, _, _ := strings.Cut(strings.TrimPrefix(cells[0], "["), "]")
+		rows[name] = cells[1:]
+	}
+	const unreadable = "✗ unreadable .claude/skills/skill-01/SKILL.md"
+	wantRows := map[string][]string{
+		"mixedCase-flake": {"1/1", "1/1", "1/1", "1/1", "n/a", "45"},
+		"github-repos-audit": {
+			"✗ 2/3 skill-02", "2/2", "✗ 2/3 skill-02", "✗ 1/2 skill-02", "✗ 0/1 command-01", "612",
+		},
+		"web-app": {unreadable, unreadable, unreadable, unreadable, "n/a", "unreadable .claude/skills/skill-01/SKILL.md"},
+	}
+	if diff := cmp.Diff(wantRows, rows); diff != "" {
+		t.Errorf("Skills rows mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestBlock_noClaudeSectionWithoutClaudeTooling: an account where no
+// repository carries Claude Code tooling has no Claude heading at all.
+func TestBlock_noClaudeSectionWithoutClaudeTooling(t *testing.T) {
+	t.Parallel()
+
+	snap := &audit.Snapshot{
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),
+		Repos: []audit.Repo{baseRepo("alpha", "tools"), baseRepo("bravo", "tools")},
+	}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if strings.Contains(got, "## Claude") {
+		t.Errorf("an account with no Claude tooling renders a Claude section:\n%s", got)
+	}
+}
+
+// TestBlock_claudeCellsAreEscaped: a skill's directory is the owner's to
+// name and may hold a pipe, which would split the table cell it is listed
+// in.
+func TestBlock_claudeCellsAreEscaped(t *testing.T) {
+	t.Parallel()
+
+	r := baseRepo("alpha", "tools")
+	r.Claude = audit.Claude{Skills: []audit.ClaudeSkill{{
+		Path: ".claude/skills/a|b/SKILL.md", Dir: "a|b", Name: "a|b",
+		Keys: map[string]string{"description": "!!str"}, DescriptionChars: 10, Lines: 3,
+	}}}
+	snap := &audit.Snapshot{
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),
+		Repos: []audit.Repo{r},
+	}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	if want := `✗ 0/1 a\|b`; !strings.Contains(got, want) {
+		t.Errorf("block has no %q:\n%s", want, got)
+	}
+}

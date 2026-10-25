@@ -151,11 +151,17 @@
               "cache_usage",
               "ci_cancel_superseded",
               "job_timeouts",
+              "skill_slash_only",
+              "skill_name_matches_dir",
+              "skill_known_keys",
+              "skill_description_length",
+              "skill_no_wrapper_commands",
               "last_release_age",
               "last_push",
               "open_prs",
               "branches",
-              "artifact_storage"
+              "artifact_storage",
+              "skill_size"
             ]
           },
           "additionalProperties": {
@@ -316,11 +322,17 @@
         "cache_usage",
         "ci_cancel_superseded",
         "job_timeouts",
+        "skill_slash_only",
+        "skill_name_matches_dir",
+        "skill_known_keys",
+        "skill_description_length",
+        "skill_no_wrapper_commands",
         "last_release_age",
         "last_push",
         "open_prs",
         "branches",
-        "artifact_storage"
+        "artifact_storage",
+        "skill_size"
       ],
       "properties": {
         "readme": { "$ref": "#/$defs/expectation" },
@@ -375,11 +387,17 @@
         "cache_usage": { "$ref": "#/$defs/expectation" },
         "ci_cancel_superseded": { "$ref": "#/$defs/expectation" },
         "job_timeouts": { "$ref": "#/$defs/expectation" },
+        "skill_slash_only": { "$ref": "#/$defs/expectation" },
+        "skill_name_matches_dir": { "$ref": "#/$defs/expectation" },
+        "skill_known_keys": { "$ref": "#/$defs/expectation" },
+        "skill_description_length": { "$ref": "#/$defs/expectation" },
+        "skill_no_wrapper_commands": { "$ref": "#/$defs/expectation" },
         "last_release_age": { "$ref": "#/$defs/info_expectation" },
         "last_push": { "$ref": "#/$defs/info_expectation" },
         "open_prs": { "$ref": "#/$defs/info_expectation" },
         "branches": { "$ref": "#/$defs/info_expectation" },
-        "artifact_storage": { "$ref": "#/$defs/info_expectation" }
+        "artifact_storage": { "$ref": "#/$defs/info_expectation" },
+        "skill_size": { "$ref": "#/$defs/info_expectation" }
       }
     },
     "expectation": {
