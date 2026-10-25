@@ -31,9 +31,12 @@ const (
 // tooManyClaudeFiles is the repository-wide problem past claudeFilesMax.
 const tooManyClaudeFiles = "too many Claude files"
 
-// missingDeclared prefixes the repository-wide problem for a path plugin.json
-// declares that the tree cannot answer.
-const missingDeclared = "plugin.json declares missing "
+// unloadableDeclared prefixes the repository-wide problem for a path plugin.json
+// declares that the tree cannot answer: a skills or commands directory that
+// is not there, a command that is neither a directory nor a .md file, or a
+// path outside the repository. "Missing" would misdescribe the last two, so
+// the reason names what they share: Claude Code cannot load them.
+const unloadableDeclared = "plugin.json declares unloadable path "
 
 // inlineCommandPath is the path recorded for a command whose text lives in
 // plugin.json itself, so it reads as a place in the manifest.
@@ -104,7 +107,7 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 		// Claude Code cannot load; so, as with a manifest that cannot be
 		// read, the whole repository is unreadable.
 		if len(layout.Missing) > 0 {
-			out.Unreadable = missingDeclared + layout.Missing[0]
+			out.Unreadable = unloadableDeclared + layout.Missing[0]
 			return out, nil
 		}
 		var more []string

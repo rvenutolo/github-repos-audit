@@ -568,9 +568,11 @@ file`). When the repository's Claude files cannot be read as
 a whole (more of them than the tool reads in one repository, a
 `plugin.json` whose layout cannot be decided, such as one with a component
 path that does not start with `./` (only `skills` also takes `.`), which
-Claude Code refuses to load, or one that declares a
-skills or commands directory that is not there), every one of them fails
-as `unreadable <reason>`, except marketplace_entries_valid and
+Claude Code refuses to load, or one that declares a path Claude Code
+cannot load: a skills or commands directory that is not there, a command
+that is neither a directory nor a `.md` file, or a path outside the
+repository, read as `plugin.json declares unloadable path <path>`), every
+one of them fails as `unreadable <reason>`, except marketplace_entries_valid and
 marketplace_complete, which judge the marketplace file rather than the
 repository's own. The report's Claude section shows them, listing only the
 repositories that carry any. The hook, plugin and marketplace checks

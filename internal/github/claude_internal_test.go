@@ -536,29 +536,33 @@ func TestClaudeFacts_declaredFileNotTracked(t *testing.T) {
 	}
 }
 
-// TestClaudeFacts_declaredDirectoryMissing: a skills or commands directory the
-// manifest declares but the tree does not hold has no file to record as
-// unreadable, so the repository's Claude files are unreadable as a whole, as
-// they are when the manifest itself cannot be read, and nothing more is read.
-func TestClaudeFacts_declaredDirectoryMissing(t *testing.T) {
+// TestClaudeFacts_declaredPathUnloadable: a skills or commands directory the
+// manifest declares but the tree does not hold, a tracked command path that
+// is not a .md file, and a path outside the repository have no file to record
+// as unreadable, so the repository's Claude files are unreadable as a whole,
+// as they are when the manifest itself cannot be read, and nothing more is
+// read.
+func TestClaudeFacts_declaredPathUnloadable(t *testing.T) {
 	t.Parallel()
 
 	const manifest = ".claude-plugin/plugin.json"
 	tests := []struct{ name, manifest, missing string }{
 		{"commands", `{"name": "plugin-kit", "commands": "./commands"}`, "commands"},
 		{"skills", `{"name": "plugin-kit", "skills": ["./skills", "./extra/"]}`, "extra"},
+		{"command not markdown", `{"name": "plugin-kit", "commands": "./notes/command-01.txt"}`, "notes/command-01.txt"},
+		{"hooks outside the repository", `{"name": "plugin-kit", "hooks": "./../hooks.json"}`, "../hooks.json"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := &claudeServer{blobs: map[string]*fileBlob{manifest: text(tc.manifest)}}
-			got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest, "skills/skill-01/SKILL.md"))
+			got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest, "skills/skill-01/SKILL.md", "notes/command-01.txt"))
 			if err != nil {
 				t.Fatalf("claudeFacts() error = %v, want nil", err)
 			}
 			want := audit.Claude{
 				Plugin:     audit.ClaudePlugin{Present: true, Name: "plugin-kit", Fields: []string{"name"}},
-				Unreadable: "plugin.json declares missing " + tc.missing,
+				Unreadable: "plugin.json declares unloadable path " + tc.missing,
 			}
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Errorf("claudeFacts() mismatch (-want +got):\n%s", diff)

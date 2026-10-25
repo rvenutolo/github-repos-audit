@@ -20,7 +20,9 @@ type Claude struct {
 	Plugin ClaudePlugin `json:"plugin,omitzero"`
 	// Unreadable is a problem with the repository's Claude files as a whole:
 	// too many to read, a plugin manifest whose layout cannot be decided, or
-	// one that declares a path the tree has nothing at to read.
+	// one that declares a path Claude Code cannot load (a directory that is
+	// not there, a command that is not a .md file, or a path outside the
+	// repository).
 	// When it is set nothing else but Plugin is, so every check reading
 	// these facts fails as unreadable rather than judging part of them.
 	Unreadable string `json:"unreadable,omitzero"`

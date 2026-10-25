@@ -918,7 +918,7 @@ const claudeProblem = `(too many Claude files|SKILL\.md|` + claudeMissing + `|` 
 // claudeMissing is the repository-wide problem for a path plugin.json
 // declares that the tree cannot answer. The path is the manifest's to name,
 // so it is held to the synthetic Claude paths and directory names.
-const claudeMissing = `plugin\.json declares missing (` + claudePath + `|(skills|commands)(/(skill|command)-\d{2})?)`
+const claudeMissing = `plugin\.json declares unloadable path (` + claudePath + `|(skills|commands)(/(skill|command)-\d{2})?)`
 
 // claudePluginField is a manifest field the Plugin table's Manifest cell may
 // list as missing: one of the eight plugin.json fields the check requires.
@@ -1422,11 +1422,11 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Events |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable deploy-site is broken |",
-		"a real-shaped path a manifest declares missing in a Claude cell": "" +
+		"a real-shaped path a manifest declares unloadable in a Claude cell": "" +
 			"## Claude\n\n" +
 			"| Repository | Slash-only |\n" +
 			"| --- | --- |\n" +
-			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable plugin.json declares missing deploy-site |",
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable plugin.json declares unloadable path deploy-site |",
 		"a real-shaped path in an unreadable Claude cell": "" +
 			"## Claude\n\n" +
 			"| Repository | Slash-only |\n" +
@@ -1459,7 +1459,7 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| --- | --- | --- | --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/3 command-01, skill-02 | 2/2 | n/a | 612 |\n" +
 			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable too many Claude files | n/a | unreadable skills/skill-01/SKILL.md |\n" +
-			"| [bravo](https://github.com/gh-owner/bravo) | ✗ unreadable plugin.json declares missing commands | ✗ unreadable plugin.json declares missing skills/skill-02 | n/a | ✗ unreadable plugin.json declares missing commands/command-01.md |",
+			"| [bravo](https://github.com/gh-owner/bravo) | ✗ unreadable plugin.json declares unloadable path commands | ✗ unreadable plugin.json declares unloadable path skills/skill-02 | n/a | ✗ unreadable plugin.json declares unloadable path commands/command-01.md |",
 		"a Claude Plugin table": "" +
 			"## Claude\n\n" +
 			"| Repository | Manifest | No own marketplace | Releases | Version = tag |\n" +
