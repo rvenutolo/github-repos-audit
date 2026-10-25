@@ -8,7 +8,6 @@ import (
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/claude"
-	"github.com/rvenutolo/github-repos-audit/internal/renovate"
 )
 
 // marketplaceFile and pluginManifest are where Claude Code reads a
@@ -54,16 +53,15 @@ func (c *Client) CollectMarketplace(
 		out.Unreadable = "not among the audited repositories"
 		return out, nil
 	}
-	file, err := c.fetchContents(ctx, renovate.Preset{Repo: repo, Path: marketplaceFile})
+	file, err := c.fetchContents(ctx, contentsRequest{Repo: repo, Path: marketplaceFile})
 	if err != nil {
 		return audit.ClaudeMarketplace{}, err
 	}
-	switch file.problem {
-	case "":
-	case renovate.ProblemNotFound:
+	switch {
+	case file.notFound:
 		out.Unreadable = "no " + marketplaceFile
 		return out, nil
-	default:
+	case file.problem != "":
 		out.Unreadable = marketplaceFile + ": " + file.problem
 		return out, nil
 	}
@@ -210,15 +208,14 @@ func (c *Client) tagCommit(ctx context.Context, repo, escaped, tag string) (stri
 // not a file, unparsable or nameless leaves the name empty and returns why:
 // the entry's pin then names nothing the checks can compare.
 func (c *Client) manifestName(ctx context.Context, repo, sha string) (string, string, error) {
-	file, err := c.fetchContents(ctx, renovate.Preset{Repo: repo, Path: pluginManifest, Ref: sha})
+	file, err := c.fetchContents(ctx, contentsRequest{Repo: repo, Path: pluginManifest, Ref: sha})
 	if err != nil {
 		return "", "", err
 	}
-	switch file.problem {
-	case "":
-	case renovate.ProblemNotFound:
+	switch {
+	case file.notFound:
 		return "", "no " + pluginManifest + " at " + sha, nil
-	default:
+	case file.problem != "":
 		return "", pluginManifest + " at " + sha + ": " + file.problem, nil
 	}
 	p := claude.ParsePlugin(file.text)
