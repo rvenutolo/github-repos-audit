@@ -137,6 +137,27 @@ func TestResolve_automergeMajor(t *testing.T) {
 		},
 		{"wrong type matchUpdateTypes", `{"automerge": true, "packageRules": [{"matchUpdateTypes": 5, "automerge": true}]}`, false},
 		{"wrong type updateTypes", `{"automerge": true, "packageRules": [{"updateTypes": {}, "automerge": true}]}`, false},
+		// With both keys Renovate keeps whichever the file writes later, which
+		// the decoded object cannot tell, so the rule reaches some majors.
+		{
+			"both update-type keys, automerge on",
+			`{"packageRules": [{"matchUpdateTypes": ["major"], "updateTypes": ["minor"], "automerge": true}]}`, false,
+		},
+		{
+			"both update-type keys, hold in the legacy one",
+			`{"automerge": true, "packageRules": [{"matchUpdateTypes": ["minor"], "updateTypes": ["major"], "automerge": false}]}`,
+			false,
+		},
+		{
+			"both update-type keys, neither major",
+			`{"automerge": true, "packageRules": [{"matchUpdateTypes": ["minor"], "updateTypes": "patch", "automerge": false}]}`,
+			true,
+		},
+		{
+			"both update-type keys, one malformed",
+			`{"automerge": true, "packageRules": [{"matchUpdateTypes": ["minor"], "updateTypes": 5, "automerge": true}]}`,
+			false,
+		},
 		{"malformed packageRules", `{"packageRules": "x", "automerge": true}`, false},
 		{"malformed rule", `{"packageRules": ["x"], "automerge": true}`, false},
 		{"wrong type rule automerge", `{"automerge": true, "packageRules": [{"automerge": "no"}]}`, false},

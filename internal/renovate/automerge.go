@@ -45,7 +45,7 @@ func (a *automergeLayer) over(o automergeLayer) {
 
 // pkgRule is one packageRules entry, reduced to what decides majors.
 type pkgRule struct {
-	// appliesToMajor is a matchUpdateTypes that is absent or lists "major".
+	// appliesToMajor is update types that are absent or list "major".
 	appliesToMajor bool
 	// narrowed is any other matcher: the rule reaches only some majors.
 	narrowed  bool
@@ -119,7 +119,8 @@ func ownRules(cfg map[string]any) []pkgRule {
 
 // isLegacySelector reports the pre-match* names of rule selectors, which
 // Renovate migrates to their match* forms; each narrows a rule exactly as its
-// modern name does. updateTypes is not one: it is read like matchUpdateTypes.
+// modern name does. updateTypes is not one: ownRule reads it with
+// matchUpdateTypes.
 // A switch rather than a package-level slice, so nothing can mutate it.
 func isLegacySelector(key string) bool {
 	switch key {
@@ -152,31 +153,46 @@ func ownRule(obj map[string]any) pkgRule {
 	// Renovate rejects a rule with no selector rather than applying it to
 	// everything, so it is not read as matching all majors.
 	r.malformed = !selector
-	key := "matchUpdateTypes"
-	if _, has := obj[key]; !has {
-		key = "updateTypes"
-	}
-	if v, has := obj[key]; has {
+	// Renovate migrates updateTypes to matchUpdateTypes key by key, in the
+	// object's own order, so with both present the one written later
+	// replaces the other. The decoded object keeps no key order, so which
+	// list Renovate keeps cannot be told: their union is read and the rule
+	// is narrowed, so a hold in either list fails and automerge-on via the
+	// rule is ignored.
+	// https://github.com/renovatebot/renovate/blob/main/lib/config/migrations/custom/package-rules-migration.ts
+	var types []any
+	present := 0
+	for _, key := range []string{"matchUpdateTypes", "updateTypes"} {
+		v, has := obj[key]
+		if !has {
+			continue
+		}
+		present++
 		list, ok := updateTypeList(v)
 		if !ok || len(list) == 0 {
 			r.malformed = true
 		}
-		for _, e := range list {
-			s, ok := e.(string)
-			switch {
-			case !ok:
-				r.malformed = true
-			case s == "major":
-				r.appliesToMajor = true
-			case strings.ContainsAny(s, "*!/?{"):
-				// Renovate matches update types as globs, regexes and
-				// negations. Which majors such an entry reaches is not
-				// decided here: it reaches majors and is narrowed, so a
-				// hold in the rule fails and automerge-on via it is ignored.
-				r.appliesToMajor, r.narrowed = true, true
-			}
+		types = append(types, list...)
+	}
+	if present == 2 {
+		r.narrowed = true
+	}
+	for _, e := range types {
+		s, ok := e.(string)
+		switch {
+		case !ok:
+			r.malformed = true
+		case s == "major":
+			r.appliesToMajor = true
+		case strings.ContainsAny(s, "*!/?{"):
+			// Renovate matches update types as globs, regexes and
+			// negations. Which majors such an entry reaches is not
+			// decided here: it reaches majors and is narrowed, so a
+			// hold in the rule fails and automerge-on via it is ignored.
+			r.appliesToMajor, r.narrowed = true, true
 		}
-	} else {
+	}
+	if present == 0 {
 		r.appliesToMajor = true
 	}
 	var b1, b2, b3 bool
