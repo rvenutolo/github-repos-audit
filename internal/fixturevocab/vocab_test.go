@@ -372,7 +372,6 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.latest_release\.tag_name$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
-	{regexp.MustCompile(`^repos\[\]\.releases\.latest_tag$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^size$`), matches(`^(0|1024)$`), "0 or 1024"},
 	// A Renovate config's text is repository content, and the only account
 	// data it can carry is a preset reference naming a repository, so it is
@@ -538,6 +537,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.source$`), matches(`^` + claudePath + `$`), "a synthetic Claude file path"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.script$`), matches(`^hooks/hook-\d{2}\.sh$`), "a synthetic hook script"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.matcher$`), matches(`^[A-Za-z|*]*$`), "a tool-name matcher"},
+	{regexp.MustCompile(`^repos\[\]\.releases\.latest_tag$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.plugin\.name$`), isFakeRepo, "a fake repository name"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(`^((` + claudePath + `: )?[^/]*|` + claudeMissing + `)$`), "a problem naming only a synthetic Claude path"},
 	keep(
@@ -875,13 +875,27 @@ const claudeProblem = `(too many Claude files|SKILL\.md|` + claudeMissing + `|` 
 // so it is held to the synthetic Claude paths and directory names.
 const claudeMissing = `plugin\.json declares missing (` + claudePath + `|(skills|commands)(/(skill|command)-\d{2})?)`
 
+// claudePluginField is a manifest field the Plugin table's Manifest cell may
+// list as missing: one of the eight plugin.json fields the check requires.
+const claudePluginField = `(\$schema|author|description|homepage|license|name|repository|version)`
+
+// claudePluginCell is every shape the Plugin table's own cells take beyond
+// the bare marks: the missing manifest fields, and the Version = tag cell,
+// whose version and tag are a version and a release tag. A version that is
+// not semver is shown raw, so it is held to the characters a version
+// carries; nothing else can follow it.
+const claudePluginCell = `(✗ ` + claudePluginField + `(, ` + claudePluginField + `)*|` +
+	`(✗ )?[0-9]+\.[0-9]+\.[0-9]+( ≥ v[0-9]+\.[0-9]+\.[0-9]+)?|` +
+	`✗ [0-9]+\.[0-9]+\.[0-9]+ < v[0-9]+\.[0-9]+\.[0-9]+|` +
+	`✗ (none|[0-9][0-9A-Za-z.+-]*) \? v[0-9][0-9A-Za-z.+-]*)`
+
 // claudeCell is every shape a Claude section cell may take: n/a, a bare
 // number, a count (with a cross and the failing names after it when any
 // fail), or unreadable with a synthetic path or one of the tool's own
 // reasons. The cells list skill, command and hook names, which in a real
 // report say what a repository is for, so they are held to the synthetic
 // names, the way the recorded Claude facts are.
-var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|` +
+var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|` + claudePluginCell + `|` +
 	`✗ \d+/\d+ (` + claudeCellName + `(, ` + claudeCellName + `)*|` + claudeHookName + `(, ` + claudeHookName + `)*)|` +
 	`(✗ )?unreadable (` + claudePath + `|` + claudeProblem + `))$`)
 
@@ -1266,6 +1280,16 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Events |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 scripts/deploy-site.json PreToolUse |",
+		"a repository name as a missing plugin field": "" +
+			"## Claude\n\n" +
+			"| Repository | Manifest |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ homepage, deploy-site |",
+		"prose in place of a plugin version": "" +
+			"## Claude\n\n" +
+			"| Repository | Version = tag |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ is the deploy site ? v1.2.0 |",
 		"free prose after unreadable in a Claude cell": "" +
 			"## Claude\n\n" +
 			"| Repository | Events |\n" +
@@ -1309,6 +1333,14 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/3 command-01, skill-02 | 2/2 | n/a | 612 |\n" +
 			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable too many Claude files | n/a | unreadable skills/skill-01/SKILL.md |\n" +
 			"| [bravo](https://github.com/gh-owner/bravo) | ✗ unreadable plugin.json declares missing commands | ✗ unreadable plugin.json declares missing skills/skill-02 | n/a | ✗ unreadable plugin.json declares missing commands/command-01.md |",
+		"a Claude Plugin table": "" +
+			"## Claude\n\n" +
+			"| Repository | Manifest | No own marketplace | Releases | Version = tag |\n" +
+			"| --- | --- | --- | --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ $schema, homepage, license | ✗ | ✓ | 1.3.0 ≥ v1.2.0 |\n" +
+			"| [alpha](https://github.com/gh-owner/alpha) | ✓ | ✓ | ✗ | ✗ 1.1.0 < v1.2.0 |\n" +
+			"| [bravo](https://github.com/gh-owner/bravo) | ✓ | ✓ | ✓ | ✗ 1.2 ? v1.2.0 |\n" +
+			"| [plugin-kit](https://github.com/gh-owner/plugin-kit) | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json |",
 		"a Claude Hooks table": "" +
 			"## Claude\n\n" +
 			"| Repository | Events | Executable | Plugin root | Timeout | Matcher |\n" +

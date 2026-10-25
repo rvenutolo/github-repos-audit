@@ -330,7 +330,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 	case CheckSkillSlashOnly, CheckSkillNameMatchesDir, CheckSkillKnownKeys,
 		CheckSkillDescriptionLength, CheckSkillNoWrapperCommands, CheckSkillSize,
 		CheckHookKnownEvents, CheckHookCommandExecutable, CheckHookPluginRoot,
-		CheckHookTimeout, CheckHookMatcher:
+		CheckHookTimeout, CheckHookMatcher, CheckPluginManifestFields,
+		CheckPluginNoOwnMarketplace, CheckPluginReleases, CheckPluginVersionMatchesTag:
 		return observeClaude(c, r, ev)
 
 	case CheckTopics:

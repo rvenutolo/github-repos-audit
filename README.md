@@ -611,6 +611,32 @@ checks fail for that file instead.
   `PermissionRequest`, `PermissionDenied`) sets a non-empty `matcher`. Hooks on
   other events are skipped.
 
+The plugin checks judge a repository that tracks `.claude-plugin/plugin.json`
+and are n/a elsewhere. A `plugin.json` that cannot be read fails all four as
+`unreadable .claude-plugin/plugin.json`.
+
+- **plugin_manifest_fields** — whether `plugin.json` has `$schema`, `name`,
+  `version`, `description`, `author`, `license`, `homepage` and `repository`,
+  following the fields table at
+  <https://code.claude.com/docs/en/plugins-reference>. `author` counts only
+  with a non-empty string `author.name`, `homepage` and `repository` must
+  parse as URLs, and every other field must be a non-empty string. The cell
+  lists the fields that are missing.
+- **plugin_no_own_marketplace** — whether the repository has no
+  `.claude-plugin/marketplace.json`, so the shared marketplace is the only
+  source of the plugin. Judged at the default branch's HEAD.
+- **plugin_releases** — whether the repository has a latest release (GitHub's
+  Latest release, which leaves out drafts and prereleases). It is judged
+  whatever the repository's type says about the releases it expects.
+- **plugin_version_matches_tag** — whether the `version` in `plugin.json` is
+  the same as or ahead of the latest release's tag with its `v` removed,
+  compared as [semantic versions](https://semver.org). Ahead passes, so a run
+  between a release pull request's merge and its publish does not fail; the
+  cell reads `1.3.0 ≥ v1.2.0`. Behind fails (`1.1.0 < v1.2.0`). A version or
+  tag that is not a semantic version fails and shows both raw values
+  (`abc ? v1.2.0`). n/a when there is no release, which plugin_releases
+  already reports.
+
 ## Cache lists
 
 Under its table, after the lists behind the ci_cancel_superseded and

@@ -187,6 +187,9 @@ func observeClaude(c Check, r audit.Repo, _ evalContext) observation {
 			}
 			return h.Matcher != "", true
 		}))
+	case CheckPluginManifestFields, CheckPluginNoOwnMarketplace,
+		CheckPluginReleases, CheckPluginVersionMatchesTag:
+		return observePlugin(c, r)
 	}
 	// CheckSkillSize, the one Claude check left. It closes the function
 	// rather than taking a case of its own because observe hands nothing
@@ -313,4 +316,163 @@ func hookItems(hooks []audit.ClaudeHook, judge func(audit.ClaudeHook) (ok, appli
 		}
 	}
 	return out
+}
+
+// requiredPluginFields is every field plugin_manifest_fields requires of
+// plugin.json, sorted, which is the order internal/claude records the ones
+// present and the order the cell lists the ones missing.
+func requiredPluginFields() []string {
+	return []string{"$schema", "author", "description", "homepage", "license", "name", "repository", "version"}
+}
+
+// observePlugin judges the four plugin checks. They apply once the repository
+// tracks .claude-plugin/plugin.json and are n/a before that. A manifest that
+// could not be read fails all four: its fields, version and sibling files
+// are unknown, and a release check that passed beside them would read as a
+// verdict on a plugin nobody looked at.
+func observePlugin(c Check, r audit.Repo) observation {
+	p := r.Claude.Plugin
+	if !p.Present && p.Unreadable == "" {
+		return observation{unknown: true}
+	}
+	if p.Unreadable != "" {
+		return observation{value: "unreadable .claude-plugin/plugin.json", mark: true}
+	}
+	//nolint:exhaustive // observeClaude hands only the plugin checks here
+	switch c {
+	case CheckPluginManifestFields:
+		missing := slices.DeleteFunc(requiredPluginFields(), func(f string) bool { return slices.Contains(p.Fields, f) })
+		if len(missing) == 0 {
+			return observation{ok: true}
+		}
+		return observation{value: strings.Join(missing, ", "), mark: true}
+	case CheckPluginNoOwnMarketplace:
+		return observation{ok: !p.OwnMarketplace}
+	case CheckPluginReleases:
+		// GitHub's Latest release already leaves out drafts and
+		// prereleases, so an empty tag means nothing has been published.
+		return observation{ok: r.Releases.LatestTag != ""}
+	}
+	// CheckPluginVersionMatchesTag, the one plugin check left, for the same
+	// reason CheckSkillSize closes observeClaude.
+	tag := r.Releases.LatestTag
+	if tag == "" {
+		// plugin_releases already fails; a second failure would say the
+		// same thing about a version with nothing to be compared to.
+		return observation{unknown: true}
+	}
+	version := cmp.Or(p.Version, "none")
+	ok, valid := semverAtLeast(p.Version, tag)
+	switch {
+	case !valid:
+		return observation{value: version + " ? " + tag, mark: true}
+	case version == strings.TrimPrefix(tag, "v"):
+		return observation{ok: true, value: version}
+	case ok:
+		// Ahead passes, so a nightly run between a release pull request's
+		// merge and its publish does not fail.
+		return observation{ok: true, value: version + " ≥ " + tag}
+	}
+	return observation{value: version + " < " + tag, mark: true}
+}
+
+// semverAtLeast reports whether version is the same as or later than tag with
+// its leading v removed, comparing them as Semantic Versioning 2.0.0 orders
+// them (https://semver.org): numeric core first, then a version with no
+// prerelease ahead of one with, then prerelease identifiers one by one.
+// Build metadata does not take part. valid is false when either side is not
+// a semantic version, and ok is then false too. It is local because the
+// module would be the project's only use of golang.org/x/mod.
+func semverAtLeast(version, tag string) (ok, valid bool) {
+	a, aok := parseSemver(version)
+	b, bok := parseSemver(strings.TrimPrefix(tag, "v"))
+	if !aok || !bok {
+		return false, false
+	}
+	return a.compare(b) >= 0, true
+}
+
+type semver struct {
+	core [3]int
+	pre  []string
+}
+
+// parseSemver parses MAJOR.MINOR.PATCH with optional -prerelease and
+// +build, rejecting what semver.org's grammar does: leading zeros in the
+// numeric parts and numeric prerelease identifiers, empty identifiers, and
+// characters outside [0-9A-Za-z-].
+func parseSemver(s string) (semver, bool) {
+	var v semver
+	s, _, _ = strings.Cut(s, "+")
+	core, pre, hasPre := strings.Cut(s, "-")
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return v, false
+	}
+	for i, p := range parts {
+		n, ok := numericIdent(p)
+		if !ok {
+			return v, false
+		}
+		v.core[i] = n
+	}
+	if hasPre {
+		v.pre = strings.Split(pre, ".")
+		for _, id := range v.pre {
+			if id == "" || strings.Trim(id, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-") != "" {
+				return v, false
+			}
+			if _, numeric := strconv.Atoi(id); numeric == nil && len(id) > 1 && id[0] == '0' {
+				return v, false
+			}
+		}
+	}
+	return v, true
+}
+
+// numericIdent parses a version number without a sign or a leading zero.
+func numericIdent(s string) (int, bool) {
+	if s == "" || (len(s) > 1 && s[0] == '0') || strings.Trim(s, "0123456789") != "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	return n, err == nil
+}
+
+func (a semver) compare(b semver) int {
+	for i := range a.core {
+		if c := cmp.Compare(a.core[i], b.core[i]); c != 0 {
+			return c
+		}
+	}
+	switch {
+	case len(a.pre) == 0 && len(b.pre) == 0:
+		return 0
+	case len(a.pre) == 0:
+		return 1
+	case len(b.pre) == 0:
+		return -1
+	}
+	for i := range min(len(a.pre), len(b.pre)) {
+		if c := comparePre(a.pre[i], b.pre[i]); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(len(a.pre), len(b.pre))
+}
+
+// comparePre orders two prerelease identifiers: numeric ones numerically and
+// below any alphanumeric one, alphanumeric ones in ASCII order.
+func comparePre(a, b string) int {
+	an, aerr := strconv.Atoi(a)
+	bn, berr := strconv.Atoi(b)
+	switch {
+	case aerr == nil && berr == nil:
+		return cmp.Compare(an, bn)
+	case aerr == nil:
+		return -1
+	case berr == nil:
+		return 1
+	}
+	return strings.Compare(a, b)
 }

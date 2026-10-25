@@ -37,6 +37,10 @@
 - **Hook script missing or not executable** (2) — github-repos-audit, web-app
 - **Hook without a timeout** (2) — github-repos-audit, web-app
 - **Tool hook without a matcher** (2) — github-repos-audit, web-app
+- **Plugin manifest missing fields** (2) — github-repos-audit, web-app
+- **Plugin repository has its own marketplace.json** (2) — github-repos-audit, web-app
+- **Plugin has no release** (1) — web-app
+- **Plugin version behind its latest release** (2) — github-repos-audit, web-app
 
 ## Metadata
 
@@ -112,6 +116,14 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 1/1                                | 1/1                                     | 1/1         | 1/1                                     | 1/1                                     |
 | [web-app](https://github.com/gh-owner/web-app)                       | ✗ unreadable .claude/settings.json | ✗ unreadable .claude/settings.json      | n/a         | ✗ unreadable .claude/settings.json      | ✗ unreadable .claude/settings.json      |
 
+### Plugin
+
+| Repository                                                           | Manifest                                | No own marketplace                      | Releases                                | Version = tag                           |
+| -------------------------------------------------------------------- | --------------------------------------- | --------------------------------------- | --------------------------------------- | --------------------------------------- |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ homepage, license                     | ✗                                       | ✓                                       | ✗ 1.1.0 < v1.2.0                        |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓                                       | ✓                                       | ✓                                       | 1.2.0                                   |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json |
+
 ## Nix
 
 | Repository                                                           | Lock age | Lock refresh | Nix cache |
@@ -167,7 +179,7 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 | Repository                                                           | Last push | CI      | Open PRs | Branches | Releases | Last release |
 | -------------------------------------------------------------------- | --------- | ------- | -------- | -------- | -------- | ------------ |
 | [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | 11d       | n/a     | 0        | 0        | 0        | n/a          |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | 11d       | PENDING | 0        | 3        | 0        | n/a          |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | 11d       | PENDING | 0        | 3        | 2        | n/a          |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | never     | ✗       | 0        | 0        | 0        | n/a          |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 11d       | SUCCESS | 0        | 0        | 3        | 5mo          |
 | [web-app](https://github.com/gh-owner/web-app)                       | 11d       | SUCCESS | 0        | 0        | 0        | n/a          |

@@ -1243,8 +1243,28 @@ func TestBlock_claudeSection(t *testing.T) {
 		// plugin-root check would never judge.
 		"web-app": {unreadableHooks, unreadableHooks, "n/a", unreadableHooks, unreadableHooks},
 	}
-	if diff := cmp.Diff(wantHookRows, tableRows(got[hooksAt:nix])); diff != "" {
+	pluginAt := strings.Index(got, "### Plugin\n")
+	if pluginAt < hooksAt || pluginAt > nix {
+		t.Fatalf("want ### Plugin after ### Hooks inside the Claude section:\n%s", got)
+	}
+	if diff := cmp.Diff(wantHookRows, tableRows(got[hooksAt:pluginAt])); diff != "" {
 		t.Errorf("Hooks rows mismatch (-want +got):\n%s", diff)
+	}
+
+	wantPlugin := []string{"Repository", "Manifest", "No own marketplace", "Releases", "Version = tag"}
+	if diff := cmp.Diff(wantPlugin, sectionTable(t, got, "### Plugin")); diff != "" {
+		t.Errorf("Plugin columns mismatch (-want +got):\n%s", diff)
+	}
+	const unreadablePlugin = "✗ unreadable .claude-plugin/plugin.json"
+	wantPluginRows := map[string][]string{
+		"mixedCase-flake": {"✓", "✓", "✓", "1.2.0"},
+		// Missing fields are named; the repository's own marketplace and the
+		// version behind the release fail with no value to show.
+		"github-repos-audit": {"✗ homepage, license", "✗", "✓", "✗ 1.1.0 < v1.2.0"},
+		"web-app":            {unreadablePlugin, unreadablePlugin, unreadablePlugin, unreadablePlugin},
+	}
+	if diff := cmp.Diff(wantPluginRows, tableRows(got[pluginAt:nix])); diff != "" {
+		t.Errorf("Plugin rows mismatch (-want +got):\n%s", diff)
 	}
 }
 

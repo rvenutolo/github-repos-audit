@@ -177,7 +177,10 @@ func fullSnapshot() *audit.Snapshot {
 	// Renovate runs the nix manager without lock-file maintenance, which on
 	// inputs not pinned by rev leaves flake.lock unrefreshed.
 	soft.Renovate = audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store", NixManager: true}
-	soft.Releases = audit.Releases{Total: 4, Drafts: 1, LastPublishedAt: at(2026, time.April, 2)}
+	soft.Releases = audit.Releases{
+		Total: 4, Drafts: 1, LastPublishedAt: at(2026, time.April, 2),
+		LatestTag: "v1.2.0", LatestPublishedAt: at(2026, time.April, 2),
+	}
 	soft.Settings.SecretScanning = "enabled"
 	soft.Settings.SecretScanningPushProtection = "enabled"
 	soft.Settings.PrivateVulnerabilityReporting = new(true)
@@ -218,7 +221,13 @@ func fullSnapshot() *audit.Snapshot {
 	// One slash-only skill that passes every skill check, and no command
 	// file, so its wrapper cell is n/a.
 	// Its one hook passes every hook check, plugin-root path included.
+	// It is also a plugin that passes every plugin check: every field, no
+	// marketplace of its own, and a version equal to its latest release's tag.
 	soft.Claude = audit.Claude{
+		Plugin: audit.ClaudePlugin{
+			Present: true, Name: "plugin-kit", Version: "1.2.0",
+			Fields: []string{"$schema", "author", "description", "homepage", "license", "name", "repository", "version"},
+		},
 		Skills: []audit.ClaudeSkill{projectSkill("skill-01", 45)},
 		Hooks: []audit.ClaudeHook{{
 			Source: "hooks/hooks.json", Plugin: true, Event: "PreToolUse", Type: "command", Matcher: "Bash",
@@ -314,7 +323,14 @@ func fullSnapshot() *audit.Snapshot {
 	quoted.Keys["disable-model-invocation"] = "!!str"
 	quoted.DisableModelInvocation = false
 	quoted.DescriptionChars = rules.SkillDescriptionMax + 64
+	// It is a plugin too, behind its latest release, missing two manifest
+	// fields and carrying a marketplace of its own.
+	tools.Releases = audit.Releases{Total: 2, LatestTag: "v1.2.0", LatestPublishedAt: at(2026, time.March, 5)}
 	tools.Claude = audit.Claude{
+		Plugin: audit.ClaudePlugin{
+			Present: true, Name: "plugin-kit", Version: "1.1.0", OwnMarketplace: true,
+			Fields: []string{"$schema", "author", "description", "name", "repository", "version"},
+		},
 		Skills: []audit.ClaudeSkill{projectSkill("skill-01", 120), quoted},
 		Commands: []audit.ClaudeSkill{{
 			Path: ".claude/commands/command-01.md", Dir: "command-01",
@@ -360,7 +376,9 @@ func fullSnapshot() *audit.Snapshot {
 	// that judges it fails as unreadable; its hooks file is not JSON, so
 	// every hook check does too, except the plugin-root check, which never
 	// judges a project settings file.
+	// Its plugin manifest is not JSON, so every plugin check fails too.
 	cfg.Claude = audit.Claude{
+		Plugin: audit.ClaudePlugin{Present: true, Unreadable: ".claude-plugin/plugin.json: not valid JSON: unexpected end of JSON input"},
 		Skills: []audit.ClaudeSkill{{
 			Path: ".claude/skills/skill-01/SKILL.md", Dir: "skill-01",
 			Unreadable: "the frontmatter is not closed by a --- line",

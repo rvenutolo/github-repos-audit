@@ -674,3 +674,222 @@ func TestObserveClaude_hookGaps(t *testing.T) {
 		}
 	}
 }
+
+// pluginChecks is every check the Plugin sub-table carries so far, in its
+// column order.
+var pluginChecks = []rules.Check{
+	rules.CheckPluginManifestFields,
+	rules.CheckPluginNoOwnMarketplace,
+	rules.CheckPluginReleases,
+	rules.CheckPluginVersionMatchesTag,
+}
+
+// allPluginFields is every field plugin_manifest_fields requires, as
+// internal/claude records them.
+func allPluginFields() []string {
+	return []string{"$schema", "author", "description", "homepage", "license", "name", "repository", "version"}
+}
+
+func TestObserveClaude_plugin(t *testing.T) {
+	t.Parallel()
+
+	na := claudeWant{rules.NA, ""}
+	pass := func(v string) claudeWant { return claudeWant{rules.Pass, v} }
+	fail := func(v string) claudeWant { return claudeWant{rules.Fail, v} }
+	plugin := func(tag string, mutate func(*audit.ClaudePlugin)) audit.Repo {
+		p := audit.ClaudePlugin{Present: true, Name: "plugin-kit", Version: "1.2.0", Fields: allPluginFields()}
+		if mutate != nil {
+			mutate(&p)
+		}
+		r := withClaude(audit.Claude{Plugin: p})
+		r.Releases.LatestTag = tag
+		return r
+	}
+	row := func(fields, market, releases, match claudeWant) map[rules.Check]claudeWant {
+		return map[rules.Check]claudeWant{
+			rules.CheckPluginManifestFields:    fields,
+			rules.CheckPluginNoOwnMarketplace:  market,
+			rules.CheckPluginReleases:          releases,
+			rules.CheckPluginVersionMatchesTag: match,
+		}
+	}
+	const unreadable = "unreadable .claude-plugin/plugin.json"
+
+	tests := []struct {
+		name string
+		repo audit.Repo
+		want map[rules.Check]claudeWant
+	}{
+		{"no plugin.json is n/a throughout", withClaude(audit.Claude{}), row(na, na, na, na)},
+		{
+			"a complete plugin at its release passes",
+			plugin("v1.2.0", nil),
+			row(pass(""), pass(""), pass(""), pass("1.2.0")),
+		},
+		{
+			"missing fields are listed in sorted order",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) {
+				p.Fields = []string{"$schema", "author", "description", "name", "repository", "version"}
+			}),
+			row(fail("homepage, license"), pass(""), pass(""), pass("1.2.0")),
+		},
+		{
+			"the repository's own marketplace.json fails",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.OwnMarketplace = true }),
+			row(pass(""), fail(""), pass(""), pass("1.2.0")),
+		},
+		{
+			"no release fails releases and leaves the version match n/a",
+			plugin("", nil),
+			row(pass(""), pass(""), fail(""), na),
+		},
+		{
+			"a version ahead of the release passes",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "1.3.0" }),
+			row(pass(""), pass(""), pass(""), pass("1.3.0 ≥ v1.2.0")),
+		},
+		{
+			"a version behind the release fails",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "1.1.0" }),
+			row(pass(""), pass(""), pass(""), fail("1.1.0 < v1.2.0")),
+		},
+		{
+			"a version that is not semver fails with the raw values",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "abc" }),
+			row(pass(""), pass(""), pass(""), fail("abc ? v1.2.0")),
+		},
+		{
+			"a missing version fails",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "" }),
+			row(pass(""), pass(""), pass(""), fail("none ? v1.2.0")),
+		},
+		{
+			"a tag that is not semver fails with the raw values",
+			plugin("latest", nil),
+			row(pass(""), pass(""), pass(""), fail("1.2.0 ? latest")),
+		},
+		{
+			"a prerelease is behind its release",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { p.Version = "1.2.0-rc.1" }),
+			row(pass(""), pass(""), pass(""), fail("1.2.0-rc.1 < v1.2.0")),
+		},
+		{
+			"a release is ahead of its prerelease tag",
+			plugin("v1.2.0-rc.1", nil),
+			row(pass(""), pass(""), pass(""), pass("1.2.0 ≥ v1.2.0-rc.1")),
+		},
+		{
+			"an unreadable manifest fails all four",
+			plugin("v1.2.0", func(p *audit.ClaudePlugin) { *p = audit.ClaudePlugin{Present: true, Unreadable: "not valid JSON"} }),
+			row(fail(unreadable), fail(unreadable), fail(unreadable), fail(unreadable)),
+		},
+		{
+			"an unreadable manifest fails even with no release",
+			plugin("", func(p *audit.ClaudePlugin) { *p = audit.ClaudePlugin{Present: true, Unreadable: "not valid JSON"} }),
+			row(fail(unreadable), fail(unreadable), fail(unreadable), fail(unreadable)),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rep := mustEvaluateOne(t, tt.repo)
+			for _, c := range pluginChecks {
+				got := rep.Repos[0].Cell(c)
+				want := tt.want[c]
+				if got.Verdict != want.verdict || got.Value != want.value {
+					t.Errorf("%s = %v %q, want %v %q", c, got.Verdict, got.Value, want.verdict, want.value)
+				}
+				if got.Verdict == rules.Fail && want.value != "" && !got.Mark {
+					t.Errorf("%s: a failing value should carry a mark", c)
+				}
+			}
+		})
+	}
+}
+
+func TestObserveClaude_pluginGaps(t *testing.T) {
+	t.Parallel()
+
+	r := withClaude(audit.Claude{Plugin: audit.ClaudePlugin{
+		Present: true, Name: "plugin-kit", Version: "1.0.0", Fields: []string{"name"}, OwnMarketplace: true,
+	}})
+	r.Releases.LatestTag = "v1.1.0"
+	rep := mustEvaluateOne(t, r)
+
+	want := map[rules.Check]string{
+		rules.CheckPluginManifestFields:    "Plugin manifest missing fields",
+		rules.CheckPluginNoOwnMarketplace:  "Plugin repository has its own marketplace.json",
+		rules.CheckPluginVersionMatchesTag: "Plugin version behind its latest release",
+	}
+	got := map[rules.Check]string{}
+	for _, g := range rep.Gaps {
+		if _, ok := want[g.Check]; ok {
+			got[g.Check] = g.Label
+		}
+	}
+	for c, label := range want {
+		if got[c] != label {
+			t.Errorf("gap %s label = %q, want %q", c, got[c], label)
+		}
+	}
+
+	none := withClaude(audit.Claude{Plugin: audit.ClaudePlugin{Present: true, Fields: allPluginFields()}})
+	for _, g := range mustEvaluateOne(t, none).Gaps {
+		if g.Check == rules.CheckPluginReleases && g.Label != "Plugin has no release" {
+			t.Errorf("plugin_releases gap label = %q", g.Label)
+		}
+	}
+}
+
+// TestObserveClaude_pluginSemver: plugin_version_matches_tag orders versions
+// as Semantic Versioning 2.0.0 does, and shows what is not one with a `?`.
+func TestObserveClaude_pluginSemver(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		version, tag string
+		want         rules.Verdict
+	}{
+		{"1.2.0", "v1.2.0", rules.Pass},
+		{"1.2.0+build.5", "v1.2.0", rules.Pass},
+		{"2.0.0", "v1.9.9", rules.Pass},
+		{"1.10.0", "v1.9.0", rules.Pass},
+		{"1.2.10", "v1.2.9", rules.Pass},
+		{"0.9.0", "v1.0.0", rules.Fail},
+		{"1.1.9", "v1.2.0", rules.Fail},
+		{"1.2.0", "1.2.0", rules.Pass},
+		// Prerelease ordering, from the semver.org precedence example.
+		{"1.0.0-alpha.1", "v1.0.0-alpha", rules.Pass},
+		{"1.0.0-alpha", "v1.0.0-alpha.1", rules.Fail},
+		{"1.0.0-alpha.1", "v1.0.0-alpha.beta", rules.Fail},
+		{"1.0.0-alpha.beta", "v1.0.0-alpha.1", rules.Pass},
+		{"1.0.0-beta.2", "v1.0.0-beta.11", rules.Fail},
+		{"1.0.0-beta.11", "v1.0.0-beta.2", rules.Pass},
+		{"1.0.0-beta", "v1.0.0-alpha", rules.Pass},
+		{"1.0.0-rc.1", "v1.0.0", rules.Fail},
+		// Not versions.
+		{"1.2", "v1.2.0", rules.Fail},
+		{"1.2.0.0", "v1.2.0", rules.Fail},
+		{"01.2.0", "v1.2.0", rules.Fail},
+		{"1.2.x", "v1.2.0", rules.Fail},
+		{"1.2.-1", "v1.2.0", rules.Fail},
+		{"1.2.0-", "v1.2.0", rules.Fail},
+		{"1.2.0-rc..1", "v1.2.0", rules.Fail},
+		{"1.2.0-rc.01", "v1.2.0", rules.Fail},
+		{"1.2.0-rc_1", "v1.2.0", rules.Fail},
+		{"v1.2.0", "v1.2.0", rules.Fail},
+		{"1.2.0", "vv1.2.0", rules.Fail},
+		{"99999999999999999999.0.0", "v1.0.0", rules.Fail},
+	}
+	for _, tt := range tests {
+		t.Run(tt.version+" vs "+tt.tag, func(t *testing.T) {
+			t.Parallel()
+			r := withClaude(audit.Claude{Plugin: audit.ClaudePlugin{Present: true, Version: tt.version, Fields: allPluginFields()}})
+			r.Releases.LatestTag = tt.tag
+			got := mustEvaluateOne(t, r).Repos[0].Cell(rules.CheckPluginVersionMatchesTag)
+			if got.Verdict != tt.want {
+				t.Errorf("verdict = %v (%q), want %v", got.Verdict, got.Value, tt.want)
+			}
+		})
+	}
+}

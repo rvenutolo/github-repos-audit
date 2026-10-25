@@ -285,6 +285,12 @@ func claudeGroups() []pathGroup {
 			{"Timeout", rules.CheckHookTimeout},
 			{"Matcher", rules.CheckHookMatcher},
 		}},
+		{"Plugin", []pathColumn{
+			{"Manifest", rules.CheckPluginManifestFields},
+			{"No own marketplace", rules.CheckPluginNoOwnMarketplace},
+			{"Releases", rules.CheckPluginReleases},
+			{"Version = tag", rules.CheckPluginVersionMatchesTag},
+		}},
 	}
 }
 

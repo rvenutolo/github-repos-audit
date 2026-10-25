@@ -47,6 +47,10 @@
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -117,6 +121,10 @@
       "nix_lock_age": "not_required",
       "nix_lock_refresh": "not_required",
       "open_prs": "info",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -187,6 +195,10 @@
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -257,6 +269,10 @@
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -327,6 +343,10 @@
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "info",
       "prettier": "not_required",
       "readme": "required",
@@ -397,6 +417,10 @@
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -542,7 +566,22 @@
             "path_form": "plugin_root",
             "script_mode": "100755"
           }
-        ]
+        ],
+        "plugin": {
+          "present": true,
+          "name": "plugin-kit",
+          "version": "1.2.0",
+          "fields": [
+            "$schema",
+            "author",
+            "description",
+            "homepage",
+            "license",
+            "name",
+            "repository",
+            "version"
+          ]
+        }
       },
       "ci_state": "SUCCESS",
       "ci": {
@@ -636,7 +675,9 @@
       "releases": {
         "total": 4,
         "drafts": 1,
-        "last_published_at": "2026-04-02T12:00:00Z"
+        "last_published_at": "2026-04-02T12:00:00Z",
+        "latest_tag": "v1.2.0",
+        "latest_published_at": "2026-04-02T12:00:00Z"
       },
       "rulesets": [
         {
@@ -957,7 +998,21 @@
             "path_form": "project_dir",
             "script_mode": "100755"
           }
-        ]
+        ],
+        "plugin": {
+          "present": true,
+          "name": "plugin-kit",
+          "version": "1.1.0",
+          "fields": [
+            "$schema",
+            "author",
+            "description",
+            "name",
+            "repository",
+            "version"
+          ],
+          "own_marketplace": true
+        }
       },
       "ci_state": "PENDING",
       "ci": {
@@ -1037,8 +1092,10 @@
         "artifact_bytes": 0
       },
       "releases": {
-        "total": 0,
-        "drafts": 0
+        "total": 2,
+        "drafts": 0,
+        "latest_tag": "v1.2.0",
+        "latest_published_at": "2026-03-05T12:00:00Z"
       },
       "rulesets": [
         {
@@ -1246,7 +1303,11 @@
             "source": ".claude/settings.json",
             "unreadable": "not valid JSON: unexpected end of JSON input"
           }
-        ]
+        ],
+        "plugin": {
+          "present": true,
+          "unreadable": ".claude-plugin/plugin.json: not valid JSON: unexpected end of JSON input"
+        }
       },
       "ci_state": "SUCCESS",
       "releases": {
