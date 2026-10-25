@@ -583,6 +583,9 @@ or command's frontmatter. A cell counts hooks the way the skill cells count
 files, naming a failing hook by its file and event (`✗ 1/3 hooks/hooks.json
 PreToolUse`). A hooks file that cannot be read, including one `plugin.json`
 declares that is not tracked, fails every hook check as `unreadable <path>`.
+Hooks declared in the frontmatter of a skill or command file that cannot be
+read are not seen at all: the hook checks do not count them, and the skill
+checks fail for that file instead.
 
 - **hook_known_events** — whether every hook's event is one the
   [hooks documentation](https://code.claude.com/docs/en/hooks) lists. A
