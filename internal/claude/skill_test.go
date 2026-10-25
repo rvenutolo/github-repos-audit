@@ -290,6 +290,9 @@ func TestWrappedSkill(t *testing.T) {
 		{"none", "Do the thing", ""},
 		{"at the start and end", "docs-fix", "docs-fix"},
 		{"case sensitive", "Docs-Audit", ""},
+		{"a whole word after an embedded one", "xdocs-audit, then docs-audit", "docs-audit"},
+		{"a non-ASCII letter ends a word", "Use docs-audité", "docs-audit"},
+		{"overlapping occurrences", "docs-fixdocs-fix docs-fix", "docs-fix"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
