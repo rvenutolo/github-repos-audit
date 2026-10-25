@@ -3,9 +3,11 @@ package rules
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
@@ -113,7 +115,24 @@ func countedCell(items []item) observation {
 // The hook checks apply once the repository has a hook, and each is n/a when
 // no hook is one it judges. A hook file that could not be read fails all five,
 // except that hook_plugin_root skips one outside a plugin.
-func observeClaude(c Check, r audit.Repo, _ evalContext) observation {
+//
+// The marketplace checks are n/a everywhere when no marketplace is
+// configured, and the two marketplace-row checks on every repository but the
+// marketplace's, before the Claude files are looked at: those cases judge
+// nothing whatever the files say, and an unreadable cell there would report a
+// problem in a check that does not apply.
+func observeClaude(c Check, r audit.Repo, ev evalContext) observation {
+	if marketplaceNA(c, r, ev.marketplace) {
+		return observation{unknown: true}
+	}
+	//nolint:exhaustive // only the marketplace-row checks skip the guard below
+	switch c {
+	case CheckMarketplaceEntriesValid, CheckMarketplaceComplete:
+		// They judge the marketplace file, not this repository's own Claude
+		// files, so a repository whose files could not be listed still has
+		// a marketplace row to judge.
+		return observeMarketplace(c, r, ev)
+	}
 	cl := r.Claude
 	if cl.Unreadable != "" {
 		return observation{value: "unreadable " + cl.Unreadable, mark: true, scalar: c.ValueOnly()}
@@ -187,6 +206,11 @@ func observeClaude(c Check, r audit.Repo, _ evalContext) observation {
 			}
 			return h.Matcher != "", true
 		}))
+	case CheckPluginManifestFields, CheckPluginNoOwnMarketplace,
+		CheckPluginReleases, CheckPluginVersionMatchesTag:
+		return observePlugin(c, r)
+	case CheckPluginListed, CheckPluginPinValid, CheckPluginPinCurrent:
+		return observeMarketplace(c, r, ev)
 	}
 	// CheckSkillSize, the one Claude check left. It closes the function
 	// rather than taking a case of its own because observe hands nothing
@@ -313,4 +337,358 @@ func hookItems(hooks []audit.ClaudeHook, judge func(audit.ClaudeHook) (ok, appli
 		}
 	}
 	return out
+}
+
+// requiredPluginFields is every field plugin_manifest_fields requires of
+// plugin.json, sorted, which is the order internal/claude records the ones
+// present and the order the cell lists the ones missing.
+func requiredPluginFields() []string {
+	return []string{"$schema", "author", "description", "homepage", "license", "name", "repository", "version"}
+}
+
+// observePlugin judges the four plugin checks. They apply once the repository
+// tracks .claude-plugin/plugin.json and are n/a before that. A manifest that
+// could not be read fails all four: its fields, version and sibling files
+// are unknown, and a release check that passed beside them would read as a
+// verdict on a plugin nobody looked at.
+func observePlugin(c Check, r audit.Repo) observation {
+	p := r.Claude.Plugin
+	if !p.Present && p.Unreadable == "" {
+		return observation{unknown: true}
+	}
+	if p.Unreadable != "" {
+		return observation{value: "unreadable .claude-plugin/plugin.json", mark: true}
+	}
+	//nolint:exhaustive // observeClaude hands only the plugin checks here
+	switch c {
+	case CheckPluginManifestFields:
+		missing := slices.DeleteFunc(requiredPluginFields(), func(f string) bool { return slices.Contains(p.Fields, f) })
+		if len(missing) == 0 {
+			return observation{ok: true}
+		}
+		return observation{value: strings.Join(missing, ", "), mark: true}
+	case CheckPluginNoOwnMarketplace:
+		return observation{ok: !p.OwnMarketplace}
+	case CheckPluginReleases:
+		// GitHub's Latest release already leaves out drafts and
+		// prereleases, so an empty tag means nothing has been published.
+		return observation{ok: r.Releases.LatestTag != ""}
+	}
+	// CheckPluginVersionMatchesTag, the one plugin check left, for the same
+	// reason CheckSkillSize closes observeClaude.
+	tag := r.Releases.LatestTag
+	if tag == "" {
+		// plugin_releases already fails; a second failure would say the
+		// same thing about a version with nothing to be compared to.
+		return observation{unknown: true}
+	}
+	version := cmp.Or(p.Version, "none")
+	ok, valid := semverAtLeast(p.Version, tag)
+	switch {
+	case !valid:
+		return observation{value: version + " ? " + tag, mark: true}
+	case version == strings.TrimPrefix(tag, "v"):
+		return observation{ok: true, value: version}
+	case ok:
+		// Ahead passes, so a nightly run between a release pull request's
+		// merge and its publish does not fail.
+		return observation{ok: true, value: version + " ≥ " + tag}
+	}
+	return observation{value: version + " < " + tag, mark: true}
+}
+
+// semverAtLeast reports whether version is the same as or later than tag with
+// its leading v removed, comparing them as Semantic Versioning 2.0.0 orders
+// them (https://semver.org): numeric core first, then a version with no
+// prerelease ahead of one with, then prerelease identifiers one by one.
+// Build metadata does not take part. valid is false when either side is not
+// a semantic version, and ok is then false too. It is local because the
+// module would be the project's only use of golang.org/x/mod.
+func semverAtLeast(version, tag string) (ok, valid bool) {
+	a, aok := parseSemver(version)
+	b, bok := parseSemver(strings.TrimPrefix(tag, "v"))
+	if !aok || !bok {
+		return false, false
+	}
+	return a.compare(b) >= 0, true
+}
+
+type semver struct {
+	core [3]int
+	pre  []string
+}
+
+// parseSemver parses MAJOR.MINOR.PATCH with optional -prerelease and
+// +build, rejecting what semver.org's grammar does: leading zeros in the
+// numeric parts and numeric prerelease identifiers, empty identifiers, and
+// characters outside [0-9A-Za-z-].
+func parseSemver(s string) (semver, bool) {
+	var v semver
+	s, _, _ = strings.Cut(s, "+")
+	core, pre, hasPre := strings.Cut(s, "-")
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return v, false
+	}
+	for i, p := range parts {
+		n, ok := numericIdent(p)
+		if !ok {
+			return v, false
+		}
+		v.core[i] = n
+	}
+	if hasPre {
+		v.pre = strings.Split(pre, ".")
+		for _, id := range v.pre {
+			if id == "" || strings.Trim(id, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-") != "" {
+				return v, false
+			}
+			if _, numeric := strconv.Atoi(id); numeric == nil && len(id) > 1 && id[0] == '0' {
+				return v, false
+			}
+		}
+	}
+	return v, true
+}
+
+// numericIdent parses a version number without a sign or a leading zero.
+func numericIdent(s string) (int, bool) {
+	if s == "" || (len(s) > 1 && s[0] == '0') || strings.Trim(s, "0123456789") != "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	return n, err == nil
+}
+
+func (a semver) compare(b semver) int {
+	for i := range a.core {
+		if c := cmp.Compare(a.core[i], b.core[i]); c != 0 {
+			return c
+		}
+	}
+	switch {
+	case len(a.pre) == 0 && len(b.pre) == 0:
+		return 0
+	case len(a.pre) == 0:
+		return 1
+	case len(b.pre) == 0:
+		return -1
+	}
+	for i := range min(len(a.pre), len(b.pre)) {
+		if c := comparePre(a.pre[i], b.pre[i]); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(len(a.pre), len(b.pre))
+}
+
+// comparePre orders two prerelease identifiers: numeric ones numerically and
+// below any alphanumeric one, alphanumeric ones in ASCII order.
+func comparePre(a, b string) int {
+	an, aerr := strconv.Atoi(a)
+	bn, berr := strconv.Atoi(b)
+	switch {
+	case aerr == nil && berr == nil:
+		return cmp.Compare(an, bn)
+	case aerr == nil:
+		return -1
+	case berr == nil:
+		return 1
+	}
+	return strings.Compare(a, b)
+}
+
+// pinLagLimit is how long a plugin's latest release may go unpinned by the
+// marketplace before plugin_pin_current fails. Renovate auto-merges every
+// pin bump, majors included, within about a day, so a week behind means the
+// bump pipeline is broken rather than slow. It is fixed, not configurable.
+const pinLagLimit = 7 * 24 * time.Hour
+
+// marketplaceNA reports a marketplace check with nothing to judge on this
+// repository: any of them when no marketplace is configured, and the two that
+// judge the marketplace file as a whole on any repository but the one that
+// holds it. GitHub names match regardless of case, so the comparison does
+// too.
+func marketplaceNA(c Check, r audit.Repo, m audit.ClaudeMarketplace) bool {
+	//nolint:exhaustive // only the marketplace checks can be n/a here
+	switch c {
+	case CheckPluginListed, CheckPluginPinValid, CheckPluginPinCurrent:
+		return m.Repo == ""
+	case CheckMarketplaceEntriesValid, CheckMarketplaceComplete:
+		return m.Repo == "" || !strings.EqualFold(r.Name, m.Repo)
+	}
+	return false
+}
+
+// observeMarketplace judges the checks that read the configured
+// marketplace; marketplaceNA has already set aside the cases that judge
+// nothing. A marketplace that could not be read fails every one that applies
+// as `unreadable <marketplace>`: whether a plugin is listed, or the list is
+// complete, is unknown, and a pass would vouch for a file nobody read.
+//
+// The three plugin checks apply to a public repository that tracks
+// .claude-plugin/plugin.json, readable or not, since the listing does not
+// depend on the manifest's content. A private plugin is n/a: only public
+// plugins are listed, and a private one is added once it is made public.
+func observeMarketplace(c Check, r audit.Repo, ev evalContext) observation {
+	m := ev.marketplace
+	unreadable := observation{value: "unreadable " + m.Repo, mark: true}
+	//nolint:exhaustive // observeClaude hands only the marketplace checks here
+	switch c {
+	case CheckMarketplaceEntriesValid:
+		if m.Unreadable != "" {
+			return unreadable
+		}
+		return countedCell(entryItems(m.Entries, ev))
+	case CheckMarketplaceComplete:
+		if m.Unreadable != "" {
+			return unreadable
+		}
+		return marketplaceComplete(ev)
+	}
+	if !isPlugin(r) || r.Visibility != "public" {
+		return observation{unknown: true}
+	}
+	if m.Unreadable != "" {
+		return unreadable
+	}
+	e, listed := entryFor(r.Name, ev)
+	if c == CheckPluginListed {
+		return observation{ok: listed}
+	}
+	if !listed {
+		// plugin_listed already fails; a pin that does not exist has
+		// nothing to be valid or current about.
+		return observation{unknown: true}
+	}
+	problems := pinProblems(e)
+	if c == CheckPluginPinValid {
+		if len(problems) == 0 {
+			return observation{ok: true, value: e.Ref}
+		}
+		return observation{value: strings.Join(problems, ", "), mark: true}
+	}
+	// CheckPluginPinCurrent, the one marketplace check left, for the same
+	// reason CheckSkillSize closes observeClaude.
+	if len(problems) > 0 {
+		// plugin_pin_valid already fails, and how far behind a pin is
+		// means nothing when the pin is not the release it names.
+		return observation{unknown: true}
+	}
+	return pinCurrent(e.Ref, r.Releases, ev.now)
+}
+
+// isPlugin reports a repository that tracks .claude-plugin/plugin.json,
+// whether or not it could be read.
+func isPlugin(r audit.Repo) bool {
+	return r.Claude.Plugin.Present || r.Claude.Plugin.Unreadable != ""
+}
+
+// entrySource is the lowercased repository name a marketplace entry's source
+// points at, and whether it points into the audited account at all. The
+// owner is matched regardless of case, as GitHub logins are, which is how the
+// collector decided which entries to look up.
+func entrySource(e audit.MarketplaceEntry, owner string) (string, bool) {
+	o, name, found := strings.Cut(e.Repo, "/")
+	if !found || !strings.EqualFold(o, owner) {
+		return "", false
+	}
+	return strings.ToLower(name), true
+}
+
+// entryFor is the first marketplace entry whose source is the named
+// repository. Duplicate entries are the marketplace repository's own CI to
+// catch, so only the first is judged, as the first is the one a reader of
+// the file meets.
+func entryFor(name string, ev evalContext) (audit.MarketplaceEntry, bool) {
+	for _, e := range ev.marketplace.Entries {
+		if src, ok := entrySource(e, ev.owner); ok && src == strings.ToLower(name) {
+			return e, true
+		}
+	}
+	return audit.MarketplaceEntry{}, false
+}
+
+// pinProblems is everything wrong with an entry's pin, in the order the cell
+// names them: the ref must be a release of the repository, the sha the
+// commit that tag resolves to, and the plugin.json name at that sha the
+// entry's name. A fact the collector could not find is empty, so a missing
+// answer fails rather than matching another missing answer.
+func pinProblems(e audit.MarketplaceEntry) []string {
+	var out []string
+	switch {
+	case e.Ref == "":
+		out = append(out, "no ref")
+	case !e.ReleaseTag:
+		out = append(out, e.Ref+" is not a release")
+	}
+	switch {
+	case e.SHA == "":
+		out = append(out, "no sha")
+	case e.Ref != "" && e.TagCommit != e.SHA:
+		out = append(out, "sha is not "+e.Ref)
+	}
+	// The word rather than ≠, which the report already uses for a path that
+	// deviates from the account's norm.
+	if e.PluginName == "" || e.PluginName != e.Name {
+		out = append(out, "name differs")
+	}
+	return out
+}
+
+// pinCurrent judges a valid pin against the repository's latest release. On
+// it, the cell is the tag. Ahead of it by semver precedence (a prerelease
+// newer than GitHub's Latest, say), it reads `pinned ≥ latest` and passes, as
+// plugin_version_matches_tag passes a version ahead of its tag. Behind, it
+// reads `pinned → latest` and still passes until the latest release is more
+// than pinLagLimit old. A pin to a release when GitHub reports no latest one
+// (every release since a prerelease, say) fails, since nothing says the pin
+// is current.
+func pinCurrent(ref string, rel audit.Releases, now time.Time) observation {
+	if ref == rel.LatestTag {
+		return observation{ok: true, value: ref}
+	}
+	if ahead, _ := semverAtLeast(strings.TrimPrefix(ref, "v"), rel.LatestTag); ahead {
+		return observation{ok: true, value: ref + " ≥ " + rel.LatestTag}
+	}
+	value := ref + " → " + cmp.Or(rel.LatestTag, "none")
+	if rel.LatestTag == "" || now.Sub(rel.LatestPublishedAt) > pinLagLimit {
+		return observation{value: value, mark: true}
+	}
+	return observation{ok: true, value: value}
+}
+
+// entryItems judges each marketplace entry for marketplace_entries_valid: its
+// source must be a public audited repository, and it must carry no version,
+// which plugin.json owns. An entry outside the audited set (another owner,
+// a fork, an archived repository, one repos.toml does not name, a source that
+// is not a GitHub repository) fails on the owner and name alone. An entry is
+// named by its name, else its source, else its place in the file.
+func entryItems(entries []audit.MarketplaceEntry, ev evalContext) []item {
+	out := make([]item, 0, len(entries))
+	for i, e := range entries {
+		src, inAccount := entrySource(e, ev.owner)
+		repo, audited := ev.repos[src]
+		ok := inAccount && audited && repo.Visibility == "public" && !e.HasVersion
+		out = append(out, item{name: cmp.Or(e.Name, e.Repo, fmt.Sprintf("entry %d", i+1)), ok: ok})
+	}
+	return out
+}
+
+// marketplaceComplete passes when every public audited plugin has an entry,
+// and otherwise names the ones without, in report order.
+func marketplaceComplete(ev evalContext) observation {
+	var missing []string
+	for _, r := range slices.SortedFunc(maps.Values(ev.repos), func(a, b audit.Repo) int { return compareNames(a.Name, b.Name) }) {
+		if !isPlugin(r) || r.Visibility != "public" {
+			continue
+		}
+		if _, listed := entryFor(r.Name, ev); !listed {
+			missing = append(missing, r.Name)
+		}
+	}
+	if len(missing) == 0 {
+		return observation{ok: true}
+	}
+	return observation{value: strings.Join(missing, ", "), mark: true}
 }

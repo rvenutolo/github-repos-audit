@@ -37,6 +37,10 @@
     "config_drift": {
       "description": "Where repos.toml and the account disagree about which repositories exist. Absent when they agree.",
       "$ref": "#/$defs/config_drift"
+    },
+    "claude_marketplace": {
+      "description": "The Claude plugin marketplace repos.toml's [claude] table names, read once per run. Absent when repos.toml configures none.",
+      "$ref": "#/$defs/claude_marketplace"
     }
   },
   "$defs": {
@@ -161,6 +165,15 @@
               "hook_plugin_root",
               "hook_timeout",
               "hook_matcher",
+              "plugin_manifest_fields",
+              "plugin_no_own_marketplace",
+              "plugin_releases",
+              "plugin_version_matches_tag",
+              "plugin_listed",
+              "plugin_pin_valid",
+              "plugin_pin_current",
+              "marketplace_entries_valid",
+              "marketplace_complete",
               "last_release_age",
               "last_push",
               "open_prs",
@@ -337,6 +350,15 @@
         "hook_plugin_root",
         "hook_timeout",
         "hook_matcher",
+        "plugin_manifest_fields",
+        "plugin_no_own_marketplace",
+        "plugin_releases",
+        "plugin_version_matches_tag",
+        "plugin_listed",
+        "plugin_pin_valid",
+        "plugin_pin_current",
+        "marketplace_entries_valid",
+        "marketplace_complete",
         "last_release_age",
         "last_push",
         "open_prs",
@@ -407,6 +429,15 @@
         "hook_plugin_root": { "$ref": "#/$defs/expectation" },
         "hook_timeout": { "$ref": "#/$defs/expectation" },
         "hook_matcher": { "$ref": "#/$defs/expectation" },
+        "plugin_manifest_fields": { "$ref": "#/$defs/expectation" },
+        "plugin_no_own_marketplace": { "$ref": "#/$defs/expectation" },
+        "plugin_releases": { "$ref": "#/$defs/expectation" },
+        "plugin_version_matches_tag": { "$ref": "#/$defs/expectation" },
+        "plugin_listed": { "$ref": "#/$defs/expectation" },
+        "plugin_pin_valid": { "$ref": "#/$defs/expectation" },
+        "plugin_pin_current": { "$ref": "#/$defs/expectation" },
+        "marketplace_entries_valid": { "$ref": "#/$defs/expectation" },
+        "marketplace_complete": { "$ref": "#/$defs/expectation" },
         "last_release_age": { "$ref": "#/$defs/info_expectation" },
         "last_push": { "$ref": "#/$defs/info_expectation" },
         "open_prs": { "$ref": "#/$defs/info_expectation" },
@@ -1022,6 +1053,85 @@
         }
       }
     },
+    "claude_marketplace": {
+      "description": "What the configured marketplace repository's .claude-plugin/marketplace.json lists, with what GitHub answered about each entry's pin.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo"],
+      "properties": {
+        "repo": {
+          "description": "The marketplace repository's name, as repos.toml's [claude] table gives it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "unreadable": {
+          "description": "Why the marketplace could not be read: the repository is not among the audited repositories, or its marketplace.json is absent or not in the shape Claude Code loads. When present entries is absent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "entries": {
+          "description": "Every plugins entry, in the file's order.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/marketplace_entry"
+          }
+        }
+      }
+    },
+    "marketplace_entry": {
+      "description": "One marketplace plugins entry and the answers about its pin. The lookups are made only for an entry whose source is a GitHub repository of the audited account.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "description": "The entry's name, the plugin's install id.",
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "description": "The source's owner/name as written. Absent for a source that is not a GitHub repository.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "description": "The source's ref as written. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "sha": {
+          "description": "The source's sha as written. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "has_version": {
+          "description": "The entry carries a version key, which plugin.json should own instead.",
+          "type": "boolean",
+          "const": true
+        },
+        "release_tag": {
+          "description": "ref names a release of repo.",
+          "type": "boolean",
+          "const": true
+        },
+        "tag_commit": {
+          "description": "The commit the tag ref resolves to, annotated tags dereferenced. Absent when repo has no such tag.",
+          "type": "string",
+          "minLength": 1
+        },
+        "plugin_name": {
+          "description": ".claude-plugin/plugin.json's name at sha.",
+          "type": "string",
+          "minLength": 1
+        },
+        "problem": {
+          "description": "Why a lookup could not be made or gave no usable answer: the source is not an audited repository or is an empty one, the ref is not safe to request, the tag resolves to no commit, or there is no readable manifest at sha.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "claude_plugin": {
       "description": "What .claude-plugin/plugin.json says. Absent when there is none.",
       "type": "object",
@@ -1240,6 +1350,16 @@
         },
         "last_published_at": {
           "description": "When the most recent non-draft release was published, in UTC. Absent when there is none.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "latest_tag": {
+          "description": "The tag of GitHub's Latest release, which excludes drafts and prereleases. Absent when there is none.",
+          "type": "string",
+          "minLength": 1
+        },
+        "latest_published_at": {
+          "description": "When GitHub's Latest release was published, in UTC. Absent when there is none.",
           "type": "string",
           "format": "date-time"
         }

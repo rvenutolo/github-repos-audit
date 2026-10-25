@@ -1,8 +1,8 @@
 // Package config reads repos.toml and checks its shape and vocabulary:
 // unknown keys, unknown types and checks, malformed overrides, and the
-// [identity] table. Dead overrides are rules.ValidateOffline's; the checks
-// that need live data (see cmd/github-repos-audit's collect) run there through
-// rules.Validate.
+// [identity] and [claude] tables. Dead overrides are rules.ValidateOffline's;
+// the checks that need live data (see cmd/github-repos-audit's collect) run
+// there through rules.Validate.
 package config
 
 import (
@@ -53,6 +53,11 @@ type Config struct {
 	// no [identity] table, which it may omit only when nothing judges
 	// git_identity.
 	Identity audit.IdentityStandard
+	// Marketplace is the [claude] table's marketplace: the name of the
+	// repository whose .claude-plugin/marketplace.json lists the account's
+	// plugins. Always a key of Repos; empty when repos.toml has no [claude]
+	// table, and then nothing marketplace-dependent is fetched or judged.
+	Marketplace string
 }
 
 // Names returns every declared repository name, sorted case-insensitively so
@@ -69,6 +74,13 @@ type fileShape struct {
 	Types    rules.Types           `toml:"types"`
 	Repos    map[string]entryShape `toml:"repos"`
 	Identity *identityShape        `toml:"identity"`
+	Claude   claudeShape           `toml:"claude"`
+}
+
+// claudeShape mirrors [claude]. Unlike [identity] an empty table means the
+// same as no table, so it needs no pointer.
+type claudeShape struct {
+	Marketplace string `toml:"marketplace"`
 }
 
 // identityShape mirrors [identity]. A pointer in fileShape, so an empty table
@@ -139,10 +151,19 @@ func Parse(r io.Reader) (*Config, error) {
 	}
 	std, errs := identityProblems(raw)
 	problems = append(problems, errs...)
+	// The marketplace is read from the repository and its entries judged
+	// against the audited set, so one repos.toml does not audit is a typo or
+	// a marketplace nothing would read.
+	if m := raw.Claude.Marketplace; m != "" {
+		if _, ok := raw.Repos[m]; !ok {
+			problems = append(problems, fmt.Errorf("[claude] marketplace %q is not in [repos.*]", m))
+		}
+	}
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("%w: %w", ErrInvalid, errors.Join(problems...))
 	}
 	cfg.Identity = std
+	cfg.Marketplace = raw.Claude.Marketplace
 	return cfg, nil
 }
 

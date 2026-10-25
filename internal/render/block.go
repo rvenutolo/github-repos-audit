@@ -285,6 +285,20 @@ func claudeGroups() []pathGroup {
 			{"Timeout", rules.CheckHookTimeout},
 			{"Matcher", rules.CheckHookMatcher},
 		}},
+		{"Plugin", []pathColumn{
+			{"Manifest", rules.CheckPluginManifestFields},
+			{"No own marketplace", rules.CheckPluginNoOwnMarketplace},
+			{"Releases", rules.CheckPluginReleases},
+			{"Version = tag", rules.CheckPluginVersionMatchesTag},
+			{"Listed", rules.CheckPluginListed},
+			{"Pin valid", rules.CheckPluginPinValid},
+			{"Pin current", rules.CheckPluginPinCurrent},
+			// The marketplace repository's row: its cells apply there
+			// alone, so the row is listed even when that repository is no
+			// plugin itself.
+			{"Entries valid", rules.CheckMarketplaceEntriesValid},
+			{"Complete", rules.CheckMarketplaceComplete},
+		}},
 	}
 }
 

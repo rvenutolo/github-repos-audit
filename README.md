@@ -160,10 +160,12 @@ and the generated report. These steps describe how that repository is wired up.
 
 ## `repos.toml` reference
 
-`repos.toml` is the only file you hand-maintain. It has four kinds of table,
-and needs at least one `[types.<name>]` and one `[repos.<name>]`. A key the
-tool does not know, anywhere in the file, is an error rather than ignored, so
-a misspelling such as `publish = true` cannot pass unnoticed.
+`repos.toml` is the only file you hand-maintain. It needs at least one
+`[types.<name>]` and one `[repos.<name>]`. `[identity]` is required once any
+type or override judges `git_identity`, and refused otherwise; `[claude]` is
+optional. A key the tool does not know, anywhere in the file, is an error
+rather than ignored, so a misspelling such as `publish = true` cannot pass
+unnoticed.
 
 `[types.<name>]` defines a category of repository and what it expects. A type
 lists every check the tool knows, each set to one of:
@@ -224,6 +226,29 @@ match = " Example <"
 The table is required once any type or override judges `git_identity` (with
 any word but `not_required`), and refused when nothing does, for the same
 reason a dead override is.
+
+`[claude]` names the repository that holds your Claude Code plugin
+marketplace, for the marketplace and plugin pin checks:
+
+```toml
+[claude]
+marketplace = "plugin-market"
+```
+
+`marketplace` is a repository name, without the owner, and must be one of the
+`[repos.<name>]` entries; `github-repos-audit validate` rejects any other
+name. Each run reads its `.claude-plugin/marketplace.json` from the default
+branch once, and, for every entry whose `source` is a GitHub repository the
+run audits, looks up whether the pinned `ref` is a release, the commit that
+tag resolves to (annotated tags followed), and the `name` in
+`.claude-plugin/plugin.json` at the pinned `sha`. An entry pointing anywhere
+else costs no request, as does an entry naming an empty repository. An entry
+whose `ref` has a `.`, `..` or empty path segment costs no tag or release
+request. A marketplace repository that is not
+among the audited repositories (archived, a fork, or missing), or a
+`marketplace.json` that is absent or does not parse, does not stop the run:
+`audit.json` records why under `claude_marketplace.unreadable`. Without the
+table nothing is fetched.
 
 An override that names an unknown check is an error, and so is an override
 that agrees with what the repository's type already derives — a dead
@@ -539,8 +564,12 @@ that is not tracked. When the repository's Claude files cannot be read as
 a whole (more of them than the tool reads in one repository, a
 `plugin.json` whose layout cannot be decided, or one that declares a
 skills or commands directory that is not there), every one of them fails
-as `unreadable <reason>`. The report's Claude section
-shows them, listing only the repositories that carry any.
+as `unreadable <reason>`, except marketplace_entries_valid and
+marketplace_complete, which judge the marketplace file rather than the
+repository's own. The report's Claude section shows them, listing only the
+repositories that carry any. The hook, plugin and marketplace checks
+further down apply on their own terms: the paragraph before each group says
+when, and the plugin and marketplace checks need no skill or command file.
 
 - **skill_slash_only** — whether every skill and command file sets
   `disable-model-invocation: true`, so it runs only when someone types its
@@ -610,6 +639,75 @@ checks fail for that file instead.
   name (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
   `PermissionRequest`, `PermissionDenied`) sets a non-empty `matcher`. Hooks on
   other events are skipped.
+
+The plugin checks judge a repository that tracks `.claude-plugin/plugin.json`
+and are n/a elsewhere. A `plugin.json` that cannot be read fails all four as
+`unreadable .claude-plugin/plugin.json`.
+
+- **plugin_manifest_fields** — whether `plugin.json` has `$schema`, `name`,
+  `version`, `description`, `author`, `license`, `homepage` and `repository`,
+  following the fields table at
+  <https://code.claude.com/docs/en/plugins-reference>. `author` counts only
+  with a non-empty string `author.name`, `homepage` and `repository` must
+  parse as URLs, and every other field must be a non-empty string. The cell
+  lists the fields that are missing.
+- **plugin_no_own_marketplace** — whether the repository has no
+  `.claude-plugin/marketplace.json`, so the shared marketplace is the only
+  source of the plugin. Judged at the default branch's HEAD.
+- **plugin_releases** — whether the repository has a latest release (GitHub's
+  Latest release, which leaves out drafts and prereleases). It is judged
+  whatever the repository's type says about the releases it expects.
+- **plugin_version_matches_tag** — whether the `version` in `plugin.json` is
+  the same as or ahead of the latest release's tag with its `v` removed,
+  compared as [semantic versions](https://semver.org). Ahead passes, so a run
+  between a release pull request's merge and its publish does not fail; the
+  cell reads `1.3.0 ≥ v1.2.0`. Behind fails (`1.1.0 < v1.2.0`). A version or
+  tag that is not a semantic version fails and shows both raw values
+  (`abc ? v1.2.0`). n/a when there is no release, which plugin_releases
+  already reports.
+
+The marketplace checks read the marketplace `[claude]` configures and are
+n/a everywhere without one. An entry's `source` points at a repository when
+its owner is the audited account and its name an audited repository, both
+matched regardless of case. A marketplace that cannot be read fails every
+marketplace check that applies as `unreadable <marketplace>`. The first three
+judge a public repository that tracks `.claude-plugin/plugin.json`, and are
+n/a for a private one: only public plugins are listed, and a private plugin
+is added once it is made public.
+
+- **plugin_listed** — whether the marketplace has an entry whose source is
+  this repository. Only the first such entry is judged.
+- **plugin_pin_valid** — whether the entry's `ref` is a release of this
+  repository, its `sha` is the commit that tag resolves to, and the `name` in
+  `plugin.json` at that `sha` is the entry's `name`. The cell shows the `ref`
+  when all three hold, and otherwise names what is wrong:
+  `v1.2.0 is not a release`, `sha is not v1.2.0`, `name differs`, `no ref` or
+  `no sha`. `name differs` also covers a pinned `sha` with no readable
+  `plugin.json` name. n/a when the plugin is not listed.
+- **plugin_pin_current** — whether the pinned `ref` is the latest release or
+  ahead of it, compared as semantic versions as plugin_version_matches_tag
+  compares them: a pin to a prerelease newer than the latest release passes
+  as `v1.3.0-rc.1 ≥ v1.2.0`. Behind shows as `v1.1.0 → v1.2.0` and passes
+  until the latest release has been published for more than 7 days; Renovate
+  auto-merges every pin bump within about a day, so a week behind means the
+  bump pipeline is broken. A pin when the repository has no latest release
+  fails (`v1.1.0 → none`). n/a when the plugin is not listed or the pin is
+  not valid.
+
+The last two judge the marketplace file as a whole and apply only to the
+marketplace repository's row, which the Plugin table lists even when that
+repository is not a plugin itself.
+
+- **marketplace_entries_valid** — whether every entry's source is a public
+  audited repository and no entry carries a `version`, which `plugin.json`
+  owns. An entry pointing outside the audited set (another owner, a fork, an
+  archived repository, one `repos.toml` does not name, or a source that is
+  not a GitHub repository) fails. The cell counts the entries and names the
+  ones that fail (`✗ 2/3 skill-pack`). n/a when the marketplace has no
+  entries.
+- **marketplace_complete** — whether every public audited repository that
+  tracks `.claude-plugin/plugin.json` has an entry. The cell names the ones
+  that do not.
 
 ## Cache lists
 

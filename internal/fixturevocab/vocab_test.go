@@ -339,6 +339,19 @@ const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUD
 	`(\.claude/)?(skills|skills/skill-\d{2}|skills/skill-\d{2}/SKILL\.md)|\.claude|\.claude/settings\.json|` +
 	`(\.claude/)?(commands|commands/command-\d{2}\.md)|hooks|hooks/(hooks\.json|hook-\d{2}\.sh))$`
 
+// marketplaceUnreadable is every reason the collector gives for a
+// marketplace it could not read; the parse problems carry no path.
+const marketplaceUnreadable = `^(not among the audited repositories|no \.claude-plugin/marketplace\.json|` +
+	`\.claude-plugin/marketplace\.json: [^/]*)$`
+
+// marketplacePinProblem is one reason a pin lookup gave no usable answer, and
+// marketplaceProblem one or more of them joined as the collector joins them.
+const marketplacePinProblem = `(not an audited repository|empty repository|no ref|unsafe ref|no sha|` +
+	`tag v\d+\.\d+\.\d+ does not resolve to a commit|` +
+	`(no )?\.claude-plugin/plugin\.json at (a{36}[0-9a-f]{4}|(0123456789abcdef){2}01234567)(: [^/]*)?)`
+
+const marketplaceProblem = `^` + marketplacePinProblem + `(; ` + marketplacePinProblem + `)*$`
+
 var apiRules = []rule{
 	{regexp.MustCompile(`^(\[\]\.)?name$`), isFakeRepo, "a fake repository name"},
 	{regexp.MustCompile(`^((\[\]\.)?full_name|\[\]\.ruleset_source)$`), isOwnerSlashRepo, "gh-owner/<fake>"},
@@ -371,6 +384,14 @@ var apiRules = []rule{
 	{regexp.MustCompile(`required_status_checks\[\]\.context$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
+	{regexp.MustCompile(`^data\.repository\.latest_release\.tag_name$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
+	// A release-by-tag answer, a tag ref and an annotated tag object, read
+	// for a marketplace pin: the tag is a semver, the ref its full name, and
+	// every object a pattern oid of a git object type.
+	{regexp.MustCompile(`^(tag_name|tag)$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
+	{regexp.MustCompile(`^ref$`), matches(`^refs/tags/v\d+\.\d+\.\d+$`), "a semver tag ref"},
+	{regexp.MustCompile(`^object\.sha$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^object\.type$`), matches(`^(commit|tag|tree|blob)$`), "a git object type"},
 	{regexp.MustCompile(`^size$`), matches(`^(0|1024)$`), "0 or 1024"},
 	// A Renovate config's text is repository content, and the only account
 	// data it can carry is a preset reference naming a repository, so it is
@@ -467,6 +488,8 @@ var apiRules = []rule{
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
 		`data\.repository\.`+renovateProbes,
 		`data\.repository\.(`+fileProbes+`|actions)`,
+		// A repository with no Latest release.
+		`data\.repository\.latest_release`,
 		// A Claude file the query found nothing at.
 		`data\.repository\.f\d+`,
 		// A null actor: GitHub could not resolve who wrote or committed it.
@@ -489,7 +512,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.rulesets\[\]\.name$`), matches(ruleset), "a synthetic ruleset name"},
 	{regexp.MustCompile(`^repos\[\]\.branch\.required_checks\[\]$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^repos\[\]\.settings\.allowed_actions\.patterns\[\]$`), matches(pattern), "a synthetic actions pattern"},
-	{regexp.MustCompile(`^(generated_at|repos\[\]\.pushed_at|repos\[\]\.releases\.last_published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
+	{regexp.MustCompile(`^(generated_at|repos\[\]\.pushed_at|repos\[\]\.releases\.(last|latest)_published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
 	{regexp.MustCompile(`^repos\[\]\.identities\[\]\.name$`), isFakeIdentityName, "a fake identity name"},
 	{regexp.MustCompile(`^repos\[\]\.identities\[\]\.email$`), isFakeIdentityEmail, "a fake identity email"},
 	// The [identity] table is the account holder's real identity in a real
@@ -534,7 +557,17 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.source$`), matches(`^` + claudePath + `$`), "a synthetic Claude file path"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.script$`), matches(`^hooks/hook-\d{2}\.sh$`), "a synthetic hook script"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.matcher$`), matches(`^[A-Za-z|*]*$`), "a tool-name matcher"},
+	{regexp.MustCompile(`^repos\[\]\.releases\.latest_tag$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.plugin\.name$`), isFakeRepo, "a fake repository name"},
+	// The configured marketplace: fake repository names, gh-owner/<fake>
+	// sources, semver tags, pattern oids, and problems in the collector's
+	// fixed wording around a synthetic path, tag or oid.
+	{regexp.MustCompile(`^claude_marketplace\.(repo|entries\[\]\.(name|plugin_name))$`), isFakeRepo, "a fake repository name"},
+	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.repo$`), isOwnerSlashRepo, "gh-owner/<fake>"},
+	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.ref$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
+	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.(sha|tag_commit)$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^claude_marketplace\.unreadable$`), matches(marketplaceUnreadable), "a marketplace problem in the collector's wording"},
+	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.problem$`), matches(marketplaceProblem), "a pin problem in the collector's wording"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(`^((` + claudePath + `: )?[^/]*|` + claudeMissing + `)$`), "a problem naming only a synthetic Claude path"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
@@ -561,6 +594,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.claude\.(skills|commands)\[\]\.(keys\.[a-z_-]+|has_description|description_chars|disable_model_invocation|user_invocable_false|lines)`,
 		`repos\[\]\.claude\.hooks\[\]\.(plugin|event|type|timeout|timeout_set|interpreter|path_form|script_mode)`,
 		`repos\[\]\.claude\.plugin\.(present|version|fields\[\]|own_marketplace)`,
+		`claude_marketplace\.entries\[\]\.(has_version|release_tag)`,
 	),
 }
 
@@ -871,13 +905,55 @@ const claudeProblem = `(too many Claude files|SKILL\.md|` + claudeMissing + `|` 
 // so it is held to the synthetic Claude paths and directory names.
 const claudeMissing = `plugin\.json declares missing (` + claudePath + `|(skills|commands)(/(skill|command)-\d{2})?)`
 
+// claudePluginField is a manifest field the Plugin table's Manifest cell may
+// list as missing: one of the eight plugin.json fields the check requires.
+const claudePluginField = `(\$schema|author|description|homepage|license|name|repository|version)`
+
+// claudePluginCell is every shape the Plugin table's own cells take beyond
+// the bare marks: the missing manifest fields, and the Version = tag cell,
+// whose version and tag are a version and a release tag. A version that is
+// not semver is shown raw, so it is held to the characters a version
+// carries; nothing else can follow it.
+const claudePluginCell = `(✗ ` + claudePluginField + `(, ` + claudePluginField + `)*|` +
+	`(✗ )?[0-9]+\.[0-9]+\.[0-9]+( ≥ v[0-9]+\.[0-9]+\.[0-9]+)?|` +
+	`✗ [0-9]+\.[0-9]+\.[0-9]+ < v[0-9]+\.[0-9]+\.[0-9]+|` +
+	`✗ (none|[0-9][0-9A-Za-z.+-]*) \? v[0-9][0-9A-Za-z.+-]*)`
+
+// claudeTag is a release tag a marketplace cell may show: v and a semver
+// core, the shape every fixture pin and release tag takes.
+const claudeTag = `v[0-9]+\.[0-9]+\.[0-9]+`
+
+// claudePinProblem is one thing plugin_pin_valid names as wrong with a pin,
+// in the tool's own wording.
+const claudePinProblem = `(no ref|no sha|name differs|` + claudeTag + ` is not a release|sha is not ` + claudeTag + `)`
+
+// claudeMarketCell is every shape the marketplace cells take beyond the bare
+// marks and counts: a pin's tag, a pin behind the latest release (or behind
+// none), the pin problems, the entries marketplace_entries_valid fails and
+// the plugins marketplace_complete misses (fake repository names, or an
+// unnamed entry's place in the file), and an unreadable marketplace, named
+// by its fake repository.
+func claudeMarketCell() string {
+	quoted := make([]string, 0, len(fakeRepos))
+	for _, name := range fakeRepos {
+		quoted = append(quoted, regexp.QuoteMeta(name))
+	}
+	repo := `(` + strings.Join(quoted, "|") + `)`
+	entry := `(` + repo + `|entry \d+)`
+	return `((✗ )?` + claudeTag + `( → (` + claudeTag + `|none))?|` +
+		`✗ ` + claudePinProblem + `(, ` + claudePinProblem + `)*|` +
+		`✗ \d+/\d+ ` + entry + `(, ` + entry + `)*|` +
+		`✗ ` + repo + `(, ` + repo + `)*|` +
+		`(✗ )?unreadable ` + repo + `)`
+}
+
 // claudeCell is every shape a Claude section cell may take: n/a, a bare
 // number, a count (with a cross and the failing names after it when any
-// fail), or unreadable with a synthetic path or one of the tool's own
-// reasons. The cells list skill, command and hook names, which in a real
-// report say what a repository is for, so they are held to the synthetic
-// names, the way the recorded Claude facts are.
-var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|` +
+// fail), the plugin and marketplace cells, or unreadable with a synthetic
+// path or one of the tool's own reasons. The cells list skill, command and
+// hook names, which in a real report say what a repository is for, so they
+// are held to the synthetic names, the way the recorded Claude facts are.
+var claudeCell = regexp.MustCompile(`^(n/a|[✓✗]|\d+|\d+/\d+|` + claudePluginCell + `|` + claudeMarketCell() + `|` +
 	`✗ \d+/\d+ (` + claudeCellName + `(, ` + claudeCellName + `)*|` + claudeHookName + `(, ` + claudeHookName + `)*)|` +
 	`(✗ )?unreadable (` + claudePath + `|` + claudeProblem + `))$`)
 
@@ -1077,6 +1153,30 @@ func TestCheck_rejectsAFreeTextCacheKey(t *testing.T) {
 	}
 }
 
+// TestCheck_marketplaceFacts: the marketplace's snapshot rules admit the
+// collector's facts over the fake vocabulary, and refuse a source outside it.
+func TestCheck_marketplaceFacts(t *testing.T) {
+	t.Parallel()
+
+	const fixture = `{"claude_marketplace": {"repo": "plugin-market", "entries": [
+		{"name": "plugin-kit", "repo": "gh-owner/plugin-kit", "ref": "v1.2.0",
+		 "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002", "has_version": true, "release_tag": true,
+		 "tag_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002", "plugin_name": "plugin-kit",
+		 "problem": "tag v1.2.0 does not resolve to a commit; no .claude-plugin/plugin.json at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002"},
+		{"name": "hook-guard", "problem": "not an audited repository"}]}}`
+	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
+		t.Errorf("check() = %v, want the fake marketplace accepted", got)
+	}
+	for _, doc := range []string{
+		`{"claude_marketplace": {"repo": "plugin-market", "entries": [{"name": "plugin-kit", "repo": "someone/plugin-kit"}]}}`,
+		`{"claude_marketplace": {"repo": "plugin-market", "unreadable": "no such file somewhere/else"}}`,
+	} {
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
+			t.Errorf("check(%s) = no problems, want it refused", doc)
+		}
+	}
+}
+
 // TestNamesOnlyFakeRepos: a preset reference, and error text quoting one,
 // may name only gh-owner and a fake repository; a config path is not a pair.
 func TestNamesOnlyFakeRepos(t *testing.T) {
@@ -1262,6 +1362,36 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Events |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 scripts/deploy-site.json PreToolUse |",
+		"a repository name as a missing plugin field": "" +
+			"## Claude\n\n" +
+			"| Repository | Manifest |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ homepage, deploy-site |",
+		"prose in place of a plugin version": "" +
+			"## Claude\n\n" +
+			"| Repository | Version = tag |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ is the deploy site ? v1.2.0 |",
+		"a real-shaped marketplace entry in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Entries valid |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 deploy-site |",
+		"a real-shaped missing plugin in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Complete |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ plugin-kit, deploy-site |",
+		"a real-shaped unreadable marketplace in a Claude cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Listed |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable deploy-site |",
+		"prose in place of a pin problem": "" +
+			"## Claude\n\n" +
+			"| Repository | Pin valid |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ name differs from deploy-site |",
 		"free prose after unreadable in a Claude cell": "" +
 			"## Claude\n\n" +
 			"| Repository | Events |\n" +
@@ -1305,6 +1435,25 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/3 command-01, skill-02 | 2/2 | n/a | 612 |\n" +
 			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/skills/skill-01/SKILL.md | ✗ unreadable too many Claude files | n/a | unreadable skills/skill-01/SKILL.md |\n" +
 			"| [bravo](https://github.com/gh-owner/bravo) | ✗ unreadable plugin.json declares missing commands | ✗ unreadable plugin.json declares missing skills/skill-02 | n/a | ✗ unreadable plugin.json declares missing commands/command-01.md |",
+		"a Claude Plugin table": "" +
+			"## Claude\n\n" +
+			"| Repository | Manifest | No own marketplace | Releases | Version = tag |\n" +
+			"| --- | --- | --- | --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ $schema, homepage, license | ✗ | ✓ | 1.3.0 ≥ v1.2.0 |\n" +
+			"| [alpha](https://github.com/gh-owner/alpha) | ✓ | ✓ | ✗ | ✗ 1.1.0 < v1.2.0 |\n" +
+			"| [bravo](https://github.com/gh-owner/bravo) | ✓ | ✓ | ✓ | ✗ 1.2 ? v1.2.0 |\n" +
+			"| [plugin-kit](https://github.com/gh-owner/plugin-kit) | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json |",
+		"a Claude Plugin table's marketplace cells": "" +
+			"## Claude\n\n" +
+			"| Repository | Listed | Pin valid | Pin current | Entries valid | Complete |\n" +
+			"| --- | --- | --- | --- | --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✓ | v1.2.0 | v1.1.0 → v1.2.0 | n/a | n/a |\n" +
+			"| [alpha](https://github.com/gh-owner/alpha) | ✓ | v1.1.0 | ✗ v1.1.0 → v1.2.0 | n/a | n/a |\n" +
+			"| [bravo](https://github.com/gh-owner/bravo) | ✓ | ✗ v1.1.0 is not a release, sha is not v1.1.0, name differs | n/a | n/a | n/a |\n" +
+			"| [cipher-lib](https://github.com/gh-owner/cipher-lib) | ✓ | ✗ no ref, no sha, name differs | n/a | n/a | n/a |\n" +
+			"| [go-linter](https://github.com/gh-owner/go-linter) | ✓ | v1.1.0 | ✗ v1.1.0 → none | n/a | n/a |\n" +
+			"| [plugin-market](https://github.com/gh-owner/plugin-market) | n/a | n/a | n/a | ✗ 1/3 skill-pack, entry 3 | ✗ plugin-kit, web-app |\n" +
+			"| [plugin-kit](https://github.com/gh-owner/plugin-kit) | ✗ unreadable plugin-market | ✗ unreadable plugin-market | ✗ unreadable plugin-market | n/a | n/a |",
 		"a Claude Hooks table": "" +
 			"## Claude\n\n" +
 			"| Repository | Events | Executable | Plugin root | Timeout | Matcher |\n" +

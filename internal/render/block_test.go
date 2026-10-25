@@ -1243,8 +1243,40 @@ func TestBlock_claudeSection(t *testing.T) {
 		// plugin-root check would never judge.
 		"web-app": {unreadableHooks, unreadableHooks, "n/a", unreadableHooks, unreadableHooks},
 	}
-	if diff := cmp.Diff(wantHookRows, tableRows(got[hooksAt:nix])); diff != "" {
+	pluginAt := strings.Index(got, "### Plugin\n")
+	if pluginAt < hooksAt || pluginAt > nix {
+		t.Fatalf("want ### Plugin after ### Hooks inside the Claude section:\n%s", got)
+	}
+	if diff := cmp.Diff(wantHookRows, tableRows(got[hooksAt:pluginAt])); diff != "" {
 		t.Errorf("Hooks rows mismatch (-want +got):\n%s", diff)
+	}
+
+	wantPlugin := []string{
+		"Repository", "Manifest", "No own marketplace", "Releases", "Version = tag",
+		"Listed", "Pin valid", "Pin current", "Entries valid", "Complete",
+	}
+	if diff := cmp.Diff(wantPlugin, sectionTable(t, got, "### Plugin")); diff != "" {
+		t.Errorf("Plugin columns mismatch (-want +got):\n%s", diff)
+	}
+	const unreadablePlugin = "✗ unreadable .claude-plugin/plugin.json"
+	wantPluginRows := map[string][]string{
+		// Listed, pinned to its latest release.
+		"mixedCase-flake": {"✓", "✓", "✓", "1.2.0", "✓", "v1.2.0", "v1.2.0", "n/a", "n/a"},
+		// Listed validly, but a release behind one published ten days ago.
+		"cipher-lib": {"✓", "✓", "✓", "1.2.0", "✓", "v1.1.0", "✗ v1.1.0 → v1.2.0", "n/a", "n/a"},
+		// Missing fields are named; the repository's own marketplace and the
+		// version behind the release fail with no value to show. It is the
+		// marketplace, private and so not judged on being listed: one entry
+		// names a repository outside the audit, and plugin-kit has none.
+		"github-repos-audit": {
+			"✗ homepage, license", "✗", "✓", "✗ 1.1.0 < v1.2.0", "n/a", "n/a", "n/a", "✗ 2/3 skill-pack", "✗ plugin-kit",
+		},
+		"plugin-kit": {"✓", "✓", "✓", "1.0.0", "✗", "n/a", "n/a", "n/a", "n/a"},
+		// Private, so its unreadable manifest leaves the listing unjudged.
+		"web-app": {unreadablePlugin, unreadablePlugin, unreadablePlugin, unreadablePlugin, "n/a", "n/a", "n/a", "n/a", "n/a"},
+	}
+	if diff := cmp.Diff(wantPluginRows, tableRows(got[pluginAt:nix])); diff != "" {
+		t.Errorf("Plugin rows mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -1263,6 +1295,52 @@ func TestBlock_noClaudeSectionWithoutClaudeTooling(t *testing.T) {
 	}
 	if strings.Contains(got, "## Claude") {
 		t.Errorf("an account with no Claude tooling renders a Claude section:\n%s", got)
+	}
+}
+
+// TestBlock_marketplaceRowWithoutAPlugin: the marketplace repository has a
+// Plugin row for its two marketplace cells even when it is no plugin itself,
+// and an unreadable marketplace reads unreadable there and on every public
+// plugin.
+func TestBlock_marketplaceRowWithoutAPlugin(t *testing.T) {
+	t.Parallel()
+
+	kit := baseRepo("plugin-kit", "tools")
+	kit.Visibility = "public"
+	kit.Claude = audit.Claude{Plugin: audit.ClaudePlugin{Present: true, Name: "plugin-kit", Version: "1.0.0", Fields: pluginFields()}}
+	kit.Releases = audit.Releases{Total: 1, LatestTag: "v1.0.0", LatestPublishedAt: at(2026, time.August, 3)}
+	snap := &audit.Snapshot{
+		GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(),
+		Repos:       []audit.Repo{kit, baseRepo("plugin-market", "tools")},
+		Marketplace: audit.ClaudeMarketplace{Repo: "plugin-market", Unreadable: "no .claude-plugin/marketplace.json"},
+	}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	const unreadable = "✗ unreadable plugin-market"
+	want := map[string][]string{
+		"plugin-kit":    {"✓", "✓", "✓", "1.0.0", unreadable, unreadable, unreadable, "n/a", "n/a"},
+		"plugin-market": {"n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", unreadable, unreadable},
+	}
+	pluginAt := strings.Index(got, "### Plugin\n")
+	if pluginAt < 0 {
+		t.Fatalf("block has no Plugin table:\n%s", got)
+	}
+	rows := map[string][]string{}
+	for line := range strings.SplitSeq(got[pluginAt:], "\n") {
+		if strings.HasPrefix(line, "## ") {
+			break
+		}
+		if !strings.HasPrefix(line, "| [") {
+			continue
+		}
+		cells := splitRow(line)
+		name, _, _ := strings.Cut(strings.TrimPrefix(cells[0], "["), "]")
+		rows[name] = cells[1:]
+	}
+	if diff := cmp.Diff(want, rows); diff != "" {
+		t.Errorf("Plugin rows mismatch (-want +got):\n%s", diff)
 	}
 }
 

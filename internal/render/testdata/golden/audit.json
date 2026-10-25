@@ -42,11 +42,20 @@
       "license_file": "not_required",
       "lychee": "not_required",
       "markdownlint": "not_required",
+      "marketplace_complete": "required",
+      "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_listed": "required",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_pin_current": "required",
+      "plugin_pin_valid": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -112,11 +121,20 @@
       "license_file": "not_required",
       "lychee": "not_required",
       "markdownlint": "not_required",
+      "marketplace_complete": "required",
+      "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "not_required",
       "nix_lock_age": "not_required",
       "nix_lock_refresh": "not_required",
       "open_prs": "info",
+      "plugin_listed": "required",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_pin_current": "required",
+      "plugin_pin_valid": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -182,11 +200,20 @@
       "license_file": "not_required",
       "lychee": "not_required",
       "markdownlint": "not_required",
+      "marketplace_complete": "required",
+      "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_listed": "required",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_pin_current": "required",
+      "plugin_pin_valid": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -252,11 +279,20 @@
       "license_file": "not_required",
       "lychee": "not_required",
       "markdownlint": "not_required",
+      "marketplace_complete": "required",
+      "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_listed": "required",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_pin_current": "required",
+      "plugin_pin_valid": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -322,11 +358,20 @@
       "license_file": "public",
       "lychee": "not_required",
       "markdownlint": "not_required",
+      "marketplace_complete": "required",
+      "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_listed": "required",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_pin_current": "required",
+      "plugin_pin_valid": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "info",
       "prettier": "not_required",
       "readme": "required",
@@ -392,11 +437,20 @@
       "license_file": "not_required",
       "lychee": "not_required",
       "markdownlint": "not_required",
+      "marketplace_complete": "required",
+      "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
       "open_prs": "info",
+      "plugin_listed": "required",
+      "plugin_manifest_fields": "required",
+      "plugin_no_own_marketplace": "required",
+      "plugin_pin_current": "required",
+      "plugin_pin_valid": "required",
+      "plugin_releases": "required",
+      "plugin_version_matches_tag": "required",
       "pr_template": "not_required",
       "prettier": "not_required",
       "readme": "required",
@@ -542,7 +596,22 @@
             "path_form": "plugin_root",
             "script_mode": "100755"
           }
-        ]
+        ],
+        "plugin": {
+          "present": true,
+          "name": "plugin-kit",
+          "version": "1.2.0",
+          "fields": [
+            "$schema",
+            "author",
+            "description",
+            "homepage",
+            "license",
+            "name",
+            "repository",
+            "version"
+          ]
+        }
       },
       "ci_state": "SUCCESS",
       "ci": {
@@ -636,7 +705,9 @@
       "releases": {
         "total": 4,
         "drafts": 1,
-        "last_published_at": "2026-04-02T12:00:00Z"
+        "last_published_at": "2026-04-02T12:00:00Z",
+        "latest_tag": "v1.2.0",
+        "latest_published_at": "2026-04-02T12:00:00Z"
       },
       "rulesets": [
         {
@@ -735,9 +806,29 @@
         "security_policy": "SECURITY.md",
         "pr_template": ".github/pull_request_template.md"
       },
+      "claude": {
+        "plugin": {
+          "present": true,
+          "name": "cipher-lib",
+          "version": "1.2.0",
+          "fields": [
+            "$schema",
+            "author",
+            "description",
+            "homepage",
+            "license",
+            "name",
+            "repository",
+            "version"
+          ]
+        }
+      },
       "releases": {
-        "total": 0,
-        "drafts": 0
+        "total": 2,
+        "drafts": 0,
+        "last_published_at": "2026-08-26T12:00:00Z",
+        "latest_tag": "v1.2.0",
+        "latest_published_at": "2026-08-26T12:00:00Z"
       },
       "rulesets": [
         {
@@ -957,7 +1048,21 @@
             "path_form": "project_dir",
             "script_mode": "100755"
           }
-        ]
+        ],
+        "plugin": {
+          "present": true,
+          "name": "plugin-kit",
+          "version": "1.1.0",
+          "fields": [
+            "$schema",
+            "author",
+            "description",
+            "name",
+            "repository",
+            "version"
+          ],
+          "own_marketplace": true
+        }
       },
       "ci_state": "PENDING",
       "ci": {
@@ -1037,8 +1142,11 @@
         "artifact_bytes": 0
       },
       "releases": {
-        "total": 0,
-        "drafts": 0
+        "total": 2,
+        "drafts": 0,
+        "last_published_at": "2026-03-05T12:00:00Z",
+        "latest_tag": "v1.2.0",
+        "latest_published_at": "2026-03-05T12:00:00Z"
       },
       "rulesets": [
         {
@@ -1246,7 +1354,11 @@
             "source": ".claude/settings.json",
             "unreadable": "not valid JSON: unexpected end of JSON input"
           }
-        ]
+        ],
+        "plugin": {
+          "present": true,
+          "unreadable": ".claude-plugin/plugin.json: not valid JSON: unexpected end of JSON input"
+        }
       },
       "ci_state": "SUCCESS",
       "releases": {
@@ -1314,6 +1426,203 @@
         "can_approve_pull_requests": false,
         "actions_access_level": "none"
       }
+    },
+    {
+      "name": "plugin-kit",
+      "type": "tools",
+      "published": false,
+      "visibility": "public",
+      "description": "the plugin-kit repository",
+      "topics": 0,
+      "license": "MIT",
+      "open_pull_requests": 0,
+      "branches": 1,
+      "pushed_at": "2026-08-24T12:00:00Z",
+      "default_branch": "main",
+      "head_oid": "0123456789abcdef0123456789abcdef01234567",
+      "identities": [
+        {
+          "name": "Pat Example",
+          "email": "pat@example.com"
+        },
+        {
+          "name": "renovate[bot]",
+          "email": "29139614+renovate[bot]@users.noreply.github.com"
+        }
+      ],
+      "files": {
+        "readme": true,
+        "gitignore": true,
+        "editorconfig": true,
+        "flake_nix": true,
+        "justfile": true,
+        "changelog": false,
+        "security": false,
+        "contributing": false,
+        "code_of_conduct": false,
+        "renovate_config": "renovate.json",
+        "workflows": [
+          "ci.yml"
+        ],
+        "justfile_path": "justfile",
+        "license_file": "LICENSE",
+        "security_policy": "SECURITY.md",
+        "pr_template": ".github/pull_request_template.md"
+      },
+      "renovate": {
+        "min_release_age": "7 days",
+        "min_release_age_source": "renovate.json",
+        "nix_manager": true,
+        "lock_file_maintenance": true,
+        "automerge_major": true
+      },
+      "flake": {
+        "has_lock": true,
+        "nixpkgs_last_modified": "2026-09-01T12:00:00Z"
+      },
+      "workflow_facts": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "events": [
+            "pull_request",
+            "push"
+          ],
+          "pull_request_branches": [
+            "main"
+          ],
+          "push_branches": [
+            "main"
+          ],
+          "concurrency": {
+            "set": true,
+            "cancel_in_progress": "true"
+          },
+          "jobs": [
+            {
+              "id": "check",
+              "timeout_minutes": "15"
+            }
+          ]
+        }
+      ],
+      "claude": {
+        "plugin": {
+          "present": true,
+          "name": "plugin-kit",
+          "version": "1.0.0",
+          "fields": [
+            "$schema",
+            "author",
+            "description",
+            "homepage",
+            "license",
+            "name",
+            "repository",
+            "version"
+          ]
+        }
+      },
+      "ci_state": "SUCCESS",
+      "releases": {
+        "total": 1,
+        "drafts": 0,
+        "last_published_at": "2026-08-03T12:00:00Z",
+        "latest_tag": "v1.0.0",
+        "latest_published_at": "2026-08-03T12:00:00Z"
+      },
+      "rulesets": [
+        {
+          "name": "protect-tags",
+          "target": "TAG",
+          "enforcement": "ACTIVE",
+          "include": [
+            "refs/tags/**"
+          ]
+        },
+        {
+          "name": "protect-main",
+          "target": "BRANCH",
+          "enforcement": "ACTIVE",
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "rules": [
+            "PULL_REQUEST"
+          ]
+        }
+      ],
+      "branch": {
+        "known": true,
+        "types": [
+          "pull_request",
+          "required_signatures",
+          "required_status_checks"
+        ],
+        "required_checks": [
+          "gate (ubuntu-latest)",
+          "commitlint"
+        ],
+        "strict": true
+      },
+      "settings": {
+        "has_issues": true,
+        "has_wiki": false,
+        "has_projects": false,
+        "has_discussions": false,
+        "vulnerability_alerts": true,
+        "dependabot_security_updates": true,
+        "merge_commit_allowed": true,
+        "squash_merge_allowed": false,
+        "rebase_merge_allowed": false,
+        "merge_commit_title": "PR_TITLE",
+        "merge_commit_message": "PR_BODY",
+        "auto_merge_allowed": true,
+        "delete_branch_on_merge": true,
+        "secret_scanning": "enabled",
+        "private_vulnerability_reporting": true,
+        "actions_policy": "selected",
+        "sha_pinning_required": true,
+        "allowed_actions": {
+          "github_owned_allowed": true,
+          "verified_allowed": false,
+          "patterns": [
+            "step-security/*"
+          ]
+        },
+        "default_workflow_permissions": "read",
+        "can_approve_pull_requests": false
+      }
     }
-  ]
+  ],
+  "claude_marketplace": {
+    "repo": "github-repos-audit",
+    "entries": [
+      {
+        "name": "plugin-kit",
+        "repo": "gh-owner/mixedCase-flake",
+        "ref": "v1.2.0",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001",
+        "release_tag": true,
+        "tag_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001",
+        "plugin_name": "plugin-kit"
+      },
+      {
+        "name": "cipher-lib",
+        "repo": "gh-owner/cipher-lib",
+        "ref": "v1.1.0",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002",
+        "release_tag": true,
+        "tag_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002",
+        "plugin_name": "cipher-lib"
+      },
+      {
+        "name": "skill-pack",
+        "repo": "gh-owner/skill-pack",
+        "ref": "v1.0.0",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0003",
+        "has_version": true,
+        "problem": "not an audited repository"
+      }
+    ]
+  }
 }

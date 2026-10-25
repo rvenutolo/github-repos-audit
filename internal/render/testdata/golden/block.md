@@ -37,6 +37,14 @@
 - **Hook script missing or not executable** (2) — github-repos-audit, web-app
 - **Hook without a timeout** (2) — github-repos-audit, web-app
 - **Tool hook without a matcher** (2) — github-repos-audit, web-app
+- **Plugin manifest missing fields** (2) — github-repos-audit, web-app
+- **Plugin repository has its own marketplace.json** (2) — github-repos-audit, web-app
+- **Plugin has no release** (1) — web-app
+- **Plugin version behind its latest release or not semver** (2) — github-repos-audit, web-app
+- **Plugin not listed in the marketplace** (1) — plugin-kit
+- **Marketplace pin over a week behind the latest release** (1) — cipher-lib
+- **Marketplace has invalid entries** (1) — github-repos-audit
+- **Marketplace is missing a public plugin** (1) — github-repos-audit
 
 ## Metadata
 
@@ -46,6 +54,7 @@
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | tools    | private    | no        | the github-repos-audit repository         | n/a      | 0      | n/a     | ✓      |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | config   | private    | no        |                                           | n/a      | 0      | n/a     | ✗      |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | software | public     | yes       | a flake \| with a pipe in its description | ✓        | 4      | MIT     | ✓      |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | tools    | public     | no        | the plugin-kit repository                 | n/a      | 0      | MIT     | ✓      |
 | [web-app](https://github.com/gh-owner/web-app)                       | config   | private    | no        | the web-app repository                    | n/a      | 0      | n/a     | ✓      |
 
 ## Tree
@@ -56,6 +65,7 @@
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ 7 days         | ✓               | ✓          | ✓             | ✓         | n/a       | n/a             |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | n/a              | n/a             | ✗          | ✗             | ✗         | n/a       | n/a             |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✗ 3 days         | ✗               | ✓          | ✓             | ✓         | ✓         | 1/3             |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | ✓ 7 days         | ✓               | ✓          | ✓             | ✓         | n/a       | n/a             |
 | [web-app](https://github.com/gh-owner/web-app)                       | ✗ unresolved     | ✗ unresolved    | ✗          | ✓             | n/a       | n/a       | n/a             |
 
 ## File paths
@@ -70,6 +80,7 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `justfile` | `renovate.json`            | `.commitlintrc.yml`  | n/a       | n/a     | n/a     |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | ✗          | ✗                          | n/a                  | n/a       | n/a     | n/a     |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `justfile` | `.github/renovate.json5` ≠ | `.commitlintrc.json` | n/a       | n/a     | n/a     |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | `justfile` | `renovate.json`            | n/a                  | n/a       | n/a     | n/a     |
 | [web-app](https://github.com/gh-owner/web-app)                       | `justfile` | `renovate.json`            | `.commitlintrc.json` | n/a       | n/a     | n/a     |
 
 ### Linters
@@ -80,6 +91,7 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
 | [web-app](https://github.com/gh-owner/web-app)                       | n/a   | n/a      | n/a          | n/a      | n/a                  | n/a    | n/a    | n/a     | n/a    |
 
 ### GitHub & docs
@@ -90,6 +102,7 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | n/a       | n/a           | n/a        | n/a                                | n/a       |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 | [web-app](https://github.com/gh-owner/web-app)                       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
 
 ## Claude
@@ -112,6 +125,16 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 1/1                                | 1/1                                     | 1/1         | 1/1                                     | 1/1                                     |
 | [web-app](https://github.com/gh-owner/web-app)                       | ✗ unreadable .claude/settings.json | ✗ unreadable .claude/settings.json      | n/a         | ✗ unreadable .claude/settings.json      | ✗ unreadable .claude/settings.json      |
 
+### Plugin
+
+| Repository                                                           | Manifest                                | No own marketplace                      | Releases                                | Version = tag                           | Listed | Pin valid | Pin current       | Entries valid    | Complete     |
+| -------------------------------------------------------------------- | --------------------------------------- | --------------------------------------- | --------------------------------------- | --------------------------------------- | ------ | --------- | ----------------- | ---------------- | ------------ |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | ✓                                       | ✓                                       | ✓                                       | 1.2.0                                   | ✓      | v1.1.0    | ✗ v1.1.0 → v1.2.0 | n/a              | n/a          |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ homepage, license                     | ✗                                       | ✓                                       | ✗ 1.1.0 < v1.2.0                        | n/a    | n/a       | n/a               | ✗ 2/3 skill-pack | ✗ plugin-kit |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓                                       | ✓                                       | ✓                                       | 1.2.0                                   | ✓      | v1.2.0    | v1.2.0            | n/a              | n/a          |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | ✓                                       | ✓                                       | ✓                                       | 1.0.0                                   | ✗      | n/a       | n/a               | n/a              | n/a          |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | ✗ unreadable .claude-plugin/plugin.json | n/a    | n/a       | n/a               | n/a              | n/a          |
+
 ## Nix
 
 | Repository                                                           | Lock age | Lock refresh | Nix cache |
@@ -120,6 +143,7 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ 46d    | ✓ Renovate   | ✗ 2.2 GB  |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | n/a      | n/a          | n/a       |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 3d     | ✗            | ✓ 206 MB  |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | ✓ 3d     | ✓ Renovate   | n/a       |
 | [web-app](https://github.com/gh-owner/web-app)                       | n/a      | n/a          | n/a       |
 
 ## CI efficiency
@@ -130,6 +154,7 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✓ 2.3 GB  | ✗ 2 workflows     | ✗ 1 job  | 0           |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a       | n/a               | n/a      | 0           |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓ 481 MB  | ✓                 | ✓        | 12 · 206 MB |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | n/a             | n/a       | ✓                 | ✓        | 0           |
 | [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       | ✓                 | ✓        | 0           |
 
 ### Workflows without cancel-in-progress
@@ -160,16 +185,18 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 | [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | ✗               | ✓     | ✗       | ✓          | default      | n/a             | n/a             |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | ✗ allowed   | n/a    | n/a       | ✗            | n/a             | ✗     | ✗       | n/a        | ✗            | n/a             | n/a             |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | 2               | ✓     | ✓       | ✓          | `ruleset-02` | ✓               | ✓               |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | ✓ blocked   | ✓      | ✓         | ✓            | 2               | ✓     | ✓       | ✓          | default      | ✓               | ✓               |
 | [web-app](https://github.com/gh-owner/web-app)                       | ✓ blocked   | ✓      | ✓         | ✓            | 2               | ✓     | ✓       | ✓          | default      | n/a             | n/a             |
 
 ## Activity
 
 | Repository                                                           | Last push | CI      | Open PRs | Branches | Releases | Last release |
 | -------------------------------------------------------------------- | --------- | ------- | -------- | -------- | -------- | ------------ |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | 11d       | n/a     | 0        | 0        | 0        | n/a          |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | 11d       | PENDING | 0        | 3        | 0        | n/a          |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | 11d       | n/a     | 0        | 0        | 2        | 9d           |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | 11d       | PENDING | 0        | 3        | 2        | 6mo          |
 | [go-linter](https://github.com/gh-owner/go-linter)                   | never     | ✗       | 0        | 0        | 0        | n/a          |
 | [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | 11d       | SUCCESS | 0        | 0        | 3        | 5mo          |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | 11d       | SUCCESS | 0        | 0        | 1        | 32d          |
 | [web-app](https://github.com/gh-owner/web-app)                       | 11d       | SUCCESS | 0        | 0        | 0        | n/a          |
 
 ## CI timing
@@ -183,6 +210,7 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 
 - **github-repos-audit** — `Pat Example <pat@example.org>` — not canonical
 - **mixedCase-flake** — `Pat Example <pat@example.com>` (canonical), `Pat Example <12345+pat@users.noreply.github.com>` (accepted), `Patrick Example <patrick@example.org>` — mixed
+- **plugin-kit** — `Pat Example <pat@example.com>` (canonical)
 - **web-app** — `Pat Example <pat@example.com>` (canonical), `Pat Example <12345+pat@users.noreply.github.com>` (accepted)
 
 ## Settings exceptions

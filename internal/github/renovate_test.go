@@ -291,6 +291,42 @@ func TestCollect_presetPathAndRefAreEscaped(t *testing.T) {
 	}
 }
 
+// TestCollect_presetPathThatLeavesTheEndpointIsUnresolved: a preset path or
+// repository with a ".", ".." or empty segment would, once joined into the
+// URL, name another endpoint than the contents read. It is never requested:
+// the config reads as unresolved, which is a fact, not an abort.
+func TestCollect_presetPathThatLeavesTheEndpointIsUnresolved(t *testing.T) {
+	t.Parallel()
+
+	for _, ref := range []string{
+		"github>gh-owner/preset-store//../go",
+		"github>gh-owner/preset-store//dir/./go",
+		"github>gh-owner/preset-store//dir//go",
+		"github>gh-owner/..",
+	} {
+		t.Run(ref, func(t *testing.T) {
+			t.Parallel()
+			api := newFakeAPI(t)
+			scriptRenovateProbe(t, api, map[string]any{
+				"oid":          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000a",
+				"text":         `{"extends": ["` + ref + `"]}`,
+				"is_truncated": false,
+				"is_binary":    false,
+			})
+			got := collectFlake(t, api)
+			if want := "preset " + ref + ": invalid path"; !strings.Contains(got.MinReleaseAgeError, want) {
+				t.Errorf("MinReleaseAgeError = %q, want it to contain %q", got.MinReleaseAgeError, want)
+			}
+			// Everything else the run asks is about mixedCase-flake itself.
+			for _, c := range api.seen() {
+				if c.path != "/graphql" && !strings.HasPrefix(c.escapedPath, "/repos/gh-owner/mixedCase-flake") {
+					t.Errorf("%s %s: an unsafe preset path costs no request", c.method, c.escapedPath)
+				}
+			}
+		})
+	}
+}
+
 // renovateLookupOrder is Renovate's documented config file search order
 // (docs.renovatebot.com/configuration-options, less the deprecated
 // package.json key), each path paired with the GraphQL alias that probes it.

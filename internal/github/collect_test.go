@@ -448,6 +448,34 @@ func TestClient_Collect_oneHistoryPage(t *testing.T) {
 	}
 }
 
+// TestClient_Collect_latestRelease pins the latest release's tag and time to
+// GraphQL's latestRelease, and both to zero when it is null.
+func TestClient_Collect_latestRelease(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake", "blank-repo"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	byName := map[string]audit.Releases{}
+	for _, repo := range got {
+		byName[repo.Name] = repo.Releases
+	}
+
+	withRelease := byName["mixedCase-flake"]
+	if withRelease.LatestTag != "v1.2.0" {
+		t.Errorf("LatestTag = %q, want v1.2.0", withRelease.LatestTag)
+	}
+	if want := at(t, "2025-09-01T10:14:28Z"); !withRelease.LatestPublishedAt.Equal(want) {
+		t.Errorf("LatestPublishedAt = %v, want %v", withRelease.LatestPublishedAt, want)
+	}
+	none := byName["blank-repo"]
+	if none.LatestTag != "" || !none.LatestPublishedAt.IsZero() {
+		t.Errorf("no release: got tag %q at %v, want zero values", none.LatestTag, none.LatestPublishedAt)
+	}
+}
+
 // TestClient_Collect_releasesAndAlternates covers the fields no other fixture
 // exercises: a real release history, a capitalised `Justfile`, a Renovate
 // config at the root whose minimum release age comes from a preset, and two of
@@ -462,7 +490,7 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 	}
 	repo := got[0]
 
-	wantReleases := audit.Releases{Total: 23, LastPublishedAt: at(t, "2025-09-01T10:14:28Z")}
+	wantReleases := audit.Releases{Total: 23, LastPublishedAt: at(t, "2025-09-01T10:14:28Z"), LatestTag: "v1.2.0", LatestPublishedAt: at(t, "2025-09-01T10:14:28Z")}
 	if diff := cmp.Diff(wantReleases, repo.Releases); diff != "" {
 		t.Errorf("Releases mismatch (-want +got):\n%s", diff)
 	}
