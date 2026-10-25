@@ -129,6 +129,21 @@ func TestClient_CollectMarketplace_tagThatIsNoCommit(t *testing.T) {
 			body: `{"sha": "` + kitTag + `", "object": {"sha": "` + kitCommit + `", "type": "blob"}}`,
 		},
 		{
+			name: "a ref to a commit with no sha",
+			path: kitRef,
+			body: `{"ref": "refs/tags/v1.2.0", "object": {"sha": "", "type": "commit"}}`,
+		},
+		{
+			name: "an annotated tag of a commit with no sha",
+			path: kitTagObject,
+			body: `{"sha": "` + kitTag + `", "object": {"sha": "", "type": "commit"}}`,
+		},
+		{
+			name: "an annotated tag of a tag with no sha",
+			path: kitTagObject,
+			body: `{"sha": "` + kitTag + `", "object": {"sha": "", "type": "tag"}}`,
+		},
+		{
 			name: "an annotated tag of itself",
 			path: kitTagObject,
 			body: `{"sha": "` + kitTag + `", "object": {"sha": "` + kitTag + `", "type": "tag"}}`,
@@ -207,7 +222,7 @@ func TestClient_CollectMarketplace_unreadable(t *testing.T) {
 			name:    "a repository the account does not have",
 			repo:    "plugin-market",
 			audited: []audit.Repo{{Name: "plugin-kit"}},
-			want:    "no such repository in the account",
+			want:    "not among the audited repositories",
 		},
 	}
 	for _, tc := range tests {
@@ -322,5 +337,93 @@ func TestClient_CollectMarketplace_unpinnedEntry(t *testing.T) {
 	}
 	if calls := len(api.seen()); calls != 1 {
 		t.Errorf("requests = %d, want only the marketplace read", calls)
+	}
+}
+
+// marketplaceOf is a contents answer for a marketplace listing gh-owner/
+// plugin-kit pinned to ref, with no sha so that the only lookups made are
+// the ref's.
+func marketplaceOf(ref string) string {
+	return contentsBody(`{"plugins": [{"name": "plugin-kit", "source": ` +
+		`{"source": "github", "repo": "gh-owner/plugin-kit", "ref": "` + ref + `"}}]}`)
+}
+
+// TestClient_CollectMarketplace_emptyRepository: GitHub answers 409 for a
+// ref in a repository with no commits, a status that is no documented
+// answer. An entry naming an empty audited repository is known to have no
+// pin from the audited set alone, so nothing is asked of it.
+func TestClient_CollectMarketplace_emptyRepository(t *testing.T) {
+	t.Parallel()
+	api := newFakeAPI(t)
+	audited := []audit.Repo{{Name: "plugin-market"}, {Name: "plugin-kit", Empty: true}, {Name: "skill-pack"}}
+
+	got, err := newTestClient(t, api.url()).CollectMarketplace(t.Context(), "plugin-market", audited)
+	if err != nil {
+		t.Fatalf("CollectMarketplace() error = %v, want nil", err)
+	}
+	want := audit.MarketplaceEntry{
+		Name: "plugin-kit", Repo: "gh-owner/plugin-kit", Ref: "v1.2.0", SHA: kitCommit, Problem: "empty repository",
+	}
+	if diff := cmp.Diff(want, got.Entries[0]); diff != "" {
+		t.Errorf("entry mismatch (-want +got):\n%s", diff)
+	}
+	for _, c := range api.seen() {
+		if strings.Contains(c.path, "/plugin-kit/") {
+			t.Errorf("GET %s: an empty repository is asked nothing", c.path)
+		}
+	}
+}
+
+// TestClient_CollectMarketplace_unsafeRef: a ref comes from another
+// repository's file, and one with a ".", ".." or empty segment would, once
+// joined into the URL, name another endpoint than the tag lookups. It is
+// recorded as unsafe and never requested.
+func TestClient_CollectMarketplace_unsafeRef(t *testing.T) {
+	t.Parallel()
+
+	for _, ref := range []string{"..", ".", "a/../b", "./x", "a//b", "v1/"} {
+		t.Run(ref, func(t *testing.T) {
+			t.Parallel()
+			api := newFakeAPI(t)
+			api.failNext(marketplacePath, scriptedFailure{status: http.StatusOK, body: marketplaceOf(ref)})
+
+			got, err := newTestClient(t, api.url()).CollectMarketplace(t.Context(), "plugin-market", marketAudited())
+			if err != nil {
+				t.Fatalf("CollectMarketplace() error = %v, want nil", err)
+			}
+			if want := "unsafe ref; no sha"; len(got.Entries) != 1 || got.Entries[0].Problem != want {
+				t.Errorf("entries = %+v, want one whose problem is %q", got.Entries, want)
+			}
+			if calls := api.seen(); len(calls) != 1 {
+				t.Errorf("requests = %+v, want only the marketplace read", calls)
+			}
+		})
+	}
+}
+
+// TestClient_CollectMarketplace_slashedTag: a tag may contain slashes, which
+// stay separators in both lookups, so the release and the ref are asked for
+// the same tag.
+func TestClient_CollectMarketplace_slashedTag(t *testing.T) {
+	t.Parallel()
+	api := newFakeAPI(t)
+	api.failNext(marketplacePath, scriptedFailure{status: http.StatusOK, body: marketplaceOf("release/v1")})
+
+	if _, err := newTestClient(t, api.url()).CollectMarketplace(t.Context(), "plugin-market", marketAudited()); err != nil {
+		t.Fatalf("CollectMarketplace() error = %v, want nil", err)
+	}
+	for _, path := range []string{
+		"/repos/gh-owner/plugin-kit/releases/tags/release/v1",
+		"/repos/gh-owner/plugin-kit/git/ref/tags/release/v1",
+	} {
+		n := 0
+		for _, c := range api.seen() {
+			if c.escapedPath == path {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("GET %s made %d times, want once; requests = %+v", path, n, api.seen())
+		}
 	}
 }

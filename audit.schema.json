@@ -1065,7 +1065,7 @@
           "minLength": 1
         },
         "unreadable": {
-          "description": "Why the marketplace could not be read: the account does not have the repository, or its marketplace.json is absent or not in the shape Claude Code loads. When present entries is absent.",
+          "description": "Why the marketplace could not be read: the repository is not among the audited repositories, or its marketplace.json is absent or not in the shape Claude Code loads. When present entries is absent.",
           "type": "string",
           "minLength": 1
         },
@@ -1126,7 +1126,7 @@
           "minLength": 1
         },
         "problem": {
-          "description": "Why a lookup could not be made or gave no usable answer: the source is not an audited repository, the tag resolves to no commit, or there is no readable manifest at sha.",
+          "description": "Why a lookup could not be made or gave no usable answer: the source is not an audited repository or is an empty one, the ref is not safe to request, the tag resolves to no commit, or there is no readable manifest at sha.",
           "type": "string",
           "minLength": 1
         }

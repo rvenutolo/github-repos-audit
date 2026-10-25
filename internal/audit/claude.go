@@ -125,9 +125,9 @@ type ClaudeMarketplace struct {
 	// Repo is the marketplace repository's name, as repos.toml's [claude]
 	// table gives it.
 	Repo string `json:"repo"`
-	// Unreadable is why the marketplace could not be read: the account does
-	// not have the repository, or its marketplace.json is absent or not in
-	// the shape Claude Code loads. When it is set there are no entries, so
+	// Unreadable is why the marketplace could not be read: the repository
+	// is not among the audited repositories, or its marketplace.json is
+	// absent or not in the shape Claude Code loads. When it is set there are no entries, so
 	// every marketplace check fails as unreadable rather than judging part of
 	// the file.
 	Unreadable string `json:"unreadable,omitzero"`
@@ -159,7 +159,8 @@ type MarketplaceEntry struct {
 	// PluginName is .claude-plugin/plugin.json's name at SHA.
 	PluginName string `json:"plugin_name,omitzero"`
 	// Problem is why a lookup could not be made or gave no usable answer:
-	// the source is not an audited repository, the tag resolves to no
-	// commit, or there is no readable manifest at SHA.
+	// the source is not an audited repository or is an empty one, the ref
+	// is not safe to request (a ".", ".." or empty path segment), the tag
+	// resolves to no commit, or there is no readable manifest at SHA.
 	Problem string `json:"problem,omitzero"`
 }

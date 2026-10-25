@@ -341,12 +341,12 @@ const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUD
 
 // marketplaceUnreadable is every reason the collector gives for a
 // marketplace it could not read; the parse problems carry no path.
-const marketplaceUnreadable = `^(no such repository in the account|no \.claude-plugin/marketplace\.json|` +
+const marketplaceUnreadable = `^(not among the audited repositories|no \.claude-plugin/marketplace\.json|` +
 	`\.claude-plugin/marketplace\.json: [^/]*)$`
 
 // marketplacePinProblem is one reason a pin lookup gave no usable answer, and
 // marketplaceProblem one or more of them joined as the collector joins them.
-const marketplacePinProblem = `(not an audited repository|no ref|no sha|` +
+const marketplacePinProblem = `(not an audited repository|empty repository|no ref|unsafe ref|no sha|` +
 	`tag v\d+\.\d+\.\d+ does not resolve to a commit|` +
 	`(no )?\.claude-plugin/plugin\.json at (a{36}[0-9a-f]{4}|(0123456789abcdef){2}01234567)(: [^/]*)?)`
 

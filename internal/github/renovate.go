@@ -101,6 +101,10 @@ func (p *presetCache) fetch(ctx context.Context, preset renovate.Preset) (string
 	return e.file.text, e.file.problem, nil
 }
 
+// problemInvalidPath is the problem fetchContents reports for a repository
+// or path it will not request.
+const problemInvalidPath = "invalid path"
+
 // contentsFile is the slice of the contents API's answer this tool reads.
 type contentsFile struct {
 	Type     string `json:"type"`
@@ -114,15 +118,20 @@ type contentsFile struct {
 // directory answers with an array, and a file over 1 MB with encoding "none",
 // neither of which is a usable preset.
 //
-// The path and ref come from a repository's own file, so each path segment and
-// the ref are escaped rather than concatenated: the path's slashes stay
-// separators, and nothing in it can reach another endpoint or add a parameter.
+// The repository, path and ref can come from a repository's own file, so
+// none is concatenated as written. The path goes through escapeSegments, its
+// slashes kept as separators; a repository or path with a ".", ".." or empty
+// segment would name another endpoint once the URL is normalised, so it is
+// never requested and answers problemInvalidPath, which leaves a Renovate
+// config unresolved rather than aborting the run. The ref is query-escaped,
+// so it cannot add a parameter.
 func (c *Client) fetchContents(ctx context.Context, p renovate.Preset) (presetFile, error) {
-	segments := strings.Split(p.Path, "/")
-	for i, s := range segments {
-		segments[i] = url.PathEscape(s)
+	_, repoOK := escapeSegments(p.Repo)
+	escaped, pathOK := escapeSegments(p.Path)
+	if !repoOK || !pathOK {
+		return presetFile{problem: problemInvalidPath}, nil
 	}
-	path := c.repoPath(p.Repo) + "/contents/" + strings.Join(segments, "/")
+	path := c.repoPath(p.Repo) + "/contents/" + escaped
 	if p.Ref != "" {
 		path += "?ref=" + url.QueryEscape(p.Ref)
 	}

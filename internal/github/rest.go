@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 	"github.com/rvenutolo/github-repos-audit/internal/filepaths"
@@ -90,6 +91,25 @@ type gitTree struct {
 // concatenation is how an unexpected name becomes an unexpected request.
 func (c *Client) repoPath(name string) string {
 	return "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(name)
+}
+
+// escapeSegments escapes each /-separated segment of p for a URL path,
+// keeping the slashes as separators, and reports false for a p with a ".",
+// ".." or empty segment. Escaping alone does not make such a segment safe:
+// "." and ".." pass through url.PathEscape unchanged and are resolved as
+// path steps by whatever normalises the URL, and an empty segment folds into
+// its neighbour, so any of them can make the request name another endpoint
+// than the one the caller built. A p that comes from a repository's file is
+// joined into a path only through this.
+func escapeSegments(p string) (string, bool) {
+	segments := strings.Split(p, "/")
+	for i, s := range segments {
+		if s == "" || s == "." || s == ".." {
+			return "", false
+		}
+		segments[i] = url.PathEscape(s)
+	}
+	return strings.Join(segments, "/"), true
 }
 
 // fetchREST makes the per-repository REST calls and fills the parts of repo
