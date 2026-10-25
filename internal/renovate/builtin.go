@@ -47,6 +47,10 @@ func builtinLayer(ref string) (layered, bool) {
 		return layered{rules: []pkgRule{{appliesToMajor: true, approval: yes}}}, true
 	case "default:disableMajorUpdates":
 		return layered{automerge: automergeLayer{majorEnabled: no}}, true
+	case "default:disableRenovate":
+		return layered{automerge: automergeLayer{enabled: no}}, true
+	case "default:enableRenovate":
+		return layered{automerge: automergeLayer{enabled: yes}}, true
 	default:
 		return layered{}, false
 	}

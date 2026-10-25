@@ -301,12 +301,17 @@ Grouped by theme here; the report lists them in the fixed worklist order
   on its own, judged the way Renovate orders its settings: top-level
   `automerge`, then `major.automerge`, then each `packageRules` entry that
   matches all majors, the last one that sets `automerge` winning. A rule
-  narrowed to some packages, managers or files does not make a pass, and one
-  that holds some majors back fails. Majors that are disabled or need
-  dashboard approval fail too, as they do not land on their own. The
-  `packageRules` of presets come before the repository's own. Shows
-  `unresolved` when a preset is missing or does not parse, as
-  `renovate_min_release_age` does; `audit.json` records the verdict as
+  needs a selector (`matchUpdateTypes` or another `match*`/`exclude*` key);
+  one with none is malformed and fails. A rule narrowed to some packages,
+  managers or files does not make a pass, and one that holds some majors
+  back fails wherever it sits in the list, even before a later broad rule
+  that would override it in Renovate. Majors that are disabled or need
+  dashboard approval fail too, as do `enabled: false` and a wrong-typed
+  value, as they do not land on their own. The `packageRules` of presets
+  come before the repository's own. Shows `unresolved` for any
+  configuration that could not be resolved (a preset that is missing or does
+  not parse, the repository's own file not parsing, `extends` not an array,
+  a wrong-typed `minimumReleaseAge`), as `renovate_min_release_age` does; `audit.json` records the verdict as
   `automerge_major`. n/a without a Renovate configuration.
 - **homepage**, **topics**, **community_files** — repository metadata that
   only matters once a repository is meant to be found: a homepage URL, any

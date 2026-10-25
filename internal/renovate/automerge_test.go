@@ -7,6 +7,7 @@ func TestResolve_automergeMajor(t *testing.T) {
 
 	store := files{
 		"preset-store/default.json@": `{"packageRules":[{"matchUpdateTypes":["major"],"automerge":true}]}`,
+		"preset-store/bad.json@":     `{"automerge": "yes"}`,
 	}
 	tests := []struct {
 		name string
@@ -25,7 +26,56 @@ func TestResolve_automergeMajor(t *testing.T) {
 			"description is not a matcher",
 			`{"packageRules": [{"description": "x", "matchUpdateTypes": ["major","minor"], "automerge": true}]}`, true,
 		},
-		{"rule without matcher", `{"packageRules": [{"automerge": true}]}`, true},
+		// Renovate rejects a rule with no selector, so it is not read as matching
+		// everything.
+		{"rule without selector", `{"packageRules": [{"automerge": true}]}`, false},
+		{"legacy updateTypes without major", `{"packageRules": [{"updateTypes": ["minor","patch"], "automerge": true}]}`, false},
+		{"legacy updateTypes major", `{"packageRules": [{"updateTypes": ["major"], "automerge": true}]}`, true},
+		{"legacy packageNames narrow", `{"packageRules": [{"packageNames": ["x"], "automerge": true}]}`, false},
+		{
+			"legacy narrowed hold",
+			`{"automerge": true, "packageRules": [{"updateTypes": ["major"], "packageNames": ["x"], "automerge": false}]}`, false,
+		},
+		{
+			"glob update type reaches majors and holds",
+			`{"automerge": true, "packageRules": [{"matchUpdateTypes": ["*"], "enabled": false}]}`, false,
+		},
+		{
+			"negated update type with narrowing hold",
+			`{"automerge": true, "packageRules": [{"matchUpdateTypes": ["!patch"], "matchPackageNames": ["x"], "automerge": false}]}`,
+			false,
+		},
+		{
+			"glob update type is narrowed: automerge on is ignored",
+			`{"packageRules": [{"matchUpdateTypes": ["!patch"], "automerge": true}]}`, false,
+		},
+		{"non-string update type", `{"automerge": true, "packageRules": [{"matchUpdateTypes": [1], "automerge": true}]}`, false},
+		{"top-level enabled false", `{"automerge": true, "enabled": false}`, false},
+		{"top-level enabled wrong type", `{"automerge": true, "enabled": "no"}`, false},
+		{"major.enabled overrides top-level", `{"automerge": true, "enabled": false, "major": {"enabled": true}}`, true},
+		{"disableRenovate", `{"extends": [":automergeAll", ":disableRenovate"]}`, false},
+		{"enableRenovate after disableRenovate", `{"extends": [":automergeAll", ":disableRenovate", ":enableRenovate"]}`, true},
+		// A narrowed hold fails wherever it sits. Renovate would let the later
+		// broad rule override it; failing is the safe misreading.
+		{
+			"narrowed hold before a broad rule",
+			`{"automerge": true, "packageRules": [{"matchPackageNames": ["x"], "automerge": false}, {"matchUpdateTypes": ["major"], "automerge": true}]}`,
+			false,
+		},
+		{
+			"two broad rules: last wins, off",
+			`{"packageRules": [{"matchUpdateTypes": ["major"], "automerge": true}, {"matchUpdateTypes": ["major"], "automerge": false}]}`,
+			false,
+		},
+		{
+			"two broad rules: last wins, on",
+			`{"packageRules": [{"matchUpdateTypes": ["major"], "automerge": false}, {"matchUpdateTypes": ["major"], "automerge": true}]}`,
+			true,
+		},
+		{
+			"wrong-typed preset value stays held",
+			`{"extends": ["local>gh-owner/preset-store:bad"], "automerge": true}`, false,
+		},
 		{
 			"narrowed rule does not help",
 			`{"packageRules": [{"matchUpdateTypes": ["major"], "matchPackageNames": ["x"], "automerge": true}]}`, false,

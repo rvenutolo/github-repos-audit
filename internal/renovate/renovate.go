@@ -7,11 +7,11 @@
 // Only presets in the audited account are followed. A built-in preset lives
 // in Renovate's source rather than on GitHub, so it cannot be fetched: a fixed
 // table (builtinLayer) knows the few that set lockFileMaintenance.enabled or
-// the automerge, approval and enablement of majors, and
-// every other built-in is treated as setting nothing. Another owner's preset
-// is outside what this tool reads and also sets nothing. A repository relying
-// on one of those alone shows "none" or "off", which is conservative and is
-// fixed by stating the value explicitly.
+// the automerge, approval and enablement of majors, and every other built-in
+// is treated as setting nothing. Another owner's preset is outside what this
+// tool reads and also sets nothing. A repository relying on one of those alone
+// shows "none" or "off", which is conservative and is fixed by stating the
+// value explicitly.
 //
 // The package does no I/O: the caller supplies Fetch, and the value is
 // returned exactly as written, because turning "7 days" into a verdict is
@@ -139,8 +139,8 @@ type resolver struct {
 
 // Resolve returns the effective configuration (see Result: the top-level
 // minimumReleaseAge, whether the nix manager runs, whether lock-file
-// maintenance is on, and whether majors auto-merge) for a repository whose Renovate configuration at
-// rootPath has the text rootText.
+// maintenance is on, and whether majors auto-merge) for a repository whose
+// Renovate configuration at rootPath has the text rootText.
 func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch) (Result, error) {
 	r := resolver{owner: owner, fetch: fetch}
 	l, err := r.layer(ctx, rootPath, rootText, nil)

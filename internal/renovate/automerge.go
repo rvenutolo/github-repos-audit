@@ -22,6 +22,7 @@ func (t tri) overlay(o tri) tri {
 // layered.rules.
 type automergeLayer struct {
 	automerge      tri // top-level automerge
+	enabled        tri // top-level enabled
 	approval       tri // top-level dependencyDashboardApproval
 	majorAutomerge tri // major.automerge
 	majorEnabled   tri // major.enabled
@@ -34,6 +35,7 @@ type automergeLayer struct {
 
 func (a *automergeLayer) over(o automergeLayer) {
 	a.automerge = a.automerge.overlay(o.automerge)
+	a.enabled = a.enabled.overlay(o.enabled)
 	a.approval = a.approval.overlay(o.approval)
 	a.majorAutomerge = a.majorAutomerge.overlay(o.majorAutomerge)
 	a.majorEnabled = a.majorEnabled.overlay(o.majorEnabled)
@@ -70,10 +72,11 @@ func ownTri(cfg map[string]any, key string) (t tri, bad bool) {
 // ownAutomerge reads the top-level and major.* keys.
 func ownAutomerge(cfg map[string]any) automergeLayer {
 	var a automergeLayer
-	var b1, b2 bool
+	var b1, b2, b6 bool
 	a.automerge, b1 = ownTri(cfg, "automerge")
 	a.approval, b2 = ownTri(cfg, "dependencyDashboardApproval")
-	a.bad = b1 || b2
+	a.enabled, b6 = ownTri(cfg, "enabled")
+	a.bad = b1 || b2 || b6
 	m, has := cfg["major"]
 	if !has {
 		return a
@@ -114,25 +117,67 @@ func ownRules(cfg map[string]any) []pkgRule {
 	return rules
 }
 
+// isLegacySelector reports the pre-match* names of rule selectors, which
+// Renovate migrates to their match* forms; each narrows a rule exactly as its
+// modern name does. updateTypes is not one: it is read like matchUpdateTypes.
+// A switch rather than a package-level slice, so nothing can mutate it.
+func isLegacySelector(key string) bool {
+	switch key {
+	case "packageNames", "packagePatterns", "packagePrefixes", "managers",
+		"datasources", "depTypeList", "paths", "languages", "baseBranchList",
+		"sourceUrlPrefixes", "sourceUrls":
+		return true
+	}
+	return false
+}
+
+// ownRule reduces one packageRules entry. A rule's own extends is not
+// expanded, nor is a major block inside it; extends is read as a narrowing
+// matcher because the preset it names usually carries package selectors (as
+// :automergeLinters does), and the safe misreading is the one that stops a
+// rule from helping a pass.
 func ownRule(obj map[string]any) pkgRule {
-	r := pkgRule{appliesToMajor: true}
+	var r pkgRule
+	selector := false
 	for key := range obj {
-		if key == "extends" || strings.HasPrefix(key, "exclude") ||
-			(strings.HasPrefix(key, "match") && key != "matchUpdateTypes") {
+		switch {
+		case key == "matchUpdateTypes" || key == "updateTypes":
+			selector = true
+		case key == "extends", strings.HasPrefix(key, "match"),
+			strings.HasPrefix(key, "exclude"), isLegacySelector(key):
+			selector = true
 			r.narrowed = true
 		}
 	}
-	if v, has := obj["matchUpdateTypes"]; has {
+	// Renovate rejects a rule with no selector rather than applying it to
+	// everything, so it is not read as matching all majors.
+	r.malformed = !selector
+	key := "matchUpdateTypes"
+	if _, has := obj[key]; !has {
+		key = "updateTypes"
+	}
+	if v, has := obj[key]; has {
 		list, ok := v.([]any)
 		if !ok || len(list) == 0 {
 			r.malformed = true
 		}
-		r.appliesToMajor = false
 		for _, e := range list {
-			if s, ok := e.(string); ok && s == "major" {
+			s, ok := e.(string)
+			switch {
+			case !ok:
+				r.malformed = true
+			case s == "major":
 				r.appliesToMajor = true
+			case strings.ContainsAny(s, "*!/?{"):
+				// Renovate matches update types as globs, regexes and
+				// negations. Which majors such an entry reaches is not
+				// decided here: it reaches majors and is narrowed, so a
+				// hold in the rule fails and automerge-on via it is ignored.
+				r.appliesToMajor, r.narrowed = true, true
 			}
 		}
+	} else {
+		r.appliesToMajor = true
 	}
 	var b1, b2, b3 bool
 	r.automerge, b1 = ownTri(obj, "automerge")
@@ -154,7 +199,7 @@ func majorsAutoMerge(a automergeLayer, rules []pkgRule) bool {
 	}
 	automerge := a.automerge.value
 	approval := a.approval.value
-	enabled := true
+	enabled := !a.enabled.set || a.enabled.value
 	if a.majorAutomerge.set {
 		automerge = a.majorAutomerge.value
 	}
