@@ -820,7 +820,7 @@ func TestObserveClaude_pluginGaps(t *testing.T) {
 	want := map[rules.Check]string{
 		rules.CheckPluginManifestFields:    "Plugin manifest missing fields",
 		rules.CheckPluginNoOwnMarketplace:  "Plugin repository has its own marketplace.json",
-		rules.CheckPluginVersionMatchesTag: "Plugin version behind its latest release",
+		rules.CheckPluginVersionMatchesTag: "Plugin version behind its latest release or not semver",
 	}
 	got := map[rules.Check]string{}
 	for _, g := range rep.Gaps {

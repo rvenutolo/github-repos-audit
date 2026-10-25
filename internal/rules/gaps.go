@@ -77,7 +77,7 @@ var gapLabels = map[Check]string{
 	CheckPluginManifestFields:    "Plugin manifest missing fields",
 	CheckPluginNoOwnMarketplace:  "Plugin repository has its own marketplace.json",
 	CheckPluginReleases:          "Plugin has no release",
-	CheckPluginVersionMatchesTag: "Plugin version behind its latest release",
+	CheckPluginVersionMatchesTag: "Plugin version behind its latest release or not semver",
 	CheckPluginListed:            "Plugin not listed in the marketplace",
 	CheckPluginPinValid:          "Marketplace pin is not a valid release",
 	CheckPluginPinCurrent:        "Marketplace pin over a week behind the latest release",

@@ -46,7 +46,7 @@ Hand-written prose.
 - **Plugin manifest missing fields** (2) — github-repos-audit, web-app
 - **Plugin repository has its own marketplace.json** (2) — github-repos-audit, web-app
 - **Plugin has no release** (1) — web-app
-- **Plugin version behind its latest release** (2) — github-repos-audit, web-app
+- **Plugin version behind its latest release or not semver** (2) — github-repos-audit, web-app
 - **Plugin not listed in the marketplace** (1) — plugin-kit
 - **Marketplace pin over a week behind the latest release** (1) — cipher-lib
 - **Marketplace has invalid entries** (1) — github-repos-audit
