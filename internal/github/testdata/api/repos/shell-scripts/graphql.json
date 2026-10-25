@@ -200,6 +200,7 @@
         "total_count": 0,
         "nodes": []
       },
+      "latest_release": null,
       "readme_md": {
         "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000d"
       },

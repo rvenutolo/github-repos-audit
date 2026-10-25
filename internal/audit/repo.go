@@ -326,6 +326,12 @@ type Releases struct {
 	// LastPublishedAt is when the most recent non-draft release was published,
 	// in UTC. Zero when there is none.
 	LastPublishedAt time.Time `json:"last_published_at,omitzero"`
+	// LatestTag is the tag of GitHub's Latest release, which excludes drafts
+	// and prereleases. Empty when there is none.
+	LatestTag string `json:"latest_tag,omitzero"`
+	// LatestPublishedAt is when that release was published, in UTC. Zero when
+	// there is none.
+	LatestPublishedAt time.Time `json:"latest_published_at,omitzero"`
 }
 
 // Ruleset is one repository ruleset, with the conditions and rules needed to

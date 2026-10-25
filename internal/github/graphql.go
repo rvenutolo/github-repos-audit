@@ -121,6 +121,10 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
         published_at: publishedAt
       }
     }
+    latest_release: latestRelease {
+      tag_name: tagName
+      published_at: publishedAt
+    }
     readme_md: object(expression: "HEAD:README.md") { oid }
     readme_github_md: object(expression: "HEAD:.github/README.md") { oid }
     readme_docs_md: object(expression: "HEAD:docs/README.md") { oid }
@@ -348,9 +352,10 @@ type repository struct {
 	MergeCommitTitle    string `json:"merge_commit_title"`
 	MergeCommitMessage  string `json:"merge_commit_message"`
 
-	DefaultBranchRef *branchRef  `json:"default_branch_ref"`
-	Rulesets         rulesetList `json:"rulesets"`
-	Releases         releaseList `json:"releases"`
+	DefaultBranchRef *branchRef     `json:"default_branch_ref"`
+	Rulesets         rulesetList    `json:"rulesets"`
+	Releases         releaseList    `json:"releases"`
+	LatestRelease    *latestRelease `json:"latest_release"`
 
 	ReadmeMD       *gitObject `json:"readme_md"`
 	ReadmeGitHubMD *gitObject `json:"readme_github_md"`
@@ -547,6 +552,13 @@ type ruleNode struct {
 type releaseList struct {
 	TotalCount int           `json:"total_count"`
 	Nodes      []releaseNode `json:"nodes"`
+}
+
+// latestRelease is GitHub's Latest release, which excludes drafts and
+// prereleases; the field is null when the repository has none.
+type latestRelease struct {
+	TagName     string     `json:"tag_name"`
+	PublishedAt *time.Time `json:"published_at"`
 }
 
 type releaseNode struct {

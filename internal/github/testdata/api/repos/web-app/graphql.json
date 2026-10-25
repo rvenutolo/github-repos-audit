@@ -153,6 +153,7 @@
         "total_count": 0,
         "nodes": []
       },
+      "latest_release": null,
       "readme_md": null,
       "readme_github_md": null,
       "readme_docs_md": null,

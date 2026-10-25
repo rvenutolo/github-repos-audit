@@ -1242,6 +1242,16 @@
           "description": "When the most recent non-draft release was published, in UTC. Absent when there is none.",
           "type": "string",
           "format": "date-time"
+        },
+        "latest_tag": {
+          "description": "The tag of GitHub's Latest release, which excludes drafts and prereleases. Absent when there is none.",
+          "type": "string",
+          "minLength": 1
+        },
+        "latest_published_at": {
+          "description": "When GitHub's Latest release was published, in UTC. Absent when there is none.",
+          "type": "string",
+          "format": "date-time"
         }
       }
     },

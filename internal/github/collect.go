@@ -282,6 +282,15 @@ func (r *repository) releases() audit.Releases {
 			out.LastPublishedAt = published
 		}
 	}
+	// latestRelease is a separate field because the five newest releases are
+	// ordered by creation and may all be prereleases or drafts, which GitHub's
+	// Latest release skips.
+	if latest := r.LatestRelease; latest != nil {
+		out.LatestTag = latest.TagName
+		if latest.PublishedAt != nil {
+			out.LatestPublishedAt = latest.PublishedAt.UTC()
+		}
+	}
 	return out
 }
 

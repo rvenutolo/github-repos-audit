@@ -371,6 +371,8 @@ var apiRules = []rule{
 	{regexp.MustCompile(`required_status_checks\[\]\.context$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
+	{regexp.MustCompile(`^data\.repository\.latest_release\.tag_name$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
+	{regexp.MustCompile(`^repos\[\]\.releases\.latest_tag$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^size$`), matches(`^(0|1024)$`), "0 or 1024"},
 	// A Renovate config's text is repository content, and the only account
 	// data it can carry is a preset reference naming a repository, so it is
@@ -467,6 +469,8 @@ var apiRules = []rule{
 		`data\.repository\.(coc_root|coc_github|coc_docs)`,
 		`data\.repository\.`+renovateProbes,
 		`data\.repository\.(`+fileProbes+`|actions)`,
+		// A repository with no Latest release.
+		`data\.repository\.latest_release`,
 		// A Claude file the query found nothing at.
 		`data\.repository\.f\d+`,
 		// A null actor: GitHub could not resolve who wrote or committed it.
@@ -489,7 +493,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.rulesets\[\]\.name$`), matches(ruleset), "a synthetic ruleset name"},
 	{regexp.MustCompile(`^repos\[\]\.branch\.required_checks\[\]$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^repos\[\]\.settings\.allowed_actions\.patterns\[\]$`), matches(pattern), "a synthetic actions pattern"},
-	{regexp.MustCompile(`^(generated_at|repos\[\]\.pushed_at|repos\[\]\.releases\.last_published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
+	{regexp.MustCompile(`^(generated_at|repos\[\]\.pushed_at|repos\[\]\.releases\.(last|latest)_published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
 	{regexp.MustCompile(`^repos\[\]\.identities\[\]\.name$`), isFakeIdentityName, "a fake identity name"},
 	{regexp.MustCompile(`^repos\[\]\.identities\[\]\.email$`), isFakeIdentityEmail, "a fake identity email"},
 	// The [identity] table is the account holder's real identity in a real
