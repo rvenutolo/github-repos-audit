@@ -868,6 +868,26 @@ func TestObserveClaude_pluginSemver(t *testing.T) {
 		{"1.0.0-beta.11", "v1.0.0-beta.2", rules.Pass},
 		{"1.0.0-beta", "v1.0.0-alpha", rules.Pass},
 		{"1.0.0-rc.1", "v1.0.0", rules.Fail},
+		// An identifier is numeric only when it is all digits: a hyphen-led
+		// one is alphanumeric, so it sorts above any number and against
+		// another in ASCII order, not by the number it looks like.
+		{"1.0.0-1", "v1.0.0--1", rules.Fail},
+		{"1.0.0--1", "v1.0.0-1", rules.Pass},
+		{"1.0.0--2", "v1.0.0--1", rules.Pass},
+		{"1.0.0--1", "v1.0.0--2", rules.Fail},
+		{"1.0.0--01", "v0.9.0", rules.Pass},
+		// Semver puts no bound on a number, so one too long for an int is
+		// still a number: longer is larger, and it sorts below any
+		// alphanumeric identifier.
+		{"1.0.0-100000000000000000000", "v1.0.0-99999999999999999999", rules.Pass},
+		{"1.0.0-99999999999999999999", "v1.0.0-100000000000000000000", rules.Fail},
+		{"1.0.0-99999999999999999999", "v1.0.0-alpha", rules.Fail},
+		{"1.0.0-alpha", "v1.0.0-99999999999999999999", rules.Pass},
+		{"99999999999999999999.0.0", "v1.0.0", rules.Pass},
+		{"100000000000000000000.0.0", "v99999999999999999999.0.0", rules.Pass},
+		{"99999999999999999999.0.0", "v100000000000000000000.0.0", rules.Fail},
+		{"1.99999999999999999999.0", "v1.99999999999999999998.0", rules.Pass},
+		{"1.0.99999999999999999998", "v1.0.99999999999999999999", rules.Fail},
 		// Not versions.
 		{"1.2", "v1.2.0", rules.Fail},
 		{"1.2.0.0", "v1.2.0", rules.Fail},
@@ -880,7 +900,10 @@ func TestObserveClaude_pluginSemver(t *testing.T) {
 		{"1.2.0-rc_1", "v1.2.0", rules.Fail},
 		{"v1.2.0", "v1.2.0", rules.Fail},
 		{"1.2.0", "vv1.2.0", rules.Fail},
-		{"99999999999999999999.0.0", "v1.0.0", rules.Fail},
+		// A leading zero makes a numeric identifier invalid however long it
+		// is, so this is no version at all rather than one ahead of v0.9.0.
+		{"1.0.0-099999999999999999999", "v0.9.0", rules.Fail},
+		{"099999999999999999999.0.0", "v0.9.0", rules.Fail},
 	}
 	for _, tt := range tests {
 		t.Run(tt.version+" vs "+tt.tag, func(t *testing.T) {
