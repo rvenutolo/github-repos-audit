@@ -563,7 +563,8 @@ not `---`) is read as having no keys, and fails the checks that need one. A
 file whose frontmatter is not closed by `---`, is not a YAML mapping or
 repeats a key cannot pass anything, so every check that judges it fails as
 `unreadable <path>`, and so does a command file `plugin.json` declares
-that is not tracked. When the repository's Claude files cannot be read as
+that is not tracked (`audit.json` gives its reason as `<path>: no such
+file`). When the repository's Claude files cannot be read as
 a whole (more of them than the tool reads in one repository, a
 `plugin.json` whose layout cannot be decided, such as one with a component
 path that does not start with `./` (only `skills` also takes `.`), which
@@ -616,7 +617,8 @@ declared: a hooks file, an inline `plugin.json` `hooks` object, or a skill's
 or command's frontmatter. A cell counts hooks the way the skill cells count
 files, naming a failing hook by its file and event (`✗ 1/3 hooks/hooks.json
 PreToolUse`). A hooks file that cannot be read, including one `plugin.json`
-declares that is not tracked, fails every hook check as `unreadable <path>`.
+declares that is not tracked (`<path>: no such file` in `audit.json`),
+fails every hook check as `unreadable <path>`.
 Hooks declared in the frontmatter of a skill or command file that cannot be
 read are not seen at all: the hook checks do not count them, and the skill
 checks fail for that file instead.

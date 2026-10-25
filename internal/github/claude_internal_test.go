@@ -524,11 +524,11 @@ func TestClaudeFacts_declaredFileNotTracked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claudeFacts() error = %v, want nil", err)
 	}
-	_, commandProblem := blobText(nil, "commands/command-01.md")
-	_, hooksProblem := blobText(nil, "hooks/hooks.json")
+	// The reason says the file is missing, not that it is not text: nothing
+	// is there to be text or not.
 	want := audit.Claude{
-		Commands: []audit.ClaudeSkill{{Path: "commands/command-01.md", Dir: "command-01", Unreadable: commandProblem}},
-		Hooks:    []audit.ClaudeHook{{Source: "hooks/hooks.json", Plugin: true, Unreadable: hooksProblem}},
+		Commands: []audit.ClaudeSkill{{Path: "commands/command-01.md", Dir: "command-01", Unreadable: "commands/command-01.md: no such file"}},
+		Hooks:    []audit.ClaudeHook{{Source: "hooks/hooks.json", Plugin: true, Unreadable: "hooks/hooks.json: no such file"}},
 		Plugin:   audit.ClaudePlugin{Present: true, Name: "plugin-kit", Fields: []string{"name"}},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
