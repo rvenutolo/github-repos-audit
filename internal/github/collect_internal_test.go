@@ -128,6 +128,53 @@ func TestRepository_releases_normalisesToUTC(t *testing.T) {
 	}
 }
 
+// TestRepository_releases_latest: GitHub's Latest release gives the tag the
+// plugin checks compare with, and its date when it carries one. One with no
+// date still names a release, so its tag is kept and only the date is left
+// zero, for the rules to read as unknown rather than as no release at all.
+func TestRepository_releases_latest(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		latest   string
+		wantTag  string
+		wantDate time.Time
+	}{
+		{name: "none", latest: `null`},
+		{
+			name:     "dated",
+			latest:   `{"tag_name": "v1.2.0", "published_at": "2026-06-01T14:00:00+02:00"}`,
+			wantTag:  "v1.2.0",
+			wantDate: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+		},
+		{
+			name:    "undated",
+			latest:  `{"tag_name": "v1.2.0", "published_at": null}`,
+			wantTag: "v1.2.0",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			body := `{"releases":{"total_count":0,"nodes":[]},"latest_release":` + tc.latest + `}`
+			var r repository
+			if err := json.Unmarshal([]byte(body), &r); err != nil {
+				t.Fatalf("unmarshal the fixture: %v", err)
+			}
+
+			got := r.releases()
+			if got.LatestTag != tc.wantTag {
+				t.Errorf("LatestTag = %q, want %q", got.LatestTag, tc.wantTag)
+			}
+			if !got.LatestPublishedAt.Equal(tc.wantDate) || (!tc.wantDate.IsZero() && got.LatestPublishedAt.Location() != time.UTC) {
+				t.Errorf("LatestPublishedAt = %v, want %v (UTC)", got.LatestPublishedAt, tc.wantDate)
+			}
+		})
+	}
+}
+
 // TestWaitFor is the backoff's one job: hold for the time asked, and come back
 // at once when the run is cancelled. A non-positive wait is not a hold at all,
 // so it reports whether the context is still live rather than pausing.

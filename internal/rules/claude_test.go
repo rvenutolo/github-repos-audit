@@ -1198,6 +1198,28 @@ func TestObserveClaude_marketplace(t *testing.T) {
 			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), fail("v1.1.0 → none"))},
 		},
 		{
+			// With no date, nothing says the latest release is within its
+			// week, so a pin behind it cannot be vouched for.
+			"a pin behind an undated latest release fails",
+			market(pinEntry("plugin-kit", "v1.1.0")),
+			[]audit.Repo{func() audit.Repo {
+				r := marketPlugin("plugin-kit", 3*day)
+				r.Releases.LatestPublishedAt = time.Time{}
+				return r
+			}()},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), fail("v1.1.0 → v1.2.0"))},
+		},
+		{
+			"a pin on an undated latest release passes",
+			market(pinEntry("plugin-kit", "v1.2.0")),
+			[]audit.Repo{func() audit.Repo {
+				r := marketPlugin("plugin-kit", 3*day)
+				r.Releases.LatestPublishedAt = time.Time{}
+				return r
+			}()},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.2.0"), pass("v1.2.0"))},
+		},
+		{
 			"an entry carrying a version is invalid",
 			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) { e.HasVersion = true })),
 			[]audit.Repo{fresh},
