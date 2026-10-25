@@ -674,18 +674,31 @@ func pinCurrent(ref string, rel audit.Releases, now time.Time) observation {
 }
 
 // entryItems judges each marketplace entry for marketplace_entries_valid: its
-// source must be a public audited repository, and it must carry no version,
-// which plugin.json owns. An entry outside the audited set (another owner,
-// a fork, an archived repository, one repos.toml does not name, a source that
-// is not a GitHub repository) fails on the owner and name alone. An entry is
-// named by its name, else its source, else its place in the file.
+// source must be a public audited repository that is a plugin, as isPlugin
+// decides, and it must carry no version, which plugin.json owns. An entry
+// outside the audited set (another owner, a fork, an archived repository,
+// one repos.toml does not name, a source that is not a GitHub repository)
+// fails on the owner and name alone. One pointing at a repository that is
+// not a plugin fails too: the plugin checks are n/a there, so its pin would
+// otherwise never be judged. An entry is named by its name, else its source,
+// else its place in the file.
+//
+// When the target's Claude files could not be read and no plugin.json was
+// recorded, whether it is a plugin is unknown, as it is for the plugin-row
+// checks, so an entry that passes on everything else is unreadable, named by
+// its target repository, rather than failed or passed on a guess.
 func entryItems(entries []audit.MarketplaceEntry, ev evalContext) []item {
 	out := make([]item, 0, len(entries))
 	for i, e := range entries {
+		name := cmp.Or(e.Name, e.Repo, fmt.Sprintf("entry %d", i+1))
 		src, inAccount := entrySource(e, ev.owner)
 		repo, audited := ev.repos[src]
 		ok := inAccount && audited && repo.Visibility == "public" && !e.HasVersion
-		out = append(out, item{name: cmp.Or(e.Name, e.Repo, fmt.Sprintf("entry %d", i+1)), ok: ok})
+		if ok && !isPlugin(repo) && repo.Claude.Unreadable != "" {
+			out = append(out, item{name: name, unreadable: repo.Name})
+			continue
+		}
+		out = append(out, item{name: name, ok: ok && isPlugin(repo)})
 	}
 	return out
 }

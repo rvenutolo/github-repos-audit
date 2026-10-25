@@ -1248,6 +1248,37 @@ func TestObserveClaude_marketplace(t *testing.T) {
 			rows{"plugin-market": marketRow(fail("1/3 web-app, cipher-lib"), pass(""))},
 		},
 		{
+			// Its pin is never judged, since the plugin checks are n/a on a
+			// repository that is not a plugin, so the entry itself fails.
+			"an entry pointing at a repository that is not a plugin is invalid",
+			market(pinEntry("plugin-kit", "v1.2.0"), pinEntry("skill-pack", "v1.0.0")),
+			[]audit.Repo{fresh, noPlugin},
+			rows{
+				"skill-pack":    allNA,
+				"plugin-market": marketRow(fail("1/2 skill-pack"), pass("")),
+			},
+		},
+		{
+			"an entry pointing at a plugin whose plugin.json is unreadable is still a plugin's",
+			market(pinEntry("skill-pack", "v1.0.0")),
+			[]audit.Repo{unreadableManifest},
+			rows{"plugin-market": marketRow(pass("1/1"), pass(""))},
+		},
+		{
+			// Unreadable Claude files leave whether the repository is a
+			// plugin unknown, so the entry can neither pass nor fail.
+			"an entry pointing at a repository whose Claude files are unreadable is unreadable",
+			market(pinEntry("plugin-kit", "v1.2.0"), pinEntry("skill-pack", "v1.0.0")),
+			[]audit.Repo{fresh, unreadableMarket},
+			rows{"plugin-market": marketRow(fail("unreadable skill-pack"), pass(""))},
+		},
+		{
+			"an entry that fails on its own is not made unreadable by its target's Claude files",
+			market(mutate(pinEntry("skill-pack", "v1.0.0"), func(e *audit.MarketplaceEntry) { e.HasVersion = true })),
+			[]audit.Repo{unreadableMarket},
+			rows{"plugin-market": marketRow(fail("0/1 skill-pack"), pass(""))},
+		},
+		{
 			"an entry with neither a name nor a repository is named by its position",
 			market(audit.MarketplaceEntry{}),
 			[]audit.Repo{noPlugin},

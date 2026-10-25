@@ -705,12 +705,16 @@ marketplace repository's row, which the Plugin table lists even when that
 repository is not a plugin itself.
 
 - **marketplace_entries_valid** — whether every entry's source is a public
-  audited repository and no entry carries a `version`, which `plugin.json`
-  owns. An entry pointing outside the audited set (another owner, a fork, an
-  archived repository, one `repos.toml` does not name, or a source that is
-  not a GitHub repository) fails. The cell counts the entries and names the
-  ones that fail (`✗ 2/3 skill-pack`). n/a when the marketplace has no
-  entries.
+  audited repository that tracks `.claude-plugin/plugin.json`, and no entry
+  carries a `version`, which `plugin.json` owns. An entry pointing outside
+  the audited set (another owner, a fork, an archived repository, one
+  `repos.toml` does not name, or a source that is not a GitHub repository)
+  fails, and so does one pointing at a repository that is not a plugin,
+  whose pin the plugin checks, n/a there, would never judge. The cell
+  counts the entries and names the ones that fail (`✗ 2/3 skill-pack`).
+  When an entry passes on everything else but its repository's Claude files
+  could not be read, so whether it is a plugin is unknown, the cell is
+  `unreadable <repository>`. n/a when the marketplace has no entries.
 - **marketplace_complete** — whether every public audited repository that
   tracks `.claude-plugin/plugin.json` has an entry. The cell names the ones
   that do not.
