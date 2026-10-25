@@ -106,6 +106,9 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/artifacts", f.storageListHandler("actions-artifacts"))
 	mux.HandleFunc("GET /repos/{owner}/{repo}/contents/{path...}", f.handleContents)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/git/trees/{sha}", f.handleTree)
+	mux.HandleFunc("GET /repos/{owner}/{repo}/releases/tags/{tag}", f.flatHandler("releases-tags-", "tag"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/git/ref/{ref...}", f.flatHandler("git-ref-", "ref"))
+	mux.HandleFunc("GET /repos/{owner}/{repo}/git/tags/{sha}", f.flatHandler("git-tags-", "sha"))
 
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.record(r)
@@ -341,6 +344,22 @@ func (f *fakeAPI) handleContents(w http.ResponseWriter, r *http.Request) {
 		base += "@" + ref
 	}
 	f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), base)
+}
+
+// flatHandler answers an endpoint keyed by one path value — a tag, a ref or
+// an object sha — from the fixture named prefix plus that value, its slashes
+// turned to dashes for the reason handleContents gives. A value with no
+// fixture answers 404, which is what GitHub answers for a tag, ref or object
+// the repository does not have.
+func (f *fakeAPI) flatHandler(prefix, value string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		f.t.Helper()
+		if owner := r.PathValue("owner"); owner != testOwner {
+			f.t.Errorf("request for owner %q, want %q", owner, testOwner)
+		}
+		base := prefix + strings.ReplaceAll(r.PathValue(value), "/", "-")
+		f.serve(w, filepath.Join(fixtureRoot, "repos", r.PathValue("repo")), base)
+	}
 }
 
 // handleTree answers the git tree API from the repository's git-tree fixture.

@@ -116,3 +116,50 @@ type ClaudePlugin struct {
 	// When it is set Name, Version and Fields are empty.
 	Unreadable string `json:"unreadable,omitzero"`
 }
+
+// ClaudeMarketplace is what the configured marketplace repository's
+// .claude-plugin/marketplace.json lists, read once per run, with what GitHub
+// answered about each entry's pin. Zero, and absent from audit.json, when
+// repos.toml configures no marketplace.
+type ClaudeMarketplace struct {
+	// Repo is the marketplace repository's name, as repos.toml's [claude]
+	// table gives it.
+	Repo string `json:"repo"`
+	// Unreadable is why the marketplace could not be read: the account does
+	// not have the repository, or its marketplace.json is absent or not in
+	// the shape Claude Code loads. When it is set there are no entries, so
+	// every marketplace check fails as unreadable rather than judging part of
+	// the file.
+	Unreadable string `json:"unreadable,omitzero"`
+	// Entries is every plugins entry, in the file's order.
+	Entries []MarketplaceEntry `json:"entries,omitzero"`
+}
+
+// MarketplaceEntry is one plugins entry and the answers about its pin. The
+// lookups are made only for an entry whose source is a GitHub repository of
+// the audited account; any other entry carries what the file says and a
+// Problem.
+type MarketplaceEntry struct {
+	// Name is the entry's name, the plugin's install id.
+	Name string `json:"name"`
+	// Repo is the source's owner/name as written, empty for a source that is
+	// not a GitHub repository.
+	Repo string `json:"repo,omitzero"`
+	// Ref and SHA are the source's pin as written, empty when absent.
+	Ref string `json:"ref,omitzero"`
+	SHA string `json:"sha,omitzero"`
+	// HasVersion reports a version key on the entry, which plugin.json
+	// should own instead.
+	HasVersion bool `json:"has_version,omitzero"`
+	// ReleaseTag reports that Ref names a release of Repo.
+	ReleaseTag bool `json:"release_tag,omitzero"`
+	// TagCommit is the commit the tag Ref resolves to, annotated tags
+	// dereferenced. Empty when Repo has no such tag.
+	TagCommit string `json:"tag_commit,omitzero"`
+	// PluginName is .claude-plugin/plugin.json's name at SHA.
+	PluginName string `json:"plugin_name,omitzero"`
+	// Problem is why a lookup could not be made or gave no usable answer:
+	// the source is not an audited repository, the tag resolves to no
+	// commit, or there is no readable manifest at SHA.
+	Problem string `json:"problem,omitzero"`
+}

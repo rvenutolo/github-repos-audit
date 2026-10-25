@@ -23,6 +23,10 @@ type collector interface {
 	// Collect reads each named repository. It fills every field of audit.Repo
 	// except the ones repos.toml declares.
 	Collect(ctx context.Context, names []string) ([]audit.Repo, error)
+	// CollectMarketplace reads the Claude plugin marketplace in repository
+	// repo once, looking up the pins of the entries that name one of audited.
+	// A marketplace it cannot read is recorded, not returned as an error.
+	CollectMarketplace(ctx context.Context, repo string, audited []audit.Repo) (audit.ClaudeMarketplace, error)
 	// Owner is the account the repositories belong to.
 	Owner() string
 }
@@ -68,7 +72,9 @@ func collectorAt(
 //
 // The order matters. The comparison comes before anything else is fetched, so
 // a repository with no entry costs no API call and a config pointed at the
-// wrong account costs none either.
+// wrong account costs none either. The marketplace, when repos.toml configures
+// one, is read last: its pins are looked up only in the repositories the run
+// audited, and a config the live validation rejects costs no marketplace call.
 func collect(
 	ctx context.Context,
 	cfg *config.Config,
@@ -125,6 +131,11 @@ func collect(
 	// repository, and an override dead against a visibility-dependent row.
 	if err := rules.Validate(snap); err != nil {
 		return nil, err
+	}
+	if cfg.Marketplace != "" {
+		if snap.Marketplace, err = client.CollectMarketplace(ctx, cfg.Marketplace, repos); err != nil {
+			return nil, err
+		}
 	}
 	return snap, nil
 }

@@ -13,7 +13,10 @@
 // 404 from private-vulnerability-reporting, and a public one answers 422 from
 // the Actions access endpoint; the Actions allowlist endpoint answers 404 or
 // 409 under any policy but "selected", and a Renovate preset's contents read
-// answers 404 when the file is absent. Each getJSON call lists the statuses it
+// answers 404 when the file is absent. The Claude plugin marketplace's reads
+// answer 404 too: a marketplace.json or a plugin.json at a pinned commit that
+// is absent, a pinned tag with no release, and a tag the repository does not
+// have. Each getJSON call lists the statuses it
 // accepts, and any status outside that set aborts the whole run, because a
 // field GitHub declined to answer is not a field that is missing and rendering
 // it as a gap would invent one.

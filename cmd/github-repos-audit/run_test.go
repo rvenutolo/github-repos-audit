@@ -363,6 +363,12 @@ type fakeCollector struct {
 	// asked is the names the last Collect call was given; nil if Collect was
 	// never called. A test reads it to learn what the program chose to read.
 	asked []string
+	// market is what CollectMarketplace answers; marketAsked is the
+	// repository and audited names it was last given, nil if it was never
+	// called.
+	market      audit.ClaudeMarketplace
+	marketErr   error
+	marketAsked []string
 }
 
 func (f *fakeCollector) Discover(context.Context) ([]string, error) {
@@ -383,6 +389,18 @@ func (f *fakeCollector) Collect(ctx context.Context, names []string) ([]audit.Re
 		f.log.InfoContext(ctx, "collected repositories", "count", len(repos))
 	}
 	return repos, f.collectErr
+}
+
+// CollectMarketplace answers market, and records what it was asked: the
+// marketplace repository first, then the audited names.
+func (f *fakeCollector) CollectMarketplace(
+	_ context.Context, repo string, audited []audit.Repo,
+) (audit.ClaudeMarketplace, error) {
+	f.marketAsked = []string{repo}
+	for _, r := range audited {
+		f.marketAsked = append(f.marketAsked, r.Name)
+	}
+	return f.market, f.marketErr
 }
 
 // Owner answers with the fake account every render test is written against.
@@ -1370,4 +1388,66 @@ func TestRunValidate_knowsNothingOfTheAccount(t *testing.T) {
 	if want := "3 repositories, no problems found"; !strings.Contains(stdout.String(), want) {
 		t.Errorf("stdout = %q, want it to contain %q", stdout.String(), want)
 	}
+}
+
+// TestCollect_marketplace: a configured [claude] marketplace is read once,
+// against the repositories the run audited, and lands on the snapshot; with
+// no [claude] table nothing is fetched and the snapshot carries none.
+func TestCollect_marketplace(t *testing.T) {
+	t.Parallel()
+
+	market := audit.ClaudeMarketplace{
+		Repo:    "alpha",
+		Entries: []audit.MarketplaceEntry{{Name: "bravo", Repo: "gh-owner/bravo", Problem: "not an audited repository"}},
+	}
+
+	t.Run("configured", func(t *testing.T) {
+		t.Parallel()
+		dir, configPath := scratchProject(t, scratchConfig+"\n[claude]\nmarketplace = \"alpha\"\n")
+		fake := healthyFake()
+		fake.market = market
+		got := renderInto(t, dir, configPath, fake)
+
+		if diff := cmp.Diff([]string{"alpha", "alpha", "bravo"}, fake.marketAsked); diff != "" {
+			t.Errorf("CollectMarketplace arguments mismatch (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff(market, got.snap.Marketplace); diff != "" {
+			t.Errorf("audit.json claude_marketplace mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	// Only an error GitHub gave aborts: an unreadable marketplace is the
+	// collector's to record, so whatever it does return stops the run like a
+	// failed Collect does, with nothing written.
+	t.Run("collection fails", func(t *testing.T) {
+		t.Parallel()
+		dir, configPath := scratchProject(t, scratchConfig+"\n[claude]\nmarketplace = \"alpha\"\n")
+		fake := healthyFake()
+		fake.marketErr = errors.New("boom")
+
+		var stdout, stderr bytes.Buffer
+		err := runRender(t.Context(), []string{"--config", configPath, "--dir", dir},
+			noEnv, &stdout, &stderr, fakeFactory(fake), fixedClock)
+		if err == nil || !strings.Contains(err.Error(), "boom") {
+			t.Fatalf("runRender() error = %v, want the marketplace error", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, "audit.json")); statErr == nil {
+			t.Error("audit.json was written by a run that failed")
+		}
+	})
+
+	t.Run("not configured", func(t *testing.T) {
+		t.Parallel()
+		dir, configPath := scratchProject(t, scratchConfig)
+		fake := healthyFake()
+		fake.market = market
+		got := renderInto(t, dir, configPath, fake)
+
+		if fake.marketAsked != nil {
+			t.Errorf("CollectMarketplace was asked %v, want it never called", fake.marketAsked)
+		}
+		if strings.Contains(got.raw, "claude_marketplace") {
+			t.Errorf("audit.json carries claude_marketplace with no [claude] table:\n%s", got.raw)
+		}
+	})
 }

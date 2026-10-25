@@ -160,8 +160,9 @@ and the generated report. These steps describe how that repository is wired up.
 
 ## `repos.toml` reference
 
-`repos.toml` is the only file you hand-maintain. It has four kinds of table,
-and needs at least one `[types.<name>]` and one `[repos.<name>]`. A key the
+`repos.toml` is the only file you hand-maintain. It needs at least one
+`[types.<name>]` and one `[repos.<name>]`; `[identity]` and `[claude]` are
+optional. A key the
 tool does not know, anywhere in the file, is an error rather than ignored, so
 a misspelling such as `publish = true` cannot pass unnoticed.
 
@@ -224,6 +225,26 @@ match = " Example <"
 The table is required once any type or override judges `git_identity` (with
 any word but `not_required`), and refused when nothing does, for the same
 reason a dead override is.
+
+`[claude]` names the repository that holds your Claude Code plugin
+marketplace, for the marketplace and plugin pin checks:
+
+```toml
+[claude]
+marketplace = "plugin-market"
+```
+
+`marketplace` is a repository name, without the owner, and must be one of the
+`[repos.<name>]` entries; `github-repos-audit validate` rejects any other
+name. Each run reads its `.claude-plugin/marketplace.json` from the default
+branch once, and, for every entry whose `source` is a GitHub repository the
+run audits, looks up whether the pinned `ref` is a release, the commit that
+tag resolves to (annotated tags followed), and the `name` in
+`.claude-plugin/plugin.json` at the pinned `sha`. An entry pointing anywhere
+else costs no request. A marketplace repository the account does not have, or
+a `marketplace.json` that is absent or does not parse, does not stop the run:
+`audit.json` records why under `claude_marketplace.unreadable`. Without the
+table nothing is fetched.
 
 An override that names an unknown check is an error, and so is an override
 that agrees with what the repository's type already derives — a dead

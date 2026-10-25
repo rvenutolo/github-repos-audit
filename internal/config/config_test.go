@@ -749,3 +749,56 @@ func TestLoad_namesTheFileItRejected(t *testing.T) {
 		t.Errorf("Load() error = %q, want it to name %s", err, path)
 	}
 }
+
+// TestParse_claudeMarketplace: [claude] marketplace names the repository whose
+// .claude-plugin/marketplace.json the marketplace checks read. It must be one
+// of the audited repositories, and [claude] takes no other key.
+func TestParse_claudeMarketplace(t *testing.T) {
+	t.Parallel()
+
+	market := validFile + "\n[repos.plugin-market]\ntype = \"tools\"\n"
+	tests := []struct {
+		name    string
+		file    string
+		want    string
+		wantErr string
+	}{
+		{name: "valid", file: market + "\n[claude]\nmarketplace = \"plugin-market\"\n", want: "plugin-market"},
+		{name: "no table", file: market, want: ""},
+		{
+			name:    "not in repos",
+			file:    validFile + "\n[claude]\nmarketplace = \"plugin-market\"\n",
+			wantErr: `[claude] marketplace "plugin-market" is not in [repos.*]`,
+		},
+		{
+			name:    "unknown key",
+			file:    market + "\n[claude]\nmarketplace = \"plugin-market\"\nbogus = 1\n",
+			wantErr: "claude.bogus",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := config.Parse(strings.NewReader(tc.file))
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("Parse() error = nil, want one containing %q", tc.wantErr)
+				}
+				if !errors.Is(err, config.ErrInvalid) {
+					t.Errorf("Parse() error = %v, want it to wrap ErrInvalid", err)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("Parse() error = %q, want it to contain %q", err.Error(), tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Parse() error = %v, want nil", err)
+			}
+			if cfg.Marketplace != tc.want {
+				t.Errorf("Parse() Marketplace = %q, want %q", cfg.Marketplace, tc.want)
+			}
+		})
+	}
+}

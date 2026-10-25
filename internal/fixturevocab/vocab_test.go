@@ -339,6 +339,19 @@ const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUD
 	`(\.claude/)?(skills|skills/skill-\d{2}|skills/skill-\d{2}/SKILL\.md)|\.claude|\.claude/settings\.json|` +
 	`(\.claude/)?(commands|commands/command-\d{2}\.md)|hooks|hooks/(hooks\.json|hook-\d{2}\.sh))$`
 
+// marketplaceUnreadable is every reason the collector gives for a
+// marketplace it could not read; the parse problems carry no path.
+const marketplaceUnreadable = `^(no such repository in the account|no \.claude-plugin/marketplace\.json|` +
+	`\.claude-plugin/marketplace\.json: [^/]*)$`
+
+// marketplacePinProblem is one reason a pin lookup gave no usable answer, and
+// marketplaceProblem one or more of them joined as the collector joins them.
+const marketplacePinProblem = `(not an audited repository|no ref|no sha|` +
+	`tag v\d+\.\d+\.\d+ does not resolve to a commit|` +
+	`(no )?\.claude-plugin/plugin\.json at (a{36}[0-9a-f]{4}|(0123456789abcdef){2}01234567)(: [^/]*)?)`
+
+const marketplaceProblem = `^` + marketplacePinProblem + `(; ` + marketplacePinProblem + `)*$`
+
 var apiRules = []rule{
 	{regexp.MustCompile(`^(\[\]\.)?name$`), isFakeRepo, "a fake repository name"},
 	{regexp.MustCompile(`^((\[\]\.)?full_name|\[\]\.ruleset_source)$`), isOwnerSlashRepo, "gh-owner/<fake>"},
@@ -372,6 +385,13 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^patterns_allowed\[\]$`), matches(pattern), "a synthetic actions pattern"},
 	{regexp.MustCompile(`(^|\.)(created_at|updated_at|pushed_at|published_at)$`), optional(matches(timestamp)), "empty or a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.latest_release\.tag_name$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
+	// A release-by-tag answer, a tag ref and an annotated tag object, read
+	// for a marketplace pin: the tag is a semver, the ref its full name, and
+	// every object a pattern oid of a git object type.
+	{regexp.MustCompile(`^(tag_name|tag)$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
+	{regexp.MustCompile(`^ref$`), matches(`^refs/tags/v\d+\.\d+\.\d+$`), "a semver tag ref"},
+	{regexp.MustCompile(`^object\.sha$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^object\.type$`), matches(`^(commit|tag|tree|blob)$`), "a git object type"},
 	{regexp.MustCompile(`^size$`), matches(`^(0|1024)$`), "0 or 1024"},
 	// A Renovate config's text is repository content, and the only account
 	// data it can carry is a preset reference naming a repository, so it is
@@ -539,6 +559,15 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.claude\.hooks\[\]\.matcher$`), matches(`^[A-Za-z|*]*$`), "a tool-name matcher"},
 	{regexp.MustCompile(`^repos\[\]\.releases\.latest_tag$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.plugin\.name$`), isFakeRepo, "a fake repository name"},
+	// The configured marketplace: fake repository names, gh-owner/<fake>
+	// sources, semver tags, pattern oids, and problems in the collector's
+	// fixed wording around a synthetic path, tag or oid.
+	{regexp.MustCompile(`^claude_marketplace\.(repo|entries\[\]\.(name|plugin_name))$`), isFakeRepo, "a fake repository name"},
+	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.repo$`), isOwnerSlashRepo, "gh-owner/<fake>"},
+	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.ref$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
+	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.(sha|tag_commit)$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^claude_marketplace\.unreadable$`), matches(marketplaceUnreadable), "a marketplace problem in the collector's wording"},
+	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.problem$`), matches(marketplaceProblem), "a pin problem in the collector's wording"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(`^((` + claudePath + `: )?[^/]*|` + claudeMissing + `)$`), "a problem naming only a synthetic Claude path"},
 	keep(
 		`types\.[a-z0-9_-]+\.[a-z_]+`,
@@ -565,6 +594,7 @@ var snapshotRules = []rule{
 		`repos\[\]\.claude\.(skills|commands)\[\]\.(keys\.[a-z_-]+|has_description|description_chars|disable_model_invocation|user_invocable_false|lines)`,
 		`repos\[\]\.claude\.hooks\[\]\.(plugin|event|type|timeout|timeout_set|interpreter|path_form|script_mode)`,
 		`repos\[\]\.claude\.plugin\.(present|version|fields\[\]|own_marketplace)`,
+		`claude_marketplace\.entries\[\]\.(has_version|release_tag)`,
 	),
 }
 
@@ -1091,6 +1121,30 @@ func TestCheck_rejectsAFreeTextCacheKey(t *testing.T) {
 		doc := `{"repos": [{"actions_storage": {"caches": [{"key": "` + key + `"}]}}]}`
 		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) != 0 {
 			t.Errorf("check(%s) = %q, want no problem", doc, got)
+		}
+	}
+}
+
+// TestCheck_marketplaceFacts: the marketplace's snapshot rules admit the
+// collector's facts over the fake vocabulary, and refuse a source outside it.
+func TestCheck_marketplaceFacts(t *testing.T) {
+	t.Parallel()
+
+	const fixture = `{"claude_marketplace": {"repo": "plugin-market", "entries": [
+		{"name": "plugin-kit", "repo": "gh-owner/plugin-kit", "ref": "v1.2.0",
+		 "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002", "has_version": true, "release_tag": true,
+		 "tag_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002", "plugin_name": "plugin-kit",
+		 "problem": "tag v1.2.0 does not resolve to a commit; no .claude-plugin/plugin.json at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002"},
+		{"name": "hook-guard", "problem": "not an audited repository"}]}}`
+	if got := check(decode(t, []byte(fixture)), snapshotRules); len(got) != 0 {
+		t.Errorf("check() = %v, want the fake marketplace accepted", got)
+	}
+	for _, doc := range []string{
+		`{"claude_marketplace": {"repo": "plugin-market", "entries": [{"name": "plugin-kit", "repo": "someone/plugin-kit"}]}}`,
+		`{"claude_marketplace": {"repo": "plugin-market", "unreadable": "no such file somewhere/else"}}`,
+	} {
+		if got := check(decode(t, []byte(doc)), snapshotRules); len(got) == 0 {
+			t.Errorf("check(%s) = no problems, want it refused", doc)
 		}
 	}
 }

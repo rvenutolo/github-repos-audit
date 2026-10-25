@@ -31,6 +31,10 @@ type Snapshot struct {
 	// repositories exist. Absent when they agree, so a clean account's
 	// audit.json carries no trace of it.
 	Drift ConfigDrift `json:"config_drift,omitzero"`
+	// Marketplace is the configured Claude plugin marketplace, read once per
+	// run because its entries are judged against every audited repository.
+	// Absent when repos.toml configures none.
+	Marketplace ClaudeMarketplace `json:"claude_marketplace,omitzero"`
 }
 
 // ConfigDrift is the disagreement between repos.toml and the account. Neither

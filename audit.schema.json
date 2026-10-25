@@ -37,6 +37,10 @@
     "config_drift": {
       "description": "Where repos.toml and the account disagree about which repositories exist. Absent when they agree.",
       "$ref": "#/$defs/config_drift"
+    },
+    "claude_marketplace": {
+      "description": "The Claude plugin marketplace repos.toml's [claude] table names, read once per run. Absent when repos.toml configures none.",
+      "$ref": "#/$defs/claude_marketplace"
     }
   },
   "$defs": {
@@ -1029,6 +1033,85 @@
         },
         "unreadable": {
           "description": "Why the hooks could not be read. When present nothing but source and plugin is.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "claude_marketplace": {
+      "description": "What the configured marketplace repository's .claude-plugin/marketplace.json lists, with what GitHub answered about each entry's pin.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo"],
+      "properties": {
+        "repo": {
+          "description": "The marketplace repository's name, as repos.toml's [claude] table gives it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "unreadable": {
+          "description": "Why the marketplace could not be read: the account does not have the repository, or its marketplace.json is absent or not in the shape Claude Code loads. When present entries is absent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "entries": {
+          "description": "Every plugins entry, in the file's order.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/marketplace_entry"
+          }
+        }
+      }
+    },
+    "marketplace_entry": {
+      "description": "One marketplace plugins entry and the answers about its pin. The lookups are made only for an entry whose source is a GitHub repository of the audited account.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "description": "The entry's name, the plugin's install id.",
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "description": "The source's owner/name as written. Absent for a source that is not a GitHub repository.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "description": "The source's ref as written. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "sha": {
+          "description": "The source's sha as written. Absent when unset.",
+          "type": "string",
+          "minLength": 1
+        },
+        "has_version": {
+          "description": "The entry carries a version key, which plugin.json should own instead.",
+          "type": "boolean",
+          "const": true
+        },
+        "release_tag": {
+          "description": "ref names a release of repo.",
+          "type": "boolean",
+          "const": true
+        },
+        "tag_commit": {
+          "description": "The commit the tag ref resolves to, annotated tags dereferenced. Absent when repo has no such tag.",
+          "type": "string",
+          "minLength": 1
+        },
+        "plugin_name": {
+          "description": ".claude-plugin/plugin.json's name at sha.",
+          "type": "string",
+          "minLength": 1
+        },
+        "problem": {
+          "description": "Why a lookup could not be made or gave no usable answer: the source is not an audited repository, the tag resolves to no commit, or there is no readable manifest at sha.",
           "type": "string",
           "minLength": 1
         }

@@ -21,6 +21,10 @@
 #                which identities are yours. Required once any type or
 #                override judges git_identity, and refused when nothing does.
 #
+# [claude]       optional: marketplace names the repository holding your
+#                Claude Code plugin marketplace (.claude-plugin/marketplace.json).
+#                It must be one of the [repos.*] entries.
+#
 # [repos.<name>]
 # type      which [types.*] table the repository is judged against
 # published meant for someone else to find and use; default false
@@ -483,6 +487,11 @@ skill_size = "info"
 canonical = "Pat Example <pat@example.com>"
 accepted = ["Pat Example <12345+pat@users.noreply.github.com>"]
 match = " Example <"
+
+# Uncomment to read a plugin marketplace; the repository must have its own
+# [repos.*] entry. README.md's "[claude]" section explains it.
+# [claude]
+# marketplace = "plugin-market"
 
 [repos.shell-scripts]
 type = "tools"
