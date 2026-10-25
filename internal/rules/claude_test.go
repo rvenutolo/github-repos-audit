@@ -975,6 +975,8 @@ func TestObserveClaude_marketplace(t *testing.T) {
 	unreadableClaude.Claude.Unreadable = "too many Claude files"
 	unreadableMarket := public(fixture("skill-pack", "tools"))
 	unreadableMarket.Claude.Unreadable = "too many Claude files"
+	unreadableManifest := public(fixture("skill-pack", "tools"))
+	unreadableManifest.Claude.Plugin.Unreadable = ".claude-plugin/plugin.json: not valid JSON"
 
 	// rows is what a test expects of each named repository's five cells, in
 	// marketplaceChecks order.
@@ -1021,6 +1023,24 @@ func TestObserveClaude_marketplace(t *testing.T) {
 			rows{
 				"plugin-kit":    plugin(pass(""), pass("v1.2.0"), pass("v1.2.0")),
 				"plugin-market": marketRow(pass("1/1"), pass("")),
+			},
+		},
+		{
+			"a marketplace named in another case than its repository is that repository",
+			audit.ClaudeMarketplace{Repo: "Plugin-Market", Entries: []audit.MarketplaceEntry{pinEntry("plugin-kit", "v1.2.0")}},
+			[]audit.Repo{fresh},
+			rows{
+				"plugin-kit":    plugin(pass(""), pass("v1.2.0"), pass("v1.2.0")),
+				"plugin-market": marketRow(pass("1/1"), pass("")),
+			},
+		},
+		{
+			"a public plugin whose plugin.json is unreadable still counts toward completeness",
+			market(pinEntry("plugin-kit", "v1.2.0")),
+			[]audit.Repo{fresh, unreadableManifest},
+			rows{
+				"skill-pack":    plugin(fail(""), na, na),
+				"plugin-market": marketRow(pass("1/1"), fail("skill-pack")),
 			},
 		},
 		{
@@ -1082,9 +1102,7 @@ func TestObserveClaude_marketplace(t *testing.T) {
 		},
 		{
 			"a pin with no ref fails",
-			market(mutate(pinEntry("plugin-kit", "v1.2.0"), func(e *audit.MarketplaceEntry) {
-				*e = audit.MarketplaceEntry{Name: "plugin-kit", Repo: "gh-owner/plugin-kit", Problem: "no ref; no sha"}
-			})),
+			market(audit.MarketplaceEntry{Name: "plugin-kit", Repo: "gh-owner/plugin-kit", Problem: "no ref; no sha"}),
 			[]audit.Repo{fresh},
 			rows{"plugin-kit": plugin(pass(""), fail("no ref, no sha, name differs"), na)},
 		},
