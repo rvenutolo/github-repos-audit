@@ -973,6 +973,8 @@ func TestObserveClaude_marketplace(t *testing.T) {
 	noPlugin := public(fixture("skill-pack", "tools"))
 	unreadableClaude := marketPlugin("plugin-kit", 3*day)
 	unreadableClaude.Claude.Unreadable = "too many Claude files"
+	unreadableMarket := public(fixture("skill-pack", "tools"))
+	unreadableMarket.Claude.Unreadable = "too many Claude files"
 
 	// rows is what a test expects of each named repository's five cells, in
 	// marketplaceChecks order.
@@ -1019,6 +1021,21 @@ func TestObserveClaude_marketplace(t *testing.T) {
 			rows{
 				"plugin-kit":    plugin(pass(""), pass("v1.2.0"), pass("v1.2.0")),
 				"plugin-market": marketRow(pass("1/1"), pass("")),
+			},
+		},
+		{
+			"unreadable Claude files in the marketplace repository leave its row judged",
+			audit.ClaudeMarketplace{Repo: "skill-pack", Entries: []audit.MarketplaceEntry{pinEntry("plugin-kit", "v1.2.0")}},
+			[]audit.Repo{fresh, unreadableMarket},
+			rows{
+				"plugin-kit": plugin(pass(""), pass("v1.2.0"), pass("v1.2.0")),
+				// Whether the repository is a plugin is unknown, so its own
+				// listing checks stay unreadable; the row judges the
+				// marketplace file, which was read.
+				"skill-pack": {
+					fail("unreadable too many Claude files"), fail("unreadable too many Claude files"),
+					fail("unreadable too many Claude files"), pass("1/1"), pass(""),
+				},
 			},
 		},
 		{

@@ -125,6 +125,14 @@ func observeClaude(c Check, r audit.Repo, ev evalContext) observation {
 	if marketplaceNA(c, r, ev.marketplace) {
 		return observation{unknown: true}
 	}
+	//nolint:exhaustive // only the marketplace-row checks skip the guard below
+	switch c {
+	case CheckMarketplaceEntriesValid, CheckMarketplaceComplete:
+		// They judge the marketplace file, not this repository's own Claude
+		// files, so a repository whose files could not be listed still has
+		// a marketplace row to judge.
+		return observeMarketplace(c, r, ev)
+	}
 	cl := r.Claude
 	if cl.Unreadable != "" {
 		return observation{value: "unreadable " + cl.Unreadable, mark: true, scalar: c.ValueOnly()}
@@ -201,8 +209,7 @@ func observeClaude(c Check, r audit.Repo, ev evalContext) observation {
 	case CheckPluginManifestFields, CheckPluginNoOwnMarketplace,
 		CheckPluginReleases, CheckPluginVersionMatchesTag:
 		return observePlugin(c, r)
-	case CheckPluginListed, CheckPluginPinValid, CheckPluginPinCurrent,
-		CheckMarketplaceEntriesValid, CheckMarketplaceComplete:
+	case CheckPluginListed, CheckPluginPinValid, CheckPluginPinCurrent:
 		return observeMarketplace(c, r, ev)
 	}
 	// CheckSkillSize, the one Claude check left. It closes the function

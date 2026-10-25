@@ -562,7 +562,9 @@ that is not tracked. When the repository's Claude files cannot be read as
 a whole (more of them than the tool reads in one repository, a
 `plugin.json` whose layout cannot be decided, or one that declares a
 skills or commands directory that is not there), every one of them fails
-as `unreadable <reason>`. The report's Claude section
+as `unreadable <reason>`, except marketplace_entries_valid and
+marketplace_complete, which judge the marketplace file rather than the
+repository's own. The report's Claude section
 shows them, listing only the repositories that carry any.
 
 - **skill_slash_only** — whether every skill and command file sets
