@@ -63,11 +63,12 @@ type ClaudeSkill struct {
 	// does nothing but wrap. Empty for a skill, and for a command naming no
 	// skill or several.
 	WrapsSkill string `json:"wraps_skill,omitzero"`
-	// ManifestDescription is, for an inline command, the `description` its
-	// plugin.json entry sets, which Claude Code shows for the command. It is
-	// recorded beside the frontmatter's rather than merged into
-	// HasDescription, so no check's verdict depends on it yet. Empty when
-	// the entry sets none, and for a file.
+	// ManifestDescription is, for a command plugin.json's commands object
+	// map declares (inline or by source), the `description` its entry sets,
+	// which Claude Code shows for the command. It is recorded beside the
+	// frontmatter's rather than merged into HasDescription, so no check's
+	// verdict depends on it yet. Empty when the entry sets none, and for a
+	// command found any other way.
 	ManifestDescription string `json:"manifest_description,omitzero"`
 	// Unreadable is why the file could not be read in full or parsed. When it
 	// is set only Path and Dir are.

@@ -614,3 +614,31 @@ func TestClaudeFacts_sourceCommandNamedByKey(t *testing.T) {
 		t.Errorf("Commands mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// TestClaudeFacts_sourceCommandManifestDescription: a source entry's
+// description is what Claude Code shows for the command, so it is recorded
+// as an inline entry's is. A project command whose name matches the key has
+// no manifest entry, so it carries none: matching by name alone would pin
+// the plugin's text on a file it does not describe.
+func TestClaudeFacts_sourceCommandManifestDescription(t *testing.T) {
+	t.Parallel()
+
+	const manifest, command, project = ".claude-plugin/plugin.json", "commands/command-01.md", ".claude/commands/command-02.md"
+	s := &claudeServer{blobs: map[string]*fileBlob{
+		manifest: text(`{"name": "plugin-kit", "commands": {` +
+			`"command-02": {"source": "./commands/command-01.md", "description": "Placeholder entry description."}}}`),
+		command: text("# Command\nPlaceholder body.\n"),
+		project: text("# Command\nPlaceholder body.\n"),
+	}}
+	got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "plugin-kit", files(manifest, command, project))
+	if err != nil {
+		t.Fatalf("claudeFacts() error = %v, want nil", err)
+	}
+	want := []audit.ClaudeSkill{
+		{Path: project, Dir: "command-02", Lines: 2},
+		{Path: command, Dir: "command-02", Lines: 2, ManifestDescription: "Placeholder entry description."},
+	}
+	if diff := cmp.Diff(want, got.Commands); diff != "" {
+		t.Errorf("Commands mismatch (-want +got):\n%s", diff)
+	}
+}

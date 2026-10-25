@@ -980,7 +980,7 @@
           "minLength": 1
         },
         "manifest_description": {
-          "description": "For an inline command, the `description` its plugin.json entry sets. Absent when the entry sets none, and for a file.",
+          "description": "For a command plugin.json's commands object map declares, inline or by source, the `description` its entry sets. Absent when the entry sets none, and for a command found any other way.",
           "type": "string",
           "minLength": 1
         },

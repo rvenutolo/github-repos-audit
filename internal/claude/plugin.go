@@ -25,13 +25,16 @@ type Plugin struct {
 	// file's stem: the reference makes each key the command name, and two
 	// keys may name one file.
 	SourceCommands map[string]string
-	// InlineDescriptions maps an inline command's name to the description
-	// its manifest entry gives it, for the commands that set one.
-	InlineDescriptions map[string]string
-	HooksFile          string   // first declared hooks path
-	HooksFiles         []string // every declared hooks path
-	Hooks              []Hook   // inline hooks object
-	Unreadable         string
+	// CommandDescriptions maps an object-map command's name, inline or
+	// source, to the description its manifest entry gives it, for the
+	// entries that set one. A source command's file may carry its own
+	// frontmatter description too; which Claude Code shows is not the
+	// parser's to decide, so both are kept.
+	CommandDescriptions map[string]string
+	HooksFile           string   // first declared hooks path
+	HooksFiles          []string // every declared hooks path
+	Hooks               []Hook   // inline hooks object
+	Unreadable          string
 }
 
 // requiredFields lists the keys plugin_manifest_fields asks for.
@@ -150,18 +153,18 @@ func (p *Plugin) readCommands(v any) string {
 			if hasSource == hasContent {
 				return "commands." + name + " must set exactly one of source and content"
 			}
+			if hasDescription {
+				if p.CommandDescriptions == nil {
+					p.CommandDescriptions = map[string]string{}
+				}
+				p.CommandDescriptions[name] = description
+			}
 			if hasContent {
 				p.InlineCommands = append(p.InlineCommands, name)
 				if p.InlineContent == nil {
 					p.InlineContent = map[string]string{}
 				}
 				p.InlineContent[name] = content
-				if hasDescription {
-					if p.InlineDescriptions == nil {
-						p.InlineDescriptions = map[string]string{}
-					}
-					p.InlineDescriptions[name] = description
-				}
 			} else {
 				if source == "" {
 					return "commands." + name + ".source is empty"
