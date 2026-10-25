@@ -13,7 +13,7 @@ type Hook struct {
 	Source      string  // file the hook is declared in
 	Plugin      bool    // declared by a plugin (hooks.json, plugin.json, or a plugin skill's frontmatter)
 	Event       string  // hook event name as written
-	Type        string  // "command", "http", "mcp_tool", "prompt", "agent", or as written
+	Type        string  // "command", "http", "mcp_tool", "prompt", "agent", or as written; "" when absent
 	Matcher     string  // "" when absent
 	Timeout     float64 // 0 when unset
 	TimeoutSet  bool
@@ -143,7 +143,11 @@ func handler(source string, plugin bool, event, matcher string, raw any) (Hook, 
 		}
 		h.TimeoutSet = true
 	}
-	if h.Type != "command" {
+	// A handler with no type is judged as a command: that is the handler a
+	// hook naming a file is, and leaving its script unresolved would skip a
+	// hook rather than judge it. Other types run no script, so whatever
+	// command key they carry is not theirs to resolve.
+	if h.Type != "" && h.Type != "command" {
 		return h, ""
 	}
 	if c, present := obj["command"]; present {

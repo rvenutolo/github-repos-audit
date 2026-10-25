@@ -589,7 +589,9 @@ PreToolUse`). A hooks file that cannot be read fails every hook check as
   `$CLAUDE_PROJECT_DIR`) names a tracked file with git mode `100755`. When the
   first word is an interpreter (`bash`, `sh`, `python3`, `node`, ...) the
   script is read, not executed, so it must be tracked but need not be
-  executable. A command naming no repository file (`jq ...`) is skipped.
+  executable. A command naming no repository file (`jq ...`) is skipped. A
+  handler that sets no `type` is judged as a `command` hook here and in
+  hook_plugin_root.
 - **hook_plugin_root** — whether every plugin `command` hook that runs a file
   of the repository names it through `${CLAUDE_PLUGIN_ROOT}`; a relative or
   absolute path breaks once the plugin is installed elsewhere. Hooks outside a

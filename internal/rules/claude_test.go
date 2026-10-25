@@ -457,6 +457,13 @@ func TestObserveClaude_hooks(t *testing.T) {
 			only(rules.CheckHookCommandExecutable, fail("0/1 "+name)),
 		},
 		{
+			// What internal/claude records for a handler that omits type:
+			// it is judged as the command it runs.
+			"a non-executable script on a handler with no type",
+			hooks(mutate(func(h *audit.ClaudeHook) { h.Type = ""; h.ScriptMode = "100644" })),
+			only(rules.CheckHookCommandExecutable, fail("0/1 "+name)),
+		},
+		{
 			"an interpreted script needs no execute bit",
 			hooks(mutate(func(h *audit.ClaudeHook) { h.ScriptMode = "100644"; h.Interpreter = true })),
 			all(pass("1/1")),

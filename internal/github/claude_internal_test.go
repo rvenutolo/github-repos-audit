@@ -485,3 +485,26 @@ func TestClaudeFacts_commandWithoutFrontmatter(t *testing.T) {
 		t.Errorf("Commands mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// TestClaudeFacts_untypedHookRunsItsScript: a handler that omits type is
+// judged as a command, so its script and that script's mode are recorded and
+// a script missing its execute bit can fail hook_command_executable.
+func TestClaudeFacts_untypedHookRunsItsScript(t *testing.T) {
+	t.Parallel()
+
+	const settings = ".claude/settings.json"
+	s := &claudeServer{blobs: map[string]*fileBlob{
+		settings: text(`{"hooks":{"Stop":[{"hooks":[{"command":"\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/hook-01.sh"}]}]}}`),
+	}}
+	got, err := newClaudeClient(t, s).claudeFacts(t.Context(), "skill-pack", files(settings, ".claude/hooks/hook-01.sh"))
+	if err != nil {
+		t.Fatalf("claudeFacts() error = %v, want nil", err)
+	}
+	want := []audit.ClaudeHook{{
+		Source: settings, Event: "Stop",
+		Script: ".claude/hooks/hook-01.sh", PathForm: "project_dir", ScriptMode: "100644",
+	}}
+	if diff := cmp.Diff(want, got.Hooks); diff != "" {
+		t.Errorf("Hooks mismatch (-want +got):\n%s", diff)
+	}
+}

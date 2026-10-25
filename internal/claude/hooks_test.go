@@ -94,6 +94,20 @@ func TestParseHooks_fields(t *testing.T) {
 			t.Errorf("hook = %+v", h)
 		}
 	})
+	t.Run("a handler with no type resolves its script", func(t *testing.T) {
+		t.Parallel()
+		h := claude.ParseHooks("s", wrap(`{"command":"${CLAUDE_PLUGIN_ROOT}/hooks/x.sh"}`), true)[0]
+		if h.Type != "" || h.Command == "" || h.Script != "hooks/x.sh" || h.PathForm != "plugin_root" || h.Interpreter {
+			t.Errorf("hook = %+v", h)
+		}
+	})
+	t.Run("a handler with no type checks its command's shape", func(t *testing.T) {
+		t.Parallel()
+		h := claude.ParseHooks("s", wrap(`{"command":1}`), true)[0]
+		if h.Unreadable == "" {
+			t.Errorf("hook = %+v, want unreadable", h)
+		}
+	})
 	t.Run("timeout set", func(t *testing.T) {
 		t.Parallel()
 		h := claude.ParseHooks("s", wrap(`{"type":"command","command":"x","timeout":5}`), false)[0]
