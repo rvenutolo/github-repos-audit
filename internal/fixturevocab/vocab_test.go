@@ -884,19 +884,34 @@ func checkDriftLine(n int, line string) []string {
 // may list: the synthetic names the Claude facts use.
 const claudeCellName = `((skill|command)-\d{2}|plugin-kit)`
 
+// claudeHookEvent is every hook event name Claude Code defines, from the
+// lifecycle table at https://code.claude.com/docs/en/hooks. A report names an
+// event as the file writes it, so a real report's typo of one is free text;
+// fixtures name only the defined events, which keeps any word a real
+// configuration made up out of a cell.
+const claudeHookEvent = `(SessionStart|Setup|UserPromptSubmit|UserPromptExpansion|` +
+	`PreToolUse|PermissionRequest|PermissionDenied|PostToolUse|` +
+	`PostToolUseFailure|PostToolBatch|Notification|MessageDisplay|` +
+	`SubagentStart|SubagentStop|TaskCreated|TaskCompleted|Stop|` +
+	`StopFailure|TeammateIdle|InstructionsLoaded|ConfigChange|` +
+	`CwdChanged|DirectoryAdded|FileChanged|WorktreeCreate|` +
+	`WorktreeRemove|PreCompact|PostCompact|PreModelSwitch|` +
+	`PostModelSwitch|Elicitation|ElicitationResult|SessionEnd)`
+
 // claudeHookName is a hook a Claude section cell may list: its file and
-// event, the file a synthetic path and the event one Claude Code defines or a
-// typo of one (the reports name the event as written).
-const claudeHookName = `(` + claudePath + ` [A-Za-z]+)`
+// event, the file a synthetic path and the event one Claude Code defines.
+const claudeHookName = `(` + claudePath + ` ` + claudeHookEvent + `)`
 
 // claudeProblem is every reason the tool itself writes into a Claude
 // unreadable field (internal/github/claude.go and internal/claude), as it
 // appears after `unreadable ` in a cell: the files-as-a-whole reason, a
 // plugin manifest's problem behind its path, and the bare SKILL.md some
 // reasons name. Text a file's own content could shape is not matched, so
-// foreign prose in a cell is caught.
+// foreign prose in a cell is caught. The JSON parser's error follows "not
+// valid JSON: " and can quote the file's own bytes, so only the one error
+// the fixtures produce is accepted.
 const claudeProblem = `(too many Claude files|SKILL\.md|` + claudeMissing + `|` +
-	`\.claude-plugin/plugin\.json: (not valid JSON[^/]*|plugin\.json is not a JSON object|` +
+	`\.claude-plugin/plugin\.json: (not valid JSON: unexpected end of JSON input|plugin\.json is not a JSON object|` +
 	`skills is not a path or a list of paths|skills holds an empty path|` +
 	`hooks holds an empty path|hooks holds neither a path nor an object))`
 
@@ -1392,6 +1407,16 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"| Repository | Pin valid |\n" +
 			"| --- | --- |\n" +
 			"| [web-app](https://github.com/gh-owner/web-app) | ✗ name differs from deploy-site |",
+		"an event Claude Code does not define in a hooks cell": "" +
+			"## Claude\n\n" +
+			"| Repository | Events |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 0/1 hooks/hooks.json DeploySite |",
+		"a parser error quoting the file after not valid JSON": "" +
+			"## Claude\n\n" +
+			"| Repository | Executable |\n" +
+			"| --- | --- |\n" +
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ unreadable .claude-plugin/plugin.json: not valid JSON: deploy-site is broken |",
 		"free prose after unreadable in a Claude cell": "" +
 			"## Claude\n\n" +
 			"| Repository | Events |\n" +
@@ -1458,8 +1483,8 @@ func TestCheckMarkdown_rejectsForeignProse(t *testing.T) {
 			"## Claude\n\n" +
 			"| Repository | Events | Executable | Plugin root | Timeout | Matcher |\n" +
 			"| --- | --- | --- | --- | --- | --- |\n" +
-			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 hooks/hooks.json PreToolUSe, .claude/settings.json Stop | 2/2 | n/a | ✗ 0/1 .claude/settings.json PostToolUse | 1/1 |\n" +
-			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/settings.json | ✗ unreadable .claude-plugin/plugin.json: not valid JSON: x | ✗ unreadable too many Claude files | ✗ unreadable SKILL.md | n/a |",
+			"| [web-app](https://github.com/gh-owner/web-app) | ✗ 1/2 hooks/hooks.json PreToolUse, .claude/settings.json Stop | 2/2 | n/a | ✗ 0/1 .claude/settings.json PostToolUse | 1/1 |\n" +
+			"| [alpha](https://github.com/gh-owner/alpha) | ✗ unreadable .claude/settings.json | ✗ unreadable .claude-plugin/plugin.json: not valid JSON: unexpected end of JSON input | ✗ unreadable too many Claude files | ✗ unreadable SKILL.md | n/a |",
 		"an empty description cell": "" +
 			"| Repository | Description |\n" +
 			"| --- | --- |\n" +

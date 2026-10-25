@@ -36,6 +36,8 @@ func TestParseHooks(t *testing.T) {
 		{"ruby include flag", `{"type":"command","command":"ruby -I lib ./x.rb"}`, "x.rb", "relative", true},
 		{"perl module flag", `{"type":"command","command":"perl -M Foo ./x.pl"}`, "x.pl", "relative", true},
 		{"python module is no script", `{"type":"command","command":"python3 -m pkg"}`, "", "", false},
+		{"-m outside python is a switch", `{"type":"command","command":"bash -m ./x.sh"}`, "x.sh", "relative", true},
+		{"another interpreter's value flag is a switch", `{"type":"command","command":"bash -W ./x.sh"}`, "x.sh", "relative", true},
 		{"node eval is no script", `{"type":"command","command":"node -e 'x()'"}`, "", "", false},
 		{"unbraced variable that merely starts with the placeholder", `{"type":"command","command":"$CLAUDE_PLUGIN_ROOT_X/y.sh"}`, "", "absolute", false},
 		{"unbraced project variable that merely starts with the placeholder", `{"type":"command","command":"$CLAUDE_PROJECT_DIRS/y.sh"}`, "", "absolute", false},

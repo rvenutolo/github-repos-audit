@@ -3,7 +3,6 @@ package claude
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -181,7 +180,25 @@ func WrappedSkill(body string, skills []string) string {
 	return found
 }
 
+// namesWord scans for name with a non-word byte (or the text's edge) on each
+// side, rather than compiling a pattern per name on every call. Word bytes
+// are ASCII, so a byte of a multi-byte character is never one and a
+// non-ASCII letter ends a word, as WrappedSkill defines one.
 func namesWord(body, name string) bool {
-	re := regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])` + regexp.QuoteMeta(name) + `(?:$|[^A-Za-z0-9_-])`)
-	return re.MatchString(body)
+	for from := 0; ; {
+		i := strings.Index(body[from:], name)
+		if i < 0 {
+			return false
+		}
+		start := from + i
+		end := start + len(name)
+		if (start == 0 || !isWordByte(body[start-1])) && (end == len(body) || !isWordByte(body[end])) {
+			return true
+		}
+		from = start + 1
+	}
+}
+
+func isWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '-'
 }
