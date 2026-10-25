@@ -1141,6 +1141,12 @@ func TestObserveClaude_marketplace(t *testing.T) {
 			rows{"plugin-kit": plugin(pass(""), pass("v1.1.0"), pass("v1.1.0 → v1.2.0"))},
 		},
 		{
+			"a pin ahead of the latest release passes however old that release is",
+			market(pinEntry("plugin-kit", "v1.3.0-rc.1")),
+			[]audit.Repo{marketPlugin("plugin-kit", 8*day)},
+			rows{"plugin-kit": plugin(pass(""), pass("v1.3.0-rc.1"), pass("v1.3.0-rc.1 ≥ v1.2.0"))},
+		},
+		{
 			"a valid pin with no latest release fails",
 			market(pinEntry("plugin-kit", "v1.1.0")),
 			[]audit.Repo{func() audit.Repo {

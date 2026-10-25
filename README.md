@@ -679,12 +679,15 @@ is added once it is made public.
   when all three hold, and otherwise names what is wrong:
   `v1.2.0 is not a release`, `sha is not v1.2.0`, `name differs`, `no ref` or
   `no sha`. n/a when the plugin is not listed.
-- **plugin_pin_current** — whether the pinned `ref` is the latest release.
-  Behind shows as `v1.1.0 → v1.2.0` and passes until the latest release has
-  been published for more than 7 days; Renovate auto-merges every pin bump
-  within about a day, so a week behind means the bump pipeline is broken. A
-  pin when the repository has no latest release fails (`v1.1.0 → none`). n/a
-  when the plugin is not listed or the pin is not valid.
+- **plugin_pin_current** — whether the pinned `ref` is the latest release or
+  ahead of it, compared as semantic versions as plugin_version_matches_tag
+  compares them: a pin to a prerelease newer than the latest release passes
+  as `v1.3.0-rc.1 ≥ v1.2.0`. Behind shows as `v1.1.0 → v1.2.0` and passes
+  until the latest release has been published for more than 7 days; Renovate
+  auto-merges every pin bump within about a day, so a week behind means the
+  bump pipeline is broken. A pin when the repository has no latest release
+  fails (`v1.1.0 → none`). n/a when the plugin is not listed or the pin is
+  not valid.
 
 The last two judge the marketplace file as a whole and apply only to the
 marketplace repository's row, which the Plugin table lists even when that

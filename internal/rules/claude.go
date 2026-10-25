@@ -637,13 +637,19 @@ func pinProblems(e audit.MarketplaceEntry) []string {
 }
 
 // pinCurrent judges a valid pin against the repository's latest release. On
-// it, the cell is the tag. Behind, it reads `pinned → latest` and still passes
-// until the latest release is more than pinLagLimit old. A pin to a release
-// when GitHub reports no latest one (every release since a prerelease, say)
-// fails, since nothing says the pin is current.
+// it, the cell is the tag. Ahead of it by semver precedence (a prerelease
+// newer than GitHub's Latest, say), it reads `pinned ≥ latest` and passes, as
+// plugin_version_matches_tag passes a version ahead of its tag. Behind, it
+// reads `pinned → latest` and still passes until the latest release is more
+// than pinLagLimit old. A pin to a release when GitHub reports no latest one
+// (every release since a prerelease, say) fails, since nothing says the pin
+// is current.
 func pinCurrent(ref string, rel audit.Releases, now time.Time) observation {
 	if ref == rel.LatestTag {
 		return observation{ok: true, value: ref}
+	}
+	if ahead, _ := semverAtLeast(strings.TrimPrefix(ref, "v"), rel.LatestTag); ahead {
+		return observation{ok: true, value: ref + " ≥ " + rel.LatestTag}
 	}
 	value := ref + " → " + cmp.Or(rel.LatestTag, "none")
 	if rel.LatestTag == "" || now.Sub(rel.LatestPublishedAt) > pinLagLimit {
