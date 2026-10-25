@@ -132,6 +132,18 @@ func TestParsePlugin_components(t *testing.T) {
 				t.Errorf("got %+v", p)
 			}
 		}},
+		{"skills root as ./", `{"skills": "./"}`, func(t *testing.T, p claude.Plugin) {
+			t.Helper()
+			if !cmp.Equal(p.SkillDirs, []string{"."}) {
+				t.Errorf("got %+v", p)
+			}
+		}},
+		{"commands root as ./", `{"commands": "./"}`, func(t *testing.T, p claude.Plugin) {
+			t.Helper()
+			if !cmp.Equal(p.CommandPaths, []string{"."}) {
+				t.Errorf("got %+v", p)
+			}
+		}},
 		{"hooks path", `{"hooks": "./h.json"}`, func(t *testing.T, p claude.Plugin) {
 			t.Helper()
 			if p.HooksFile != "h.json" || !cmp.Equal(p.HooksFiles, []string{"h.json"}) {
@@ -183,6 +195,17 @@ func TestParsePlugin_unreadable(t *testing.T) {
 		"hooks array with empty":     `{"hooks": ["./h.json", ""]}`,
 		"hooks a number":             `{"hooks": 1}`,
 		"hooks array of numbers":     `{"hooks": [1]}`,
+		// Path rules: every component path starts with "./", and only skills
+		// also takes ".".
+		"skills without ./":          `{"skills": "extra"}`,
+		"skills array without ./":    `{"skills": ["./a", "b"]}`,
+		"commands without ./":        `{"commands": "commands/a.md"}`,
+		"commands array without ./":  `{"commands": ["./a.md", "b.md"]}`,
+		"commands source without ./": `{"commands": {"a": {"source": "a.md"}}}`,
+		"commands the root as .":     `{"commands": "."}`,
+		"hooks without ./":           `{"hooks": "hooks/extra.json"}`,
+		"hooks array without ./":     `{"hooks": [{"Stop": []}, "h.json"]}`,
+		"hooks a parent path":        `{"hooks": "../h.json"}`,
 	}
 	for name, text := range tests {
 		t.Run(name, func(t *testing.T) {

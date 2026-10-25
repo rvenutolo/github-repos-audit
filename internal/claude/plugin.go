@@ -40,7 +40,8 @@ func requiredFields() []string {
 //
 // A component key in a shape the reference does not accept makes the manifest
 // unreadable: the layout it implies cannot be decided, and guessing it would
-// hide files from the checks.
+// hide files from the checks. So does a component path that does not start
+// with "./" (skills also takes "."), which Claude Code refuses to load.
 func ParsePlugin(text string) Plugin {
 	bad := func(format string, args ...any) Plugin {
 		return Plugin{Unreadable: fmt.Sprintf(format, args...)}
@@ -78,6 +79,11 @@ func ParsePlugin(text string) Plugin {
 			if s == "" {
 				return bad("skills holds an empty path")
 			}
+			// The one path outside the "./" rule: skills also takes "." for
+			// the plugin root.
+			if s != "." && !strings.HasPrefix(s, "./") {
+				return bad("%s", notRelative("skills", s))
+			}
 			p.SkillDirs = append(p.SkillDirs, cleanDeclared(s))
 		}
 	}
@@ -97,6 +103,9 @@ func ParsePlugin(text string) Plugin {
 			case string:
 				if h == "" {
 					return bad("hooks holds an empty path")
+				}
+				if !strings.HasPrefix(h, "./") {
+					return bad("%s", notRelative("hooks", h))
 				}
 				p.HooksFiles = append(p.HooksFiles, cleanDeclared(h))
 			case map[string]any:
@@ -135,6 +144,9 @@ func (p *Plugin) readCommands(v any) string {
 				if source == "" {
 					return "commands." + name + ".source is empty"
 				}
+				if !strings.HasPrefix(source, "./") {
+					return notRelative("commands."+name+".source", source)
+				}
 				p.CommandPaths = append(p.CommandPaths, cleanDeclared(source))
 			}
 		}
@@ -147,6 +159,9 @@ func (p *Plugin) readCommands(v any) string {
 	for _, s := range paths {
 		if s == "" {
 			return "commands holds an empty path"
+		}
+		if !strings.HasPrefix(s, "./") {
+			return notRelative("commands", s)
 		}
 		p.CommandPaths = append(p.CommandPaths, cleanDeclared(s))
 	}
@@ -191,6 +206,15 @@ func stringOrList(v any) ([]string, bool) {
 		out = append(out, s)
 	}
 	return out, true
+}
+
+// notRelative is the problem with a component path that breaks the path rules
+// at https://code.claude.com/docs/en/plugins-reference ("Path rules"): every
+// one starts with "./", and Claude Code refuses to load a plugin whose
+// manifest has one that does not. Judging that plugin's files would pass
+// checks on a plugin no one can install.
+func notRelative(key, p string) string {
+	return fmt.Sprintf("%s path %q does not start with ./", key, p)
 }
 
 // cleanDeclared turns a manifest path ("./extra/") into the repository-relative

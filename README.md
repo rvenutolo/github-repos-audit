@@ -565,7 +565,9 @@ repeats a key cannot pass anything, so every check that judges it fails as
 `unreadable <path>`, and so does a command file `plugin.json` declares
 that is not tracked. When the repository's Claude files cannot be read as
 a whole (more of them than the tool reads in one repository, a
-`plugin.json` whose layout cannot be decided, or one that declares a
+`plugin.json` whose layout cannot be decided, such as one with a component
+path that does not start with `./` (only `skills` also takes `.`), which
+Claude Code refuses to load, or one that declares a
 skills or commands directory that is not there), every one of them fails
 as `unreadable <reason>`, except marketplace_entries_valid and
 marketplace_complete, which judge the marketplace file rather than the
