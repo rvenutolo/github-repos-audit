@@ -14,10 +14,10 @@
 
 ## Tree
 
-| Repository                                 | Min. release age | .gitignore | .editorconfig | flake.nix | CHANGELOG | Community files |
-| ------------------------------------------ | ---------------- | ---------- | ------------- | --------- | --------- | --------------- |
-| [alpha](https://github.com/gh-owner/alpha) | ✓ 7 days         | ✓          | ✓             | ✓         | n/a       | n/a             |
-| [bravo](https://github.com/gh-owner/bravo) | ✓ 7 days         | ✓          | ✓             | ✓         | n/a       | n/a             |
+| Repository                                 | Min. release age | Major automerge | .gitignore | .editorconfig | flake.nix | CHANGELOG | Community files |
+| ------------------------------------------ | ---------------- | --------------- | ---------- | ------------- | --------- | --------- | --------------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓ 7 days         | ✓               | ✓          | ✓             | ✓         | n/a       | n/a             |
+| [bravo](https://github.com/gh-owner/bravo) | ✓ 7 days         | ✓               | ✓          | ✓             | ✓         | n/a       | n/a             |
 
 ## File paths
 

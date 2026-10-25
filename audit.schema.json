@@ -111,6 +111,7 @@
               "ci_green",
               "renovate",
               "renovate_min_release_age",
+              "renovate_automerge_major",
               "editorconfig",
               "flake_nix",
               "justfile",
@@ -274,6 +275,7 @@
         "ci_green",
         "renovate",
         "renovate_min_release_age",
+        "renovate_automerge_major",
         "editorconfig",
         "flake_nix",
         "justfile",
@@ -332,6 +334,7 @@
         "ci_green": { "$ref": "#/$defs/expectation" },
         "renovate": { "$ref": "#/$defs/expectation" },
         "renovate_min_release_age": { "$ref": "#/$defs/release_age_threshold" },
+        "renovate_automerge_major": { "$ref": "#/$defs/expectation" },
         "editorconfig": { "$ref": "#/$defs/expectation" },
         "flake_nix": { "$ref": "#/$defs/expectation" },
         "justfile": { "$ref": "#/$defs/expectation" },
@@ -427,6 +430,11 @@
         },
         "lock_file_maintenance": {
           "description": "Whether lockFileMaintenance.enabled is true after the same merge, which for this key also reads the built-in presets the README lists under nix_lock_refresh. Absent when off, unset, of the wrong type or unresolved.",
+          "type": "boolean",
+          "const": true
+        },
+        "automerge_major": {
+          "description": "Whether Renovate merges every major update on its own after the same merge: automerge on for majors, with nothing disabling them, requiring Dependency Dashboard approval for them, or holding some of them in a narrower packageRule. Absent when off, unset, of the wrong type or unresolved.",
           "type": "boolean",
           "const": true
         }

@@ -17,6 +17,7 @@ Hand-written prose.
 - **CI not green on the default branch** (1) — go-linter
 - **No Renovate config** (1) — go-linter
 - **Renovate minimum release age unset, unresolved or too short** (2) — mixedCase-flake, web-app
+- **Renovate does not auto-merge major updates** (2) — mixedCase-flake, web-app
 - **No .editorconfig** (1) — go-linter
 - **No flake.nix** (1) — go-linter
 - **No justfile** (1) — go-linter
@@ -46,13 +47,13 @@ Hand-written prose.
 
 ## Tree
 
-| Repository                                                           | Min. release age | .gitignore | .editorconfig | flake.nix | CHANGELOG | Community files |
-| -------------------------------------------------------------------- | ---------------- | ---------- | ------------- | --------- | --------- | --------------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a              | ✓          | ✓             | n/a       | n/a       | n/a             |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ 7 days         | ✓          | ✓             | ✓         | n/a       | n/a             |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a              | ✗          | ✗             | ✗         | n/a       | n/a             |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✗ 3 days         | ✓          | ✓             | ✓         | ✓         | 1/3             |
-| [web-app](https://github.com/gh-owner/web-app)                       | ✗ unresolved     | ✗          | ✓             | n/a       | n/a       | n/a             |
+| Repository                                                           | Min. release age | Major automerge | .gitignore | .editorconfig | flake.nix | CHANGELOG | Community files |
+| -------------------------------------------------------------------- | ---------------- | --------------- | ---------- | ------------- | --------- | --------- | --------------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a              | n/a             | ✓          | ✓             | n/a       | n/a       | n/a             |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ 7 days         | ✓               | ✓          | ✓             | ✓         | n/a       | n/a             |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a              | n/a             | ✗          | ✗             | ✗         | n/a       | n/a             |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✗ 3 days         | ✗               | ✓          | ✓             | ✓         | ✓         | 1/3             |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✗ unresolved     | ✗ unresolved    | ✗          | ✓             | n/a       | n/a       | n/a             |
 
 ## File paths
 

@@ -137,18 +137,18 @@ func TestCollect_presetFallbackIsRead(t *testing.T) {
 }
 
 // TestCollect_presetManagerFactsAreRead: the nix manager and lock-file
-// maintenance a preset turns on reach audit.Renovate.
+// maintenance and major auto-merge a preset turns on reach audit.Renovate.
 func TestCollect_presetManagerFactsAreRead(t *testing.T) {
 	t.Parallel()
 	api := newFakeAPI(t)
-	// base64 of {"minimumReleaseAge": "7 days", "nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}}
+	// base64 of {"minimumReleaseAge": "7 days", "nix": {"enabled": true}, "lockFileMaintenance": {"enabled": true}, "automerge": true}
 	api.failNext(presetDefault, scriptedFailure{
 		status: http.StatusOK,
-		body:   `{"type":"file","encoding":"base64","content":"eyJtaW5pbXVtUmVsZWFzZUFnZSI6ICI3IGRheXMiLCAibml4IjogeyJlbmFibGVkIjogdHJ1ZX0sICJsb2NrRmlsZU1haW50ZW5hbmNlIjogeyJlbmFibGVkIjogdHJ1ZX19"}`,
+		body:   `{"type":"file","encoding":"base64","content":"eyJtaW5pbXVtUmVsZWFzZUFnZSI6ICI3IGRheXMiLCAibml4IjogeyJlbmFibGVkIjogdHJ1ZX0sICJsb2NrRmlsZU1haW50ZW5hbmNlIjogeyJlbmFibGVkIjogdHJ1ZX0sICJhdXRvbWVyZ2UiOiB0cnVlfQ=="}`,
 	})
 	want := audit.Renovate{
 		MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store",
-		NixManager: true, LockFileMaintenance: true,
+		NixManager: true, LockFileMaintenance: true, AutomergeMajor: true,
 	}
 	if diff := cmp.Diff(want, collectFlake(t, api)); diff != "" {
 		t.Errorf("Renovate mismatch (-want +got):\n%s", diff)
