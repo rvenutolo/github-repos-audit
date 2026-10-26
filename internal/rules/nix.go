@@ -265,6 +265,89 @@ func cacheNixProblems(r audit.Repo) []string {
 	return out
 }
 
+// determinateNixAction is the installer every flake repository's CI is held
+// to, matched by usesAction. It installs Determinate Nix and nothing else:
+// unlike nix-installer-action it has no input that turns it to upstream Nix,
+// so the step's name alone says which Nix the job gets.
+const determinateNixAction = "DeterminateSystems/determinate-nix-action"
+
+// otherNixInstallers are the published actions known to install Nix other
+// than determinateNixAction, each as the cell names it. An install through
+// an action not listed here, or by a `run:` step, is not seen.
+//
+//nolint:gochecknoglobals // immutable lookup table
+var otherNixInstallers = []string{
+	"DeterminateSystems/nix-installer-action",
+	"cachix/install-nix-action",
+	"nixbuild/nix-quick-install-action",
+}
+
+// observeNixInstaller judges whether every Nix install in the repository's
+// CI uses determinateNixAction, so every flake repository runs one Nix,
+// installed one way. A step counts whether a job runs it directly or through
+// a local composite. The cell names each other installer found, once and in
+// list order, then every workflow, and every composite a job uses, that
+// could not be read, as "unreadable <path>" in path order: any of them may
+// hold an install the check cannot see, so one fails it even beside a
+// passing install.
+//
+// It is n/a without a flake.nix, and when nothing readable installs Nix and
+// nothing is unreadable: a repository whose CI never installs Nix has no
+// installer to standardize.
+func observeNixInstaller(r audit.Repo) observation {
+	if !r.Files.FlakeNix {
+		return observation{unknown: true}
+	}
+	var installs bool
+	others := map[string]bool{}
+	var unreadable []string
+	judge := func(u audit.StepUse) {
+		if usesAction(u.Action, determinateNixAction) {
+			installs = true
+		}
+		for _, name := range otherNixInstallers {
+			if usesAction(u.Action, name) {
+				installs, others[name] = true, true
+			}
+		}
+	}
+	for _, w := range r.Workflows {
+		if w.ParseError != "" {
+			unreadable = append(unreadable, w.Path)
+			continue
+		}
+		for _, j := range w.Jobs {
+			for _, u := range j.Uses {
+				judge(u)
+				ca, local := resolveComposite(r, u.Action)
+				switch {
+				case !local:
+				case ca.ParseError != "":
+					unreadable = append(unreadable, ca.Path)
+				default:
+					for _, cu := range ca.Uses {
+						judge(cu)
+					}
+				}
+			}
+		}
+	}
+	if !installs && len(unreadable) == 0 {
+		return observation{unknown: true}
+	}
+	var problems []string
+	for _, name := range otherNixInstallers {
+		if others[name] {
+			problems = append(problems, name)
+		}
+	}
+	slices.Sort(unreadable)
+	for _, path := range slices.Compact(unreadable) {
+		problems = append(problems, "unreadable "+path)
+	}
+	return observation{ok: len(problems) == 0, value: strings.Join(problems, ", "), mark: true}
+}
+
 // anySet reports whether any of keys is given a non-empty value. An input
 // given as empty is the action's default, which is the same as leaving it
 // out.

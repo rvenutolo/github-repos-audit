@@ -334,6 +334,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observeLockRefresh(r)
 	case CheckNixCache:
 		return observeNixCache(r, ev.now)
+	case CheckNixInstaller:
+		return observeNixInstaller(r)
 	case CheckGoCache:
 		return observeGoCache(r, ev.now)
 	case CheckCacheUsage:
