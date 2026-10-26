@@ -580,6 +580,95 @@ func TestEvaluate_overrides(t *testing.T) {
 		}
 	})
 
+	t.Run("info shows a check the type expects and never makes it a gap", func(t *testing.T) {
+		t.Parallel()
+
+		r := fixture("a", "tools")
+		r.Files.RenovateConfig = ""
+		r.Overrides = map[string]string{"renovate": "info"}
+		rep, err := evaluateOneReport(r)
+		if err != nil {
+			t.Fatalf("Evaluate() error = %v, want nil", err)
+		}
+		cell := rep.Repos[0].Cell(rules.CheckRenovate)
+		if cell.Verdict != rules.Info {
+			t.Errorf("renovate verdict = %v, want Info once overridden to info", cell.Verdict)
+		}
+		if !cell.Overridden {
+			t.Error("cell should be marked as overridden")
+		}
+		for _, g := range rep.Gaps {
+			if g.Check == rules.CheckRenovate {
+				t.Errorf("gaps include %+v, want no renovate gap under an info override", g)
+			}
+		}
+	})
+
+	t.Run("required judges a row the type only shows", func(t *testing.T) {
+		t.Parallel()
+
+		r := fixture("a", "software") // pr_template is info for software
+		r.Files.PRTemplate = ""
+		r.Overrides = map[string]string{"pr_template": rules.OverrideRequired}
+		cells, err := evaluateOne(r)
+		if err != nil {
+			t.Fatalf("Evaluate() error = %v, want nil", err)
+		}
+		if got := cells[rules.CheckPRTemplate].Verdict; got != rules.Fail {
+			t.Errorf("pr_template verdict = %v, want Fail once required", got)
+		}
+	})
+
+	t.Run("not_required hides a value-only row the type shows", func(t *testing.T) {
+		t.Parallel()
+
+		r := fixture("a", "tools")
+		r.Overrides = map[string]string{"last_push": rules.OverrideNotRequired}
+		cells, err := evaluateOne(r)
+		if err != nil {
+			t.Fatalf("Evaluate() error = %v, want nil", err)
+		}
+		if got := cells[rules.CheckLastPush].Verdict; got != rules.NA {
+			t.Errorf("last_push verdict = %v, want NA once excused", got)
+		}
+	})
+
+	// The visibility words resolve against the repository's live visibility
+	// and its published flag, exactly as they do when a type uses them.
+	for _, tc := range []struct {
+		name    string
+		word    string
+		repo    func(audit.Repo) audit.Repo
+		verdict rules.Verdict
+	}{
+		{"public on a private repository", "public", func(r audit.Repo) audit.Repo { return r }, rules.NA},
+		{"public on a public repository", "public", public, rules.Fail},
+		{"public_published on a public unpublished repository", "public_published", public, rules.NA},
+		{
+			"public_published on a public published repository", "public_published",
+			func(r audit.Repo) audit.Repo { return published(public(r)) }, rules.Fail,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := tc.repo(fixture("a", "tools"))
+			r.Files.RenovateConfig = ""
+			r.Overrides = map[string]string{"renovate": tc.word}
+			cells, err := evaluateOne(r)
+			if err != nil {
+				t.Fatalf("Evaluate() error = %v, want nil", err)
+			}
+			cell := cells[rules.CheckRenovate]
+			if cell.Verdict != tc.verdict {
+				t.Errorf("renovate verdict = %v, want %v under a %s override", cell.Verdict, tc.verdict, tc.word)
+			}
+			if !cell.Overridden {
+				t.Error("cell should be marked as overridden")
+			}
+		})
+	}
+
 	t.Run("a value override on a presence check only marks the cell", func(t *testing.T) {
 		t.Parallel()
 

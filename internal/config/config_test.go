@@ -120,6 +120,30 @@ func TestParse_acceptsAThresholdOverride(t *testing.T) {
 	}
 }
 
+// TestParse_acceptsEveryTypeWordAsAnOverride: an override may use any word a
+// type could give its check, and means what that word means on a type.
+func TestParse_acceptsEveryTypeWordAsAnOverride(t *testing.T) {
+	t.Parallel()
+
+	for key, words := range map[string][]string{
+		"renovate":    {"required", "not_required", "public", "public_published", "info"},
+		"last_push":   {"info", "not_required"},
+		"direct_push": {"blocked", "allowed", "not_required"},
+	} {
+		for _, word := range words {
+			in := toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { " + key + " = \"" + word + "\" }\n"
+			cfg, err := config.Parse(strings.NewReader(in))
+			if err != nil {
+				t.Errorf("Parse() with %s = %q error = %v, want nil", key, word, err)
+				continue
+			}
+			if got := cfg.Repos["alpha"].Overrides[key]; got != word {
+				t.Errorf("Parse() override %s = %q, want %q", key, got, word)
+			}
+		}
+	}
+}
+
 // TestParse_artifactStorageRejectsRequired: artifact_storage is a plain
 // fact with nothing that can be missing, so neither a type nor an override
 // may require it; a type may only show it or leave it out.
@@ -139,7 +163,7 @@ func TestParse_artifactStorageRejectsRequired(t *testing.T) {
 		{
 			name:     "an override",
 			in:       toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { artifact_storage = \"required\" }\n",
-			contains: `alpha: override artifact_storage = "required" names a value-only check (want not_required)`,
+			contains: `alpha: override artifact_storage = "required" names a value-only check (want info or not_required)`,
 		},
 	}
 	for _, tc := range tests {
@@ -372,7 +396,22 @@ var rejectedFiles = []struct {
 	{
 		name:     "required override on a value-only check",
 		in:       toolsTypes + "[repos.alpha]\ntype = \"infra\"\noverrides = { last_release_age = \"required\" }\n",
-		contains: `alpha: override last_release_age = "required" names a value-only check (want not_required)`,
+		contains: `alpha: override last_release_age = "required" names a value-only check (want info or not_required)`,
+	},
+	{
+		name:     "an override word no type could use on a present-or-absent check",
+		in:       toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { renovate = \"quarterly\" }\n",
+		contains: `alpha: override renovate = "quarterly" (want one of required, not_required, public, public_published, info)`,
+	},
+	{
+		name:     "an override word no type could use on a value-only check",
+		in:       toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { last_push = \"weekly\" }\n",
+		contains: `alpha: override last_push = "weekly" (want info or not_required)`,
+	},
+	{
+		name:     "a direct-push override that is neither a value nor a word",
+		in:       toolsTypes + "[repos.alpha]\ntype = \"tools\"\noverrides = { direct_push = \"open\" }\n",
+		contains: `alpha: override direct_push = "open" (want one of blocked, allowed, required, not_required)`,
 	},
 	{
 		name:     "a threshold override that is not a duration",
