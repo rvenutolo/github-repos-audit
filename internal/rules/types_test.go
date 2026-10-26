@@ -277,3 +277,32 @@ func TestValidate_rejectsAnUnusableTypesTable(t *testing.T) {
 		t.Errorf("Validate() error = %v, want it to wrap ErrConfig", err)
 	}
 }
+
+// TestValidOverrideWord: an override takes the words a type could give its
+// check, plus required and not_required on direct push, and a rejection lists
+// what would have been accepted.
+func TestValidOverrideWord(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		check rules.Check
+		word  string
+		ok    bool
+		want  string
+	}{
+		{rules.CheckRenovate, "info", true, ""},
+		{rules.CheckRenovate, "public_published", true, ""},
+		{rules.CheckRenovate, "quarterly", false, "one of required, not_required, public, public_published, info"},
+		{rules.CheckLastPush, "not_required", true, ""},
+		{rules.CheckLastPush, "required", false, "info or not_required"},
+		{rules.CheckDirectPush, "allowed", true, ""},
+		{rules.CheckDirectPush, "not_required", true, ""},
+		{rules.CheckDirectPush, "info", false, "one of blocked, allowed, required, not_required"},
+	}
+	for _, tc := range tests {
+		ok, want := rules.ValidOverrideWord(tc.check, tc.word)
+		if ok != tc.ok || want != tc.want {
+			t.Errorf("ValidOverrideWord(%s, %q) = %v, %q, want %v, %q", tc.check, tc.word, ok, want, tc.ok, tc.want)
+		}
+	}
+}

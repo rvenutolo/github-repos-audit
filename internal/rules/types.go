@@ -50,6 +50,29 @@ func wordAccepted(c Check, word string) bool {
 	return slices.Contains(allowedWords(c), word)
 }
 
+// overrideWords is every word an override may give a check other than the
+// minimum-release-age threshold, in the order an error message lists them: the
+// words a type could give it, and on direct push the two words that turn its
+// judgement on and off as well.
+func overrideWords(c Check) []string {
+	if c == CheckDirectPush {
+		return []string{directPushBlocked, directPushAllowed, OverrideRequired, OverrideNotRequired}
+	}
+	return allowedWords(c)
+}
+
+// ValidOverrideWord reports whether an override may give check c the word,
+// and when it may not, the accepted words the way an error message reads
+// them. The minimum-release-age threshold takes a duration instead; see
+// ValidThresholdOverride.
+func ValidOverrideWord(c Check, word string) (bool, string) {
+	words := overrideWords(c)
+	if slices.Contains(words, word) {
+		return true, ""
+	}
+	return false, wantPhrase(words)
+}
+
 // wantPhrase lists the accepted words the way the error messages read.
 func wantPhrase(words []string) string {
 	if len(words) == 2 {

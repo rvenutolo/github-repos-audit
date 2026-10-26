@@ -36,12 +36,20 @@ func TestValidateOffline_rejectsADeadOverride(t *testing.T) {
 			contains: "already treats it as n/a",
 		},
 		{
-			name: "any override against an informational row",
+			name: "info against a row the type already shows",
 			decl: rules.Declaration{
 				Name: "alpha", Type: "tools",
-				Overrides: map[string]string{"last_push": rules.OverrideRequired},
+				Overrides: map[string]string{"last_push": "info"},
 			},
-			contains: "informational",
+			contains: "already shows it as info",
+		},
+		{
+			name: "info against a present-or-absent row the type already shows",
+			decl: rules.Declaration{
+				Name: "alpha", Type: "software",
+				Overrides: map[string]string{"pr_template": "info"},
+			},
+			contains: "already shows it as info",
 		},
 		{
 			name: "a direct-push value the type already expects",
@@ -111,6 +119,16 @@ func TestValidateOffline_acceptsALiveOverride(t *testing.T) {
 		{Name: "echo", Type: "tools", Overrides: map[string]string{"renovate_min_release_age": rules.OverrideNotRequired}},
 		// Content does not judge the release age, so a threshold says something.
 		{Name: "foxtrot", Type: "content", Overrides: map[string]string{"renovate_min_release_age": "7 days"}},
+		// Tools expects Renovate, so showing it without judging says something.
+		{Name: "golf", Type: "tools", Overrides: map[string]string{"renovate": "info"}},
+		// Software only shows a PR template, so requiring one says something.
+		{Name: "hotel", Type: "software", Overrides: map[string]string{"pr_template": rules.OverrideRequired}},
+		// Tools shows the last push, so hiding it says something.
+		{Name: "india", Type: "tools", Overrides: map[string]string{"last_push": rules.OverrideNotRequired}},
+		// A visibility word against a row the type decides unconditionally
+		// needs live visibility; Validate judges it.
+		{Name: "juliett", Type: "tools", Overrides: map[string]string{"renovate": "public"}},
+		{Name: "kilo", Type: "content", Overrides: map[string]string{"renovate": "public_published"}},
 	}
 	if err := rules.ValidateOffline(standardTypes(), decls); err != nil {
 		t.Errorf("ValidateOffline() error = %v, want nil", err)
@@ -156,6 +174,58 @@ func TestValidate_acceptsTheSameOverrideOnAPublicRepository(t *testing.T) {
 
 	if err := rules.Validate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{r}}); err != nil {
 		t.Errorf("Validate() error = %v, want nil", err)
+	}
+}
+
+// TestValidate_judgesAVisibilityWordOverride pins that an override using a
+// visibility word is dead exactly when it resolves, for this repository, to
+// what the type already derives.
+func TestValidate_judgesAVisibilityWordOverride(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		repo     audit.Repo
+		word     string
+		contains string // empty when the override is live
+	}{
+		{
+			"public where the type expects it, on a public repository",
+			public(fixture("alpha", "tools")), "public", "already expects it",
+		},
+		{
+			"public where the type expects it, on a private repository",
+			fixture("alpha", "tools"), "public", "",
+		},
+		{
+			"public_published where the type calls it n/a, on a private repository",
+			fixture("alpha", "content"), "public_published", "already treats it as n/a",
+		},
+		{
+			"public_published where the type calls it n/a, on a public published repository",
+			published(public(fixture("alpha", "content"))), "public_published", "",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := tc.repo
+			r.Overrides = map[string]string{"renovate": tc.word}
+			err := rules.Validate(&audit.Snapshot{Types: standardTypes(), Repos: []audit.Repo{r}})
+			if tc.contains == "" {
+				if err != nil {
+					t.Errorf("Validate() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() error = nil, want one mentioning %q", tc.contains)
+			}
+			if !strings.Contains(err.Error(), tc.contains) {
+				t.Errorf("Validate() error = %q, want it to contain %q", err, tc.contains)
+			}
+		})
 	}
 }
 
