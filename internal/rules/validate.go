@@ -30,10 +30,11 @@ type Declaration struct {
 // that is dead against a cell the type decides unconditionally.
 //
 // A dead override must be deleted rather than left to rot, and rejecting it is
-// what forces that when a type's expectations later change. The cells this can
-// judge are required, not_required and info, whose value depends only on the
-// type. An override against a public or public_published cell cannot be
-// judged here, because visibility is never declared; see Validate.
+// what forces that when a type's expectations later change. The pairs this can
+// judge are a cell and an override that both say required, not_required or
+// info, whose meaning depends only on the words. An override against a public
+// or public_published cell, or one using either word, cannot be judged here,
+// because visibility is never declared; see Validate.
 func ValidateOffline(types Types, decls []Declaration) error {
 	specs, err := compileTypes(types)
 	if err != nil {
@@ -52,7 +53,7 @@ func ValidateOffline(types Types, decls []Declaration) error {
 				continue
 			}
 			base := spec.cells[check]
-			if !decidesUnconditionally(base) {
+			if !decidesUnconditionally(base) || !overrideUnconditional(d.Overrides[key]) {
 				continue
 			}
 			if reason := deadReason(check, d.Type, spec, base, d.Overrides[key]); reason != "" {
@@ -92,12 +93,17 @@ func Validate(snap *audit.Snapshot) error {
 			if !ok {
 				continue
 			}
-			base := spec.cells[check]
-			if decidesUnconditionally(base) {
+			base, value := spec.cells[check], r.Overrides[key]
+			if decidesUnconditionally(base) && overrideUnconditional(value) {
 				continue // ValidateOffline's job
 			}
+			// Both sides resolve against the same live facts, so an override
+			// is dead exactly when it changes nothing for this repository.
+			if e, ok := parseExpectation(value); ok {
+				value = e.resolve(public, r.Published).String()
+			}
 			resolved := base.resolve(public, r.Published)
-			if reason := deadReason(check, Type(r.Type), spec, resolved, r.Overrides[key]); reason != "" {
+			if reason := deadReason(check, Type(r.Type), spec, resolved, value); reason != "" {
 				problems = append(problems, fmt.Errorf("%s: override %s = %q is dead — %s",
 					r.Name, key, r.Overrides[key], reason))
 			}
@@ -159,22 +165,28 @@ func deadReason(check Check, typ Type, spec typeSpec, exp expectation, value str
 		}
 	}
 
-	switch exp {
-	case expAlways:
-		if value == OverrideRequired {
-			return fmt.Sprintf("%s already expects it", typ)
-		}
-	case expNA:
-		if value == OverrideNotRequired {
-			return fmt.Sprintf("%s already treats it as n/a", typ)
-		}
-	case expInfo:
-		return "the row is informational and never counts as a gap"
-	case expPublic, expPublicPublished:
-		// Undecidable without visibility; Validate handles the resolved form.
+	// An override means what its word would mean on the type, so it is dead
+	// when it is the very word the cell already resolves to.
+	if over, ok := parseExpectation(value); !ok || over != exp {
 		return ""
 	}
-	return ""
+	// exp is never public or public_published here: ValidateOffline passes
+	// only words that need no visibility, and Validate resolves both sides.
+	if exp == expAlways {
+		return fmt.Sprintf("%s already expects it", typ)
+	}
+	if exp == expNA {
+		return fmt.Sprintf("%s already treats it as n/a", typ)
+	}
+	return fmt.Sprintf("%s already shows it as info", typ)
+}
+
+// overrideUnconditional reports whether an override's meaning depends on
+// nothing but its word: anything but public or public_published, including a
+// value such as a duration or a direct-push setting.
+func overrideUnconditional(value string) bool {
+	e, ok := parseExpectation(value)
+	return !ok || decidesUnconditionally(e)
 }
 
 func join(problems []error) error {

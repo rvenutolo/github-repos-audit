@@ -269,7 +269,7 @@ func validate(name string, e entryShape, types rules.Types) (Repo, []error) {
 		}
 		// Required makes no sense for a value-only check; see Check.ValueOnly.
 		if check.ValueOnly() && value == rules.OverrideRequired {
-			problems = append(problems, fmt.Errorf("%s: override %s = %q names a value-only check (want %s)",
+			problems = append(problems, fmt.Errorf("%s: override %s = %q names a value-only check (want info or %s)",
 				name, key, value, rules.OverrideNotRequired))
 			continue
 		}
@@ -281,6 +281,15 @@ func validate(name string, e entryShape, types rules.Types) (Repo, []error) {
 				"%s: override %s = %q (want a duration like \"7 days\", %s or info)",
 				name, key, value, rules.OverrideNotRequired))
 			continue
+		}
+		// Any other override takes a word its check's type entry could take,
+		// and means what that word would mean there. A word nothing reads
+		// would be accepted, listed in the report and otherwise ignored.
+		if !check.Threshold() {
+			if ok, want := rules.ValidOverrideWord(check, value); !ok {
+				problems = append(problems, fmt.Errorf("%s: override %s = %q (want %s)", name, key, value, want))
+				continue
+			}
 		}
 		repo.Overrides[key] = value
 	}

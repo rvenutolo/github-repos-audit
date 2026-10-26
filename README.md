@@ -250,10 +250,18 @@ among the audited repositories (archived, a fork, or missing), or a
 `audit.json` records why under `claude_marketplace.unreadable`. Without the
 table nothing is fetched.
 
-An override that names an unknown check is an error, and so is an override
-that agrees with what the repository's type already derives — a dead
-override is deleted rather than left to rot. `required` is never accepted on
-a value-only check, and an override with an empty value is an error.
+An override takes any word its check's type entry could take, and means what
+that word would mean if the repository's type gave it: `info` shows the cell
+and never counts it as a gap, and `public` and `public_published` resolve
+against the repository's live visibility and its `published` flag.
+`direct_push` takes `blocked`, `allowed` or `not_required`, and
+`renovate_min_release_age` a duration, `not_required` or `info`. An override
+that names an unknown check is an error, as is one with an empty value or a
+word its check does not take, and so is an override that agrees with what the
+repository's type already derives — a dead override is deleted rather than
+left to rot. Whether a `public` or `public_published` override, or one against
+a cell the type sets to either word, is dead depends on visibility, so that
+is decided during a run, once visibility is read, and not by `validate`.
 `examples/repos.invalid.toml` is a worked example of the
 dead-override error: it is a copy of `examples/repos.toml` with one override
 restated — and with `git_identity` judged by no type, so it needs no

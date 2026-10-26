@@ -167,17 +167,14 @@ func evaluateRepo(r audit.Repo, specs map[string]typeSpec, std *identityStandard
 		exp := spec.cells[c].resolve(public, r.Published)
 		overridden := false
 		if v, has := overrides[c.String()]; has {
-			switch v {
-			case OverrideRequired:
-				exp, overridden = expAlways, true
-			case OverrideNotRequired:
-				exp, overridden = expNA, true
-			default:
-				// A value override on a present-or-absent check has no
-				// meaning and nothing rejects it (validation checks the key,
-				// not the word); it is marked overridden and carried into the
-				// Overrides section, where it is visible.
-				overridden = true
+			overridden = true
+			// An override means what its word would mean on the type, so
+			// public and public_published resolve here exactly as the type's
+			// own word did. repos.toml rejects a word no type could use; one
+			// reaching here from a snapshot assembled some other way changes
+			// nothing but the mark, which the Overrides section shows.
+			if e, ok := parseExpectation(v); ok {
+				exp = e.resolve(public, r.Published)
 			}
 		}
 
