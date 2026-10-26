@@ -115,7 +115,9 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
-          egress-policy: block
+          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
+          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
+          egress-policy: audit
           # GitHub's hosts serve the checkout, the actions, the caches and the
           # API; the nixos.org hosts and install.determinate.systems install
           # Nix and fill its store; proxy.golang.org, sum.golang.org and
@@ -129,6 +131,7 @@ jobs:
             github.com:443
             hosted-compute-*.githubapp.com:443
             install.determinate.systems:443
+            nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443
             nixos.org:443
             objects.githubusercontent.com:443
             proxy.golang.org:443
@@ -205,7 +208,9 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
-          egress-policy: block
+          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
+          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
+          egress-policy: audit
           # GitHub's hosts serve the checkout, the actions, the caches and the
           # API; the nixos.org hosts and install.determinate.systems install
           # Nix and fill its store; proxy.golang.org, sum.golang.org and
@@ -228,6 +233,7 @@ jobs:
             github.com:443
             hosted-compute-*.githubapp.com:443
             install.determinate.systems:443
+            nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443
             nixos.org:443
             objects.githubusercontent.com:443
             proxy.golang.org:443
@@ -328,7 +334,9 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
-          egress-policy: block
+          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
+          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
+          egress-policy: audit
           # GitHub's hosts serve the checkout, the actions, the caches and the
           # API; the nixos.org hosts and install.determinate.systems install
           # Nix and fill its store; proxy.golang.org, sum.golang.org and
@@ -342,6 +350,7 @@ jobs:
             github.com:443
             hosted-compute-*.githubapp.com:443
             install.determinate.systems:443
+            nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443
             nixos.org:443
             objects.githubusercontent.com:443
             proxy.golang.org:443
@@ -398,7 +407,9 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
-          egress-policy: block
+          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
+          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
+          egress-policy: audit
           # GitHub's hosts serve the checkout, the actions, the caches and the
           # API; the nixos.org hosts and install.determinate.systems install
           # Nix and fill its store; proxy.golang.org, sum.golang.org and
@@ -419,6 +430,7 @@ jobs:
             github.com:443
             hosted-compute-*.githubapp.com:443
             install.determinate.systems:443
+            nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443
             nixos.org:443
             objects.githubusercontent.com:443
             proxy.golang.org:443

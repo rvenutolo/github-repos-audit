@@ -47,7 +47,9 @@ jobs:
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
-          egress-policy: block
+          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
+          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
+          egress-policy: audit
           # proxy.golang.org and sum.golang.org: building gremlins fetches
           # ITS Go modules. The gate workflows open the same two endpoints
           # for this repository's own modules.
@@ -59,6 +61,7 @@ jobs:
             github.com:443
             hosted-compute-*.githubapp.com:443
             install.determinate.systems:443
+            nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443
             nixos.org:443
             objects.githubusercontent.com:443
             proxy.golang.org:443
@@ -76,8 +79,8 @@ jobs:
       - name: Bump gremlins to its latest release
         # --inputs-from . resolves `nixpkgs` from this flake's lock, not the
         # flake registry. On the runner the Determinate installer's registry
-        # maps `nixpkgs` to flakehub.com, which the egress policy above blocks;
-        # the lock points at github.com, which it allows. It also pins the
+        # maps `nixpkgs` to flakehub.com, which the egress allowlist above leaves
+        # out; the lock points at github.com, which it lists. It also pins the
         # nix-update version, so a bump is reproducible and lock maintenance
         # keeps the tool current.
         run: nix run --inputs-from . nixpkgs#nix-update -- --flake --version=stable gremlins
