@@ -66,6 +66,7 @@ const (
 	CheckNixLockAge
 	CheckNixLockRefresh
 	CheckNixCache
+	CheckNixInstaller
 	CheckGoCache
 	CheckCacheUsage
 	CheckCICancelSuperseded
@@ -150,6 +151,7 @@ var checkNames = [...]string{
 	CheckNixLockAge:              "nix_lock_age",
 	CheckNixLockRefresh:          "nix_lock_refresh",
 	CheckNixCache:                "nix_cache",
+	CheckNixInstaller:            "nix_installer",
 	CheckGoCache:                 "go_cache",
 	CheckCacheUsage:              "cache_usage",
 	CheckCICancelSuperseded:      "ci_cancel_superseded",
