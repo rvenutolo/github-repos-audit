@@ -1,6 +1,7 @@
 package rules_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
@@ -42,10 +43,20 @@ func stepsWorkflow(path string, steps ...audit.StepUse) audit.Workflow {
 
 func step(action string) audit.StepUse { return audit.StepUse{Action: action} }
 
-// quiet is a determinate-nix-action step with its telemetry turned off, the
-// one install the check passes.
+// quiet is a determinate-nix-action step with its telemetry and its
+// diagnostics turned off, the one install the check passes.
 func quiet() audit.StepUse {
-	return audit.StepUse{Action: determinateNixAction, Env: map[string]string{"OTEL_SDK_DISABLED": "true"}}
+	return audit.StepUse{
+		Action: determinateNixAction,
+		With:   map[string]string{"diagnostic-endpoint": ""},
+		Env:    map[string]string{"OTEL_SDK_DISABLED": "true"},
+	}
+}
+
+// telemetryOn is a determinate-nix-action step with its diagnostics off but
+// its telemetry left on.
+func telemetryOn() audit.StepUse {
+	return audit.StepUse{Action: determinateNixAction, With: map[string]string{"diagnostic-endpoint": ""}}
 }
 
 // setupComposite is the local composite at .github/actions/setup, running
@@ -108,6 +119,7 @@ func TestEvaluate_nixInstaller_determinateActionPasses(t *testing.T) {
 		{"in another case", func() audit.Repo {
 			return installerFixture(stepsWorkflow(".github/workflows/ci.yml", audit.StepUse{
 				Action: "determinatesystems/Determinate-Nix-Action@v3",
+				With:   map[string]string{"diagnostic-endpoint": ""},
 				Env:    map[string]string{"OTEL_SDK_DISABLED": "true"},
 			}))
 		}},
@@ -136,7 +148,8 @@ func TestEvaluate_nixInstaller_determinateActionPasses(t *testing.T) {
 // fails it, the older Determinate installer included, since the standard is
 // the one action that installs nothing but Determinate Nix. The cell names
 // the action, without its version; the older Determinate installer, a
-// DeterminateSystems action, also reports home unless told not to.
+// DeterminateSystems action that takes diagnostic-endpoint, also reports home
+// both ways unless told not to.
 func TestEvaluate_nixInstaller_otherInstallerFails(t *testing.T) {
 	t.Parallel()
 
@@ -144,7 +157,8 @@ func TestEvaluate_nixInstaller_otherInstallerFails(t *testing.T) {
 		action string
 		want   string
 	}{
-		{nixInstallerAction, "DeterminateSystems/nix-installer-action, telemetry on in .github/workflows/ci.yml"},
+		{nixInstallerAction, "DeterminateSystems/nix-installer-action, " +
+			"telemetry on in .github/workflows/ci.yml, diagnostics on in .github/workflows/ci.yml"},
 		{installNixAction, "cachix/install-nix-action"},
 		{nixQuickInstallAction, "nixbuild/nix-quick-install-action"},
 		{"Cachix/Install-Nix-Action@v31", "cachix/install-nix-action"},
@@ -184,7 +198,8 @@ func TestEvaluate_nixInstaller_eachOtherInstallerOnce(t *testing.T) {
 		stepsWorkflow(".github/workflows/release.yml", step(installNixAction), step(nixInstallerAction)),
 	)
 	wantCell(t, nixInstaller(t, r), rules.Fail, "DeterminateSystems/nix-installer-action, cachix/install-nix-action, "+
-		"telemetry on in .github/workflows/ci.yml, telemetry on in .github/workflows/release.yml")
+		"telemetry on in .github/workflows/ci.yml, telemetry on in .github/workflows/release.yml, "+
+		"diagnostics on in .github/workflows/ci.yml, diagnostics on in .github/workflows/release.yml")
 }
 
 // TestEvaluate_nixInstaller_unreadableFails: a workflow or composite that
@@ -268,19 +283,19 @@ func TestEvaluate_nixInstaller_telemetryOnFails(t *testing.T) {
 	t.Parallel()
 
 	withEnv := func(env map[string]string) audit.StepUse {
-		return audit.StepUse{Action: determinateNixAction, Env: env}
+		return audit.StepUse{Action: determinateNixAction, With: map[string]string{"diagnostic-endpoint": ""}, Env: env}
 	}
 	tests := []struct {
 		name    string
 		install audit.StepUse
 		others  []audit.StepUse
 	}{
-		{"no env", step(determinateNixAction), nil},
+		{"no env", telemetryOn(), nil},
 		{"another variable only", withEnv(map[string]string{"FOO": "true"}), nil},
 		{"false", withEnv(map[string]string{"OTEL_SDK_DISABLED": "false"}), nil},
 		{"an expression", withEnv(map[string]string{"OTEL_SDK_DISABLED": "${{ vars.OTEL_SDK_DISABLED }}"}), nil},
 		{"an empty exporter endpoint", withEnv(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ""}), nil},
-		{"set on another step", step(determinateNixAction), []audit.StepUse{{
+		{"set on another step", telemetryOn(), []audit.StepUse{{
 			Action: "actions/checkout@v5",
 			Env:    map[string]string{"OTEL_SDK_DISABLED": "true"},
 		}}},
@@ -312,12 +327,12 @@ func TestEvaluate_nixInstaller_telemetryNamesEachFileOnce(t *testing.T) {
 	t.Parallel()
 
 	r := installerFixture(
-		stepsWorkflow(".github/workflows/release.yml", step(determinateNixAction), step("./.github/actions/setup")),
+		stepsWorkflow(".github/workflows/release.yml", telemetryOn(), step("./.github/actions/setup")),
 		stepsWorkflow(".github/workflows/ci.yml", step("./.github/actions/setup"), quiet(), step(installNixAction)),
-		stepsWorkflow(".github/workflows/fuzz.yml", step(determinateNixAction), step(determinateNixAction)),
+		stepsWorkflow(".github/workflows/fuzz.yml", telemetryOn(), telemetryOn()),
 		audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "yaml: line 3: did not find expected key"},
 	)
-	r.Actions = []audit.CompositeAction{setupComposite(step(determinateNixAction))}
+	r.Actions = []audit.CompositeAction{setupComposite(telemetryOn())}
 	wantCell(t, nixInstaller(t, r), rules.Fail, "cachix/install-nix-action, "+
 		"telemetry on in .github/actions/setup/action.yml, "+
 		"telemetry on in .github/workflows/fuzz.yml, "+
@@ -336,9 +351,8 @@ func TestEvaluate_nixInstaller_everyDeterminateActionNeedsTelemetryOff(t *testin
 
 	for _, action := range []string{
 		"DeterminateSystems/update-flake-lock@0123456789abcdef0123456789abcdef01234567",
-		"DeterminateSystems/magic-nix-cache-action@v13",
 		"DeterminateSystems/flake-checker-action@v12",
-		"determinatesystems/FlakeHub-Cache-Action@v2",
+		"determinatesystems/Update-Flake-Lock@v28",
 		"DeterminateSystems/some-repository/sub-action@v1",
 	} {
 		t.Run(action, func(t *testing.T) {
@@ -394,4 +408,108 @@ func TestEvaluate_nixInstaller_telemetryWithoutAnInstall(t *testing.T) {
 
 	r := installerFixture(stepsWorkflow(".github/workflows/update.yml", step("DeterminateSystems/update-flake-lock@v28")))
 	wantCell(t, nixInstaller(t, r), rules.Fail, "telemetry on in .github/workflows/update.yml")
+}
+
+// diagnosticActions are the DeterminateSystems actions that take a
+// diagnostic-endpoint input, pinned as a workflow step writes them.
+var diagnosticActions = []string{
+	determinateNixAction,
+	nixInstallerAction,
+	"DeterminateSystems/magic-nix-cache-action@v13",
+	"determinatesystems/FlakeHub-Cache-Action@v2",
+}
+
+// diagnosed is a step of action with its telemetry off and with as its
+// inputs.
+func diagnosed(action string, with map[string]string) audit.StepUse {
+	return audit.StepUse{Action: action, With: with, Env: map[string]string{"OTEL_SDK_DISABLED": "true"}}
+}
+
+// TestEvaluate_nixInstaller_diagnosticsOnFails: a DeterminateSystems action
+// that takes diagnostic-endpoint reports to Determinate Systems unless the
+// step's own with: gives it empty. Leaving it out is the default, which
+// reports, and any other value is an endpoint that reports somewhere, so
+// both fail naming the file; empty, or nothing but whitespace, passes.
+func TestEvaluate_nixInstaller_diagnosticsOnFails(t *testing.T) {
+	t.Parallel()
+
+	for _, action := range diagnosticActions {
+		tests := []struct {
+			name string
+			with map[string]string
+			want rules.Verdict
+		}{
+			{"absent", nil, rules.Fail},
+			{"absent beside another input", map[string]string{"logger": "pretty"}, rules.Fail},
+			{"a URL", map[string]string{"diagnostic-endpoint": "https://example.test/events"}, rules.Fail},
+			{"an expression", map[string]string{"diagnostic-endpoint": "${{ vars.ENDPOINT }}"}, rules.Fail},
+			{"empty", map[string]string{"diagnostic-endpoint": ""}, rules.Pass},
+			{"whitespace", map[string]string{"diagnostic-endpoint": " "}, rules.Pass},
+		}
+		for _, tc := range tests {
+			t.Run(action+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), diagnosed(action, tc.with)))
+				got := nixInstaller(t, r)
+				if strings.HasPrefix(action, "DeterminateSystems/nix-installer-action") {
+					// The older installer fails as a non-standard installer
+					// whatever its inputs; only the diagnostics entry varies.
+					want := "DeterminateSystems/nix-installer-action"
+					if tc.want == rules.Fail {
+						want += ", diagnostics on in .github/workflows/ci.yml"
+					}
+					wantCell(t, got, rules.Fail, want)
+					return
+				}
+				want := ""
+				if tc.want == rules.Fail {
+					want = "diagnostics on in .github/workflows/ci.yml"
+				}
+				wantCell(t, got, tc.want, want)
+			})
+		}
+	}
+}
+
+// TestEvaluate_nixInstaller_diagnosticsOnlyOnListedActions: an action that
+// has no diagnostic-endpoint input cannot be given one, so another
+// DeterminateSystems action is not judged on it.
+func TestEvaluate_nixInstaller_diagnosticsOnlyOnListedActions(t *testing.T) {
+	t.Parallel()
+
+	for _, action := range []string{
+		"DeterminateSystems/update-flake-lock@v28",
+		"DeterminateSystems/flake-checker-action@v12",
+	} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+
+			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), diagnosed(action, nil)))
+			wantCell(t, nixInstaller(t, r), rules.Pass, "")
+		})
+	}
+}
+
+// TestEvaluate_nixInstaller_diagnosticsNamesEachFileOnce: the cell names the
+// file holding each step with diagnostics on, a composite rather than the
+// workflows that call it, each once and in path order, after every
+// telemetry entry and before any unreadable file.
+func TestEvaluate_nixInstaller_diagnosticsNamesEachFileOnce(t *testing.T) {
+	t.Parallel()
+
+	loud := diagnosed(determinateNixAction, nil)
+	r := installerFixture(
+		stepsWorkflow(".github/workflows/release.yml", loud, step("./.github/actions/setup")),
+		stepsWorkflow(".github/workflows/ci.yml", step("./.github/actions/setup"), telemetryOn(), step(installNixAction)),
+		stepsWorkflow(".github/workflows/fuzz.yml", loud, diagnosed("DeterminateSystems/magic-nix-cache-action@v13", nil)),
+		audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "yaml: line 3: did not find expected key"},
+	)
+	r.Actions = []audit.CompositeAction{setupComposite(loud)}
+	wantCell(t, nixInstaller(t, r), rules.Fail, "cachix/install-nix-action, "+
+		"telemetry on in .github/workflows/ci.yml, "+
+		"diagnostics on in .github/actions/setup/action.yml, "+
+		"diagnostics on in .github/workflows/fuzz.yml, "+
+		"diagnostics on in .github/workflows/release.yml, "+
+		"unreadable .github/workflows/broken.yml")
 }
