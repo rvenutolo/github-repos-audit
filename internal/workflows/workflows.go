@@ -155,7 +155,14 @@ func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
 			return nil, false, err
 		}
 		if action != "" {
-			uses = append(uses, audit.StepUse{Action: action, With: with})
+			// Only an action step's env is read: a run step's is never
+			// used, and reading it would let a shape no check needs make
+			// the whole file unreadable.
+			env, err := stepEnv(lookup(s, "env"), at+".env")
+			if err != nil {
+				return nil, false, err
+			}
+			uses = append(uses, audit.StepUse{Action: action, With: with, Env: env})
 		}
 		run, err := scalar(lookup(s, "run"), at+".run")
 		if err != nil {
@@ -164,6 +171,25 @@ func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
 		update = update || strings.Contains(run, flakeUpdate)
 	}
 	return uses, update, nil
+}
+
+// stepEnv reads a step's `env:`. GitHub also takes the whole of it as one
+// expression, such as `${{ fromJSON(vars.ENV) }}`; that is a valid step
+// whose variables only the runner can know, so it reads as no env rather
+// than as a shape error, which would make the whole file unreadable. Any
+// other scalar, one with an expression inside other text included, is still
+// one.
+func stepEnv(n *yaml.Node, where string) (map[string]string, error) {
+	if !absent(n) && n.Kind == yaml.ScalarNode && isExpression(n.Value) {
+		return nil, nil
+	}
+	return stringMap(n, where)
+}
+
+// isExpression reports whether v is one whole `${{ }}` expression.
+func isExpression(v string) bool {
+	v = strings.TrimSpace(v)
+	return strings.HasPrefix(v, "${{") && strings.HasSuffix(v, "}}")
 }
 
 // triggers is what `on:` says: the event names, the `types:` and branch

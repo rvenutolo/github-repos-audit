@@ -862,6 +862,12 @@
           "type": "object",
           "minProperties": 1,
           "additionalProperties": { "type": "string" }
+        },
+        "env": {
+          "description": "The step's own `env:`, every value a scalar kept as written. Absent when there is none or the step gives it as one expression; a job's or workflow's env is not merged in.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string" }
         }
       }
     },

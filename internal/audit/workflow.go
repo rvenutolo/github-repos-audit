@@ -127,6 +127,10 @@ type StepUse struct {
 	// "0", which is also what the action itself receives, since GitHub hands
 	// every input over as a string.
 	With map[string]string `json:"with,omitzero"`
+	// Env is the step's own `env:`, read as With is. It is nil when the step
+	// gives its env as one expression, which only the runner can resolve.
+	// A job's or workflow's env is not merged in.
+	Env map[string]string `json:"env,omitzero"`
 }
 
 // CompositeAction is what one composite action's `action.yml` says. A

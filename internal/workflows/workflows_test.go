@@ -363,6 +363,64 @@ jobs:
 	}
 }
 
+// TestParse_stepEnv: a step's `env:` is kept beside its inputs, every value a
+// scalar kept as written, in workflows and composites alike, since both spell
+// a step the same way. A step that runs no action is not kept, and its env
+// is not read, so a shape no check needs cannot make the file unreadable.
+func TestParse_stepEnv(t *testing.T) {
+	t.Parallel()
+
+	text := `jobs:
+  a:
+    steps:
+      - uses: a/b@v1
+        env:
+          OTEL_SDK_DISABLED: true
+          TOKEN: ${{ secrets.TOKEN }}
+      - run: echo PAYLOAD_RAN
+        env:
+          X: {not: a scalar}
+`
+	want := []audit.StepUse{{
+		Action: "a/b@v1",
+		Env:    map[string]string{"OTEL_SDK_DISABLED": "true", "TOKEN": "${{ secrets.TOKEN }}"},
+	}}
+	if diff := cmp.Diff(want, parse(t, text).Jobs[0].Uses); diff != "" {
+		t.Errorf("workflow Uses mismatch (-want +got):\n%s", diff)
+	}
+
+	composite := `runs:
+  using: composite
+  steps:
+    - uses: a/b@v1
+      env:
+        OTEL_SDK_DISABLED: 'true'
+`
+	c := workflows.ParseComposite("action.yml", composite)
+	if c.ParseError != "" {
+		t.Fatalf("ParseComposite() ParseError = %q", c.ParseError)
+	}
+	wantComposite := []audit.StepUse{{Action: "a/b@v1", Env: map[string]string{"OTEL_SDK_DISABLED": "true"}}}
+	if diff := cmp.Diff(wantComposite, c.Uses); diff != "" {
+		t.Errorf("composite Uses mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestParse_stepEnvExpression: GitHub accepts a whole step `env:` given as
+// one expression, which only the runner can resolve. The file is still a
+// valid workflow, so it reads with no env rather than as unreadable, which
+// would fail every check that reads workflows over a variable the audit
+// cannot see.
+func TestParse_stepEnvExpression(t *testing.T) {
+	t.Parallel()
+
+	text := "jobs:\n  a:\n    steps:\n      - uses: a/b@v1\n        env: ${{ fromJSON(vars.ENV) }}\n"
+	want := []audit.StepUse{{Action: "a/b@v1"}}
+	if diff := cmp.Diff(want, parse(t, text).Jobs[0].Uses); diff != "" {
+		t.Errorf("Uses mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestParseWorkflow_flakeUpdateNeedsTheWholePhrase(t *testing.T) {
 	t.Parallel()
 
@@ -496,6 +554,14 @@ func TestParse_wrongShape(t *testing.T) {
 		{"uses is a mapping", "jobs:\n  a:\n    steps:\n      - uses: {x: y}\n", "uses"},
 		{"with is a sequence", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        with: [x]\n", "with"},
 		{"with value is a mapping", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        with:\n          k: {x: y}\n", "with.k"},
+		{"env is a plain scalar", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        env: x\n", "env"},
+		{
+			"env is an expression inside text",
+			"jobs:\n  a:\n    steps:\n      - uses: a@b\n        env: \"x ${{ vars.ENV }}\"\n",
+			"env",
+		},
+		{"env is a sequence", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        env: [x]\n", "env"},
+		{"env value is a mapping", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        env:\n          k: {x: y}\n", "env.k"},
 		{"run is a sequence", "jobs:\n  a:\n    steps:\n      - run: [x]\n", "run"},
 		{"job uses is a sequence", "jobs:\n  a:\n    uses: [x]\n", "uses"},
 		{"timeout is a mapping", "jobs:\n  a:\n    timeout-minutes: {x: y}\n", "timeout-minutes"},
