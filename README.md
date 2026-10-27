@@ -479,26 +479,30 @@ Grouped by theme here; the report lists them in the fixed worklist order
   branch in the last 7 days, since GitHub evicts a cache nothing has restored
   for that long. The report's Nix section shows it.
 - **nix_installer** — whether every Nix install in CI uses
-  `DeterminateSystems/determinate-nix-action` with its telemetry off, so every
-  flake repository runs Determinate Nix, installed one way. That action
+  `DeterminateSystems/determinate-nix-action`, and every `DeterminateSystems`
+  action has its telemetry off, so every flake repository runs Determinate
+  Nix, installed one way, with no OpenTelemetry reporting home. That action
   installs nothing else, unlike `DeterminateSystems/nix-installer-action`,
   whose `determinate` input can switch it to upstream Nix. A step counts
-  whether a job runs it directly or through a local composite action. The
-  cell names each other installer found, without its version:
+  whether a job runs it directly or through a local composite action. The cell
+  names each other installer found, without its version:
   `DeterminateSystems/nix-installer-action`, `cachix/install-nix-action` or
-  `nixbuild/nix-quick-install-action`. Each `determinate-nix-action` step must
-  also turn off the action's OpenTelemetry reporting with
-  `OTEL_SDK_DISABLED: 'true'` in the step's own `env:` (any case of `true`; a
-  job's or workflow's `env:`, an expression, or an empty
+  `nixbuild/nix-quick-install-action`. Every step of a `DeterminateSystems`
+  action (the installer, `update-flake-lock`, `magic-nix-cache-action`,
+  `flake-checker-action` and any other) must turn off its OpenTelemetry
+  reporting with `OTEL_SDK_DISABLED: 'true'` in the step's own `env:` (any
+  case of `true`; a job's or workflow's `env:`, an expression, or an empty
   `OTEL_EXPORTER_OTLP_ENDPOINT` does not count). Each file holding a step
-  without it is named as `telemetry on in <path>`, a composite rather than
-  the workflows that use it. Other `DeterminateSystems` actions report the
-  same way and are not checked. A workflow, or a composite a job uses, that
-  the tool could not read is named as `unreadable <path>`, since it may hold
-  an install the tool cannot see; it fails the check even beside a passing
-  install. An install through any other action, or by a `run:` step, is not
-  seen. n/a without a `flake.nix`, or when nothing in CI installs Nix and
-  every file was read. The report's Nix section shows it.
+  without it is named as `telemetry on in <path>`, a composite rather than the
+  workflows that use it. Reporting inputs some of these actions have of their
+  own, such as `diagnostic-endpoint` or flake-checker-action's
+  `send-statistics`, are not checked. A workflow, or a composite a job uses,
+  that the tool could not read is named as `unreadable <path>`, since it may
+  hold an install the tool cannot see; it fails the check even beside a
+  passing install. An install through any other action, or by a `run:` step,
+  is not seen. n/a without a `flake.nix`, or when nothing in CI installs Nix
+  or runs a `DeterminateSystems` action with telemetry on, and every file was
+  read. The report's Nix section shows it.
 - **go_cache** — whether the default branch's Go cache holds something. Caches
   whose key starts `go-` are grouped into families as for nix_cache
   (`go-Linux`, `go-macOS`), counting only caches saved from the default

@@ -271,13 +271,39 @@ func cacheNixProblems(r audit.Repo) []string {
 // so the step's name alone says which Nix the job gets.
 const determinateNixAction = "DeterminateSystems/determinate-nix-action"
 
-// telemetryOff is the variable that stops determinateNixAction reporting to
-// Determinate Systems over OpenTelemetry. Only the step's own env counts: a
-// job's or workflow's env would reach it too, but the standard is one place,
-// on the install itself, where moving the step cannot leave it behind. An
-// empty OTEL_EXPORTER_OTLP_ENDPOINT also stops the export, but is not
-// accepted: one spelling keeps every repository's install step alike.
+// telemetryOff is the variable that stops a determinateOwner action
+// reporting to Determinate Systems over OpenTelemetry. Only the step's own
+// env counts: a job's or workflow's env would reach it too, but the standard
+// is one place, on the step itself, where moving the step cannot leave it
+// behind. An empty OTEL_EXPORTER_OTLP_ENDPOINT also stops the export, but is
+// not accepted: one spelling keeps every repository's steps alike.
 const telemetryOff = "OTEL_SDK_DISABLED"
+
+// determinateOwner publishes determinateNixAction and the other Nix actions
+// a flake repository's CI may run, such as update-flake-lock and
+// magic-nix-cache-action. Their JavaScript actions report over
+// OpenTelemetry unless telemetryOff is set, so every action under the owner
+// is held to it rather than a list that a new action would slip past. Some
+// also have reporting inputs of their own, such as `diagnostic-endpoint` and
+// flake-checker-action's `send-statistics`; those are not judged.
+const determinateOwner = "DeterminateSystems"
+
+// fromDeterminate reports whether uses names a published action of
+// determinateOwner, at a version, matched as usesAction matches: GitHub
+// compares the owner without regard to case. An action in a subdirectory of
+// one of its repositories counts too.
+func fromDeterminate(uses string) bool {
+	name, _, pinned := strings.Cut(uses, "@")
+	owner, repo, _ := strings.Cut(name, "/")
+	return pinned && repo != "" && strings.EqualFold(owner, determinateOwner)
+}
+
+// telemetryDisabled reports whether env turns telemetryOff on. The value is
+// trimmed and read without regard to case, as the actions' OpenTelemetry SDK
+// reads it; an expression is not, since the audit cannot resolve it.
+func telemetryDisabled(env map[string]string) bool {
+	return strings.EqualFold(strings.TrimSpace(env[telemetryOff]), "true")
+}
 
 // otherNixInstallers are the published actions known to install Nix other
 // than determinateNixAction, each as the cell names it. An install through
@@ -291,23 +317,22 @@ var otherNixInstallers = []string{
 }
 
 // observeNixInstaller judges whether every Nix install in the repository's
-// CI uses determinateNixAction with telemetryOff set to true, so every flake
-// repository runs one Nix, installed one way, with the installer's telemetry
-// off. Other DeterminateSystems actions report the same way; this check does
-// not look at them. A step
-// counts whether a job runs it directly or through a local composite. The
-// cell names each other installer found, once and in list order, then each
-// file holding a determinateNixAction step without telemetryOff, as
-// "telemetry on in <path>" in path order, then every workflow, and every
-// composite a job uses, that could not be read, as "unreadable <path>" in
-// path order: any of them may hold an install the check cannot see, so one
-// fails it even beside a passing install. The value is trimmed and read
-// without regard to case, as the action's OpenTelemetry SDK reads it; an
-// expression fails, since the audit cannot resolve it.
+// CI uses determinateNixAction, and every determinateOwner step, the install
+// included, sets telemetryOff, so every flake repository runs one Nix,
+// installed one way, with no OpenTelemetry reporting home. A step counts whether a
+// job runs it directly or through a local composite. The cell names each
+// other installer found, once and in list order, then each file holding a
+// determinateOwner step without telemetryOff, as "telemetry on in <path>" in
+// path order, then every workflow, and every composite a job uses, that
+// could not be read, as "unreadable <path>" in path order: any of them may
+// hold an install the check cannot see, so one fails it even beside a
+// passing install.
 //
-// It is n/a without a flake.nix, and when nothing readable installs Nix and
-// nothing is unreadable: a repository whose CI never installs Nix has no
-// installer to standardize.
+// It is n/a without a flake.nix, and when nothing readable installs Nix or
+// leaves telemetry on and nothing is unreadable: a repository whose CI never
+// installs Nix has no installer to standardize, but a determinateOwner step
+// reporting home is a gap wherever it runs, whether or not the check sees the
+// install it relies on.
 func observeNixInstaller(r audit.Repo) observation {
 	if !r.Files.FlakeNix {
 		return observation{unknown: true}
@@ -318,9 +343,9 @@ func observeNixInstaller(r audit.Repo) observation {
 	judge := func(u audit.StepUse, path string) {
 		if usesAction(u.Action, determinateNixAction) {
 			installs = true
-			if !strings.EqualFold(strings.TrimSpace(u.Env[telemetryOff]), "true") {
-				telemetry = append(telemetry, path)
-			}
+		}
+		if fromDeterminate(u.Action) && !telemetryDisabled(u.Env) {
+			telemetry = append(telemetry, path)
 		}
 		for _, name := range otherNixInstallers {
 			if usesAction(u.Action, name) {
@@ -349,7 +374,7 @@ func observeNixInstaller(r audit.Repo) observation {
 			}
 		}
 	}
-	if !installs && len(unreadable) == 0 {
+	if !installs && len(telemetry) == 0 && len(unreadable) == 0 {
 		return observation{unknown: true}
 	}
 	var problems []string
