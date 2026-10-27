@@ -17,6 +17,11 @@ runs:
       # every flake repository to this, on the step itself.
       env:
         OTEL_SDK_DISABLED: "true"
+      with:
+        # Turns off the installer's diagnostics. They go to
+        # install.determinate.systems, the host the installer is downloaded from,
+        # so the harden-runner allowlist cannot separate them from the download.
+        diagnostic-endpoint: ""
     # .ci/in-devshell keeps HOME but no GO* variables, so the module cache
     # resolves under ~/go, and the build cache where flake.nix's shellHook
     # puts it: one directory per toolchain under
