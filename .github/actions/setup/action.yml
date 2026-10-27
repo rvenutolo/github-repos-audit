@@ -12,6 +12,11 @@ runs:
     # lock files, and unpacking it is slower than the substitution it would
     # replace.
     - uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3 # v3.24.1
+      # Turns off the installer's OpenTelemetry usage reporting at the source
+      # rather than allowing its endpoint. The nix_installer check holds
+      # every flake repository to this, on the step itself.
+      env:
+        OTEL_SDK_DISABLED: "true"
     # .ci/in-devshell keeps HOME but no GO* variables, so the module cache
     # resolves under ~/go, and the build cache where flake.nix's shellHook
     # puts it: one directory per toolchain under

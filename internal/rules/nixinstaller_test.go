@@ -42,6 +42,12 @@ func stepsWorkflow(path string, steps ...audit.StepUse) audit.Workflow {
 
 func step(action string) audit.StepUse { return audit.StepUse{Action: action} }
 
+// quiet is a determinate-nix-action step with its telemetry turned off, the
+// one install the check passes.
+func quiet() audit.StepUse {
+	return audit.StepUse{Action: determinateNixAction, Env: map[string]string{"OTEL_SDK_DISABLED": "true"}}
+}
+
 // setupComposite is the local composite at .github/actions/setup, running
 // the given steps.
 func setupComposite(steps ...audit.StepUse) audit.CompositeAction {
@@ -86,9 +92,9 @@ func TestEvaluate_nixInstaller_naWithoutFlakeOrInstall(t *testing.T) {
 
 // TestEvaluate_nixInstaller_determinateActionPasses: determinate-nix-action
 // always installs Determinate Nix, so a repository installing Nix only
-// through it passes, whether a job runs it directly or through a local
-// composite, and in whatever case the step names it, since GitHub matches
-// owner and repository names without regard to case.
+// through it, with telemetry off, passes, whether a job runs it directly or
+// through a local composite, and in whatever case the step names it, since
+// GitHub matches owner and repository names without regard to case.
 func TestEvaluate_nixInstaller_determinateActionPasses(t *testing.T) {
 	t.Parallel()
 
@@ -97,20 +103,23 @@ func TestEvaluate_nixInstaller_determinateActionPasses(t *testing.T) {
 		repo func() audit.Repo
 	}{
 		{"in a workflow", func() audit.Repo {
-			return installerFixture(stepsWorkflow(".github/workflows/ci.yml", step(determinateNixAction)))
+			return installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet()))
 		}},
 		{"in another case", func() audit.Repo {
-			return installerFixture(stepsWorkflow(".github/workflows/ci.yml", step("determinatesystems/Determinate-Nix-Action@v3")))
+			return installerFixture(stepsWorkflow(".github/workflows/ci.yml", audit.StepUse{
+				Action: "determinatesystems/Determinate-Nix-Action@v3",
+				Env:    map[string]string{"OTEL_SDK_DISABLED": "true"},
+			}))
 		}},
 		{"in a composite", func() audit.Repo {
 			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", step("./.github/actions/setup")))
-			r.Actions = []audit.CompositeAction{setupComposite(step(determinateNixAction))}
+			r.Actions = []audit.CompositeAction{setupComposite(quiet())}
 			return r
 		}},
 		{"in every workflow", func() audit.Repo {
 			return installerFixture(
-				stepsWorkflow(".github/workflows/ci.yml", step(determinateNixAction)),
-				stepsWorkflow(".github/workflows/release.yml", step(determinateNixAction)),
+				stepsWorkflow(".github/workflows/ci.yml", quiet()),
+				stepsWorkflow(".github/workflows/release.yml", quiet()),
 			)
 		}},
 	}
@@ -157,7 +166,7 @@ func TestEvaluate_nixInstaller_oneOtherInstallerIsEnough(t *testing.T) {
 	t.Parallel()
 
 	r := installerFixture(
-		stepsWorkflow(".github/workflows/ci.yml", step(determinateNixAction)),
+		stepsWorkflow(".github/workflows/ci.yml", quiet()),
 		stepsWorkflow(".github/workflows/release.yml", step("./.github/actions/setup")),
 	)
 	r.Actions = []audit.CompositeAction{setupComposite(step(installNixAction))}
@@ -195,7 +204,7 @@ func TestEvaluate_nixInstaller_unreadableFails(t *testing.T) {
 			return installerFixture(broken)
 		}, "unreadable .github/workflows/broken.yml"},
 		{"an unreadable workflow beside the standard action", func() audit.Repo {
-			return installerFixture(stepsWorkflow(".github/workflows/ci.yml", step(determinateNixAction)), broken)
+			return installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet()), broken)
 		}, "unreadable .github/workflows/broken.yml"},
 		{"an unreadable composite", func() audit.Repo {
 			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", step("./.github/actions/setup")))
@@ -239,8 +248,77 @@ func TestEvaluate_nixInstaller_lookalikesAreNotInstallers(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			t.Parallel()
 
-			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", step(determinateNixAction), step(action)))
+			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), step(action)))
 			wantCell(t, nixInstaller(t, r), rules.Pass, "")
 		})
 	}
+}
+
+// TestEvaluate_nixInstaller_telemetryOnFails: determinate-nix-action reports
+// to Determinate Systems over OpenTelemetry unless the step's own env sets
+// OTEL_SDK_DISABLED to true. Anything else leaves it on and fails, naming the
+// file that holds the step: no env, another value, the variable on another
+// step, an expression the audit cannot resolve, or an empty
+// OTEL_EXPORTER_OTLP_ENDPOINT, the other off switch, which the standard does
+// not use. The value is trimmed and read without regard to case, as the
+// action's OpenTelemetry SDK reads it.
+func TestEvaluate_nixInstaller_telemetryOnFails(t *testing.T) {
+	t.Parallel()
+
+	withEnv := func(env map[string]string) audit.StepUse {
+		return audit.StepUse{Action: determinateNixAction, Env: env}
+	}
+	tests := []struct {
+		name    string
+		install audit.StepUse
+		others  []audit.StepUse
+	}{
+		{"no env", step(determinateNixAction), nil},
+		{"another variable only", withEnv(map[string]string{"FOO": "true"}), nil},
+		{"false", withEnv(map[string]string{"OTEL_SDK_DISABLED": "false"}), nil},
+		{"an expression", withEnv(map[string]string{"OTEL_SDK_DISABLED": "${{ vars.OTEL_SDK_DISABLED }}"}), nil},
+		{"an empty exporter endpoint", withEnv(map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ""}), nil},
+		{"set on another step", step(determinateNixAction), []audit.StepUse{{
+			Action: "actions/checkout@v5",
+			Env:    map[string]string{"OTEL_SDK_DISABLED": "true"},
+		}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", append(tc.others, tc.install)...))
+			wantCell(t, nixInstaller(t, r), rules.Fail, "telemetry on in .github/workflows/ci.yml")
+		})
+	}
+
+	for _, value := range []string{"TRUE", " true", "true\n"} {
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+
+			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", withEnv(map[string]string{"OTEL_SDK_DISABLED": value})))
+			wantCell(t, nixInstaller(t, r), rules.Pass, "")
+		})
+	}
+}
+
+// TestEvaluate_nixInstaller_telemetryNamesEachFileOnce: the cell names the
+// file holding each step with telemetry on, a composite rather than the
+// workflows that call it, each once and in path order, after any other
+// installer and before any unreadable file.
+func TestEvaluate_nixInstaller_telemetryNamesEachFileOnce(t *testing.T) {
+	t.Parallel()
+
+	r := installerFixture(
+		stepsWorkflow(".github/workflows/release.yml", step(determinateNixAction), step("./.github/actions/setup")),
+		stepsWorkflow(".github/workflows/ci.yml", step("./.github/actions/setup"), quiet(), step(installNixAction)),
+		stepsWorkflow(".github/workflows/fuzz.yml", step(determinateNixAction), step(determinateNixAction)),
+		audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "yaml: line 3: did not find expected key"},
+	)
+	r.Actions = []audit.CompositeAction{setupComposite(step(determinateNixAction))}
+	wantCell(t, nixInstaller(t, r), rules.Fail, "cachix/install-nix-action, "+
+		"telemetry on in .github/actions/setup/action.yml, "+
+		"telemetry on in .github/workflows/fuzz.yml, "+
+		"telemetry on in .github/workflows/release.yml, "+
+		"unreadable .github/workflows/broken.yml")
 }

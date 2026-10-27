@@ -271,6 +271,14 @@ func cacheNixProblems(r audit.Repo) []string {
 // so the step's name alone says which Nix the job gets.
 const determinateNixAction = "DeterminateSystems/determinate-nix-action"
 
+// telemetryOff is the variable that stops determinateNixAction reporting to
+// Determinate Systems over OpenTelemetry. Only the step's own env counts: a
+// job's or workflow's env would reach it too, but the standard is one place,
+// on the install itself, where moving the step cannot leave it behind. An
+// empty OTEL_EXPORTER_OTLP_ENDPOINT also stops the export, but is not
+// accepted: one spelling keeps every repository's install step alike.
+const telemetryOff = "OTEL_SDK_DISABLED"
+
 // otherNixInstallers are the published actions known to install Nix other
 // than determinateNixAction, each as the cell names it. An install through
 // an action not listed here, or by a `run:` step, is not seen.
@@ -283,13 +291,19 @@ var otherNixInstallers = []string{
 }
 
 // observeNixInstaller judges whether every Nix install in the repository's
-// CI uses determinateNixAction, so every flake repository runs one Nix,
-// installed one way. A step counts whether a job runs it directly or through
-// a local composite. The cell names each other installer found, once and in
-// list order, then every workflow, and every composite a job uses, that
-// could not be read, as "unreadable <path>" in path order: any of them may
-// hold an install the check cannot see, so one fails it even beside a
-// passing install.
+// CI uses determinateNixAction with telemetryOff set to true, so every flake
+// repository runs one Nix, installed one way, with the installer's telemetry
+// off. Other DeterminateSystems actions report the same way; this check does
+// not look at them. A step
+// counts whether a job runs it directly or through a local composite. The
+// cell names each other installer found, once and in list order, then each
+// file holding a determinateNixAction step without telemetryOff, as
+// "telemetry on in <path>" in path order, then every workflow, and every
+// composite a job uses, that could not be read, as "unreadable <path>" in
+// path order: any of them may hold an install the check cannot see, so one
+// fails it even beside a passing install. The value is trimmed and read
+// without regard to case, as the action's OpenTelemetry SDK reads it; an
+// expression fails, since the audit cannot resolve it.
 //
 // It is n/a without a flake.nix, and when nothing readable installs Nix and
 // nothing is unreadable: a repository whose CI never installs Nix has no
@@ -300,10 +314,13 @@ func observeNixInstaller(r audit.Repo) observation {
 	}
 	var installs bool
 	others := map[string]bool{}
-	var unreadable []string
-	judge := func(u audit.StepUse) {
+	var telemetry, unreadable []string
+	judge := func(u audit.StepUse, path string) {
 		if usesAction(u.Action, determinateNixAction) {
 			installs = true
+			if !strings.EqualFold(strings.TrimSpace(u.Env[telemetryOff]), "true") {
+				telemetry = append(telemetry, path)
+			}
 		}
 		for _, name := range otherNixInstallers {
 			if usesAction(u.Action, name) {
@@ -318,7 +335,7 @@ func observeNixInstaller(r audit.Repo) observation {
 		}
 		for _, j := range w.Jobs {
 			for _, u := range j.Uses {
-				judge(u)
+				judge(u, w.Path)
 				ca, local := resolveComposite(r, u.Action)
 				switch {
 				case !local:
@@ -326,7 +343,7 @@ func observeNixInstaller(r audit.Repo) observation {
 					unreadable = append(unreadable, ca.Path)
 				default:
 					for _, cu := range ca.Uses {
-						judge(cu)
+						judge(cu, ca.Path)
 					}
 				}
 			}
@@ -340,6 +357,10 @@ func observeNixInstaller(r audit.Repo) observation {
 		if others[name] {
 			problems = append(problems, name)
 		}
+	}
+	slices.Sort(telemetry)
+	for _, path := range slices.Compact(telemetry) {
+		problems = append(problems, "telemetry on in "+path)
 	}
 	slices.Sort(unreadable)
 	for _, path := range slices.Compact(unreadable) {
