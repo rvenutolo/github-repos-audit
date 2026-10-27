@@ -353,16 +353,23 @@ func TestEvaluate_nixInstaller_everyDeterminateActionNeedsTelemetryOff(t *testin
 		"DeterminateSystems/update-flake-lock@0123456789abcdef0123456789abcdef01234567",
 		"DeterminateSystems/flake-checker-action@v12",
 		"determinatesystems/Update-Flake-Lock@v28",
+		"DeterminateSystems/magic-nix-cache-action@v13",
+		"determinatesystems/FlakeHub-Cache-Action@v2",
 		"DeterminateSystems/some-repository/sub-action@v1",
 	} {
 		t.Run(action, func(t *testing.T) {
 			t.Parallel()
 
+			// Every other reporting input is off, so only telemetry shows.
+			loud := audit.StepUse{
+				Action: action,
+				With:   map[string]string{"diagnostic-endpoint": "", "send-statistics": "false"},
+			}
 			r := installerFixture(
-				stepsWorkflow(".github/workflows/ci.yml", quiet(), step(action)),
+				stepsWorkflow(".github/workflows/ci.yml", quiet(), loud),
 				stepsWorkflow(".github/workflows/update.yml", step("./.github/actions/setup")),
 			)
-			r.Actions = []audit.CompositeAction{setupComposite(step(action))}
+			r.Actions = []audit.CompositeAction{setupComposite(loud)}
 			wantCell(t, nixInstaller(t, r), rules.Fail,
 				"telemetry on in .github/actions/setup/action.yml, telemetry on in .github/workflows/ci.yml")
 		})
@@ -410,63 +417,62 @@ func TestEvaluate_nixInstaller_telemetryWithoutAnInstall(t *testing.T) {
 	wantCell(t, nixInstaller(t, r), rules.Fail, "telemetry on in .github/workflows/update.yml")
 }
 
-// diagnosticActions are the DeterminateSystems actions that take a
-// diagnostic-endpoint input, pinned as a workflow step writes them.
-var diagnosticActions = []string{
-	determinateNixAction,
-	nixInstallerAction,
-	"DeterminateSystems/magic-nix-cache-action@v13",
-	"determinatesystems/FlakeHub-Cache-Action@v2",
-}
-
-// diagnosed is a step of action with its telemetry off and with as its
-// inputs.
-func diagnosed(action string, with map[string]string) audit.StepUse {
+// telemetryOff is a step of action with its telemetry off and with as its
+// inputs, so only its other reporting inputs are judged.
+func telemetryOff(action string, with map[string]string) audit.StepUse {
 	return audit.StepUse{Action: action, With: with, Env: map[string]string{"OTEL_SDK_DISABLED": "true"}}
 }
 
 // TestEvaluate_nixInstaller_diagnosticsOnFails: a DeterminateSystems action
 // that takes diagnostic-endpoint reports to Determinate Systems unless the
-// step's own with: gives it empty. Leaving it out is the default, which
-// reports, and any other value is an endpoint that reports somewhere, so
-// both fail naming the file; empty, or nothing but whitespace, passes.
+// step's own with: gives it exactly empty. Leaving it out is the default,
+// which reports; any other value is an endpoint that reports somewhere, and
+// one that is no URL, whitespace included, falls back to the default, since
+// the actions read the input untrimmed. All of those fail naming the file.
+// The older installer also fails as a non-standard installer whatever its
+// inputs, so its cell starts with its name.
 func TestEvaluate_nixInstaller_diagnosticsOnFails(t *testing.T) {
 	t.Parallel()
 
-	for _, action := range diagnosticActions {
-		tests := []struct {
-			name string
-			with map[string]string
-			want rules.Verdict
-		}{
-			{"absent", nil, rules.Fail},
-			{"absent beside another input", map[string]string{"logger": "pretty"}, rules.Fail},
-			{"a URL", map[string]string{"diagnostic-endpoint": "https://example.test/events"}, rules.Fail},
-			{"an expression", map[string]string{"diagnostic-endpoint": "${{ vars.ENDPOINT }}"}, rules.Fail},
-			{"empty", map[string]string{"diagnostic-endpoint": ""}, rules.Pass},
-			{"whitespace", map[string]string{"diagnostic-endpoint": " "}, rules.Pass},
-		}
-		for _, tc := range tests {
-			t.Run(action+"/"+tc.name, func(t *testing.T) {
+	actions := []struct {
+		action string
+		prefix string // what the cell names before any diagnostics entry
+	}{
+		{determinateNixAction, ""},
+		{nixInstallerAction, "DeterminateSystems/nix-installer-action"},
+		{"DeterminateSystems/magic-nix-cache-action@v13", ""},
+		{"determinatesystems/FlakeHub-Cache-Action@v2", ""},
+	}
+	values := []struct {
+		name string
+		with map[string]string
+		off  bool
+	}{
+		{"absent", nil, false},
+		{"absent beside another input", map[string]string{"logger": "pretty"}, false},
+		{"a URL", map[string]string{"diagnostic-endpoint": "https://example.test/events"}, false},
+		{"an expression", map[string]string{"diagnostic-endpoint": "${{ vars.ENDPOINT }}"}, false},
+		{"whitespace", map[string]string{"diagnostic-endpoint": " "}, false},
+		{"empty", map[string]string{"diagnostic-endpoint": ""}, true},
+	}
+	for _, a := range actions {
+		for _, v := range values {
+			t.Run(a.action+"/"+v.name, func(t *testing.T) {
 				t.Parallel()
 
-				r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), diagnosed(action, tc.with)))
-				got := nixInstaller(t, r)
-				if strings.HasPrefix(action, "DeterminateSystems/nix-installer-action") {
-					// The older installer fails as a non-standard installer
-					// whatever its inputs; only the diagnostics entry varies.
-					want := "DeterminateSystems/nix-installer-action"
-					if tc.want == rules.Fail {
-						want += ", diagnostics on in .github/workflows/ci.yml"
-					}
-					wantCell(t, got, rules.Fail, want)
-					return
+				var problems []string
+				if a.prefix != "" {
+					problems = append(problems, a.prefix)
 				}
-				want := ""
-				if tc.want == rules.Fail {
-					want = "diagnostics on in .github/workflows/ci.yml"
+				if !v.off {
+					problems = append(problems, "diagnostics on in .github/workflows/ci.yml")
 				}
-				wantCell(t, got, tc.want, want)
+				verdict := rules.Pass
+				if len(problems) > 0 {
+					verdict = rules.Fail
+				}
+				r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), telemetryOff(a.action, v.with)))
+				wantCell(t, nixInstaller(t, r), verdict, strings.Join(problems, ", "))
 			})
 		}
 	}
@@ -485,7 +491,10 @@ func TestEvaluate_nixInstaller_diagnosticsOnlyOnListedActions(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			t.Parallel()
 
-			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), diagnosed(action, nil)))
+			// flake-checker-action's own statistics are off, so only a
+			// diagnostics entry could show.
+			with := map[string]string{"send-statistics": "false"}
+			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), telemetryOff(action, with)))
 			wantCell(t, nixInstaller(t, r), rules.Pass, "")
 		})
 	}
@@ -498,11 +507,11 @@ func TestEvaluate_nixInstaller_diagnosticsOnlyOnListedActions(t *testing.T) {
 func TestEvaluate_nixInstaller_diagnosticsNamesEachFileOnce(t *testing.T) {
 	t.Parallel()
 
-	loud := diagnosed(determinateNixAction, nil)
+	loud := telemetryOff(determinateNixAction, nil)
 	r := installerFixture(
 		stepsWorkflow(".github/workflows/release.yml", loud, step("./.github/actions/setup")),
 		stepsWorkflow(".github/workflows/ci.yml", step("./.github/actions/setup"), telemetryOn(), step(installNixAction)),
-		stepsWorkflow(".github/workflows/fuzz.yml", loud, diagnosed("DeterminateSystems/magic-nix-cache-action@v13", nil)),
+		stepsWorkflow(".github/workflows/fuzz.yml", loud, telemetryOff("DeterminateSystems/magic-nix-cache-action@v13", nil)),
 		audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "yaml: line 3: did not find expected key"},
 	)
 	r.Actions = []audit.CompositeAction{setupComposite(loud)}
@@ -512,4 +521,98 @@ func TestEvaluate_nixInstaller_diagnosticsNamesEachFileOnce(t *testing.T) {
 		"diagnostics on in .github/workflows/fuzz.yml, "+
 		"diagnostics on in .github/workflows/release.yml, "+
 		"unreadable .github/workflows/broken.yml")
+}
+
+// TestEvaluate_nixInstaller_statisticsOnFails: flake-checker-action reports
+// the issues it finds to Determinate Systems unless the step's own with:
+// sets send-statistics to false. Its default is true, so leaving it out
+// fails, as does true, an expression the audit cannot resolve, or anything
+// else; false passes in each spelling the action's boolean input accepts,
+// which it reads trimmed.
+func TestEvaluate_nixInstaller_statisticsOnFails(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		with map[string]string
+		off  bool
+	}{
+		{"absent", nil, false},
+		{"true", map[string]string{"send-statistics": "true"}, false},
+		{"an expression", map[string]string{"send-statistics": "${{ vars.STATS }}"}, false},
+		{"no", map[string]string{"send-statistics": "no"}, false},
+		{"mixed case", map[string]string{"send-statistics": "faLSE"}, false},
+		{"false", map[string]string{"send-statistics": "false"}, true},
+		{"False", map[string]string{"send-statistics": "False"}, true},
+		{"FALSE", map[string]string{"send-statistics": "FALSE"}, true},
+		{"false padded", map[string]string{"send-statistics": " false "}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(),
+				telemetryOff("DeterminateSystems/flake-checker-action@v12", tc.with)))
+			if tc.off {
+				wantCell(t, nixInstaller(t, r), rules.Pass, "")
+				return
+			}
+			wantCell(t, nixInstaller(t, r), rules.Fail, "statistics on in .github/workflows/ci.yml")
+		})
+	}
+
+	t.Run("another action", func(t *testing.T) {
+		t.Parallel()
+
+		r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(),
+			telemetryOff("DeterminateSystems/update-flake-lock@v28", nil)))
+		wantCell(t, nixInstaller(t, r), rules.Pass, "")
+	})
+}
+
+// TestEvaluate_nixInstaller_statisticsNamesEachFileOnce: the cell names the
+// file holding each flake-checker-action step with statistics on, a
+// composite rather than the workflows that call it, each once and in path
+// order, after every diagnostics entry and before any unreadable file.
+func TestEvaluate_nixInstaller_statisticsNamesEachFileOnce(t *testing.T) {
+	t.Parallel()
+
+	checker := telemetryOff("DeterminateSystems/flake-checker-action@v12", nil)
+	r := installerFixture(
+		stepsWorkflow(".github/workflows/release.yml", quiet(), checker, step("./.github/actions/setup")),
+		stepsWorkflow(".github/workflows/ci.yml", step("./.github/actions/setup"), telemetryOff(determinateNixAction, nil)),
+		stepsWorkflow(".github/workflows/check.yml", checker, checker),
+		audit.Workflow{Path: ".github/workflows/broken.yml", ParseError: "yaml: line 3: did not find expected key"},
+	)
+	r.Actions = []audit.CompositeAction{setupComposite(checker)}
+	wantCell(t, nixInstaller(t, r), rules.Fail,
+		"diagnostics on in .github/workflows/ci.yml, "+
+			"statistics on in .github/actions/setup/action.yml, "+
+			"statistics on in .github/workflows/check.yml, "+
+			"statistics on in .github/workflows/release.yml, "+
+			"unreadable .github/workflows/broken.yml")
+}
+
+// TestEvaluate_nixInstaller_statisticsWithoutAnInstall: a flake-checker-action
+// step with statistics on is a problem even where the check sees no install,
+// so the cell fails naming it rather than going n/a.
+func TestEvaluate_nixInstaller_statisticsWithoutAnInstall(t *testing.T) {
+	t.Parallel()
+
+	r := installerFixture(stepsWorkflow(".github/workflows/check.yml",
+		telemetryOff("DeterminateSystems/flake-checker-action@v12", nil)))
+	wantCell(t, nixInstaller(t, r), rules.Fail, "statistics on in .github/workflows/check.yml")
+}
+
+// TestEvaluate_nixInstaller_inputNamesIgnoreCase: GitHub matches an action's
+// input names without regard to case, so each reporting input is read
+// however the step capitalizes it.
+func TestEvaluate_nixInstaller_inputNamesIgnoreCase(t *testing.T) {
+	t.Parallel()
+
+	r := installerFixture(stepsWorkflow(".github/workflows/ci.yml",
+		telemetryOff(determinateNixAction, map[string]string{"Diagnostic-Endpoint": ""}),
+		telemetryOff("DeterminateSystems/flake-checker-action@v12", map[string]string{"SEND-STATISTICS": "false"}),
+	))
+	wantCell(t, nixInstaller(t, r), rules.Pass, "")
 }

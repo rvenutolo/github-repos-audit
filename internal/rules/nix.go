@@ -284,17 +284,29 @@ const telemetryOff = "OTEL_SDK_DISABLED"
 // magic-nix-cache-action. Their JavaScript actions report over
 // OpenTelemetry unless telemetryOff is set, so every action under the owner
 // is held to it rather than a list that a new action would slip past. Some
-// also send installer diagnostics, judged through diagnosticActions.
-// flake-checker-action's `send-statistics` input reports too, and is not
-// judged.
+// also report through inputs of their own: installer diagnostics, judged
+// through diagnosticActions, and flakeCheckerAction's statistics, judged
+// through sendStatistics.
 const determinateOwner = "DeterminateSystems"
 
 // diagnosticEndpoint is the input through which a diagnosticActions step
 // sends diagnostics to Determinate Systems. Its default reports to the host
 // the installer itself downloads from, so an egress allowlist cannot stop
 // the one without the other, and OTEL_SDK_DISABLED does not reach it: only
-// the input given empty turns it off.
+// the input given exactly empty turns it off.
 const diagnosticEndpoint = "diagnostic-endpoint"
+
+// nixInstallerAction is the older Determinate installer: another installer
+// to otherNixInstallers, and one of diagnosticActions.
+const nixInstallerAction = "DeterminateSystems/nix-installer-action"
+
+// flakeCheckerAction reports the issues it finds in a flake to Determinate
+// Systems unless its sendStatistics input is false.
+const flakeCheckerAction = "DeterminateSystems/flake-checker-action"
+
+// sendStatistics is flakeCheckerAction's reporting switch. It defaults to
+// true, so only the step's own with: setting it false turns it off.
+const sendStatistics = "send-statistics"
 
 // diagnosticActions are the determinateOwner actions whose action.yml
 // declares diagnosticEndpoint. It is a list, unlike the owner-wide
@@ -306,19 +318,57 @@ const diagnosticEndpoint = "diagnostic-endpoint"
 //nolint:gochecknoglobals // immutable lookup table
 var diagnosticActions = []string{
 	determinateNixAction,
-	"DeterminateSystems/nix-installer-action",
+	nixInstallerAction,
 	"DeterminateSystems/magic-nix-cache-action",
 	"DeterminateSystems/flakehub-cache-action",
 }
 
 // diagnosticsOff reports whether with turns diagnosticEndpoint off: the key
-// is there and its value is empty once trimmed. Leaving it out is the
-// action's default, which reports, and any other value is an endpoint that
-// reports somewhere. Only the step's own with: counts, since that is the one
-// place GitHub reads an action's inputs from.
+// is there and its value is exactly empty. Leaving it out is the action's
+// default, which reports, and any other value is an endpoint that reports
+// somewhere. Whitespace is not empty: the actions read the input untrimmed,
+// and a value that is no URL falls back to the default endpoint. Only the
+// step's own with: counts, since that is the one place GitHub reads an
+// action's inputs from.
 func diagnosticsOff(with map[string]string) bool {
-	v, ok := with[diagnosticEndpoint]
-	return ok && strings.TrimSpace(v) == ""
+	v, ok := input(with, diagnosticEndpoint)
+	return ok && v == ""
+}
+
+// statisticsOff reports whether with sets sendStatistics false, in one of
+// the spellings the action's boolean input accepts, which it reads trimmed.
+// Any other value is true, an expression the audit cannot resolve, or one
+// the action rejects; none of them is a step known not to report.
+func statisticsOff(with map[string]string) bool {
+	v, _ := input(with, sendStatistics)
+	switch strings.TrimSpace(v) {
+	case "false", "False", "FALSE":
+		return true
+	default:
+		return false
+	}
+}
+
+// input returns the value with gives the action input name, and whether it
+// gives one. GitHub matches input names without regard to case, so
+// `Send-Statistics:` sets send-statistics.
+func input(with map[string]string, name string) (string, bool) {
+	for k, v := range with {
+		if strings.EqualFold(k, name) {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+// appendFiles appends one entry per distinct path in paths, in path order,
+// each as prefix followed by the path.
+func appendFiles(problems []string, prefix string, paths []string) []string {
+	slices.Sort(paths)
+	for _, path := range slices.Compact(paths) {
+		problems = append(problems, prefix+path)
+	}
+	return problems
 }
 
 // fromDeterminate reports whether uses names a published action of
@@ -344,37 +394,41 @@ func telemetryDisabled(env map[string]string) bool {
 //
 //nolint:gochecknoglobals // immutable lookup table
 var otherNixInstallers = []string{
-	"DeterminateSystems/nix-installer-action",
+	nixInstallerAction,
 	"cachix/install-nix-action",
 	"nixbuild/nix-quick-install-action",
 }
 
 // observeNixInstaller judges whether every Nix install in the repository's
 // CI uses determinateNixAction, every determinateOwner step, the install
-// included, sets telemetryOff, and every diagnosticActions step turns
-// diagnosticEndpoint off, so every flake repository runs one Nix, installed
-// one way, with nothing reporting home through either channel. A step counts
-// whether a job runs it directly or through a local composite. The cell
-// names each other installer found, once and in list order, then each file
-// holding a determinateOwner step without telemetryOff, as "telemetry on in
-// <path>" in path order, then each file holding a diagnosticActions step
-// without diagnostics off, as "diagnostics on in <path>" in path order, then
-// every workflow, and every composite a job uses, that could not be read, as
-// "unreadable <path>" in path order: any of them may hold an install the
-// check cannot see, so one fails it even beside a passing install.
+// included, sets telemetryOff, every diagnosticActions step turns
+// diagnosticEndpoint off, and every flakeCheckerAction step turns
+// sendStatistics off, so every flake repository runs one Nix, installed one
+// way, with nothing reporting home. A step counts whether a job runs it
+// directly or through a local composite. The cell names each other
+// installer found, once and in list order, then each file holding a
+// determinateOwner step without telemetryOff, as "telemetry on in <path>"
+// in path order, then each file holding a diagnosticActions step without
+// diagnostics off, as "diagnostics on in <path>" in path order, then each
+// file holding a flakeCheckerAction step without statistics off, as
+// "statistics on in <path>" in path order, then every workflow, and every
+// composite a job uses, that could not be read, as "unreadable <path>" in
+// path order: any of them may hold an install the check cannot see, so one
+// fails it even beside a passing install.
 //
 // It is n/a without a flake.nix, and when nothing readable installs Nix,
-// leaves telemetry on or leaves diagnostics on, and nothing is unreadable: a repository whose CI never
-// installs Nix has no installer to standardize, but a determinateOwner step
-// reporting home either way is a gap wherever it runs, whether or not the check sees the
-// install it relies on.
+// nothing leaves telemetry, diagnostics or statistics on, and nothing is
+// unreadable: a repository whose CI never installs Nix has no installer to
+// standardize, but a determinateOwner step reporting home any way is a
+// gap wherever it runs, whether or not the check sees the install it relies
+// on.
 func observeNixInstaller(r audit.Repo) observation {
 	if !r.Files.FlakeNix {
 		return observation{unknown: true}
 	}
 	var installs bool
 	others := map[string]bool{}
-	var telemetry, diagnostics, unreadable []string
+	var telemetry, diagnostics, statistics, unreadable []string
 	judge := func(u audit.StepUse, path string) {
 		if usesAction(u.Action, determinateNixAction) {
 			installs = true
@@ -387,6 +441,9 @@ func observeNixInstaller(r audit.Repo) observation {
 		})
 		if takesDiagnostics && !diagnosticsOff(u.With) {
 			diagnostics = append(diagnostics, path)
+		}
+		if usesAction(u.Action, flakeCheckerAction) && !statisticsOff(u.With) {
+			statistics = append(statistics, path)
 		}
 		for _, name := range otherNixInstallers {
 			if usesAction(u.Action, name) {
@@ -415,7 +472,7 @@ func observeNixInstaller(r audit.Repo) observation {
 			}
 		}
 	}
-	if !installs && len(telemetry) == 0 && len(diagnostics) == 0 && len(unreadable) == 0 {
+	if !installs && len(telemetry) == 0 && len(diagnostics) == 0 && len(statistics) == 0 && len(unreadable) == 0 {
 		return observation{unknown: true}
 	}
 	var problems []string
@@ -424,18 +481,10 @@ func observeNixInstaller(r audit.Repo) observation {
 			problems = append(problems, name)
 		}
 	}
-	slices.Sort(telemetry)
-	for _, path := range slices.Compact(telemetry) {
-		problems = append(problems, "telemetry on in "+path)
-	}
-	slices.Sort(diagnostics)
-	for _, path := range slices.Compact(diagnostics) {
-		problems = append(problems, "diagnostics on in "+path)
-	}
-	slices.Sort(unreadable)
-	for _, path := range slices.Compact(unreadable) {
-		problems = append(problems, "unreadable "+path)
-	}
+	problems = appendFiles(problems, "telemetry on in ", telemetry)
+	problems = appendFiles(problems, "diagnostics on in ", diagnostics)
+	problems = appendFiles(problems, "statistics on in ", statistics)
+	problems = appendFiles(problems, "unreadable ", unreadable)
 	return observation{ok: len(problems) == 0, value: strings.Join(problems, ", "), mark: true}
 }
 
