@@ -4,6 +4,13 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v6.3.0
+
+### Features
+
+- judge diagnostic-endpoint in the nix_installer check
+- judge send-statistics in the nix_installer check
+
 ## v6.2.0
 
 ### Features
