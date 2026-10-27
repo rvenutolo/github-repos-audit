@@ -4,6 +4,12 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v6.2.0
+
+### Features
+
+- hold every DeterminateSystems action to telemetry off
+
 ## v6.1.0
 
 ### Features
