@@ -135,7 +135,8 @@ func TestEvaluate_nixInstaller_determinateActionPasses(t *testing.T) {
 // TestEvaluate_nixInstaller_otherInstallerFails: any other installer action
 // fails it, the older Determinate installer included, since the standard is
 // the one action that installs nothing but Determinate Nix. The cell names
-// the action, without its version.
+// the action, without its version; the older Determinate installer, a
+// DeterminateSystems action, also reports home unless told not to.
 func TestEvaluate_nixInstaller_otherInstallerFails(t *testing.T) {
 	t.Parallel()
 
@@ -143,7 +144,7 @@ func TestEvaluate_nixInstaller_otherInstallerFails(t *testing.T) {
 		action string
 		want   string
 	}{
-		{nixInstallerAction, "DeterminateSystems/nix-installer-action"},
+		{nixInstallerAction, "DeterminateSystems/nix-installer-action, telemetry on in .github/workflows/ci.yml"},
 		{installNixAction, "cachix/install-nix-action"},
 		{nixQuickInstallAction, "nixbuild/nix-quick-install-action"},
 		{"Cachix/Install-Nix-Action@v31", "cachix/install-nix-action"},
@@ -182,7 +183,8 @@ func TestEvaluate_nixInstaller_eachOtherInstallerOnce(t *testing.T) {
 		stepsWorkflow(".github/workflows/ci.yml", step(nixInstallerAction), step(installNixAction)),
 		stepsWorkflow(".github/workflows/release.yml", step(installNixAction), step(nixInstallerAction)),
 	)
-	wantCell(t, nixInstaller(t, r), rules.Fail, "DeterminateSystems/nix-installer-action, cachix/install-nix-action")
+	wantCell(t, nixInstaller(t, r), rules.Fail, "DeterminateSystems/nix-installer-action, cachix/install-nix-action, "+
+		"telemetry on in .github/workflows/ci.yml, telemetry on in .github/workflows/release.yml")
 }
 
 // TestEvaluate_nixInstaller_unreadableFails: a workflow or composite that
@@ -321,4 +323,75 @@ func TestEvaluate_nixInstaller_telemetryNamesEachFileOnce(t *testing.T) {
 		"telemetry on in .github/workflows/fuzz.yml, "+
 		"telemetry on in .github/workflows/release.yml, "+
 		"unreadable .github/workflows/broken.yml")
+}
+
+// TestEvaluate_nixInstaller_everyDeterminateActionNeedsTelemetryOff: every
+// DeterminateSystems action reports over OpenTelemetry the way the installer
+// does, so each step of one, in a workflow or a composite, an action in a
+// subdirectory of one of its repositories included, needs
+// OTEL_SDK_DISABLED in its own env, and a step without it fails naming its
+// file even beside a quiet install.
+func TestEvaluate_nixInstaller_everyDeterminateActionNeedsTelemetryOff(t *testing.T) {
+	t.Parallel()
+
+	for _, action := range []string{
+		"DeterminateSystems/update-flake-lock@0123456789abcdef0123456789abcdef01234567",
+		"DeterminateSystems/magic-nix-cache-action@v13",
+		"DeterminateSystems/flake-checker-action@v12",
+		"determinatesystems/FlakeHub-Cache-Action@v2",
+		"DeterminateSystems/some-repository/sub-action@v1",
+	} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+
+			r := installerFixture(
+				stepsWorkflow(".github/workflows/ci.yml", quiet(), step(action)),
+				stepsWorkflow(".github/workflows/update.yml", step("./.github/actions/setup")),
+			)
+			r.Actions = []audit.CompositeAction{setupComposite(step(action))}
+			wantCell(t, nixInstaller(t, r), rules.Fail,
+				"telemetry on in .github/actions/setup/action.yml, telemetry on in .github/workflows/ci.yml")
+		})
+	}
+
+	t.Run("with telemetry off", func(t *testing.T) {
+		t.Parallel()
+
+		r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), audit.StepUse{
+			Action: "DeterminateSystems/update-flake-lock@v28",
+			Env:    map[string]string{"OTEL_SDK_DISABLED": "true"},
+		}))
+		wantCell(t, nixInstaller(t, r), rules.Pass, "")
+	})
+}
+
+// TestEvaluate_nixInstaller_determinateLookalikesNeedNothing: only an action
+// published under the DeterminateSystems owner counts, at a version; a path
+// that only contains the name, or a reference with no version, is not one.
+func TestEvaluate_nixInstaller_determinateLookalikesNeedNothing(t *testing.T) {
+	t.Parallel()
+
+	for _, action := range []string{
+		"someone/DeterminateSystems/update-flake-lock@v1",
+		"DeterminateSystems-fork/update-flake-lock@v1",
+		"DeterminateSystems/update-flake-lock",
+		"./DeterminateSystems/update-flake-lock@v1",
+	} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+
+			r := installerFixture(stepsWorkflow(".github/workflows/ci.yml", quiet(), step(action)))
+			wantCell(t, nixInstaller(t, r), rules.Pass, "")
+		})
+	}
+}
+
+// TestEvaluate_nixInstaller_telemetryWithoutAnInstall: a DeterminateSystems
+// step with telemetry on is a problem even where the check sees no install,
+// so the cell fails naming it rather than going n/a.
+func TestEvaluate_nixInstaller_telemetryWithoutAnInstall(t *testing.T) {
+	t.Parallel()
+
+	r := installerFixture(stepsWorkflow(".github/workflows/update.yml", step("DeterminateSystems/update-flake-lock@v28")))
+	wantCell(t, nixInstaller(t, r), rules.Fail, "telemetry on in .github/workflows/update.yml")
 }
