@@ -92,6 +92,14 @@
     {
       "path": "CLAUDE.md",
       "type": "blob"
+    },
+    {
+      "path": ".mcp.json",
+      "type": "blob"
+    },
+    {
+      "path": ".claude/settings.local.json",
+      "type": "blob"
     }
   ],
   "truncated": false

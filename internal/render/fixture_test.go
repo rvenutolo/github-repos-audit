@@ -173,6 +173,10 @@ func fullSnapshot() *audit.Snapshot {
 	}
 	// Two repositories per commitlint spelling: a tied column names no standard.
 	soft.Files.Commitlint = ".commitlintrc.json"
+	// It commits Claude Code configuration: an MCP config, and settings
+	// files both at the root and in a nested directory.
+	soft.Files.MCPConfig = ".mcp.json"
+	soft.Files.ClaudeSettings = []string{".claude/settings.json", "docs/.claude/settings.local.json"}
 	// Its release age comes from a preset and falls short of the type's, and
 	// Renovate runs the nix manager without lock-file maintenance, which on
 	// inputs not pinned by rev leaves flake.lock unrefreshed.

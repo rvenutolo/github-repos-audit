@@ -102,14 +102,14 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ### GitHub & docs
 
-| Repository                                                           | LICENSE   | SECURITY      | CODEOWNERS | PR template                        | CLAUDE.md |
-| -------------------------------------------------------------------- | --------- | ------------- | ---------- | ---------------------------------- | --------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a       | n/a           | n/a        | n/a                                | n/a       |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
-| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
-| [web-app](https://github.com/gh-owner/web-app)                       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+| Repository                                                           | LICENSE   | SECURITY      | CODEOWNERS | PR template                        | CLAUDE.md | MCP config  | Claude settings                                           |
+| -------------------------------------------------------------------- | --------- | ------------- | ---------- | ---------------------------------- | --------- | ----------- | --------------------------------------------------------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       | n/a         | n/a                                                       |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       | n/a         | n/a                                                       |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a       | n/a           | n/a        | n/a                                | n/a       | n/a         | n/a                                                       |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       | `.mcp.json` | `.claude/settings.json, docs/.claude/settings.local.json` |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       | n/a         | n/a                                                       |
+| [web-app](https://github.com/gh-owner/web-app)                       | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       | n/a         | n/a                                                       |
 
 ## Claude
 

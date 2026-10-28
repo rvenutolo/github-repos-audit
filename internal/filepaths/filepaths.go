@@ -22,14 +22,16 @@ type Entry struct {
 // Paths is where each file was found; "" means absent. The path is reported
 // as it appears in the tree (so case-insensitive matches keep their spelling),
 // and a directory match carries a trailing slash. Compose lists the distinct
-// compose file base names found at any depth, sorted. GoMod reports a root
+// compose file base names found at any depth, sorted, and ClaudeSettings the
+// full paths of the Claude Code settings files at any depth, sorted. GoMod reports a root
 // file named exactly go.mod: the module a root `go` command builds, which a
 // nested module or a directory of that name is not.
 type Paths struct {
 	Justfile, Commitlint, GitCliff, Treefmt                                                       string
 	Compose                                                                                       []string
 	Typos, Yamllint, Markdownlint, Prettier, EditorconfigChecker, Lychee, Zizmor, Codecov, MkDocs string
-	LicenseFile, SecurityPolicy, Codeowners, PRTemplate, ClaudeMD                                 string
+	LicenseFile, SecurityPolicy, Codeowners, PRTemplate, ClaudeMD, MCPConfig                      string
+	ClaudeSettings                                                                                []string
 	GoMod                                                                                         bool
 }
 
@@ -147,10 +149,19 @@ func prTemplateDirs() []string { return []string{".github/", "", "docs/"} }
 // claudeMDNames: Claude Code memory docs, https://docs.claude.com/en/docs/claude-code/memory
 func claudeMDNames() []string { return []string{"CLAUDE.md", ".claude/CLAUDE.md"} }
 
+// claudeSettingsNames: the project settings files in Claude Code's settings
+// docs, https://code.claude.com/docs/en/settings. Claude Code reads them from
+// a .claude directory, and a nested one is read for work under it.
+func claudeSettingsNames() []string { return []string{"settings.json", "settings.local.json"} }
+
 const (
 	// goModName: the Go command's module file, matched exactly; Go itself
 	// reads no other spelling.
-	goModName      = "go.mod"
+	goModName = "go.mod"
+	// mcpConfigName: the project-scoped MCP server file in Claude Code's MCP
+	// docs, https://code.claude.com/docs/en/mcp, read from the root only.
+	mcpConfigName  = ".mcp.json"
+	claudeDir      = ".claude"
 	prTemplateName = "pull_request_template"
 	licensesDir    = "LICENSES"
 )
@@ -179,6 +190,8 @@ func Find(entries []Entry) Paths {
 		Codeowners:          idx.first(codeownersNames(), false),
 		PRTemplate:          idx.prTemplate(),
 		ClaudeMD:            idx.first(claudeMDNames(), false),
+		MCPConfig:           idx.file(mcpConfigName, false),
+		ClaudeSettings:      idx.claudeSettings(),
 		GoMod:               idx.file(goModName, false) != "",
 	}
 }
@@ -255,6 +268,21 @@ func (x index) compose() []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// claudeSettings lists every file named like a Claude Code settings file
+// whose parent directory is exactly .claude, at any depth. idx.files is
+// sorted, so the result is too.
+func (x index) claudeSettings() []string {
+	var out []string
+	for _, p := range x.files {
+		dir, base := p[:strings.LastIndex(p, "/")+1], p[strings.LastIndex(p, "/")+1:]
+		inClaudeDir := dir == claudeDir+"/" || strings.HasSuffix(dir, "/"+claudeDir+"/")
+		if inClaudeDir && slices.Contains(claudeSettingsNames(), base) {
+			out = append(out, p)
+		}
+	}
 	return out
 }
 

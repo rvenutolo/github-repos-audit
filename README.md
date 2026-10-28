@@ -178,9 +178,9 @@ lists every check the tool knows, each set to one of:
 | `public_published` | expected only when the repository is public and published |
 | `info`             | shown, never judged                                       |
 
-`direct_push` takes `blocked` or `allowed` instead, and the six value-only
+`direct_push` takes `blocked` or `allowed` instead, and the eight value-only
 checks — `last_release_age`, `last_push`, `open_prs`, `branches`,
-`artifact_storage` and `skill_size` — take only `info` or `not_required`. `renovate_min_release_age` takes a duration
+`artifact_storage`, `skill_size`, `claude_mcp_config` and `claude_settings` — take only `info` or `not_required`. `renovate_min_release_age` takes a duration
 instead — `"7 days"`, `"48 hours"`, `"1 week"` (a positive whole number with
 no leading zero, a single space, then minute, hour, day or week, singular or
 plural) — or `not_required` or `info`; an
@@ -593,6 +593,18 @@ with a directory is a repository-relative path, and a directory match ends
 in `/`. The File paths section of the report marks a path that differs from
 the one most of the account uses for the same check; with no single most
 common path, nothing is marked.
+
+Two plain facts sit beside them in the File paths section, never judged and
+never marked: the Claude Code configuration a repository commits. Each
+takes only `info` or `not_required`, shows its paths as code, and is n/a
+when the repository commits none.
+
+- **claude_mcp_config** — `.mcp.json` at the root, where Claude Code reads
+  a project's MCP servers from.
+- **claude_settings** — every `.claude/settings.json` and
+  `.claude/settings.local.json` at any depth, in path order. Claude Code
+  means the local file to stay out of git, so one listed here was committed
+  anyway.
 
 ### Claude Code
 

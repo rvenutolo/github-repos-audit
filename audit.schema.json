@@ -180,7 +180,9 @@
               "open_prs",
               "branches",
               "artifact_storage",
-              "skill_size"
+              "skill_size",
+              "claude_mcp_config",
+              "claude_settings"
             ]
           },
           "additionalProperties": {
@@ -366,7 +368,9 @@
         "open_prs",
         "branches",
         "artifact_storage",
-        "skill_size"
+        "skill_size",
+        "claude_mcp_config",
+        "claude_settings"
       ],
       "properties": {
         "readme": { "$ref": "#/$defs/expectation" },
@@ -446,7 +450,9 @@
         "open_prs": { "$ref": "#/$defs/info_expectation" },
         "branches": { "$ref": "#/$defs/info_expectation" },
         "artifact_storage": { "$ref": "#/$defs/info_expectation" },
-        "skill_size": { "$ref": "#/$defs/info_expectation" }
+        "skill_size": { "$ref": "#/$defs/info_expectation" },
+        "claude_mcp_config": { "$ref": "#/$defs/info_expectation" },
+        "claude_settings": { "$ref": "#/$defs/info_expectation" }
       }
     },
     "expectation": {
@@ -645,6 +651,17 @@
           "description": "Where the file was found in the tree at HEAD, as the tree spells it. The Claude Code memory file. Absent when no accepted name is present.",
           "type": "string",
           "minLength": 1
+        },
+        "mcp_config": {
+          "description": "Where the file was found in the tree at HEAD, as the tree spells it. The Claude Code project MCP server configuration, .mcp.json at the root. Absent when there is none.",
+          "type": "string",
+          "minLength": 1
+        },
+        "claude_settings": {
+          "description": "Every Claude Code project settings file, .claude/settings.json or .claude/settings.local.json at any depth, as full paths, sorted. Absent when there are none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
         },
         "compose": {
           "description": "The distinct compose file names found at any depth, sorted. Absent when there are none.",
