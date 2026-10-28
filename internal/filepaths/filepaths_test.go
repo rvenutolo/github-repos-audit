@@ -297,7 +297,7 @@ func TestFind_directoriesAreNotFiles(t *testing.T) {
 
 func TestFind_rootOnly(t *testing.T) {
 	t.Parallel()
-	got := filepaths.Find(files("sub/justfile", "sub/.yamllint", "sub/cliff.toml", "sub/CLAUDE.md"))
+	got := filepaths.Find(files("sub/justfile", "sub/.yamllint", "sub/cliff.toml", "sub/CLAUDE.md", "sub/.mcp.json"))
 	if !reflect.DeepEqual(got, filepaths.Paths{}) {
 		t.Fatalf("nested files must not count, got %+v", got)
 	}
@@ -317,6 +317,35 @@ func TestFind_compose(t *testing.T) {
 		t.Fatalf("none: got %v, want nil", got)
 	}
 	if got := filepaths.Find([]filepaths.Entry{{Path: "compose.yaml", Dir: true}}).Compose; got != nil {
+		t.Fatalf("directory: got %v, want nil", got)
+	}
+}
+
+func TestFind_mcpConfig(t *testing.T) {
+	t.Parallel()
+	runField(t, func(p filepaths.Paths) string { return p.MCPConfig }, []fieldCase{
+		{"at the root", files(".mcp.json"), ".mcp.json"},
+		{"case-sensitive", files(".MCP.json"), ""},
+		{"not a directory", []filepaths.Entry{{Path: ".mcp.json", Dir: true}}, ""},
+		{"not another name", files("mcp.json", ".mcp.jsonc", ".claude/.mcp.json"), ""},
+	})
+}
+
+func TestFind_claudeSettings(t *testing.T) {
+	t.Parallel()
+	got := filepaths.Find(files(
+		"sub/.claude/settings.local.json", ".claude/settings.json", "x.claude/settings.json",
+		".claude/settings.local.json", "a/b/.claude/settings.json", ".claude/settings.jsonc",
+		".claude/sub/settings.json", "settings.json", ".Claude/settings.json",
+	)).ClaudeSettings
+	want := []string{
+		".claude/settings.json", ".claude/settings.local.json",
+		"a/b/.claude/settings.json", "sub/.claude/settings.local.json",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if got := filepaths.Find([]filepaths.Entry{{Path: ".claude/settings.json", Dir: true}}).ClaudeSettings; got != nil {
 		t.Fatalf("directory: got %v, want nil", got)
 	}
 }

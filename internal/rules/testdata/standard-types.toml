@@ -82,6 +82,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [types.infra]
 readme = "required"
@@ -162,6 +164,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [types.environment]
 readme = "required"
@@ -242,6 +246,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [types.config]
 readme = "required"
@@ -322,6 +328,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 # Content is data edited by hand: no tooling rows, and direct push allowed.
 [types.content]
@@ -403,6 +411,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [types.tools]
 readme = "required"
@@ -483,6 +493,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 # The account holder's identity, for git_identity. Fake, like every fixture
 # value: the names and addresses internal/fixturevocab allows. The accepted

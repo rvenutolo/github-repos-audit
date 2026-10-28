@@ -218,6 +218,8 @@ func filePathGroups() []pathGroup {
 			{"CODEOWNERS", rules.CheckCodeowners},
 			{"PR template", rules.CheckPRTemplate},
 			{"CLAUDE.md", rules.CheckClaudeMD},
+			{"MCP config", rules.CheckClaudeMCPConfig},
+			{"Claude settings", rules.CheckClaudeSettings},
 		}},
 	}
 }

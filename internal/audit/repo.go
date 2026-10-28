@@ -253,6 +253,11 @@ type Files struct {
 	PRTemplate string `json:"pr_template,omitzero"`
 	// ClaudeMD is the Claude Code memory file.
 	ClaudeMD string `json:"claude_md,omitzero"`
+	// MCPConfig is the Claude Code project MCP server configuration.
+	MCPConfig string `json:"mcp_config,omitzero"`
+	// ClaudeSettings lists every Claude Code project settings file, shared or
+	// local, at any depth, sorted.
+	ClaudeSettings []string `json:"claude_settings,omitzero"`
 	// GoMod reports a file named exactly `go.mod` at the root.
 	GoMod bool `json:"go_mod,omitzero"`
 }

@@ -953,11 +953,33 @@ func TestBlock_filePathsSection(t *testing.T) {
 			"Repository", "typos", "yamllint", "markdownlint", "Prettier", "editorconfig-checker",
 			"lychee", "zizmor", "Codecov", "MkDocs",
 		}},
-		{"### GitHub & docs", []string{"Repository", "LICENSE", "SECURITY", "CODEOWNERS", "PR template", "CLAUDE.md"}},
+		{"### GitHub & docs", []string{"Repository", "LICENSE", "SECURITY", "CODEOWNERS", "PR template", "CLAUDE.md", "MCP config", "Claude settings"}},
 	}
 	for _, tc := range tests {
 		if diff := cmp.Diff(tc.want, sectionTable(t, got, tc.heading)); diff != "" {
 			t.Errorf("%s columns mismatch (-want +got):\n%s", tc.heading, diff)
+		}
+	}
+
+	// The Claude Code configuration columns name the files as code, all of a
+	// repository's settings files in one cell, and n/a where it has none.
+	_, docs, _ := strings.Cut(got, "### GitHub & docs\n\n")
+	docs, _, _ = strings.Cut(docs, "\n\n")
+	for line := range strings.SplitSeq(docs, "\n") {
+		if !strings.HasPrefix(line, "| [") {
+			continue
+		}
+		cells := strings.Split(strings.Trim(line, "|"), "|")
+		for i := range cells {
+			cells[i] = strings.TrimSpace(cells[i])
+		}
+		gotClaude := cells[len(cells)-2:]
+		wantClaude := []string{"n/a", "n/a"}
+		if strings.Contains(line, "[mixedCase-flake]") {
+			wantClaude = []string{"`.mcp.json`", "`.claude/settings.json, docs/.claude/settings.local.json`"}
+		}
+		if diff := cmp.Diff(wantClaude, gotClaude); diff != "" {
+			t.Errorf("GitHub & docs Claude Code configuration cells mismatch (-want +got):\n%s\n%s", diff, line)
 		}
 	}
 }

@@ -1634,6 +1634,8 @@ func TestCollect_recordsFilePaths(t *testing.T) {
 		Codeowners:          ".github/CODEOWNERS",
 		PRTemplate:          ".github/pull_request_template.md",
 		ClaudeMD:            "CLAUDE.md",
+		MCPConfig:           ".mcp.json",
+		ClaudeSettings:      []string{".claude/settings.local.json"},
 	}
 	if diff := cmp.Diff(want, got[0].Files); diff != "" {
 		t.Errorf("Files mismatch (-want +got):\n%s", diff)

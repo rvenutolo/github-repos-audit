@@ -227,6 +227,8 @@ func recordPaths(f *audit.Files, p filepaths.Paths) {
 	f.Codeowners = p.Codeowners
 	f.PRTemplate = p.PRTemplate
 	f.ClaudeMD = p.ClaudeMD
+	f.MCPConfig = p.MCPConfig
+	f.ClaudeSettings = p.ClaudeSettings
 	f.GoMod = p.GoMod
 }
 

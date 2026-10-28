@@ -13,8 +13,8 @@
 #                takes blocked or allowed, renovate_min_release_age takes a
 #                duration such as "7 days", not_required or info, and
 #                last_release_age, last_push, open_prs, branches,
-#                artifact_storage and skill_size take only info or
-#                not_required.
+#                artifact_storage, skill_size, claude_mcp_config and
+#                claude_settings take only info or not_required.
 #                A type no repository uses is allowed.
 #
 # [identity]     your git identity, for git_identity: canonical is the one
@@ -111,6 +111,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [types.infra]
 readme = "required"
@@ -191,6 +193,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [types.environment]
 readme = "required"
@@ -271,6 +275,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [types.config]
 readme = "required"
@@ -351,6 +357,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 # Content is data edited by hand: no tooling rows, and direct push allowed.
 [types.content]
@@ -432,6 +440,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [types.tools]
 readme = "required"
@@ -512,6 +522,8 @@ open_prs = "info"
 branches = "info"
 artifact_storage = "info"
 skill_size = "info"
+claude_mcp_config = "info"
+claude_settings = "info"
 
 [repos.shell-scripts]
 type = "tools"

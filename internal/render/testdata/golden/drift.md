@@ -39,10 +39,10 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ### GitHub & docs
 
-| Repository                                 | LICENSE   | SECURITY      | CODEOWNERS | PR template                        | CLAUDE.md |
-| ------------------------------------------ | --------- | ------------- | ---------- | ---------------------------------- | --------- |
-| [alpha](https://github.com/gh-owner/alpha) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
-| [bravo](https://github.com/gh-owner/bravo) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       |
+| Repository                                 | LICENSE   | SECURITY      | CODEOWNERS | PR template                        | CLAUDE.md | MCP config | Claude settings |
+| ------------------------------------------ | --------- | ------------- | ---------- | ---------------------------------- | --------- | ---------- | --------------- |
+| [alpha](https://github.com/gh-owner/alpha) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       | n/a        | n/a             |
+| [bravo](https://github.com/gh-owner/bravo) | `LICENSE` | `SECURITY.md` | n/a        | `.github/pull_request_template.md` | n/a       | n/a        | n/a             |
 
 ## Nix
 

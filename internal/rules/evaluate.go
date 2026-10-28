@@ -439,6 +439,10 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observation{value: strconv.Itoa(max(r.Branches-1, 0)), scalar: true}
 	case CheckArtifactStorage:
 		return observeArtifactStorage(r)
+	case CheckClaudeMCPConfig:
+		return pathObservation(r.Files.MCPConfig)
+	case CheckClaudeSettings:
+		return pathObservation(strings.Join(r.Files.ClaudeSettings, ", "))
 
 	default:
 		return observation{unknown: true}

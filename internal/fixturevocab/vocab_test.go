@@ -336,7 +336,7 @@ const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUD
 	`zizmor\.yml|codecov\.yml|CODEOWNERS|pull_request_template\.md)|` +
 	// Claude Code files, under synthetic skill, command and hook names.
 	`\.claude-plugin|\.claude-plugin/(plugin|marketplace)\.json|` +
-	`(\.claude/)?(skills|skills/skill-\d{2}|skills/skill-\d{2}/SKILL\.md)|\.claude|\.claude/settings\.json|` +
+	`(\.claude/)?(skills|skills/skill-\d{2}|skills/skill-\d{2}/SKILL\.md)|\.claude|\.claude/settings(\.local)?\.json|\.mcp\.json|` +
 	`(\.claude/)?(commands|commands/command-\d{2}\.md)|hooks|hooks/(hooks\.json|hook-\d{2}\.sh))$`
 
 // The unreadable and problem fields below are written by the tool, but each
@@ -577,6 +577,7 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.homepage$`), isHomepage, "empty or https://example.com/<fake> or https://example.invalid/<slug>"},
 	{regexp.MustCompile(`^repos\[\]\.head_oid$`), matches(oid), "a pattern oid"},
 	{regexp.MustCompile(`^repos\[\]\.files\.workflows\[\]$`), matches(workflow), "a synthetic workflow file"},
+	{regexp.MustCompile(`^repos\[\]\.files\.claude_settings\[\]$`), matches(`^(docs/)?\.claude/settings(\.local)?\.json$`), "a Claude Code settings file at the root or under docs/"},
 	{regexp.MustCompile(`^repos\[\]\.rulesets\[\]\.name$`), matches(ruleset), "a synthetic ruleset name"},
 	{regexp.MustCompile(`^repos\[\]\.branch\.required_checks\[\]$`), matches(checkContext), "a synthetic check context"},
 	{regexp.MustCompile(`^repos\[\]\.settings\.allowed_actions\.patterns\[\]$`), matches(pattern), "a synthetic actions pattern"},
