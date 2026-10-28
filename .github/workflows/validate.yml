@@ -30,9 +30,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
-          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # Exactly what fetching and verifying the release binary and both
           # checkouts reach: the API and release assets, the checkout tarballs,
           # and Sigstore's TUF root for the attestation check.

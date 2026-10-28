@@ -38,9 +38,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
-          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # Nix installer and binary cache, GitHub for the flake inputs and for
           # actions/checkout itself, the Go module proxy and checksum database
           # for `go build`, and vuln.go.dev for govulncheck. lychee runs
@@ -143,9 +141,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
-          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           disable-sudo: true
           allowed-endpoints: >-
             api.github.com:443
