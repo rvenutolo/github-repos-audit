@@ -115,9 +115,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
-          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # GitHub's hosts serve the checkout, the actions, the caches and the
           # API; the nixos.org hosts and install.determinate.systems install
           # Nix and fill its store; proxy.golang.org, sum.golang.org and
@@ -208,9 +206,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
-          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # GitHub's hosts serve the checkout, the actions, the caches and the
           # API; the nixos.org hosts and install.determinate.systems install
           # Nix and fill its store; proxy.golang.org, sum.golang.org and
@@ -334,9 +330,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
-          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # GitHub's hosts serve the checkout, the actions, the caches and the
           # API; the nixos.org hosts and install.determinate.systems install
           # Nix and fill its store; proxy.golang.org, sum.golang.org and
@@ -407,9 +401,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
-          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # GitHub's hosts serve the checkout, the actions, the caches and the
           # API; the nixos.org hosts and install.determinate.systems install
           # Nix and fill its store; proxy.golang.org, sum.golang.org and

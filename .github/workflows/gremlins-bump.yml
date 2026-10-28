@@ -47,9 +47,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once fixed upstream. doc-rot-exempt: upstream bug, cited by URL
-          # Block mode drops allowed hosts on westus2: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # proxy.golang.org and sum.golang.org: building gremlins fetches
           # ITS Go modules. The gate workflows open the same two endpoints
           # for this repository's own modules.
