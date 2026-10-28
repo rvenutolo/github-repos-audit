@@ -4,6 +4,12 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v7.0.0
+
+### Breaking changes
+
+- report committed Claude Code MCP config and settings files
+
 ## v6.3.0
 
 ### Features
