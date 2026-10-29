@@ -4,9 +4,17 @@
 // decision.
 //
 // The text is Nix, shell, YAML or Markdown that a repository happens to
-// contain, so this is a line-oriented scan and not a Nix parser. An argument
-// it cannot classify is left out; callers that must not miss a call count the
-// occurrences of the name themselves.
+// contain, so this is a line-oriented scan and not a Nix parser. A `#` starts
+// a comment only at the start of a line or after a blank, so the `#` in a
+// string or a flake reference (`"a#b"`, `.#foo`) does not hide a call. The
+// argument is read from the name's own line, or, when only blanks and an
+// optional `(` follow the name, from the next non-blank line. A string, a
+// parenthesized expression that closes on its line, a path, an identifier, an
+// indented string (opened by two single quotes, returned as written) and
+// `toString` of one of those are extracted. Prose such as "`builtins.getFlake`
+// cannot", an argument that is none of these and an unterminated string are
+// left out, and nothing records that they were: a call that yields no argument
+// is invisible to the caller.
 package getflake
 
 import "strings"
@@ -14,19 +22,21 @@ import "strings"
 const callName = "builtins.getFlake"
 
 // Args returns the raw argument of every builtins.getFlake call in text, in
-// order. A call whose line has a `#` before it is a comment and is skipped.
+// order. A call preceded on its line by a comment is skipped.
 //
 // A string argument is returned with double quotes, normalized to `"…"`
 // whether it is written `"…"` or, inside a shell string, `\"…\"`, so one
 // spelling reaches the caller. `toString X` is returned as written, with X the
-// next token. A path or a bare identifier is returned verbatim.
+// next token. A path, a bare identifier or an indented string is returned
+// verbatim.
 func Args(text string) []string {
 	// CRLF and bare CR fold into LF, so a CRLF file's carriage return never
 	// lands inside an argument.
 	text = strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(text)
+	lines := strings.Split(text, "\n")
 	args := make([]string, 0, strings.Count(text, callName))
-	for line := range strings.SplitSeq(text, "\n") {
-		args = append(args, lineArgs(line)...)
+	for i := range lines {
+		args = append(args, lineArgs(lines, i)...)
 	}
 	if len(args) == 0 {
 		return nil
@@ -34,7 +44,8 @@ func Args(text string) []string {
 	return args
 }
 
-func lineArgs(line string) []string {
+func lineArgs(lines []string, n int) []string {
+	line := lines[n]
 	var args []string
 	for from := 0; ; {
 		i := strings.Index(line[from:], callName)
@@ -44,16 +55,54 @@ func lineArgs(line string) []string {
 		start := from + i
 		end := start + len(callName)
 		from = end
-		if strings.Contains(line[:start], "#") {
+		if startsComment(line[:start]) {
 			return args
 		}
 		if end < len(line) && isIdent(line[end]) {
 			continue
 		}
-		if arg, ok := argument(line[end:]); ok {
+		rest := line[end:]
+		if isContinued(rest) {
+			// A formatter breaks the line after the name or after its
+			// opening parenthesis, so the argument is on the next line that
+			// has any text.
+			rest = nextText(lines[n+1:])
+		}
+		if arg, ok := argument(rest); ok {
 			args = append(args, arg)
 		}
 	}
+}
+
+// startsComment reports whether prefix holds a comment-opening `#`: one at
+// the start of the line or after a blank. A `#` glued to a word is part of a
+// string or a flake reference.
+func startsComment(prefix string) bool {
+	for i := range len(prefix) {
+		if prefix[i] == '#' && (i == 0 || prefix[i-1] == ' ' || prefix[i-1] == '\t') {
+			return true
+		}
+	}
+	return false
+}
+
+// isContinued reports whether nothing but blanks and at most one opening
+// parenthesis follows the call name on its line.
+func isContinued(rest string) bool {
+	rest = skipBlanks(rest)
+	rest = strings.TrimPrefix(rest, "(")
+	return skipBlanks(rest) == ""
+}
+
+// nextText returns the first line with text, its leading blanks removed, or
+// "" when none follows.
+func nextText(lines []string) string {
+	for _, l := range lines {
+		if l = skipBlanks(l); l != "" {
+			return l
+		}
+	}
+	return ""
 }
 
 // argument classifies what follows the call name: spaces, tabs and at most
@@ -89,6 +138,8 @@ func token(s string) (string, bool) {
 		return quoted(s[2:], `\"`)
 	case s[0] == '"':
 		return quoted(s[1:], `"`)
+	case strings.HasPrefix(s, "''"):
+		return indented(s), true
 	case s[0] == '(':
 		return parenthesized(s)
 	case isPath(s):
@@ -97,6 +148,20 @@ func token(s string) (string, bool) {
 		return s[:identLen(s)], true
 	}
 	return "", false
+}
+
+// indented reads an indented string, which starts with two single
+// quotes, through the closing pair on this line. The caller never classifies it as a flake
+// reference, so an unterminated one is returned up to the next delimiter
+// rather than dropped: a call must not vanish because its argument is odd.
+func indented(s string) string {
+	if j := strings.Index(s[2:], "''"); j >= 0 {
+		return s[:j+4]
+	}
+	if n := strings.IndexAny(s, " \t);"); n > 0 {
+		return s[:n]
+	}
+	return s
 }
 
 // quoted reads a string body up to its closing delimiter on this line. A

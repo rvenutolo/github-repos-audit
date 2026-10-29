@@ -59,6 +59,7 @@ func TestEvaluate_nixGetflakeGit_arguments(t *testing.T) {
 		{`"~/x"`, false},
 		{`"${REPO_DIR}"`, false},
 		{`"'"`, false},
+		{"''${x}''", false},
 		{`"git+file://REPO_PLACEHOLDER"`, true},
 		{`"git+file://${REPO_DIR}"`, true},
 		{`"github:o/r"`, true},

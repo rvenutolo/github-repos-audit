@@ -39,6 +39,15 @@ func TestArgs_forms(t *testing.T) {
 		{"two calls in order", "builtins.getFlake ./.\nbuiltins.getFlake src\n", []string{"./.", "src"}},
 		{"two calls on one line", `builtins.getFlake ./. + builtins.getFlake src`, []string{"./.", "src"}},
 		{"no call", `nothing here`, nil},
+		{"parenthesis then argument on next lines", "flake = builtins.getFlake (\n  toString ./.\n);", []string{"toString ./."}},
+		{"argument on next line", "builtins.getFlake\n  ./.", []string{"./."}},
+		{"argument after blank lines", "builtins.getFlake\n\n  ./.", []string{"./."}},
+		{"string argument on next line", "builtins.getFlake (\n  \"git+file://x\"\n)", []string{`"git+file://x"`}},
+		{"indented string", "builtins.getFlake ''${x}''", []string{"''${x}''"}},
+		{"unterminated indented string", "builtins.getFlake ''${x}", []string{"''${x}"}},
+		{"unterminated indented string before delimiter", "builtins.getFlake (''${x});", []string{"''${x}"}},
+		{"hash inside string before call", `x = "a#b"; y = builtins.getFlake ./.;`, []string{"./."}},
+		{"nix eval expression", `nix eval .#foo --expr 'builtins.getFlake ./.'`, []string{"./."}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -107,7 +116,9 @@ func TestArgs_ignoresNonArgument(t *testing.T) {
 		{"longer name", `builtins.getFlakeX ./.`},
 		{"nothing after", `builtins.getFlake`},
 		{"only parenthesis", `builtins.getFlake (`},
-		{"argument on next line", "builtins.getFlake\n./."},
+		{"prose punctuation after name", "`builtins.getFlake` cannot reach"},
+		{"comment on next line", "builtins.getFlake\n# ./."},
+		{"nothing on next line", "builtins.getFlake (\n"},
 		{"unsupported token", `builtins.getFlake {}`},
 	}
 	for _, tt := range tests {
