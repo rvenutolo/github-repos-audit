@@ -14,18 +14,18 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/filepaths"
 )
 
-// The Claude file query's bounds. Every file is one aliased object() with its
+// The blob queries' bounds. Every file is one aliased object() with its
 // whole text, and GitHub bounds what one query may cost and how long it may
 // run (https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api),
-// so a repository's files are read claudeFilesPerQuery at a time.
+// so a repository's files are read blobsPerQuery at a time.
 // claudeFilesMax counts every file read or asked for, across both rounds;
 // past it the files are not read any further: a repository with that many
 // is recorded as unreadable rather than costing a run a stack of heavy
 // queries. Both numbers are the design's starting point, not a measured
 // limit; the live render against every repository is what confirms them.
 const (
-	claudeFilesPerQuery = 50
-	claudeFilesMax      = 200
+	blobsPerQuery  = 50
+	claudeFilesMax = 200
 )
 
 // tooManyClaudeFiles is the repository-wide problem past claudeFilesMax.
@@ -48,7 +48,7 @@ const inlineCommandPath = ".claude-plugin/plugin.json#commands/"
 // the manifest decides which further files belong to the plugin: the first
 // reads the manifest with every file the default layout already names, the
 // second only what the manifest adds. Each round is one query per
-// claudeFilesPerQuery files.
+// blobsPerQuery files.
 //
 // It decides nothing. A file that cannot be read in full or parsed is
 // recorded as unreadable with its reason, and a query that fails fails the
@@ -68,7 +68,7 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 		out.Unreadable = tooManyClaudeFiles
 		return out, nil
 	}
-	texts, err := c.readClaudeFiles(ctx, name, paths)
+	texts, err := c.readBlobs(ctx, "ClaudeFiles", name, paths)
 	if err != nil {
 		return audit.Claude{}, err
 	}
@@ -120,7 +120,7 @@ func (c *Client) claudeFacts(ctx context.Context, name string, entries []filepat
 			out.Unreadable = tooManyClaudeFiles
 			return out, nil
 		}
-		moreTexts, err := c.readClaudeFiles(ctx, name, more)
+		moreTexts, err := c.readBlobs(ctx, "ClaudeFiles", name, more)
 		if err != nil {
 			return audit.Claude{}, err
 		}
@@ -282,21 +282,22 @@ func claudeText(texts map[string]*fileBlob, modes map[string]string, path string
 	return blobText(texts[path], path)
 }
 
-// readClaudeFiles reads paths at HEAD, claudeFilesPerQuery to a query, and
-// returns each path's blob. A path the query found nothing at maps to nil,
-// which blobText reports as not a text file.
-func (c *Client) readClaudeFiles(ctx context.Context, name string, paths []string) (map[string]*fileBlob, error) {
+// readBlobs reads paths at HEAD, blobsPerQuery to a query, and
+// returns each path's blob. op names the GraphQL operation, which is how a
+// query is told apart from the others sharing /graphql. A path the query
+// found nothing at maps to nil, which blobText reports as not a text file.
+func (c *Client) readBlobs(ctx context.Context, op, name string, paths []string) (map[string]*fileBlob, error) {
 	out := make(map[string]*fileBlob, len(paths))
-	for chunk := range slices.Chunk(paths, claudeFilesPerQuery) {
+	for chunk := range slices.Chunk(paths, blobsPerQuery) {
 		var data struct {
 			Repository map[string]*fileBlob `json:"repository"`
 		}
-		query, vars := claudeFilesQuery(c.owner, name, chunk)
+		query, vars := blobsQuery(op, c.owner, name, chunk)
 		if err := c.postGraphQL(ctx, query, vars, &data); err != nil {
 			return nil, err
 		}
 		if data.Repository == nil {
-			return nil, fmt.Errorf("%s: %w: no repository in the Claude file query's response", graphQLPath, errGraphQL)
+			return nil, fmt.Errorf("%s: %w: no repository in the %s query's response", graphQLPath, errGraphQL, op)
 		}
 		for i, p := range chunk {
 			out[p] = data.Repository["f"+strconv.Itoa(i)]
@@ -305,11 +306,11 @@ func (c *Client) readClaudeFiles(ctx context.Context, name string, paths []strin
 	return out, nil
 }
 
-// claudeFilesQuery builds the query for one chunk: an aliased object() per
+// blobsQuery builds the query for one chunk: an aliased object() per
 // path, fN reading $eN. The paths travel only as variables, never in the
 // document, for the reason graphQLRequest gives; only the aliases and
 // variable names, which this function makes up, are written into it.
-func claudeFilesQuery(owner, name string, paths []string) (string, map[string]string) {
+func blobsQuery(op, owner, name string, paths []string) (string, map[string]string) {
 	vars := map[string]string{"owner": owner, "name": name}
 	var params, fields strings.Builder
 	for i, p := range paths {
@@ -318,7 +319,7 @@ func claudeFilesQuery(owner, name string, paths []string) (string, map[string]st
 		fmt.Fprintf(&params, ", $e%s: String!", n)
 		fmt.Fprintf(&fields, "    f%s: object(expression: $e%s) { %s }\n", n, n, blobFields)
 	}
-	query := "query ClaudeFiles($owner: String!, $name: String!" + params.String() + ") {\n" +
+	query := "query " + op + "($owner: String!, $name: String!" + params.String() + ") {\n" +
 		"  repository(owner: $owner, name: $name) {\n" + fields.String() + "  }\n}"
 	return query, vars
 }

@@ -1,0 +1,16 @@
+{
+  "data": {
+    "repository": {
+      "f0": {
+        "text": "{ }\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "f1": {
+        "text": "echo builtins.getFlake (toString ./.)\necho builtins.getFlake ./.\n",
+        "is_truncated": false,
+        "is_binary": false
+      }
+    }
+  }
+}

@@ -36,6 +36,11 @@
     {
       "path": "renovate.json",
       "type": "blob"
+    },
+    {
+      "path": ".ci/eval-shell",
+      "type": "blob",
+      "mode": "100755"
     }
   ],
   "truncated": false

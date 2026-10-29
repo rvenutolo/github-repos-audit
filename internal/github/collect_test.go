@@ -68,6 +68,8 @@ func wantShellScripts(t *testing.T) audit.Repo {
 			Workflows:      []string{"ci.yml"},
 		},
 		// The file listing and the file read name the same workflow.
+		// flake.nix is tracked and holds no builtins.getFlake call.
+		NixGetFlake: audit.NixGetFlake{NixFiles: true},
 		Workflows: []audit.Workflow{{
 			Path:         ".github/workflows/ci.yml",
 			Events:       []string{"pull_request", "push"},
@@ -441,8 +443,16 @@ func TestClient_Collect_oneHistoryPage(t *testing.T) {
 			if diff := cmp.Diff(want, got[0].Identities); diff != "" {
 				t.Errorf("Identities mismatch (-want +got):\n%s", diff)
 			}
-			if n := len(api.graphQLVariables()); n != 2 {
-				t.Errorf("/graphql saw %d documents, want 2: the repository query and the file query", n)
+			// The builtins.getFlake file query is a third document for a
+			// repository that tracks a Nix file, and not what this test is about.
+			var n int
+			for _, doc := range api.graphQLDocuments() {
+				if !strings.Contains(doc, "query GetFlakeFiles") {
+					n++
+				}
+			}
+			if n != 2 {
+				t.Errorf("/graphql saw %d documents besides the builtins.getFlake query, want 2: the repository query and the file query", n)
 			}
 		})
 	}
@@ -1505,8 +1515,8 @@ func TestClient_Collect_survivesAGraphQLRateLimit(t *testing.T) {
 	if diff := cmp.Diff(wantShellScripts(t), got[0]); diff != "" {
 		t.Errorf("Collect mismatch (-want +got):\n%s", diff)
 	}
-	if n := api.callsTo("/graphql"); n != 3 {
-		t.Errorf("/graphql saw %d calls, want 3: the limited answer, its retry and the file query", n)
+	if n := api.callsTo("/graphql"); n != 4 {
+		t.Errorf("/graphql saw %d calls, want 4: the limited answer, its retry, the file query and the builtins.getFlake query", n)
 	}
 }
 
@@ -1909,5 +1919,45 @@ func TestClient_Collect_ciOnlyIgnoredRunsIsNoCI(t *testing.T) {
 
 	if diff := cmp.Diff(audit.CICommit{OID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0014"}, ci.DefaultBranch[0]); diff != "" {
 		t.Errorf("default-branch commit mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestClient_Collect_getFlake covers the builtins.getFlake reads end to end.
+// mixedCase-flake tracks flake.nix and a .ci/ script holding two calls, and
+// its binary workflow file is unreadable. web-app tracks no Nix file, so it
+// costs no GetFlakeFiles query.
+func TestClient_Collect_getFlake(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake", "web-app"})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	byName := map[string]audit.NixGetFlake{}
+	for _, repo := range got {
+		byName[repo.Name] = repo.NixGetFlake
+	}
+
+	want := audit.NixGetFlake{NixFiles: true, Files: []audit.GetFlakeFile{
+		{Path: ".ci/eval-shell", Args: []string{"toString ./.", "./."}},
+		{Path: ".github/workflows/workflow-01.yml", Unreadable: ".github/workflows/workflow-01.yml: not a text file"},
+	}}
+	if diff := cmp.Diff(want, byName["mixedCase-flake"]); diff != "" {
+		t.Errorf("mixedCase-flake NixGetFlake mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(audit.NixGetFlake{}, byName["web-app"]); diff != "" {
+		t.Errorf("web-app NixGetFlake mismatch (-want +got):\n%s", diff)
+	}
+
+	// One query for mixedCase-flake's two candidates, none for web-app.
+	var queries int
+	for _, doc := range api.graphQLDocuments() {
+		if strings.Contains(doc, "query GetFlakeFiles") {
+			queries++
+		}
+	}
+	if queries != 1 {
+		t.Errorf("sent %d GetFlakeFiles queries, want 1", queries)
 	}
 }

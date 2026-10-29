@@ -282,6 +282,8 @@ var claudeFileWords = []string{
 	"PreToolUse", "PostToolUse", "matcher", "type", "command", "timeout", "Bash", "Write",
 	"$", "CLAUDE_PLUGIN_ROOT", "echo", "PAYLOAD_RAN",
 	"Placeholder", "description.", "body.", "Use", "the", "skill.", "Pat", "Example",
+	// builtins.getFlake file fixtures.
+	"builtins.getFlake", "toString", ".",
 }
 
 // claudeFileName matches the synthetic names a Claude file fixture may use
@@ -328,7 +330,7 @@ func isFakeBase64Content(v any) bool {
 
 // treePath is every path a fixture git tree may list.
 const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUDE\.md|LICENSE|` +
-	`\.gitignore|\.editorconfig|flake\.nix|[Jj]ustfile|\.justfile|renovate\.json|` +
+	`\.gitignore|\.editorconfig|flake\.nix|\.ci|\.ci/eval-shell|[Jj]ustfile|\.justfile|renovate\.json|` +
 	`\.commitlintrc\.yml|cliff\.toml|treefmt\.toml|compose\.yaml|typos\.toml|\.yamllint\.yml|` +
 	`\.markdownlint-cli2\.jsonc|\.prettierrc\.json|\.editorconfig-checker\.json|lychee\.toml|mkdocs\.yml|` +
 	`stacks|stacks/media|stacks/media/docker-compose\.yml|vendor/sub|` +
