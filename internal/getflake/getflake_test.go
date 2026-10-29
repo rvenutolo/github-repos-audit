@@ -48,6 +48,11 @@ func TestArgs_forms(t *testing.T) {
 		{"unterminated indented string before delimiter", "builtins.getFlake (''${x});", []string{"''${x}"}},
 		{"hash inside string before call", `x = "a#b"; y = builtins.getFlake ./.;`, []string{"./."}},
 		{"nix eval expression", `nix eval .#foo --expr 'builtins.getFlake ./.'`, []string{"./."}},
+		{"identifier on next line before semicolon", "builtins.getFlake\n  src;", []string{"src"}},
+		{"identifier on next line before parenthesis", "(builtins.getFlake\n  src).outputs", []string{"src"}},
+		{"identifier at end of shell expression", `--expr "builtins.getFlake src"`, []string{"src"}},
+		{"identifier before comma", `[ (builtins.getFlake a), b ]`, []string{"a"}},
+		{"toString of identifier before closing parenthesis", "builtins.getFlake (\n  toString x\n)", []string{"toString x"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -120,6 +125,10 @@ func TestArgs_ignoresNonArgument(t *testing.T) {
 		{"comment on next line", "builtins.getFlake\n# ./."},
 		{"nothing on next line", "builtins.getFlake (\n"},
 		{"unsupported token", `builtins.getFlake {}`},
+		{"prose word on next line", "echo \"never call builtins.getFlake\nwith a path\""},
+		{"prose word on same line", `echo "builtins.getFlake is slow"`},
+		{"prose word after parenthesis", "see builtins.getFlake (\nthe manual)"},
+		{"prose word after toString", `echo "builtins.getFlake toString some path"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
