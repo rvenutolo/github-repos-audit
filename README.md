@@ -532,8 +532,10 @@ Grouped by theme here; the report lists them in the fixed worklist order
   identifier, or an indented string (`''${x}''`), which is never classified.
   A call whose argument is none of these forms (a `{` attribute set, say) or
   whose string or parenthesis does not close on its line is not seen, so it
-  does not fail the check; prose such as "`builtins.getFlake` cannot" is
-  ignored. The cell names each failing file as `not via git in <path>`. A file
+  does not fail the check. Prose is ignored: "`builtins.getFlake` cannot",
+  or "builtins.getFlake is slow" in a script's message, since an identifier
+  counts as an argument only when it ends the line or comes before a closing
+  bracket, `;`, `,` or quote. The cell names each failing file as `not via git in <path>`. A file
   cut short, or one that could not be read, is named as `unreadable <path>`,
   since it may hold a call; it fails the check. A binary `.nix` or `.ci/` file
   holds no call and is skipped; a binary workflow or composite action is

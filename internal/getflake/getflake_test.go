@@ -128,6 +128,7 @@ func TestArgs_ignoresNonArgument(t *testing.T) {
 		{"prose word on next line", "echo \"never call builtins.getFlake\nwith a path\""},
 		{"prose word on same line", `echo "builtins.getFlake is slow"`},
 		{"prose word after parenthesis", "see builtins.getFlake (\nthe manual)"},
+		{"prose word after toString", `echo "builtins.getFlake toString some path"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

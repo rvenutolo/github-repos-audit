@@ -9,12 +9,13 @@
 // string or a flake reference (`"a#b"`, `.#foo`) does not hide a call. The
 // argument is read from the name's own line, or, when only blanks and an
 // optional `(` follow the name, from the next non-blank line. A string, a
-// parenthesized expression that closes on its line, a path, an identifier, an
+// parenthesized expression that closes on its line, a path, an identifier that
+// ends the line or comes before a closing bracket, `;`, `,` or quote, an
 // indented string (opened by two single quotes, returned as written) and
 // `toString` of one of those are extracted. Prose such as "`builtins.getFlake`
-// cannot", an argument that is none of these and an unterminated string are
-// left out, and nothing records that they were: a call that yields no argument
-// is invisible to the caller.
+// cannot" or "builtins.getFlake is slow", an argument that is none of these
+// and an unterminated string are left out, and nothing records that they
+// were: a call that yields no argument is invisible to the caller.
 package getflake
 
 import "strings"
@@ -117,15 +118,33 @@ func argument(rest string) (string, bool) {
 		return "", false
 	}
 	if arg != "toString" {
+		if isIdentStart(arg[0]) && !endsArgument(rest[len(arg):]) {
+			return "", false
+		}
 		return arg, true
 	}
 	// toString applies to the next token; one that cannot be read leaves the
 	// bare identifier, which the caller sees as an unknown argument.
-	operand, ok := token(skipBlanks(strings.TrimPrefix(rest, "toString")))
+	after := skipBlanks(strings.TrimPrefix(rest, "toString"))
+	operand, ok := token(after)
 	if !ok {
 		return arg, true
 	}
+	if isIdentStart(operand[0]) && !endsArgument(after[len(operand):]) {
+		return "", false
+	}
 	return "toString " + operand, true
+}
+
+// endsArgument reports whether an identifier argument ends where Nix code
+// would end it: at the end of the line or before a closing bracket, a `;`,
+// a `,` or the quote that closes a shell expression. A word followed by
+// another word is prose that happens to mention the call, as in
+// `echo "builtins.getFlake is slow"`, and reading it as an argument would
+// fail the check on a repository that calls nothing.
+func endsArgument(after string) bool {
+	after = skipBlanks(after)
+	return after == "" || strings.ContainsRune(`)]};,"'`+"`\\", rune(after[0]))
 }
 
 // token reads one string, parenthesized expression, path or identifier from
