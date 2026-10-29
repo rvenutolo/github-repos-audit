@@ -531,18 +531,19 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `~/x`), `toString` of one, a string that is a path or starts `path:`, an
   identifier, or an indented string (`''${x}''`), which is never classified.
   A call whose argument is none of these forms (a `{` attribute set, say) or
-  whose string or parenthesis does not close on its line is not seen, so it
-  does not fail the check. Prose is ignored: "`builtins.getFlake` cannot",
+  whose double-quoted string or parenthesis does not close on its line is not
+  seen, so it does not fail the check; an indented string that does not close
+  is still read, and fails. Prose is ignored: "`builtins.getFlake` cannot",
   or "builtins.getFlake is slow" in a script's message, since an identifier
   counts as an argument only when it ends the line or comes before a closing
-  bracket, `;`, `,` or quote. The cell names each failing file as `not via git in <path>`. A file
-  cut short, or one that could not be read, is named as `unreadable <path>`,
-  since it may hold a call; it fails the check. A binary `.nix` or `.ci/` file
-  holds no call and is skipped; a binary workflow or composite action is
-  unreadable. More than 200 `.nix` and `.ci/` files in a repository fails it
-  as `too many Nix files`, since they were not read. n/a without a tracked
-  `.nix` file; a repository whose files hold no call passes. The report's Nix
-  section shows it.
+  bracket, `;`, `,` or quote. The cell names each failing file as
+  `not via git in <path>`. A file cut short, or one that could not be read,
+  is named as `unreadable <path>`, since it may hold a call; it fails the
+  check. A binary `.nix` or `.ci/` file holds no call and is skipped; a binary
+  workflow or composite action is unreadable. More than 200 `.nix` and `.ci/`
+  files in a repository fails it as `too many Nix files`, since they were not
+  read. n/a without a tracked `.nix` file; a repository whose files hold no
+  call passes. The report's Nix section shows it.
 - **go_cache** — whether the default branch's Go cache holds something. Caches
   whose key starts `go-` are grouped into families as for nix_cache
   (`go-Linux`, `go-macOS`), counting only caches saved from the default

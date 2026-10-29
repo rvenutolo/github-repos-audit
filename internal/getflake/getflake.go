@@ -14,8 +14,10 @@
 // indented string (opened by two single quotes, returned as written) and
 // `toString` of one of those are extracted. Prose such as "`builtins.getFlake`
 // cannot" or "builtins.getFlake is slow", an argument that is none of these
-// and an unterminated string are left out, and nothing records that they
-// were: a call that yields no argument is invisible to the caller.
+// and a double-quoted string that does not close on its line are left out,
+// and nothing records that they were: a call that yields no argument is
+// invisible to the caller. An indented string that does not close is still
+// returned, up to the next blank, `)` or `;`.
 package getflake
 
 import "strings"
@@ -169,10 +171,11 @@ func token(s string) (string, bool) {
 	return "", false
 }
 
-// indented reads an indented string, which starts with two single
-// quotes, through the closing pair on this line. The caller never classifies it as a flake
-// reference, so an unterminated one is returned up to the next delimiter
-// rather than dropped: a call must not vanish because its argument is odd.
+// indented reads an indented string, which starts with two single quotes,
+// through the closing pair on this line. The caller never classifies it as a
+// flake reference, so an unterminated one is returned up to the next
+// delimiter rather than dropped: a call must not vanish because its argument
+// is odd.
 func indented(s string) string {
 	if j := strings.Index(s[2:], "''"); j >= 0 {
 		return s[:j+4]
