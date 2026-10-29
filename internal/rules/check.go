@@ -67,6 +67,7 @@ const (
 	CheckNixLockRefresh
 	CheckNixCache
 	CheckNixInstaller
+	CheckNixGetflakeGit
 	CheckGoCache
 	CheckCacheUsage
 	CheckCICancelSuperseded
@@ -154,6 +155,7 @@ var checkNames = [...]string{
 	CheckNixLockRefresh:          "nix_lock_refresh",
 	CheckNixCache:                "nix_cache",
 	CheckNixInstaller:            "nix_installer",
+	CheckNixGetflakeGit:          "nix_getflake_git",
 	CheckGoCache:                 "go_cache",
 	CheckCacheUsage:              "cache_usage",
 	CheckCICancelSuperseded:      "ci_cancel_superseded",

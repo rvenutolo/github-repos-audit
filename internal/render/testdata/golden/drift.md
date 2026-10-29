@@ -46,10 +46,10 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## Nix
 
-| Repository                                 | Lock age | Lock refresh | Nix cache | Installer |
-| ------------------------------------------ | -------- | ------------ | --------- | --------- |
-| [alpha](https://github.com/gh-owner/alpha) | ✓ 3d     | ✓ Renovate   | n/a       | n/a       |
-| [bravo](https://github.com/gh-owner/bravo) | ✓ 3d     | ✓ Renovate   | n/a       | n/a       |
+| Repository                                 | Lock age | Lock refresh | Nix cache | Installer | getFlake via git |
+| ------------------------------------------ | -------- | ------------ | --------- | --------- | ---------------- |
+| [alpha](https://github.com/gh-owner/alpha) | ✓ 3d     | ✓ Renovate   | n/a       | n/a       | n/a              |
+| [bravo](https://github.com/gh-owner/bravo) | ✓ 3d     | ✓ Renovate   | n/a       | n/a       | n/a              |
 
 ## CI efficiency
 

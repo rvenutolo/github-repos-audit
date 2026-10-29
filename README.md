@@ -515,6 +515,32 @@ Grouped by theme here; the report lists them in the fixed worklist order
   seen. n/a without a `flake.nix`, or when nothing in CI installs Nix or runs
   a `DeterminateSystems` action with telemetry, diagnostics or statistics on,
   and every file was read. The report's Nix section shows it.
+- **nix_getflake_git** — whether every `builtins.getFlake` call reaches its
+  flake through git or a fetcher, not by reading the working tree, so a flake
+  evaluated from a script sees the committed files and not stray ones. The
+  tool reads every tracked `*.nix` file, every file under `.ci/`, every
+  workflow and every local composite action, and takes the argument of each
+  call. The scan is by line, not a Nix parser. A `#` opens a comment only at
+  the start of a line or after a blank, so a call after one is not counted,
+  while the `#` in `"a#b"` or `.#foo` hides nothing. The argument is read from
+  the call's own line or, when only blanks and a `(` follow the name, from the
+  next line with text. An argument passes when it is a string with a URL
+  scheme other than `path:` (`"git+file://${REPO_DIR}"`, `"github:owner/repo"`,
+  `"https://example.com/flake.tar.gz"`) or a registry name (`"nixpkgs"`,
+  `"nixpkgs/nixos-24.05"`). Anything else read fails: a path (`./.`, `/abs`,
+  `~/x`), `toString` of one, a string that is a path or starts `path:`, an
+  identifier, or an indented string (`''${x}''`), which is never classified.
+  A call whose argument is none of these forms (a `{` attribute set, say) or
+  whose string or parenthesis does not close on its line is not seen, so it
+  does not fail the check; prose such as "`builtins.getFlake` cannot" is
+  ignored. The cell names each failing file as `not via git in <path>`. A file
+  cut short, or one that could not be read, is named as `unreadable <path>`,
+  since it may hold a call; it fails the check. A binary `.nix` or `.ci/` file
+  holds no call and is skipped; a binary workflow or composite action is
+  unreadable. More than 200 `.nix` and `.ci/` files in a repository fails it
+  as `too many Nix files`, since they were not read. n/a without a tracked
+  `.nix` file; a repository whose files hold no call passes. The report's Nix
+  section shows it.
 - **go_cache** — whether the default branch's Go cache holds something. Caches
   whose key starts `go-` are grouped into families as for nix_cache
   (`go-Linux`, `go-macOS`), counting only caches saved from the default

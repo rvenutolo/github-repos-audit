@@ -152,6 +152,7 @@
               "nix_lock_refresh",
               "nix_cache",
               "nix_installer",
+              "nix_getflake_git",
               "go_cache",
               "cache_usage",
               "ci_cancel_superseded",
@@ -268,6 +269,7 @@
           "items": { "$ref": "#/$defs/composite_action" }
         },
         "claude": { "$ref": "#/$defs/claude" },
+        "nix_getflake": { "$ref": "#/$defs/nix_getflake" },
         "ci_state": {
           "description": "The statusCheckRollup state of the head commit. Absent when the rollup was null, which means no check has run on that commit.",
           "type": "string",
@@ -340,6 +342,7 @@
         "nix_lock_refresh",
         "nix_cache",
         "nix_installer",
+        "nix_getflake_git",
         "go_cache",
         "cache_usage",
         "ci_cancel_superseded",
@@ -422,6 +425,7 @@
         "nix_lock_refresh": { "$ref": "#/$defs/expectation" },
         "nix_cache": { "$ref": "#/$defs/expectation" },
         "nix_installer": { "$ref": "#/$defs/expectation" },
+        "nix_getflake_git": { "$ref": "#/$defs/expectation" },
         "go_cache": { "$ref": "#/$defs/expectation" },
         "cache_usage": { "$ref": "#/$defs/expectation" },
         "ci_cancel_superseded": { "$ref": "#/$defs/expectation" },
@@ -673,6 +677,54 @@
           "description": "A file named exactly go.mod at the root. Absent when there is none.",
           "type": "boolean",
           "const": true
+        }
+      }
+    },
+    "nix_getflake": {
+      "description": "What the repository's Nix files, .ci/ files and workflow and composite-action texts say about builtins.getFlake. Absent when the repository tracks no Nix file.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "nix_files": {
+          "description": "The tree tracks at least one *.nix file, at any depth. Absent when false.",
+          "type": "boolean",
+          "const": true
+        },
+        "too_many_files": {
+          "description": "More Nix and .ci/ files than the bound that keeps a run's queries affordable, so none was read and files is absent. Absent when false.",
+          "type": "boolean",
+          "const": true
+        },
+        "files": {
+          "description": "Every file that holds a builtins.getFlake call or could not be read in full, sorted by path. A file with no call is not listed. Absent when there is none.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/getflake_file" }
+        }
+      }
+    },
+    "getflake_file": {
+      "description": "One file that holds builtins.getFlake calls or could not be read in full.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "description": "The file's path in the repository.",
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "description": "The argument of each call, in file order, with strings normalized to double quotes. A call whose operand cannot be read is the bare word toString. Absent when the file could not be read.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "unreadable": {
+          "description": "Why the file's text was not read in full, e.g. that it is too large. When present, args is absent.",
+          "type": "string",
+          "minLength": 1
         }
       }
     },

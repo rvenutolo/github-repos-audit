@@ -28,6 +28,8 @@ type claudeServer struct {
 	// failAfter, when set, makes every query after that many answer body
 	// instead of the blobs.
 	failAfter int
+	// op is the operation name the server expects; ClaudeFiles when empty.
+	op string
 
 	mu      sync.Mutex
 	queries [][]string
@@ -43,7 +45,11 @@ func (s *claudeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.t.Errorf("decode request: %v", err)
 		return
 	}
-	if !strings.HasPrefix(req.Query, "query ClaudeFiles(") {
+	op := "ClaudeFiles"
+	if s.op != "" {
+		op = s.op
+	}
+	if !strings.HasPrefix(req.Query, "query "+op+"(") {
 		s.t.Errorf("unexpected query:\n%s", req.Query)
 	}
 	answer := map[string]*fileBlob{}
@@ -184,14 +190,14 @@ func TestClaudeFacts_tooManyFilesAfterTheManifest(t *testing.T) {
 	}
 }
 
-// TestClaudeFacts_batches: one query carries at most claudeFilesPerQuery
+// TestClaudeFacts_batches: one query carries at most blobsPerQuery
 // files, and the rest go in further queries.
 func TestClaudeFacts_batches(t *testing.T) {
 	t.Parallel()
 
 	blobs := map[string]*fileBlob{}
-	paths := make([]string, 0, claudeFilesPerQuery+1)
-	for i := range claudeFilesPerQuery + 1 {
+	paths := make([]string, 0, blobsPerQuery+1)
+	for i := range blobsPerQuery + 1 {
 		name := fmt.Sprintf("skill-%03d", i)
 		p := ".claude/skills/" + name + "/SKILL.md"
 		paths = append(paths, p)
@@ -203,11 +209,11 @@ func TestClaudeFacts_batches(t *testing.T) {
 		t.Fatalf("claudeFacts() error = %v, want nil", err)
 	}
 	asked := s.asked()
-	if len(asked) != 2 || len(asked[0]) != claudeFilesPerQuery || len(asked[1]) != 1 {
-		t.Errorf("query sizes = %v, want %d then 1", sizes(asked), claudeFilesPerQuery)
+	if len(asked) != 2 || len(asked[0]) != blobsPerQuery || len(asked[1]) != 1 {
+		t.Errorf("query sizes = %v, want %d then 1", sizes(asked), blobsPerQuery)
 	}
-	if len(got.Skills) != claudeFilesPerQuery+1 {
-		t.Fatalf("got %d skills, want %d", len(got.Skills), claudeFilesPerQuery+1)
+	if len(got.Skills) != blobsPerQuery+1 {
+		t.Fatalf("got %d skills, want %d", len(got.Skills), blobsPerQuery+1)
 	}
 	for _, sk := range got.Skills {
 		if sk.Unreadable != "" || sk.Name != sk.Dir {
@@ -431,7 +437,7 @@ func TestClaudeFacts_queryFailure(t *testing.T) {
 		failAfter int
 	}{
 		{name: "GraphQL error", body: `{"errors": [{"type": "NOT_FOUND", "message": "gone"}]}`, want: "gone"},
-		{name: "no repository", body: `{"data": {"repository": null}}`, want: "no repository in the Claude file query's response"},
+		{name: "no repository", body: `{"data": {"repository": null}}`, want: "no repository in the ClaudeFiles query's response"},
 		// The manifest's round answers; the round it decides fails.
 		{name: "second round", body: `{"errors": [{"type": "NOT_FOUND", "message": "gone"}]}`, want: "gone", failAfter: 1},
 	}

@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -539,4 +540,63 @@ func resolveComposite(r audit.Repo, action string) (audit.CompositeAction, bool)
 		}
 	}
 	return audit.CompositeAction{}, false
+}
+
+// urlSchemeArg matches a flake reference with a URL scheme, which Nix
+// fetches rather than reads from the working tree.
+var urlSchemeArg = regexp.MustCompile(`^[a-z][a-z0-9+.-]*:`)
+
+// registryArg matches a registry reference such as `nixpkgs` or
+// `nixpkgs/nixos-24.05`, which Nix resolves to a fetched flake.
+var registryArg = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*(/[A-Za-z0-9._-]+)?$`)
+
+// getFlakeThroughGit reports whether a normalized builtins.getFlake argument
+// makes Nix read the flake through git or a fetcher rather than the working
+// tree. Only a string does: a path, `toString` of one, an identifier or any
+// string that is a path (including `path:`, which reads the directory as is)
+// reads the working tree, and an expression the tool cannot read is held to
+// the same standard because it may.
+func getFlakeThroughGit(arg string) bool {
+	if len(arg) < 2 || arg[0] != '"' || arg[len(arg)-1] != '"' {
+		return false
+	}
+	s := arg[1 : len(arg)-1]
+	if urlSchemeArg.MatchString(s) {
+		return !strings.HasPrefix(s, "path:")
+	}
+	return registryArg.MatchString(s)
+}
+
+// observeNixGetflakeGit judges whether every builtins.getFlake call in the
+// repository's Nix, .ci and workflow files names its flake in a way that
+// goes through git, so a flake evaluated from a script sees the committed
+// tree and not stray working-tree files. The cell names each file holding a
+// call that does not, in path order, then each file that could not be read,
+// since it may hold one; too many files to read is a problem of its own.
+//
+// It is n/a when the repository tracks no Nix file. A repository whose files
+// hold no call passes.
+func observeNixGetflakeGit(r audit.Repo) observation {
+	g := r.NixGetFlake
+	if !g.NixFiles {
+		return observation{unknown: true}
+	}
+	var problems []string
+	if g.TooManyFiles {
+		problems = []string{"too many Nix files"}
+	} else {
+		var bad, unreadable []string
+		for _, f := range g.Files {
+			if f.Unreadable != "" {
+				unreadable = append(unreadable, f.Path)
+				continue
+			}
+			if slices.ContainsFunc(f.Args, func(a string) bool { return !getFlakeThroughGit(a) }) {
+				bad = append(bad, f.Path)
+			}
+		}
+		problems = appendFiles(problems, "not via git in ", bad)
+		problems = appendFiles(problems, "unreadable ", unreadable)
+	}
+	return observation{ok: len(problems) == 0, value: strings.Join(problems, ", "), mark: true}
 }

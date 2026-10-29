@@ -312,6 +312,11 @@ func fullSnapshot() *audit.Snapshot {
 			ciCommit("0005", 0, time.Time{}, false, 3900, ciJob("ci / test", 3800)),
 		},
 	}
+	// One of its scripts evaluates the flake from the working tree.
+	tools.NixGetFlake = audit.NixGetFlake{
+		NixFiles: true,
+		Files:    []audit.GetFlakeFile{{Path: ".ci/check-flake", Args: []string{"toString ./."}}},
+	}
 	// Its Nix cache has outgrown the ceiling, and the newest of its Go caches
 	// is empty, whatever the older one holds. Beside them sit an action's
 	// own cache and two caches under a key no check covers, one saved from a

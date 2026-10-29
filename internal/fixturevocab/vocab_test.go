@@ -282,6 +282,8 @@ var claudeFileWords = []string{
 	"PreToolUse", "PostToolUse", "matcher", "type", "command", "timeout", "Bash", "Write",
 	"$", "CLAUDE_PLUGIN_ROOT", "echo", "PAYLOAD_RAN",
 	"Placeholder", "description.", "body.", "Use", "the", "skill.", "Pat", "Example",
+	// builtins.getFlake file fixtures.
+	"builtins.getFlake", "toString", ".",
 }
 
 // claudeFileName matches the synthetic names a Claude file fixture may use
@@ -328,7 +330,7 @@ func isFakeBase64Content(v any) bool {
 
 // treePath is every path a fixture git tree may list.
 const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUDE\.md|LICENSE|` +
-	`\.gitignore|\.editorconfig|flake\.nix|[Jj]ustfile|\.justfile|renovate\.json|` +
+	`\.gitignore|\.editorconfig|flake\.nix|\.ci|\.ci/eval-shell|[Jj]ustfile|\.justfile|renovate\.json|` +
 	`\.commitlintrc\.yml|cliff\.toml|treefmt\.toml|compose\.yaml|typos\.toml|\.yamllint\.yml|` +
 	`\.markdownlint-cli2\.jsonc|\.prettierrc\.json|\.editorconfig-checker\.json|lychee\.toml|mkdocs\.yml|` +
 	`stacks|stacks/media|stacks/media/docker-compose\.yml|vendor/sub|` +
@@ -640,6 +642,8 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.repo$`), isOwnerSlashRepo, "gh-owner/<fake>"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.ref$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.(sha|tag_commit)$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.path$`), matches(`^(\.ci/[a-z-]+|\.github/workflows/workflow-\d{2}\.yml)$`), "a synthetic script or workflow path"},
+	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.args\[\]$`), matches(`^(toString )?(\./\.|"[a-z+:/.${}_-]*")$`), "a call argument as the extractor normalizes it"},
 	{regexp.MustCompile(`^claude_marketplace\.unreadable$`), matches(marketplaceUnreadable), "a marketplace problem in the collector's wording"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.problem$`), matches(marketplaceProblem), "a pin problem in the collector's wording"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(claudeUnreadable), "a Claude problem in the tool's wording"},
@@ -669,6 +673,8 @@ var snapshotRules = []rule{
 		`repos\[\]\.claude\.hooks\[\]\.(plugin|event|type|timeout|timeout_set|interpreter|path_form|script_mode)`,
 		`repos\[\]\.claude\.plugin\.(present|version|fields\[\]|own_marketplace)`,
 		`claude_marketplace\.entries\[\]\.(has_version|release_tag)`,
+		// Whether a repository tracks a Nix file, and whether it tracks too many to read.
+		`repos\[\]\.nix_getflake\.(nix_files|too_many_files)`,
 	),
 }
 

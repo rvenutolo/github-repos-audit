@@ -73,13 +73,18 @@ type fakeAPI struct {
 	// claudeFailure, when set, answers every Claude file query instead of
 	// its fixture.
 	claudeFailure *scriptedFailure
+	// getFlakeFailure, when set, answers every GetFlakeFiles query the same way.
+	getFlakeFailure *scriptedFailure
+	// getFlakeQueries counts each repository's builtins.getFlake file
+	// queries, numbering the fixture that answers the next one.
+	getFlakeQueries map[string]int
 }
 
 // newFakeAPI starts a server backed by testdata/api and stops it with the test.
 func newFakeAPI(t *testing.T) *fakeAPI {
 	t.Helper()
 
-	f := &fakeAPI{t: t, failures: map[string][]scriptedFailure{}, claudeQueries: map[string]int{}}
+	f := &fakeAPI{t: t, failures: map[string][]scriptedFailure{}, claudeQueries: map[string]int{}, getFlakeQueries: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /graphql", f.handleGraphQL)
 	mux.HandleFunc("GET /user", func(w http.ResponseWriter, _ *http.Request) {
@@ -154,6 +159,14 @@ func (f *fakeAPI) failClaude(answer scriptedFailure) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.claudeFailure = &answer
+}
+
+// failGetFlake makes every GetFlakeFiles query answer answer, for the reason
+// failClaude gives.
+func (f *fakeAPI) failGetFlake(answer scriptedFailure) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getFlakeFailure = &answer
 }
 
 // serveFailure answers with the next scripted failure for path, if there is
@@ -297,6 +310,31 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.serve(w, dir, "graphql-claude-"+strconv.Itoa(n))
+		return
+	}
+	// A repository with more than 50 candidate files would take several
+	// queries, so each is its own numbered file. A test that collects one
+	// repository more than once sends the first query again, so a number
+	// with no file answers with the first.
+	if strings.Contains(body.Query, "query GetFlakeFiles") {
+		f.mu.Lock()
+		f.getFlakeQueries[body.Variables["name"]]++
+		n := f.getFlakeQueries[body.Variables["name"]]
+		failure := f.getFlakeFailure
+		f.mu.Unlock()
+		if failure != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(failure.status)
+			if _, err := w.Write([]byte(failure.body)); err != nil {
+				f.t.Errorf("write scripted GetFlakeFiles failure: %v", err)
+			}
+			return
+		}
+		base := "graphql-getflake-" + strconv.Itoa(n)
+		if _, err := os.Stat(filepath.Join(dir, base+".json")); err != nil {
+			base = "graphql-getflake-1"
+		}
+		f.serve(w, dir, base)
 		return
 	}
 	f.serve(w, dir, "graphql")

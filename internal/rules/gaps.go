@@ -61,6 +61,7 @@ var gapLabels = map[Check]string{
 	CheckNixLockRefresh:          "No automated flake.lock refresh",
 	CheckNixCache:                "Nix cache missing, empty, oversized or misconfigured",
 	CheckNixInstaller:            "Nix not installed by determinate-nix-action, or a DeterminateSystems action reporting home",
+	CheckNixGetflakeGit:          "builtins.getFlake reads the working tree outside git",
 	CheckGoCache:                 "Go cache missing or empty on the default branch",
 	CheckCacheUsage:              "Actions cache above 80% of its limit",
 	CheckCICancelSuperseded:      "Pull-request workflows without cancel-in-progress",
