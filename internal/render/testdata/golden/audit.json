@@ -48,6 +48,7 @@
       "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
+      "nix_getflake_git": "required",
       "nix_installer": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
@@ -130,6 +131,7 @@
       "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "not_required",
+      "nix_getflake_git": "not_required",
       "nix_installer": "not_required",
       "nix_lock_age": "not_required",
       "nix_lock_refresh": "not_required",
@@ -212,6 +214,7 @@
       "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
+      "nix_getflake_git": "required",
       "nix_installer": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
@@ -294,6 +297,7 @@
       "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
+      "nix_getflake_git": "required",
       "nix_installer": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
@@ -376,6 +380,7 @@
       "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
+      "nix_getflake_git": "required",
       "nix_installer": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
@@ -458,6 +463,7 @@
       "marketplace_entries_valid": "required",
       "mkdocs": "not_required",
       "nix_cache": "required",
+      "nix_getflake_git": "required",
       "nix_installer": "required",
       "nix_lock_age": "required",
       "nix_lock_refresh": "required",
@@ -1092,6 +1098,17 @@
           ],
           "own_marketplace": true
         }
+      },
+      "nix_getflake": {
+        "nix_files": true,
+        "files": [
+          {
+            "path": ".ci/check-flake",
+            "args": [
+              "toString ./."
+            ]
+          }
+        ]
       },
       "ci_state": "PENDING",
       "ci": {

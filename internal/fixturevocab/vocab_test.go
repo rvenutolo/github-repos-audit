@@ -642,6 +642,8 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.repo$`), isOwnerSlashRepo, "gh-owner/<fake>"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.ref$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.(sha|tag_commit)$`), matches(oid), "a pattern oid"},
+	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.path$`), matches(`^(\.ci/[a-z-]+|\.github/workflows/workflow-\d{2}\.yml)$`), "a synthetic script or workflow path"},
+	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.args\[\]$`), matches(`^(toString )?(\./\.|"[a-z+:/.${}_-]*")$`), "a call argument as the extractor normalizes it"},
 	{regexp.MustCompile(`^claude_marketplace\.unreadable$`), matches(marketplaceUnreadable), "a marketplace problem in the collector's wording"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.problem$`), matches(marketplaceProblem), "a pin problem in the collector's wording"},
 	{regexp.MustCompile(`^repos\[\]\.claude\.((skills|commands|hooks)\[\]\.|plugin\.)?unreadable$`), matches(claudeUnreadable), "a Claude problem in the tool's wording"},
@@ -671,6 +673,8 @@ var snapshotRules = []rule{
 		`repos\[\]\.claude\.hooks\[\]\.(plugin|event|type|timeout|timeout_set|interpreter|path_form|script_mode)`,
 		`repos\[\]\.claude\.plugin\.(present|version|fields\[\]|own_marketplace)`,
 		`claude_marketplace\.entries\[\]\.(has_version|release_tag)`,
+		// Whether a repository tracks a Nix file, and whether it tracks too many to read.
+		`repos\[\]\.nix_getflake\.(nix_files|too_many_files)`,
 	),
 }
 

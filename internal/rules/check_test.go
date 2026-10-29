@@ -37,10 +37,10 @@ func TestChecks_areAllDistinctAndRoundTrip(t *testing.T) {
 func TestChecks_count(t *testing.T) {
 	t.Parallel()
 
-	// 79 report rows plus direct push, the one declared setting a type
+	// 80 report rows plus direct push, the one declared setting a type
 	// decides. A change here is a change to the report, to the override
 	// vocabulary, and to every [types.*] table at once.
-	const want = 80
+	const want = 81
 	if got := len(rules.Checks()); got != want {
 		t.Errorf("len(Checks()) = %d, want %d", got, want)
 	}

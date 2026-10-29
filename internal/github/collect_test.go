@@ -797,6 +797,22 @@ func TestClient_Collect_claudeQueryFailureAborts(t *testing.T) {
 	}
 }
 
+// TestClient_Collect_getFlakeQueryFailureAborts: a GetFlakeFiles query that
+// fails fails the run rather than recording the files as unreadable.
+func TestClient_Collect_getFlakeQueryFailureAborts(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	api.failGetFlake(scriptedFailure{status: http.StatusOK, body: `{"errors": [{"type": "FORBIDDEN", "message": "denied"}]}`})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Errorf("Collect() error = %v, want the GetFlakeFiles query's error", err)
+	}
+	if got != nil {
+		t.Errorf("Collect() = %v, want no repositories", got)
+	}
+}
+
 // TestClient_Collect_filesQueryFailureAborts: the file query fails the way
 // the repository query does. Every other request is passed on to the
 // fixtures, so the failure is the file query's alone.
