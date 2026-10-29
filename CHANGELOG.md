@@ -4,6 +4,22 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v8.0.0
+
+### Breaking changes
+
+- add the nix_getflake_git check
+
+### Features
+
+- extract builtins.getFlake arguments from text
+- collect builtins.getFlake arguments from Nix, .ci and workflow files
+
+### Fixes
+
+- read the flake through git in check-devshell-provides
+- read multi-line and indented-string getFlake calls
+
 ## v7.0.0
 
 ### Breaking changes
