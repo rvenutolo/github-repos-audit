@@ -722,7 +722,7 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "unreadable": {
-          "description": "Why the file's text was not read in full, e.g. that it is too large. Present, args is absent.",
+          "description": "Why the file's text was not read in full, e.g. that it is too large. When present, args is absent.",
           "type": "string",
           "minLength": 1
         }

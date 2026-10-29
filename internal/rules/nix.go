@@ -542,9 +542,9 @@ func resolveComposite(r audit.Repo, action string) (audit.CompositeAction, bool)
 	return audit.CompositeAction{}, false
 }
 
-// gitSchemeArg matches a flake reference with a URL scheme, which Nix
+// urlSchemeArg matches a flake reference with a URL scheme, which Nix
 // fetches rather than reads from the working tree.
-var gitSchemeArg = regexp.MustCompile(`^[a-z][a-z0-9+.-]*:`)
+var urlSchemeArg = regexp.MustCompile(`^[a-z][a-z0-9+.-]*:`)
 
 // registryArg matches a registry reference such as `nixpkgs` or
 // `nixpkgs/nixos-24.05`, which Nix resolves to a fetched flake.
@@ -561,7 +561,7 @@ func getFlakeThroughGit(arg string) bool {
 		return false
 	}
 	s := arg[1 : len(arg)-1]
-	if gitSchemeArg.MatchString(s) {
+	if urlSchemeArg.MatchString(s) {
 		return !strings.HasPrefix(s, "path:")
 	}
 	return registryArg.MatchString(s)
