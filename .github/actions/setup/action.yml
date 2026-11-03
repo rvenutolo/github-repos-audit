@@ -22,10 +22,9 @@ runs:
         # install.determinate.systems, the host the installer is downloaded from,
         # so the harden-runner allowlist cannot separate them from the download.
         diagnostic-endpoint: ""
-    # .ci/in-devshell keeps HOME but no GO* variables, so the module cache
-    # resolves under ~/go, and the build cache where flake.nix's shellHook
-    # puts it: one directory per toolchain under
-    # ~/.cache/github-repos-audit/go-build. Without them every run
+    # The module cache and the build cache, where flake.nix's shellHook puts
+    # them: GOPATH at ~/.cache/github-repos-audit/go, and one build cache
+    # directory per toolchain under ~/.cache/github-repos-audit/go-build. Without them every run
     # re-downloads the module graph and recompiles the standard library.
     #
     # Restore only. The one save is ci.yml's, after a passing gate on main,
@@ -40,7 +39,7 @@ runs:
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
-          ~/go/pkg/mod
+          ~/.cache/github-repos-audit/go/pkg/mod
           ~/.cache/github-repos-audit/go-build
         key: go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
         restore-keys: |

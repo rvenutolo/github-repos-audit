@@ -42,13 +42,14 @@ trap 'printf "\033[0;31m[%s] ERROR: line %s (exit %s): %s\033[0m\n" "${0##*/}" "
 
 # `--keep` on an unset variable is silent and harmless, so every name is passed
 # unconditionally rather than set-checked. HOME is a deliberate residue: gh
-# auth, the Go module cache (~/go), the Go build cache and the nix config live
-# there, so host dotfiles such as ~/.shellcheckrc can still shape a LOCAL run
-# in ways a clean CI HOME will not. The build cache is not Go's default
-# ~/.cache/go-build, which every Go on the machine shares: flake.nix's
-# shellHook exports a GOCACHE under ~/.cache/github-repos-audit/go-build that
-# is named after this devShell's toolchain. No GO* variable is kept, so a
-# GOCACHE from the caller never replaces it.
+# auth, the Go module and build caches and the nix config live there, so host
+# dotfiles such as ~/.shellcheckrc can still shape a LOCAL run in ways a clean
+# CI HOME will not. Neither Go cache is at Go's default (~/go and
+# ~/.cache/go-build, which every Go on the machine shares): flake.nix's
+# shellHook exports GOPATH as ~/.cache/github-repos-audit/go and a GOCACHE
+# under ~/.cache/github-repos-audit/go-build that is named after this
+# devShell's toolchain. No GO* variable is kept, so a GOPATH or GOCACHE from
+# the caller never replaces them.
 #
 # ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN are how a
 # job with `id-token: write` asks GitHub for its OIDC token. cosign's keyless

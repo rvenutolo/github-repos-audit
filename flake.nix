@@ -44,7 +44,13 @@
       # the cache it is using. Reclaim the space by removing
       # ~/.cache/github-repos-audit/go-build: every entry in it is rebuilt on
       # demand, the corpus from the seeds in testdata.
+      #
+      # GOPATH is set so Go never falls back to its default ~/go, a directory
+      # in the user's home that nothing else here asks for. Under it go the
+      # module cache, the checksum database and any `go install` output. It
+      # is not keyed: module zips are the same for every toolchain.
       goCacheHook = pkgs: ''
+        export GOPATH="$HOME/.cache/github-repos-audit/go"
         go_cache_root="$HOME/.cache/github-repos-audit/go-build"
         export GOCACHE="$go_cache_root/${baseNameOf pkgs.go}_${baseNameOf pkgs.stdenv.cc}"
         if mkdir -p "$GOCACHE" "$go_cache_root/fuzz"; then

@@ -104,7 +104,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ~/go/pkg/mod
+            ~/.cache/github-repos-audit/go/pkg/mod
             ~/.cache/github-repos-audit/go-build
           key: go-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
       # Reporting only: .ci/check-coverage inside the gate is the source of
