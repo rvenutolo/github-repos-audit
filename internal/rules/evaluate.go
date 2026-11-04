@@ -339,6 +339,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observeGoPaths(r)
 	case CheckGoCache:
 		return observeGoCache(r, ev.now)
+	case CheckCacheSaveDefaultBranch:
+		return observeCacheSaveDefaultBranch(r)
 	case CheckCacheUsage:
 		return observeCacheUsage(r)
 	case CheckCICancelSuperseded:

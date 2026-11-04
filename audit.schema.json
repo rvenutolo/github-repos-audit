@@ -155,6 +155,7 @@
               "nix_getflake_git",
               "go_paths",
               "go_cache",
+              "cache_save_default_branch",
               "cache_usage",
               "ci_cancel_superseded",
               "job_timeouts",
@@ -347,6 +348,7 @@
         "nix_getflake_git",
         "go_paths",
         "go_cache",
+        "cache_save_default_branch",
         "cache_usage",
         "ci_cancel_superseded",
         "job_timeouts",
@@ -431,6 +433,7 @@
         "nix_getflake_git": { "$ref": "#/$defs/expectation" },
         "go_paths": { "$ref": "#/$defs/expectation" },
         "go_cache": { "$ref": "#/$defs/expectation" },
+        "cache_save_default_branch": { "$ref": "#/$defs/expectation" },
         "cache_usage": { "$ref": "#/$defs/expectation" },
         "ci_cancel_superseded": { "$ref": "#/$defs/expectation" },
         "job_timeouts": { "$ref": "#/$defs/expectation" },
@@ -901,6 +904,11 @@
           "description": "The job's key under `jobs:`.",
           "type": "string"
         },
+        "if": {
+          "description": "The job's `if:` as written, with or without its `${{ }}`. Absent when the job has none.",
+          "type": "string",
+          "minLength": 1
+        },
         "reusable": {
           "description": "The job calls a reusable workflow with a job-level `uses:`.",
           "type": "boolean",
@@ -970,6 +978,11 @@
       "properties": {
         "action": {
           "description": "`uses:` as written, such as \"owner/action@<sha>\" or \"./.github/actions/setup\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "if": {
+          "description": "The step's `if:` as written, with or without its `${{ }}`. Absent when the step has none.",
           "type": "string",
           "minLength": 1
         },

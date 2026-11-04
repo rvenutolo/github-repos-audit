@@ -575,6 +575,40 @@ Grouped by theme here; the report lists them in the fixed worklist order
   n/a without a root `go.mod`, or when no workflow of this repository's own
   (not a fork's pull request) has run on the default branch in the last 7
   days. The report's CI efficiency section shows it.
+- **cache_save_default_branch** — whether Actions caches are saved only from
+  the default branch. GitHub scopes a cache to the ref that saved it, and a
+  run restores only its own ref's caches and the default branch's, so a cache
+  saved by a pull request, a merge-queue entry or a feature branch serves that
+  ref alone while counting against the storage limit. The tool reads every
+  workflow that can run off the default branch (every one except those
+  triggered only by `schedule` or by a `push` whose only branch filter is
+  exactly the default branch, with no tag filter; `workflow_dispatch` can run
+  on any branch), and the local composite actions they use. In them it judges
+  every step of these actions:
+
+  - `actions/cache`, `actions/cache/save` and
+    `DeterminateSystems/magic-nix-cache-action`, which save unless an `if:`
+    stops them;
+  - `nix-community/cache-nix-action` and `actions/setup-go`, which save by
+    default and also stop for `save: false` or `cache: false`;
+  - `actions/setup-node` and `actions/setup-python`, which save only once
+    `cache:` names a package manager.
+
+  `actions/cache/restore` never saves; any other action is not judged. A
+  saving step passes when it is gated to the default branch: its own `if:`,
+  its job's, the `if:` of the workflow step using its composite action, or
+  its `save:` or `cache:` input is an expression, with or without `${{ }}`,
+  whose `&&`-joined terms include `github.ref == 'refs/heads/<default
+branch>'` or `github.ref_name == '<default branch>'`. Status functions such
+  as `always()` may sit beside it; an `||` or any other parenthesis makes the
+  expression one the tool does not read, which fails. Gating on `github.event_name` is not enough: a dispatch on a feature
+  branch or a merge-queue run still saves under a ref nothing else reads.
+  The cell names each file holding a step that saves elsewhere as
+  `saves off the default branch in <path>`, then each unreadable workflow or
+  composite action as `unreadable <path>`. n/a when no such workflow reaches a
+  judged step and every file was read. The report's CI efficiency section
+  shows it.
+
 - **cache_usage** — whether the repository's Actions caches stay at or
   below 80% of the cache storage limit GitHub reports for it. Past the limit
   GitHub evicts the entries restored longest ago to make room for each new

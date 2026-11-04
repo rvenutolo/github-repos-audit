@@ -406,6 +406,52 @@ func TestParse_stepEnv(t *testing.T) {
 	}
 }
 
+// TestParse_ifConditions: a job's and an action step's `if:` are kept as
+// written, with or without their `${{ }}`, in a workflow and in a composite
+// action alike; a YAML boolean reads as its text, and an absent one as empty.
+func TestParse_ifConditions(t *testing.T) {
+	t.Parallel()
+
+	text := `jobs:
+  a:
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: a/b@v1
+        if: ${{ always() && github.ref_name == 'main' }}
+      - uses: a/c@v1
+        if: false
+      - uses: a/d@v1
+  b:
+    steps:
+      - run: echo PAYLOAD_RAN
+        if: always()
+`
+	jobs := parse(t, text).Jobs
+	want := []audit.Job{
+		{ID: "a", If: "github.ref == 'refs/heads/main'", Uses: []audit.StepUse{
+			{Action: "a/b@v1", If: "${{ always() && github.ref_name == 'main' }}"},
+			{Action: "a/c@v1", If: "false"},
+			{Action: "a/d@v1"},
+		}},
+		{ID: "b"},
+	}
+	if diff := cmp.Diff(want, jobs); diff != "" {
+		t.Errorf("Jobs mismatch (-want +got):\n%s", diff)
+	}
+
+	composite := `runs:
+  using: composite
+  steps:
+    - uses: a/b@v1
+      if: github.ref == 'refs/heads/main'
+`
+	c := workflows.ParseComposite("action.yml", composite)
+	wantComposite := []audit.StepUse{{Action: "a/b@v1", If: "github.ref == 'refs/heads/main'"}}
+	if diff := cmp.Diff(wantComposite, c.Uses); diff != "" {
+		t.Errorf("composite Uses mismatch (-want +got):\n%s", diff)
+	}
+}
+
 // TestParse_stepEnvExpression: GitHub accepts a whole step `env:` given as
 // one expression, which only the runner can resolve. The file is still a
 // valid workflow, so it reads with no env rather than as unreadable, which
@@ -552,6 +598,8 @@ func TestParse_wrongShape(t *testing.T) {
 		{"steps is a mapping", "jobs:\n  a:\n    steps: {x: y}\n", "steps"},
 		{"step is a scalar", "jobs:\n  a:\n    steps: [x]\n", "steps"},
 		{"uses is a mapping", "jobs:\n  a:\n    steps:\n      - uses: {x: y}\n", "uses"},
+		{"job if is a mapping", "jobs:\n  a:\n    if: {x: y}\n", "jobs.a.if"},
+		{"step if is a mapping", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        if: {x: y}\n", "if"},
 		{"with is a sequence", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        with: [x]\n", "with"},
 		{"with value is a mapping", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        with:\n          k: {x: y}\n", "with.k"},
 		{"env is a plain scalar", "jobs:\n  a:\n    steps:\n      - uses: a@b\n        env: x\n", "env"},

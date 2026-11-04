@@ -213,11 +213,14 @@ func fullSnapshot() *audit.Snapshot {
 		ArtifactBytes:   206_000_000,
 	}
 	// Its pull-request workflow cancels superseded runs, and its one job
-	// bounds its run time.
+	// bounds its run time and saves its cache only from the default branch.
 	soft.Workflows = []audit.Workflow{{
 		Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
 		Concurrency: audit.Concurrency{Set: true, CancelInProgress: "true"},
-		Jobs:        []audit.Job{{ID: "check", TimeoutMinutes: "15"}},
+		Jobs: []audit.Job{{ID: "check", TimeoutMinutes: "15", Uses: []audit.StepUse{{
+			Action: "actions/cache/save@" + pinSHA(2),
+			If:     "github.ref == 'refs/heads/main'",
+		}}}},
 	}}
 	// Its history switched identity: mixed. The noreply identity GitHub records
 	// on web-UI merges beside them is accepted and does not count toward it.
@@ -354,7 +357,8 @@ func fullSnapshot() *audit.Snapshot {
 		{
 			Path: ".github/workflows/ci.yml", Events: []string{"pull_request"},
 			Concurrency: audit.Concurrency{Set: true},
-			Jobs:        []audit.Job{{ID: "check", TimeoutMinutes: "30"}},
+			// Its cache saves from every pull request.
+			Jobs: []audit.Job{{ID: "check", TimeoutMinutes: "30", Uses: []audit.StepUse{{Action: "actions/cache@" + pinSHA(3)}}}},
 		},
 		{
 			Path: ".github/workflows/workflow-02.yml", Events: []string{"pull_request_target"},
