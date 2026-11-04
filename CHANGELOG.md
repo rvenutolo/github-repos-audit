@@ -4,6 +4,19 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v9.0.0
+
+### Breaking changes
+
+- add the go_paths check
+- add the cache_save_default_branch check
+
+### Fixes
+
+- **deps:** update module go.yaml.in/yaml/v3 to v3.0.6
+- keep the devshell's GOPATH out of the home directory
+- share the account-wide Go module cache
+
 ## v8.0.1
 
 ### Fixes
