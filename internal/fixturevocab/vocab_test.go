@@ -284,6 +284,8 @@ var claudeFileWords = []string{
 	"Placeholder", "description.", "body.", "Use", "the", "skill.", "Pat", "Example",
 	// builtins.getFlake file fixtures.
 	"builtins.getFlake", "toString", ".",
+	// GOPATH file fixtures.
+	"export", "GOPATH", "GOMODCACHE", "$HOME", ".cache", "go", "mod",
 }
 
 // claudeFileName matches the synthetic names a Claude file fixture may use
@@ -330,7 +332,7 @@ func isFakeBase64Content(v any) bool {
 
 // treePath is every path a fixture git tree may list.
 const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUDE\.md|LICENSE|` +
-	`\.gitignore|\.editorconfig|flake\.nix|\.ci|\.ci/eval-shell|[Jj]ustfile|\.justfile|renovate\.json|` +
+	`\.gitignore|\.editorconfig|flake\.nix|go\.mod|\.ci|\.ci/eval-shell|[Jj]ustfile|\.justfile|renovate\.json|` +
 	`\.commitlintrc\.yml|cliff\.toml|treefmt\.toml|compose\.yaml|typos\.toml|\.yamllint\.yml|` +
 	`\.markdownlint-cli2\.jsonc|\.prettierrc\.json|\.editorconfig-checker\.json|lychee\.toml|mkdocs\.yml|` +
 	`stacks|stacks/media|stacks/media/docker-compose\.yml|vendor/sub|` +
@@ -643,6 +645,8 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.ref$`), matches(`^v\d+\.\d+\.\d+$`), "v followed by a semver"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.(sha|tag_commit)$`), matches(oid), "a pattern oid"},
 	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.path$`), matches(`^(\.ci/[a-z-]+|\.github/workflows/workflow-\d{2}\.yml)$`), "a synthetic script or workflow path"},
+	{regexp.MustCompile(`^repos\[\]\.go_paths\.files\[\]\.path$`), matches(`^(flake|nix/[a-z-]+)\.nix$`), "a synthetic Nix file path"},
+	{regexp.MustCompile(`^repos\[\]\.go_paths\.files\[\]\.lines\[\]$`), matches(`^export GO(PATH|MODCACHE)="\$HOME/[a-z./]+"$`), "a Go path line under $HOME"},
 	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.args\[\]$`), matches(`^(toString )?(\./\.|"[a-z+:/.${}_-]*")$`), "a call argument as the extractor normalizes it"},
 	{regexp.MustCompile(`^claude_marketplace\.unreadable$`), matches(marketplaceUnreadable), "a marketplace problem in the collector's wording"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.problem$`), matches(marketplaceProblem), "a pin problem in the collector's wording"},

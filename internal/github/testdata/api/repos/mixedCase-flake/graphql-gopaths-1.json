@@ -1,0 +1,11 @@
+{
+  "data": {
+    "repository": {
+      "f0": {
+        "text": "''\n  export GOPATH=\"$HOME/.cache/go\"\n  export GOMODCACHE=\"$HOME/.cache/go/mod\"\n''\n",
+        "is_truncated": false,
+        "is_binary": false
+      }
+    }
+  }
+}

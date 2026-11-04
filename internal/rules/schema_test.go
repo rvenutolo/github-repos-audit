@@ -277,6 +277,8 @@ var defNames = map[reflect.Type]string{
 	reflect.TypeFor[audit.Claude]():            "claude",
 	reflect.TypeFor[audit.NixGetFlake]():       "nix_getflake",
 	reflect.TypeFor[audit.GetFlakeFile]():      "getflake_file",
+	reflect.TypeFor[audit.GoPaths]():           "go_paths",
+	reflect.TypeFor[audit.GoPathsFile]():       "go_paths_file",
 	reflect.TypeFor[audit.ClaudeSkill]():       "claude_skill",
 	reflect.TypeFor[audit.ClaudeHook]():        "claude_hook",
 	reflect.TypeFor[audit.ClaudePlugin]():      "claude_plugin",

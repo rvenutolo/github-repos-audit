@@ -194,6 +194,11 @@ func fullSnapshot() *audit.Snapshot {
 	// its two Linux Nix caches, and its Go cache, are a useful size; a pull
 	// request's cache beside them serves no default-branch run.
 	soft.Files.GoMod = true
+	// Its devShell sets the standard GOPATH but a GOMODCACHE of its own.
+	soft.GoPaths = audit.GoPaths{Files: []audit.GoPathsFile{{
+		Path:  "flake.nix",
+		Lines: []string{`export GOPATH="$HOME/.cache/go"`, `export GOMODCACHE="$HOME/go/mod"`},
+	}}}
 	soft.CI.LastDefaultBranchRun = at(2026, time.September, 4)
 	soft.Storage = audit.ActionsStorage{
 		Caches: []audit.Cache{
@@ -322,6 +327,11 @@ func fullSnapshot() *audit.Snapshot {
 	// own cache and two caches under a key no check covers, one saved from a
 	// pull request, which the cache lists show unjudged.
 	tools.Files.GoMod = true
+	// Its devShell keeps the standard Go paths in a file the flake imports.
+	tools.GoPaths = audit.GoPaths{Files: []audit.GoPathsFile{{
+		Path:  "nix/shell.nix",
+		Lines: []string{`export GOPATH="$HOME/.cache/go"`, `export GOMODCACHE="$HOME/.cache/go/mod"`},
+	}}}
 	tools.CI.LastDefaultBranchRun = at(2026, time.September, 5)
 	tools.Storage = audit.ActionsStorage{
 		Caches: []audit.Cache{

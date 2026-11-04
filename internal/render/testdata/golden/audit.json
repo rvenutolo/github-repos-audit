@@ -30,6 +30,7 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
+      "go_paths": "required",
       "homepage": "public_published",
       "hook_command_executable": "required",
       "hook_known_events": "required",
@@ -113,6 +114,7 @@
       "git_identity": "not_required",
       "gitignore": "required",
       "go_cache": "not_required",
+      "go_paths": "not_required",
       "homepage": "public_published",
       "hook_command_executable": "required",
       "hook_known_events": "required",
@@ -196,6 +198,7 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
+      "go_paths": "required",
       "homepage": "public_published",
       "hook_command_executable": "required",
       "hook_known_events": "required",
@@ -279,6 +282,7 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
+      "go_paths": "required",
       "homepage": "public_published",
       "hook_command_executable": "required",
       "hook_known_events": "required",
@@ -362,6 +366,7 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
+      "go_paths": "required",
       "homepage": "public_published",
       "hook_command_executable": "required",
       "hook_known_events": "required",
@@ -445,6 +450,7 @@
       "git_identity": "required",
       "gitignore": "required",
       "go_cache": "required",
+      "go_paths": "required",
       "homepage": "public_published",
       "hook_command_executable": "required",
       "hook_known_events": "required",
@@ -642,6 +648,17 @@
             "version"
           ]
         }
+      },
+      "go_paths": {
+        "files": [
+          {
+            "path": "flake.nix",
+            "lines": [
+              "export GOPATH=\"$HOME/.cache/go\"",
+              "export GOMODCACHE=\"$HOME/go/mod\""
+            ]
+          }
+        ]
       },
       "ci_state": "SUCCESS",
       "ci": {
@@ -1106,6 +1123,17 @@
             "path": ".ci/check-flake",
             "args": [
               "toString ./."
+            ]
+          }
+        ]
+      },
+      "go_paths": {
+        "files": [
+          {
+            "path": "nix/shell.nix",
+            "lines": [
+              "export GOPATH=\"$HOME/.cache/go\"",
+              "export GOMODCACHE=\"$HOME/.cache/go/mod\""
             ]
           }
         ]

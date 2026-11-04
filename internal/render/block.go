@@ -362,7 +362,7 @@ func anyApplies(r *rules.RepoReport, columns []pathColumn) bool {
 // nixSection shows how each repository uses Nix beyond having a flake.nix,
 // which the Tree section already reports.
 func nixSection(rep *rules.Report, at time.Time) string {
-	t := newTable("Repository", "Lock age", "Lock refresh", "Nix cache", "Installer", "getFlake via git")
+	t := newTable("Repository", "Lock age", "Lock refresh", "Nix cache", "Installer", "getFlake via git", "Go paths")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
@@ -372,6 +372,7 @@ func nixSection(rep *rules.Report, at time.Time) string {
 			cell(r.Cell(rules.CheckNixCache)),
 			cell(r.Cell(rules.CheckNixInstaller)),
 			cell(r.Cell(rules.CheckNixGetflakeGit)),
+			cell(r.Cell(rules.CheckGoPaths)),
 		)
 	}
 	return heading("Nix", t)

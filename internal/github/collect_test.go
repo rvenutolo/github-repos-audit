@@ -443,16 +443,17 @@ func TestClient_Collect_oneHistoryPage(t *testing.T) {
 			if diff := cmp.Diff(want, got[0].Identities); diff != "" {
 				t.Errorf("Identities mismatch (-want +got):\n%s", diff)
 			}
-			// The builtins.getFlake file query is a third document for a
-			// repository that tracks a Nix file, and not what this test is about.
+			// The builtins.getFlake and GOPATH file queries are further
+			// documents for a repository that tracks a Nix file or is a Go
+			// flake, and not what this test is about.
 			var n int
 			for _, doc := range api.graphQLDocuments() {
-				if !strings.Contains(doc, "query GetFlakeFiles") {
+				if !strings.Contains(doc, "query GetFlakeFiles") && !strings.Contains(doc, "query GoPathsFiles") {
 					n++
 				}
 			}
 			if n != 2 {
-				t.Errorf("/graphql saw %d documents besides the builtins.getFlake query, want 2: the repository query and the file query", n)
+				t.Errorf("/graphql saw %d documents besides the Nix file queries, want 2: the repository query and the file query", n)
 			}
 		})
 	}
@@ -518,6 +519,7 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 		Contributing:   true,
 		RenovateConfig: "renovate.json",
 		Workflows:      repo.Files.Workflows,
+		GoMod:          true,
 	}
 	if diff := cmp.Diff(wantFiles, repo.Files); diff != "" {
 		t.Errorf("Files mismatch (-want +got):\n%s", diff)
@@ -810,6 +812,49 @@ func TestClient_Collect_getFlakeQueryFailureAborts(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("Collect() = %v, want no repositories", got)
+	}
+}
+
+// TestClient_Collect_goPathsQueryFailureAborts: a GoPathsFiles query that
+// fails fails the run rather than recording the files as unreadable.
+func TestClient_Collect_goPathsQueryFailureAborts(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	api.failGoPaths(scriptedFailure{status: http.StatusOK, body: `{"errors": [{"type": "FORBIDDEN", "message": "denied"}]}`})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake"})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Errorf("Collect() error = %v, want the GoPathsFiles query's error", err)
+	}
+	if got != nil {
+		t.Errorf("Collect() = %v, want no repositories", got)
+	}
+}
+
+// TestClient_Collect_goPaths: mixedCase-flake is a Go flake whose flake.nix
+// sets both variables, so its lines are recorded; web-app has no go.mod and
+// records nothing.
+func TestClient_Collect_goPaths(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"mixedCase-flake", "web-app"})
+	if err != nil {
+		t.Fatalf("Collect() error = %v, want nil", err)
+	}
+	byName := map[string]audit.GoPaths{}
+	for _, r := range got {
+		byName[r.Name] = r.GoPaths
+	}
+	want := audit.GoPaths{Files: []audit.GoPathsFile{{
+		Path:  "flake.nix",
+		Lines: []string{`export GOPATH="$HOME/.cache/go"`, `export GOMODCACHE="$HOME/.cache/go/mod"`},
+	}}}
+	if diff := cmp.Diff(want, byName["mixedCase-flake"]); diff != "" {
+		t.Errorf("mixedCase-flake GoPaths mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(audit.GoPaths{}, byName["web-app"]); diff != "" {
+		t.Errorf("web-app GoPaths mismatch (-want +got):\n%s", diff)
 	}
 }
 

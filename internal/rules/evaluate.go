@@ -335,6 +335,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observeNixInstaller(r)
 	case CheckNixGetflakeGit:
 		return observeNixGetflakeGit(r)
+	case CheckGoPaths:
+		return observeGoPaths(r)
 	case CheckGoCache:
 		return observeGoCache(r, ev.now)
 	case CheckCacheUsage:

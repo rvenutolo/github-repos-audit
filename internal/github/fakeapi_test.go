@@ -75,6 +75,8 @@ type fakeAPI struct {
 	claudeFailure *scriptedFailure
 	// getFlakeFailure, when set, answers every GetFlakeFiles query the same way.
 	getFlakeFailure *scriptedFailure
+	// goPathsFailure, when set, answers every GoPathsFiles query the same way.
+	goPathsFailure *scriptedFailure
 	// getFlakeQueries counts each repository's builtins.getFlake file
 	// queries, numbering the fixture that answers the next one.
 	getFlakeQueries map[string]int
@@ -167,6 +169,14 @@ func (f *fakeAPI) failGetFlake(answer scriptedFailure) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.getFlakeFailure = &answer
+}
+
+// failGoPaths makes every GoPathsFiles query answer answer, for the reason
+// failClaude gives.
+func (f *fakeAPI) failGoPaths(answer scriptedFailure) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.goPathsFailure = &answer
 }
 
 // serveFailure answers with the next scripted failure for path, if there is
@@ -335,6 +345,22 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 			base = "graphql-getflake-1"
 		}
 		f.serve(w, dir, base)
+		return
+	}
+	// A Go flake's Nix files fit one query in every fixture.
+	if strings.Contains(body.Query, "query GoPathsFiles") {
+		f.mu.Lock()
+		failure := f.goPathsFailure
+		f.mu.Unlock()
+		if failure != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(failure.status)
+			if _, err := w.Write([]byte(failure.body)); err != nil {
+				f.t.Errorf("write scripted GoPathsFiles failure: %v", err)
+			}
+			return
+		}
+		f.serve(w, dir, "graphql-gopaths-1")
 		return
 	}
 	f.serve(w, dir, "graphql")

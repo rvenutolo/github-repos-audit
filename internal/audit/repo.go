@@ -126,6 +126,10 @@ type Repo struct {
 	// NixGetFlake is what the repository's Nix, .ci/ and workflow files say
 	// about builtins.getFlake. Zero when it tracks no Nix file.
 	NixGetFlake NixGetFlake `json:"nix_getflake,omitzero"`
+	// GoPaths is what a Go flake's Nix files say about GOPATH and
+	// GOMODCACHE. Zero unless the repository has a root go.mod and a
+	// flake.nix.
+	GoPaths GoPaths `json:"go_paths,omitzero"`
 	// CIState is the statusCheckRollup state of the head commit: SUCCESS,
 	// FAILURE, PENDING, ERROR or EXPECTED. Empty when the rollup was null,
 	// which means no check has run on that commit.
