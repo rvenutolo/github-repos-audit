@@ -70,6 +70,7 @@ const (
 	CheckNixGetflakeGit
 	CheckGoPaths
 	CheckGoCache
+	CheckCacheSaveDefaultBranch
 	CheckCacheUsage
 	CheckCICancelSuperseded
 	CheckJobTimeouts
@@ -159,6 +160,7 @@ var checkNames = [...]string{
 	CheckNixGetflakeGit:          "nix_getflake_git",
 	CheckGoPaths:                 "go_paths",
 	CheckGoCache:                 "go_cache",
+	CheckCacheSaveDefaultBranch:  "cache_save_default_branch",
 	CheckCacheUsage:              "cache_usage",
 	CheckCICancelSuperseded:      "ci_cancel_superseded",
 	CheckJobTimeouts:             "job_timeouts",

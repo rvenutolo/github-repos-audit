@@ -46,10 +46,10 @@ Where each tooling and community file lives. `≠` marks a path that differs fro
 
 ## CI efficiency
 
-| Repository                                 | Go cache | Cache use | Cancel superseded | Timeouts | Artifacts |
-| ------------------------------------------ | -------- | --------- | ----------------- | -------- | --------- |
-| [alpha](https://github.com/gh-owner/alpha) | n/a      | n/a       | ✓                 | ✓        | 0         |
-| [bravo](https://github.com/gh-owner/bravo) | n/a      | n/a       | ✓                 | ✓        | 0         |
+| Repository                                 | Go cache | Default-branch saves | Cache use | Cancel superseded | Timeouts | Artifacts |
+| ------------------------------------------ | -------- | -------------------- | --------- | ----------------- | -------- | --------- |
+| [alpha](https://github.com/gh-owner/alpha) | n/a      | n/a                  | n/a       | ✓                 | ✓        | 0         |
+| [bravo](https://github.com/gh-owner/bravo) | n/a      | n/a                  | n/a       | ✓                 | ✓        | 0         |
 
 ## Policy
 

@@ -117,6 +117,9 @@ func job(id string, n *yaml.Node) (audit.Job, error) {
 		return j, err
 	}
 	j.Reusable = uses != ""
+	if j.If, err = scalar(lookup(n, "if"), where+".if"); err != nil {
+		return j, err
+	}
 	if j.TimeoutMinutes, err = scalar(lookup(n, "timeout-minutes"), where+".timeout-minutes"); err != nil {
 		return j, err
 	}
@@ -162,7 +165,11 @@ func steps(n *yaml.Node, where string) ([]audit.StepUse, bool, error) {
 			if err != nil {
 				return nil, false, err
 			}
-			uses = append(uses, audit.StepUse{Action: action, With: with, Env: env})
+			cond, err := scalar(lookup(s, "if"), at+".if")
+			if err != nil {
+				return nil, false, err
+			}
+			uses = append(uses, audit.StepUse{Action: action, If: cond, With: with, Env: env})
 		}
 		run, err := scalar(lookup(s, "run"), at+".run")
 		if err != nil {

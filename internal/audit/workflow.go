@@ -102,6 +102,9 @@ type Job struct {
 	// workflow, so it has no steps of its own and its settings live in the
 	// called file.
 	Reusable bool `json:"reusable,omitzero"`
+	// If is the job's `if:` as written, with or without its `${{ }}`.
+	// Empty when absent.
+	If string `json:"if,omitzero"`
 	// TimeoutMinutes is `timeout-minutes:` as written, an expression
 	// included. Empty when absent, which leaves GitHub's six-hour default.
 	TimeoutMinutes string `json:"timeout_minutes,omitzero"`
@@ -122,6 +125,9 @@ type StepUse struct {
 	// "nix-community/cache-nix-action@<sha>" or "./.github/actions/setup".
 	// Resolving a local path to its composite action is the caller's job.
 	Action string `json:"action"`
+	// If is the step's `if:` as written, with or without its `${{ }}`.
+	// Empty when absent.
+	If string `json:"if,omitzero"`
 	// With is the step's `with:` inputs. Every value is a scalar, kept as
 	// written: `purge: true` is "true" and `gc-max-store-size-linux: 0` is
 	// "0", which is also what the action itself receives, since GitHub hands

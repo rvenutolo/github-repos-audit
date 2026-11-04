@@ -391,12 +391,13 @@ func nixSection(rep *rules.Report, at time.Time) string {
 // caches pull requests saved, all of which share the storage the checked
 // caches need.
 func ciEfficiencySection(rep *rules.Report) string {
-	t := newTable("Repository", "Go cache", "Cache use", "Cancel superseded", "Timeouts", "Artifacts")
+	t := newTable("Repository", "Go cache", "Default-branch saves", "Cache use", "Cancel superseded", "Timeouts", "Artifacts")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
 			repoLink(rep.Owner, r.Repo.Name),
 			cell(r.Cell(rules.CheckGoCache)),
+			cell(r.Cell(rules.CheckCacheSaveDefaultBranch)),
 			cell(r.Cell(rules.CheckCacheUsage)),
 			cell(r.Cell(rules.CheckCICancelSuperseded)),
 			cell(r.Cell(rules.CheckJobTimeouts)),

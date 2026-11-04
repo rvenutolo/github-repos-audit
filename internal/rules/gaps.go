@@ -64,6 +64,7 @@ var gapLabels = map[Check]string{
 	CheckNixGetflakeGit:          "builtins.getFlake reads the working tree outside git",
 	CheckGoPaths:                 "Go devShell without the standard GOPATH and GOMODCACHE",
 	CheckGoCache:                 "Go cache missing or empty on the default branch",
+	CheckCacheSaveDefaultBranch:  "Actions caches saved off the default branch",
 	CheckCacheUsage:              "Actions cache above 80% of its limit",
 	CheckCICancelSuperseded:      "Pull-request workflows without cancel-in-progress",
 	CheckJobTimeouts:             "Jobs without timeout-minutes",

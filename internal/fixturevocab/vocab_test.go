@@ -619,6 +619,8 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.(push|pull_request|pull_request_target)_branches(_ignore)?\[\]$`), matches(`^main$`), "the fixture default branch"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.id$`), matches(`^(check|test|lint|docs)$`), "a generic job id"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.(jobs\[\]\.)?concurrency\.cancel_in_progress$`), matches(`^(true|false)$`), "a literal cancel-in-progress"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.uses\[\]\.action$`), matches(`^actions/cache(/save|/restore)?@a{36}[0-9a-f]{4}$`), "a cache action pinned to a pattern oid"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.uses\[\]\.if$`), matches(`^github\.ref == 'refs/heads/main'$`), "a default-branch gate"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.timeout_minutes$`), matches(`^[0-9]+$`), "a literal timeout in minutes"},
 	{regexp.MustCompile(`^repos\[\]\.renovate\.(min_release_age_source|min_release_age_error)$`), namesOnlyFakeRepos, "text naming only gh-owner/<fake> repositories"},
 	// Recorded Claude facts: the synthetic Claude file paths and names the

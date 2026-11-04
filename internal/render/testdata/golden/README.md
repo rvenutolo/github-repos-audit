@@ -34,6 +34,7 @@ Hand-written prose.
 - **builtins.getFlake reads the working tree outside git** (1) — github-repos-audit
 - **Go devShell without the standard GOPATH and GOMODCACHE** (1) — mixedCase-flake
 - **Go cache missing or empty on the default branch** (1) — github-repos-audit
+- **Actions caches saved off the default branch** (1) — github-repos-audit
 - **Pull-request workflows without cancel-in-progress** (1) — github-repos-audit
 - **Jobs without timeout-minutes** (1) — github-repos-audit
 - **Skill can run without its / command** (2) — github-repos-audit, web-app
@@ -156,14 +157,14 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 
 ## CI efficiency
 
-| Repository                                                           | Go cache        | Cache use | Cancel superseded | Timeouts | Artifacts   |
-| -------------------------------------------------------------------- | --------------- | --------- | ----------------- | -------- | ----------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a             | n/a       | n/a               | n/a      | 0           |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✓ 2.3 GB  | ✗ 2 workflows     | ✗ 1 job  | 0           |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a       | n/a               | n/a      | 0           |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓ 481 MB  | ✓                 | ✓        | 12 · 206 MB |
-| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | n/a             | n/a       | ✓                 | ✓        | 0           |
-| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a       | ✓                 | ✓        | 0           |
+| Repository                                                           | Go cache        | Default-branch saves                                       | Cache use | Cancel superseded | Timeouts | Artifacts   |
+| -------------------------------------------------------------------- | --------------- | ---------------------------------------------------------- | --------- | ----------------- | -------- | ----------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a             | n/a                                                        | n/a       | n/a               | n/a      | 0           |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ empty (430 B) | ✗ saves off the default branch in .github/workflows/ci.yml | ✓ 2.3 GB  | ✗ 2 workflows     | ✗ 1 job  | 0           |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a             | n/a                                                        | n/a       | n/a               | n/a      | 0           |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 95 MB         | ✓                                                          | ✓ 481 MB  | ✓                 | ✓        | 12 · 206 MB |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | n/a             | n/a                                                        | n/a       | ✓                 | ✓        | 0           |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a             | n/a                                                        | n/a       | ✓                 | ✓        | 0           |
 
 ### Workflows without cancel-in-progress
 
