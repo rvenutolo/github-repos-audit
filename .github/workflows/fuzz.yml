@@ -13,7 +13,8 @@ name: fuzz
 #
 # A crasher is filed as a pull request rather than lost with the run (why:
 # .ci/fuzz-pull-request); the run still fails afterwards, so a finding also
-# arrives by mail.
+# arrives by mail. A failed scheduled run, for any reason, is also recorded in
+# an open issue (why: .ci/fuzz-failure-issue).
 on:
   schedule:
     # :17 because on-the-hour slots are the most contended on GitHub's
@@ -46,6 +47,8 @@ jobs:
     # checks — and a red gate on the input is the entire point here.
     permissions:
       contents: read
+    outputs:
+      summary: ${{ steps.summary.outputs.summary }}
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
@@ -97,7 +100,26 @@ jobs:
         env:
           # Through the environment, never interpolated into the script.
           DURATION: ${{ inputs.duration || '5m' }}
-        run: ./.ci/in-devshell ./.ci/run-fuzz "${DURATION}"
+        # bash, not the default shell, for pipefail: without it the step's
+        # status would be tee's, and a failed target would read as a pass.
+        shell: bash
+        run: ./.ci/in-devshell ./.ci/run-fuzz "${DURATION}" 2>&1 | tee "${RUNNER_TEMP}/run-fuzz.log"
+
+      - name: Collect the target summary
+        id: summary
+        # Read by report-failure. A run that failed before fuzzing has no log,
+        # and an empty summary says so.
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf 'summary<<FUZZ_SUMMARY_END\n'
+            if [[ -f "${RUNNER_TEMP}/run-fuzz.log" ]]; then
+              sed --quiet --regexp-extended 's/^\[run-fuzz\] INFO   ((PASS|FAIL) .*)$/\1/p' \
+                "${RUNNER_TEMP}/run-fuzz.log"
+            fi
+            printf 'FUZZ_SUMMARY_END\n'
+          } >> "${GITHUB_OUTPUT}"
 
       - name: File any new crasher as a pull request
         # REFRESH_TOKEN reaches this repository alone, with Contents and Pull
@@ -120,3 +142,41 @@ jobs:
       - name: Fail because fuzzing found a crasher
         if: steps.fuzz.outcome == 'failure'
         run: exit 1
+
+  # A separate job, so it still runs when the fuzz job is killed at its
+  # timeout, and so issues: write is granted here alone. It needs no Nix: the
+  # script uses only bash and gh, which the runner ships. Scheduled runs only:
+  # a dispatched run has someone watching it.
+  report-failure:
+    name: report failure
+    needs: fuzz
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .ci/fuzz-failure-issue
+            .ci/lib.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Record the failure in an issue
+        # Through the environment, never interpolated into the script.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_SHA: ${{ github.sha }}
+          FUZZ_SUMMARY: ${{ needs.fuzz.outputs.summary }}
+        run: ./.ci/fuzz-failure-issue

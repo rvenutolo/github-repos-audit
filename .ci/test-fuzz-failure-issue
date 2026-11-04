@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/fuzz-failure-issue against a stub gh, so the
+#              failure is proved to open an issue only when no open one
+#              carries the exact title, to comment on the open one otherwise,
+#              and to carry the run, the target summary and any crasher pull
+#              request, without any call reaching GitHub. The stub answers
+#              the two list reads from files in its directory, as gh would
+#              after its --jq filter, and records every argument list and the
+#              body file it was handed.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# @description Write a gh stand-in. `issue list` prints `issue-number` and
+#              `pr list` prints `pr-urls` from the stub's directory (nothing
+#              when absent); `issue create` and `issue comment` copy their
+#              --body-file to `body` so the case can read it.
+# @arg $1 dir directory to put the stub in
+# @arg $2 log file each call is appended to
+function write_stub() {
+  local -r dir="$1" log="$2"
+  # %q keeps a path holding a quote from breaking the stub.
+  local q_dir q_log
+  q_dir="$(printf '%q' "${dir}")"
+  q_log="$(printf '%q' "${log}")"
+  cat > "${dir}/gh" << STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> ${q_log}
+case "\$1 \$2" in
+  'issue list') if [[ -f ${q_dir}/issue-number ]]; then cat ${q_dir}/issue-number; fi ;;
+  'pr list') if [[ -f ${q_dir}/pr-urls ]]; then cat ${q_dir}/pr-urls; fi ;;
+  'issue create' | 'issue comment')
+    while ((\$#)); do
+      if [[ "\$1" == --body-file ]]; then cp -- "\$2" ${q_dir}/body; fi
+      shift
+    done
+    ;;
+esac
+STUB
+  chmod +x "${dir}/gh"
+}
+
+# @description Run the script with the stub first on PATH.
+# @arg $1 bin  the stub's directory
+# @arg $2 repo a git repository to run it from
+# @arg $3 summary FUZZ_SUMMARY for the run
+function run_script() {
+  local -r bin="$1" repo="$2" summary="$3"
+  (cd "${repo}" && PATH="${bin}:${PATH}" GITHUB_REPOSITORY='gh-owner/web-app' \
+    RUN_URL='https://github.com/gh-owner/web-app/actions/runs/1' RUN_SHA='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001' \
+    FUZZ_SUMMARY="${summary}" "${REPO_DIR}/.ci/fuzz-failure-issue" > /dev/null 2>&1)
+}
+
+function main() {
+  local rc=0
+  # work is not local: see the EXIT-trap note in .ci/check-account-data main().
+  work="$(mktemp --directory)"
+  trap 'rm -rf -- "${work}"' EXIT
+
+  local -r repo="${work}/repo" bin="${work}/bin" log="${work}/calls.log"
+  mkdir --parents "${repo}/.ci" "${bin}"
+  cp -- "${REPO_DIR}/.ci/lib.sh" "${repo}/.ci/lib.sh"
+  git -C "${repo}" init --quiet --initial-branch=main
+  write_stub "${bin}" "${log}"
+
+  # No open issue: one is created, with the exact title, carrying the run,
+  # the commit and the summary, and saying no crasher was filed.
+  : > "${log}"
+  if ! run_script "${bin}" "${repo}" $'PASS internal/config FuzzParse\nFAIL internal/renovate FuzzResolve'; then
+    ci::log 'FAIL: no open issue: the script exited non-zero'
+    rc=1
+  fi
+  if ! grep --quiet --fixed-strings -- 'issue create --repo gh-owner/web-app --title fuzz: scheduled run failed --body-file' "${log}"; then
+    ci::log 'FAIL: no open issue: no issue was created with the exact title'
+    rc=1
+  fi
+  if grep --quiet -- '^issue comment' "${log}"; then
+    ci::log 'FAIL: no open issue: a comment was posted'
+    rc=1
+  fi
+  local want
+  for want in 'https://github.com/gh-owner/web-app/actions/runs/1' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001' \
+    'FAIL internal/renovate FuzzResolve' 'No crasher pull request is open'; do
+    if ! grep --quiet --fixed-strings -- "${want}" "${bin}/body"; then
+      ci::log "FAIL: no open issue: the body lacks '${want}'"
+      rc=1
+    fi
+  done
+
+  # An open issue: the failure is a comment on it, and no issue is created.
+  # A crasher pull request is listed, and a missing summary is said to be one.
+  printf '%s\n' 7 > "${bin}/issue-number"
+  printf '%s\n' 'https://github.com/gh-owner/web-app/pull/9' > "${bin}/pr-urls"
+  rm -f -- "${bin}/body"
+  : > "${log}"
+  if ! run_script "${bin}" "${repo}" ''; then
+    ci::log 'FAIL: open issue: the script exited non-zero'
+    rc=1
+  fi
+  if ! grep --quiet --fixed-strings -- 'issue comment 7 --repo gh-owner/web-app --body-file' "${log}"; then
+    ci::log 'FAIL: open issue: no comment was posted on #7'
+    rc=1
+  fi
+  if grep --quiet -- '^issue create' "${log}"; then
+    ci::log 'FAIL: open issue: a second issue was created'
+    rc=1
+  fi
+  for want in 'https://github.com/gh-owner/web-app/pull/9' 'No target summary'; do
+    if ! grep --quiet --fixed-strings -- "${want}" "${bin}/body"; then
+      ci::log "FAIL: open issue: the body lacks '${want}'"
+      rc=1
+    fi
+  done
+
+  # A missing run URL stops it before any call that writes.
+  : > "${log}"
+  if (cd "${repo}" && PATH="${bin}:${PATH}" GITHUB_REPOSITORY='gh-owner/web-app' RUN_SHA='x' \
+    "${REPO_DIR}/.ci/fuzz-failure-issue" > /dev/null 2>&1); then
+    ci::log 'FAIL: RUN_URL unset: the script exited zero'
+    rc=1
+  fi
+  if grep --quiet -E -- '^issue (create|comment)' "${log}"; then
+    ci::log 'FAIL: RUN_URL unset: an issue was written'
+    rc=1
+  fi
+
+  ((rc == 0)) && ci::log 'fuzz-failure-issue: every case passed'
+  # A failing case is this harness's verdict, not a crash: drop the ERR trap
+  # so a non-zero return does not add its own "ERROR: line ..." after the
+  # case's FAIL line.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"
