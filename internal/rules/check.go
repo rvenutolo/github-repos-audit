@@ -68,6 +68,7 @@ const (
 	CheckNixCache
 	CheckNixInstaller
 	CheckNixGetflakeGit
+	CheckGoPaths
 	CheckGoCache
 	CheckCacheUsage
 	CheckCICancelSuperseded
@@ -156,6 +157,7 @@ var checkNames = [...]string{
 	CheckNixCache:                "nix_cache",
 	CheckNixInstaller:            "nix_installer",
 	CheckNixGetflakeGit:          "nix_getflake_git",
+	CheckGoPaths:                 "go_paths",
 	CheckGoCache:                 "go_cache",
 	CheckCacheUsage:              "cache_usage",
 	CheckCICancelSuperseded:      "ci_cancel_superseded",

@@ -18,6 +18,10 @@
       "type": "blob"
     },
     {
+      "path": "go.mod",
+      "type": "blob"
+    },
+    {
       "path": "Justfile",
       "type": "blob"
     },

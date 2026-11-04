@@ -26,6 +26,7 @@
 - **No automated flake.lock refresh** (1) — mixedCase-flake
 - **Nix cache missing, empty, oversized or misconfigured** (1) — github-repos-audit
 - **builtins.getFlake reads the working tree outside git** (1) — github-repos-audit
+- **Go devShell without the standard GOPATH and GOMODCACHE** (1) — mixedCase-flake
 - **Go cache missing or empty on the default branch** (1) — github-repos-audit
 - **Pull-request workflows without cancel-in-progress** (1) — github-repos-audit
 - **Jobs without timeout-minutes** (1) — github-repos-audit
@@ -138,14 +139,14 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 
 ## Nix
 
-| Repository                                                           | Lock age | Lock refresh | Nix cache | Installer | getFlake via git                 |
-| -------------------------------------------------------------------- | -------- | ------------ | --------- | --------- | -------------------------------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a      | n/a          | n/a       | n/a       | n/a                              |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ 46d    | ✓ Renovate   | ✗ 2.2 GB  | n/a       | ✗ not via git in .ci/check-flake |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a      | n/a          | n/a       | n/a       | n/a                              |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 3d     | ✗            | ✓ 206 MB  | n/a       | n/a                              |
-| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | ✓ 3d     | ✓ Renovate   | n/a       | n/a       | n/a                              |
-| [web-app](https://github.com/gh-owner/web-app)                       | n/a      | n/a          | n/a       | n/a       | n/a                              |
+| Repository                                                           | Lock age | Lock refresh | Nix cache | Installer | getFlake via git                 | Go paths     |
+| -------------------------------------------------------------------- | -------- | ------------ | --------- | --------- | -------------------------------- | ------------ |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | n/a      | n/a          | n/a       | n/a       | n/a                              | n/a          |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✗ 46d    | ✓ Renovate   | ✗ 2.2 GB  | n/a       | ✗ not via git in .ci/check-flake | ✓            |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | n/a      | n/a          | n/a       | n/a       | n/a                              | n/a          |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ 3d     | ✗            | ✓ 206 MB  | n/a       | n/a                              | ✗ GOMODCACHE |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | ✓ 3d     | ✓ Renovate   | n/a       | n/a       | n/a                              | n/a          |
+| [web-app](https://github.com/gh-owner/web-app)                       | n/a      | n/a          | n/a       | n/a       | n/a                              | n/a          |
 
 ## CI efficiency
 

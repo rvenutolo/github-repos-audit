@@ -544,6 +544,26 @@ Grouped by theme here; the report lists them in the fixed worklist order
   files in a repository fails it as `too many Nix files`, since they were not
   read. n/a without a tracked `.nix` file; a repository whose files hold no
   call passes. The report's Nix section shows it.
+- **go_paths** — whether a Go flake's devShell sets the standard Go paths, so
+  `go` never falls back to `~/go` and every project shares one module cache.
+  The tool reads every tracked `*.nix` file, not only `flake.nix`, and passes
+  the repository when both of these lines appear, each on a line of its own
+  (leading and trailing whitespace ignored), in one file or two:
+
+  ```sh
+  export GOPATH="$HOME/.cache/go"
+  export GOMODCACHE="$HOME/.cache/go/mod"
+  ```
+
+  The text must match exactly; any other line setting either variable, such
+  as `env.GOPATH = ...` or another directory, is no substitute. `$HOME` and
+  not `$XDG_CACHE_HOME`, which a devShell entered with
+  `nix develop --ignore-environment` does not keep. The cell names each
+  missing variable (`✗ GOPATH, GOMODCACHE`), then each `.nix` file that could
+  not be read in full as `unreadable <path>`, since it may set either. More
+  than 200 `.nix` files fails it as `too many Nix files`. n/a without a root
+  `go.mod` or without a `flake.nix`. The report's Nix section shows it.
+
 - **go_cache** — whether the default branch's Go cache holds something. Caches
   whose key starts `go-` are grouped into families as for nix_cache
   (`go-Linux`, `go-macOS`), counting only caches saved from the default
