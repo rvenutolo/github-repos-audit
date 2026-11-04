@@ -108,7 +108,10 @@ jobs:
         run: ./.ci/in-devshell ./.ci/fuzz-pull-request
 
       - name: Save the fuzz corpus
-        if: always()
+        # Only from the default branch: a dispatch on another branch would
+        # save the corpus under that branch's ref, which the scheduled runs
+        # on the default branch never restore.
+        if: always() && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/github-repos-audit/go-build/fuzz
