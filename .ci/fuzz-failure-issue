@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+
+# @description Record a failed scheduled fuzz run in an open issue, so a red
+#              run nobody happened to look at is not lost.
+#
+#              A scheduled run fails for several reasons: a crasher (which
+#              .ci/fuzz-pull-request also files as a pull request), a target
+#              that fails at its deadline without writing an input, or setup
+#              that never got as far as fuzzing. Each is worth a look, and a
+#              red X in the Actions tab is easy to miss. So every failure
+#              lands in one issue: the first opens it, and each later one
+#              comments on it while it stays open. Closing it starts a fresh
+#              one at the next failure.
+#
+#              It runs on a bare runner, outside the devshell: the job that
+#              calls it needs no Nix, which is itself one of the things that
+#              fail. So it uses only bash and gh, which every GitHub-hosted
+#              runner ships, and gh's own --jq rather than jq.
+#
+#              Environment:
+#                GITHUB_REPOSITORY  owner/name of this repository
+#                RUN_URL            the failed run's URL
+#                RUN_SHA            the commit the run fuzzed
+#                FUZZ_SUMMARY       .ci/run-fuzz's PASS/FAIL lines, one per
+#                                   target; empty when the run never got that
+#                                   far
+# @noargs
+# @exitcode 0 the failure is recorded in an issue
+# @exitcode 1 a required variable is unset, or gh could not record it
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+# The one title every failure issue carries, matched exactly to find the open
+# one. A constant, so it is safe inside the --jq filter below.
+readonly TITLE='fuzz: scheduled run failed'
+
+# The branch prefix .ci/fuzz-pull-request names a crasher's branch with.
+readonly CRASHER_PREFIX='test/fuzz-crasher-'
+
+# @description Write the issue or comment body for this failure.
+# @arg $1 file the path to write
+# @arg $2 prs  the open crasher pull request URLs, one per line, or ""
+function write_body() {
+  local -r file="$1" prs="$2"
+  # Markdown code spans and fences, not shell: the backticks are literal.
+  local -r fence='```'
+  {
+    printf 'A scheduled %s run failed: %s\n\n' "${fence:0:1}fuzz.yml${fence:0:1}" "${RUN_URL}"
+    printf 'Commit: %s\n\n' "${RUN_SHA}"
+    if [[ -n "${FUZZ_SUMMARY:-}" ]]; then
+      printf 'Targets:\n\n%s\n%s\n%s\n\n' "${fence}" "${FUZZ_SUMMARY}" "${fence}"
+    else
+      printf 'No target summary: the run failed before fuzzing finished. See the run.\n\n'
+    fi
+    if [[ -n "${prs}" ]]; then
+      printf 'Open crasher pull requests:\n\n'
+      local pr
+      while IFS= read -r pr; do
+        printf -- '- %s\n' "${pr}"
+      done <<< "${prs}"
+    else
+      printf 'No crasher pull request is open, so no target wrote a failing input; a deadline-only failure or a setup failure is likely.\n'
+    fi
+  } > "${file}"
+}
+
+function main() {
+  local -r repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}"
+  : "${RUN_URL:?RUN_URL is not set}" "${RUN_SHA:?RUN_SHA is not set}"
+
+  # work is not local: see the EXIT-trap note in .ci/check-account-data main().
+  work="$(mktemp --directory)"
+  trap 'rm -rf -- "${work}"' EXIT
+
+  local prs
+  prs="$(gh pr list --repo "${repo}" --state open --limit 100 --json headRefName,url \
+    --jq ".[] | select(.headRefName | startswith(\"${CRASHER_PREFIX}\")) | .url")"
+  write_body "${work}/body.md" "${prs}"
+
+  # The search narrows the list; the exact title match is what decides, since
+  # GitHub's search matches words, not the whole title.
+  local number
+  number="$(gh issue list --repo "${repo}" --state open --limit 100 \
+    --search "\"${TITLE}\" in:title" --json number,title \
+    --jq "[.[] | select(.title == \"${TITLE}\")] | sort_by(.number) | .[0].number // empty")"
+
+  if [[ -n "${number}" ]]; then
+    ci::log "commenting on the open issue #${number}"
+    gh issue comment "${number}" --repo "${repo}" --body-file "${work}/body.md"
+  else
+    ci::log 'opening a new issue'
+    gh issue create --repo "${repo}" --title "${TITLE}" --body-file "${work}/body.md"
+  fi
+}
+
+main "$@"
