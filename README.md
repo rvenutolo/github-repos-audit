@@ -350,14 +350,15 @@ Grouped by theme here; the report lists them in the fixed worklist order
   a wrong-typed `minimumReleaseAge`), as `renovate_min_release_age` does; `audit.json` records the verdict as
   `automerge_major`. n/a without a Renovate configuration.
 - **renovate_dashboard** — whether Renovate actually runs on the repository,
-  not merely whether it is configured: Renovate opens its Dependency
-  Dashboard issue on its first run, so the check passes when an issue created
-  by Renovate's hosted app (`renovate[bot]`) titled exactly
-  `Dependency Dashboard` is open, and shows its number. It fails with
-  `no dashboard` when there is none (Renovate has no access, has never run,
-  or the configuration turns the dashboard off), `closed #N` when the
-  dashboard is closed, and `issues off` when the repository has issues
-  disabled. A dashboard renamed with `dependencyDashboardTitle`, closed by
+  not merely whether it is configured: with the dashboard enabled (as
+  `config:recommended` does), Renovate opens its Dependency Dashboard issue on
+  its first run, so the check passes when an issue created by Renovate's
+  hosted app (`renovate[bot]`) titled exactly `Dependency Dashboard` is open,
+  and shows its number. It fails with `no dashboard` when there has never
+  been one (Renovate has no access, has never run, or the configuration never
+  enabled the dashboard), `closed #N` when the dashboard is closed (Renovate
+  has stopped, or the configuration turned the dashboard off after it
+  existed), and `issues off` when the repository has issues disabled. A dashboard renamed with `dependencyDashboardTitle`, closed by
   `dependencyDashboardAutoclose`, or opened by self-hosted Renovate under
   another login fails the same way. When the dashboard last changed is
   not judged: Renovate edits it only when its content changes, so a quiet

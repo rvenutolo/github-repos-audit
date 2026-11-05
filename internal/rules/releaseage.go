@@ -121,7 +121,8 @@ func thresholdDeadReason(typ Type, spec typeSpec, exp expectation, value string)
 //
 // A closed dashboard fails: without dependencyDashboardAutoclose, which this
 // check does not support, Renovate reopens a closed dashboard on its next
-// run, so one that stays closed means Renovate has stopped. A repository with
+// run, so one that stays closed means Renovate has stopped or its
+// configuration turns the dashboard off; both fail. A repository with
 // issues off cannot have a dashboard at all, and says so rather than "no
 // dashboard", since the fix is a setting, not Renovate's access.
 func observeRenovateDashboard(r audit.Repo) observation {
