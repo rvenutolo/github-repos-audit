@@ -4,6 +4,20 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v10.0.0
+
+### Breaking changes
+
+- add the renovate_dashboard check
+
+### Features
+
+- collect the Renovate Dependency Dashboard issue
+
+### Fixes
+
+- retry a deadline-only fuzz failure instead of calling it a crasher
+
 ## v9.0.0
 
 ### Breaking changes
