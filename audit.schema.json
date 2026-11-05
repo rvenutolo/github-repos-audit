@@ -116,6 +116,7 @@
               "renovate",
               "renovate_min_release_age",
               "renovate_automerge_major",
+              "renovate_dashboard",
               "editorconfig",
               "flake_nix",
               "justfile",
@@ -257,6 +258,7 @@
         },
         "files": { "$ref": "#/$defs/files" },
         "renovate": { "$ref": "#/$defs/renovate" },
+        "renovate_dashboard": { "$ref": "#/$defs/renovate_dashboard" },
         "flake": { "$ref": "#/$defs/flake" },
         "workflow_facts": {
           "description": "Every .yml or .yaml file in .github/workflows, parsed, sorted by path. Absent when there is none.",
@@ -309,6 +311,7 @@
         "renovate",
         "renovate_min_release_age",
         "renovate_automerge_major",
+        "renovate_dashboard",
         "editorconfig",
         "flake_nix",
         "justfile",
@@ -394,6 +397,7 @@
         "renovate": { "$ref": "#/$defs/expectation" },
         "renovate_min_release_age": { "$ref": "#/$defs/release_age_threshold" },
         "renovate_automerge_major": { "$ref": "#/$defs/expectation" },
+        "renovate_dashboard": { "$ref": "#/$defs/expectation" },
         "editorconfig": { "$ref": "#/$defs/expectation" },
         "flake_nix": { "$ref": "#/$defs/expectation" },
         "justfile": { "$ref": "#/$defs/expectation" },
@@ -487,6 +491,23 @@
           "pattern": "^[1-9][0-9]* (minute|hour|day|week)s?$"
         }
       ]
+    },
+    "renovate_dashboard": {
+      "description": "The issue created by renovate[bot] whose title is exactly \"Dependency Dashboard\": the open one when there is one, otherwise the most recently created closed one. Absent when there is neither.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "state"],
+      "properties": {
+        "number": {
+          "description": "The issue number.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "description": "Whether the issue is open or closed.",
+          "enum": ["OPEN", "CLOSED"]
+        }
+      }
     },
     "renovate": {
       "description": "What the Renovate configuration says beyond where it lives. Absent when there is no configuration, or when nothing below was found.",

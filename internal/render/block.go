@@ -149,7 +149,7 @@ func metadataSection(rep *rules.Report) string {
 }
 
 func treeSection(rep *rules.Report) string {
-	t := newTable("Repository", "Min. release age", "Major automerge", ".gitignore", ".editorconfig",
+	t := newTable("Repository", "Min. release age", "Major automerge", "Dashboard", ".gitignore", ".editorconfig",
 		"flake.nix", "CHANGELOG", "Community files")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
@@ -157,6 +157,7 @@ func treeSection(rep *rules.Report) string {
 			repoLink(rep.Owner, r.Repo.Name),
 			cell(r.Cell(rules.CheckRenovateMinReleaseAge)),
 			cell(r.Cell(rules.CheckRenovateAutomergeMajor)),
+			cell(r.Cell(rules.CheckRenovateDashboard)),
 			cell(r.Cell(rules.CheckGitignore)),
 			cell(r.Cell(rules.CheckEditorconfig)),
 			cell(r.Cell(rules.CheckFlakeNix)),

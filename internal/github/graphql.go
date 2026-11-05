@@ -42,6 +42,14 @@ const graphQLPath = "/graphql"
 // API (see fetchCI). Merged pull requests can only be ordered by when they
 // were last updated, not by when they merged, which is why each one's merge
 // time is selected beside it.
+//
+// The issues renovate[bot] created ride along for the Dependency Dashboard.
+// The author is filtered here because anyone can open an issue with the
+// dashboard's title. The filter takes the login "renovate[bot]" while each
+// node's author comes back as "renovate", so the answer's author is never
+// compared to it. Open and closed issues are separate connections so that a
+// run of closed issues cannot push the open dashboard off the page; each is
+// newest first.
 const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     description
@@ -69,6 +77,12 @@ const repoQuery = `query RepoAudit($owner: String!, $name: String!) {
       total_count: totalCount
     }
     has_issues: hasIssuesEnabled
+    renovate_open_issues: issues(states: OPEN, first: 50, filterBy: { createdBy: "renovate[bot]" }, orderBy: { field: CREATED_AT, direction: DESC }) {
+      nodes { number title }
+    }
+    renovate_closed_issues: issues(states: CLOSED, first: 20, filterBy: { createdBy: "renovate[bot]" }, orderBy: { field: CREATED_AT, direction: DESC }) {
+      nodes { number title }
+    }
     has_wiki: hasWikiEnabled
     has_projects: hasProjectsEnabled
     has_discussions: hasDiscussionsEnabled
@@ -329,20 +343,24 @@ type treeEntry struct {
 
 // repository is the decoded shape of the query above.
 type repository struct {
-	Description         string       `json:"description"`
-	HomepageURL         string       `json:"homepage_url"`
-	Visibility          string       `json:"visibility"`
-	PushedAt            *time.Time   `json:"pushed_at"`
-	LicenseInfo         *licenseInfo `json:"license_info"`
-	Topics              countOf      `json:"topics"`
-	OpenPullRequests    countOf      `json:"open_pull_requests"`
-	MergedPullRequests  mergedList   `json:"merged_pull_requests"`
-	Branches            countOf      `json:"branches"`
-	HasIssues           bool         `json:"has_issues"`
-	HasWiki             bool         `json:"has_wiki"`
-	HasProjects         bool         `json:"has_projects"`
-	HasDiscussions      bool         `json:"has_discussions"`
-	VulnerabilityAlerts bool         `json:"vulnerability_alerts"`
+	Description        string       `json:"description"`
+	HomepageURL        string       `json:"homepage_url"`
+	Visibility         string       `json:"visibility"`
+	PushedAt           *time.Time   `json:"pushed_at"`
+	LicenseInfo        *licenseInfo `json:"license_info"`
+	Topics             countOf      `json:"topics"`
+	OpenPullRequests   countOf      `json:"open_pull_requests"`
+	MergedPullRequests mergedList   `json:"merged_pull_requests"`
+	Branches           countOf      `json:"branches"`
+	HasIssues          bool         `json:"has_issues"`
+
+	RenovateOpenIssues   issueList `json:"renovate_open_issues"`
+	RenovateClosedIssues issueList `json:"renovate_closed_issues"`
+
+	HasWiki             bool `json:"has_wiki"`
+	HasProjects         bool `json:"has_projects"`
+	HasDiscussions      bool `json:"has_discussions"`
+	VulnerabilityAlerts bool `json:"vulnerability_alerts"`
 
 	MergeCommitAllowed  bool   `json:"merge_commit_allowed"`
 	SquashMergeAllowed  bool   `json:"squash_merge_allowed"`
@@ -479,6 +497,17 @@ type historyNode struct {
 type gitActor struct {
 	Name  *string `json:"name"`
 	Email *string `json:"email"`
+}
+
+// issueList is a page of issues, as the Renovate dashboard probes select
+// them.
+type issueList struct {
+	Nodes []issueNode `json:"nodes"`
+}
+
+type issueNode struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
 }
 
 // mergedList is the latest merged pull requests, as repoQuery selects them.

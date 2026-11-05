@@ -89,6 +89,8 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json", AutomergeMajor: true,
 			NixManager: true, LockFileMaintenance: true,
 		},
+		// Renovate has run: its Dependency Dashboard is open.
+		RenovateDashboard: audit.RenovateDashboard{Number: 1, State: "OPEN"},
 		// ci.yml runs on pull requests into the default branch and on a push
 		// to it, cancels superseded runs and bounds its one job.
 		Workflows: []audit.Workflow{{

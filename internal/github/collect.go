@@ -145,6 +145,8 @@ func (r *repository) toAudit(name string) audit.Repo {
 		Releases:         r.releases(),
 		Rulesets:         r.rulesets(),
 		CI:               r.ci(),
+
+		RenovateDashboard: r.renovateDashboard(),
 		Settings: audit.Settings{
 			HasIssues:           r.HasIssues,
 			HasWiki:             r.HasWiki,
@@ -184,6 +186,28 @@ func (r *repository) toAudit(name string) audit.Repo {
 		}
 	}
 	return repo
+}
+
+// dashboardTitle is the title Renovate gives its Dependency Dashboard unless
+// dependencyDashboardTitle renames it. Renovate itself finds its dashboard by
+// title, and its other issues (configuration errors) share the author, so the
+// title is what tells them apart.
+const dashboardTitle = "Dependency Dashboard"
+
+// renovateDashboard picks the Dependency Dashboard out of the issues
+// renovate[bot] created: the newest open one, otherwise the newest closed one.
+func (r *repository) renovateDashboard() audit.RenovateDashboard {
+	for _, list := range []struct {
+		issues issueList
+		state  string
+	}{{r.RenovateOpenIssues, "OPEN"}, {r.RenovateClosedIssues, "CLOSED"}} {
+		for _, issue := range list.issues.Nodes {
+			if issue.Title == dashboardTitle {
+				return audit.RenovateDashboard{Number: issue.Number, State: list.state}
+			}
+		}
+	}
+	return audit.RenovateDashboard{}
 }
 
 // files records which probed paths exist at HEAD.

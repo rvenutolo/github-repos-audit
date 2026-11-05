@@ -508,6 +508,9 @@ var apiRules = []rule{
 	{regexp.MustCompile(`^artifacts\[\]\.name$`), matches(`^artifact-\d{2}$`), "a synthetic artifact name"},
 	{regexp.MustCompile(`^artifacts\[\]\.expires_at$`), matches(timestamp), "a timestamp"},
 	{regexp.MustCompile(`^data\.repository\.merged_pull_requests\.nodes\[\]\.author\.type$`), matches(`^(User|Bot)$`), "User or Bot"},
+	// renovate[bot]'s issue titles are Renovate's own words, never the
+	// account's; the case variant is a fixture for the exact-title match.
+	{regexp.MustCompile(`^data\.repository\.renovate_(open|closed)_issues\.nodes\[\]\.title$`), matches(`^(Dependency Dashboard|dependency dashboard|Action Required: Fix Renovate Configuration)$`), "a Renovate issue title"},
 	keep(
 		`access_level`, `allowed_actions`, `\[\]\.archived`, `archived`, `\[\]\.disabled`, `disabled`,
 		`\[\]\.fork`, `fork`, `\[\]\.private`, `private`, `\[\]\.visibility`, `visibility`,
@@ -535,9 +538,9 @@ var apiRules = []rule{
 		`data\.repository\.actions\.entries\[\]\.type`,
 		`data\.repository\.f\d+\.(is_truncated|is_binary)`,
 		`data\.repository\.(default_branch_ref\.target|object)\.history\.page_info\.has_next_page`,
-		// A pull request number, a run's event, a run's or job's status and a
+		// A pull request or issue number, a run's event, a run's or job's status and a
 		// list's total are counts and enums.
-		`data\.repository\.merged_pull_requests\.nodes\[\]\.number`,
+		`data\.repository\.(merged_pull_requests|renovate_open_issues|renovate_closed_issues)\.nodes\[\]\.number`,
 		`(workflow_runs|jobs)\[\]\.status`, `workflow_runs\[\]\.event`, `total_count`,
 		// Storage sizes, counts and the expired flag.
 		`(actions_caches|artifacts)\[\]\.size_in_bytes`, `artifacts\[\]\.expired`,
@@ -668,6 +671,7 @@ var snapshotRules = []rule{
 		// A duration such as "7 days" is never account data.
 		`repos\[\]\.renovate\.min_release_age`,
 		`repos\[\]\.renovate\.(automerge_major|lock_file_maintenance|nix_manager)`,
+		`repos\[\]\.renovate_dashboard\.(number|state)`,
 		`repos\[\]\.rulesets\[\]\.(enforcement|include\[\]|rules\[\]|target)`,
 		`repos\[\]\.settings\.[a-z_]+`,
 		`repos\[\]\.settings\.allowed_actions\.(github_owned_allowed|verified_allowed)`,

@@ -68,6 +68,7 @@
       "releases": "not_required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -153,6 +154,7 @@
       "releases": "not_required",
       "renovate": "not_required",
       "renovate_automerge_major": "required",
+      "renovate_dashboard": "required",
       "renovate_min_release_age": "not_required",
       "required_checks": "not_required",
       "secret_scanning": "public",
@@ -238,6 +240,7 @@
       "releases": "not_required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -323,6 +326,7 @@
       "releases": "not_required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -408,6 +412,7 @@
       "releases": "required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -493,6 +498,7 @@
       "releases": "not_required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
       "secret_scanning": "public",
@@ -569,6 +575,10 @@
         "nix_manager": true,
         "lock_file_maintenance": true,
         "automerge_major": true
+      },
+      "renovate_dashboard": {
+        "number": 1,
+        "state": "OPEN"
       },
       "flake": {
         "has_lock": true,
@@ -714,6 +724,10 @@
         "nix_manager": true,
         "lock_file_maintenance": true,
         "automerge_major": true
+      },
+      "renovate_dashboard": {
+        "number": 1,
+        "state": "OPEN"
       },
       "flake": {
         "has_lock": true,

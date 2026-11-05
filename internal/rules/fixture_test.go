@@ -85,6 +85,8 @@ func fixture(name string, typ rules.Type) audit.Repo {
 			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json", AutomergeMajor: true,
 			NixManager: true, LockFileMaintenance: true,
 		},
+		// Renovate has run: its Dependency Dashboard is open.
+		RenovateDashboard: audit.RenovateDashboard{Number: 1, State: "OPEN"},
 		// ci.yml runs on pull requests and on a push to the default branch,
 		// cancels superseded runs and bounds its one job, so every check
 		// that reads workflows passes.

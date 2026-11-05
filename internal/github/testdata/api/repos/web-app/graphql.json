@@ -36,6 +36,8 @@
         "total_count": 1
       },
       "has_issues": true,
+      "renovate_open_issues": { "nodes": [{ "number": 7, "title": "Dependency Dashboard" }] },
+      "renovate_closed_issues": { "nodes": [{ "number": 2, "title": "Dependency Dashboard" }] },
       "has_wiki": false,
       "has_projects": false,
       "has_discussions": false,

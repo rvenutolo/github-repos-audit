@@ -111,6 +111,11 @@ type Repo struct {
 	Files Files `json:"files"`
 	// Renovate is what the Renovate configuration says, when there is one.
 	Renovate Renovate `json:"renovate,omitzero"`
+	// RenovateDashboard is the Dependency Dashboard issue Renovate opened,
+	// when there is one. It sits beside Renovate rather than inside it
+	// because Renovate is what the configuration says, and this is what
+	// Renovate itself left behind by running.
+	RenovateDashboard RenovateDashboard `json:"renovate_dashboard,omitzero"`
 	// Flake is what flake.lock says. Zero when there is no flake.lock.
 	Flake Flake `json:"flake,omitzero"`
 	// Workflows is every .yml or .yaml file in .github/workflows, parsed,
@@ -182,6 +187,18 @@ type Renovate struct {
 	// holding some of them in a narrower packageRule. False when off,
 	// unset, of the wrong type, or unresolved.
 	AutomergeMajor bool `json:"automerge_major,omitzero"`
+}
+
+// RenovateDashboard is the issue created by renovate[bot] whose title is
+// exactly "Dependency Dashboard": the open one when there is one, otherwise
+// the most recently created closed one. Zero when there is neither. No dates
+// are kept: the issue's update time changes on every Renovate edit, comment
+// or reaction, and would make audit.json churn.
+type RenovateDashboard struct {
+	// Number is the issue number.
+	Number int `json:"number"`
+	// State is OPEN or CLOSED.
+	State string `json:"state"`
 }
 
 // Files records the outcome of every file-existence probe. A probe answers

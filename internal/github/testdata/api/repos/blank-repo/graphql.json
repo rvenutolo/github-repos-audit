@@ -19,6 +19,8 @@
         "total_count": 0
       },
       "has_issues": true,
+      "renovate_open_issues": { "nodes": [] },
+      "renovate_closed_issues": { "nodes": [] },
       "has_wiki": false,
       "has_projects": false,
       "has_discussions": false,
