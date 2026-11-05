@@ -56,6 +56,7 @@ function main() {
   "${REPO_DIR}/.ci/test-refresh-pull-request" || rc=1
   "${REPO_DIR}/.ci/test-gremlins-pull-request" || rc=1
   "${REPO_DIR}/.ci/test-fuzz-failure-issue" || rc=1
+  "${REPO_DIR}/.ci/test-run-fuzz" || rc=1
   "${REPO_DIR}/.ci/test-check-account-data" || rc=1
   "${REPO_DIR}/.ci/test-check-patch-coverage" || rc=1
   "${REPO_DIR}/.ci/test-check-coverage-drop" || rc=1

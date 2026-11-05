@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/run-fuzz against a stub go, so each way a target
+#              can end is proved to land in the right bucket: a pass, a
+#              crasher (an input appears under testdata/fuzz), a deadline-only
+#              failure that passes on its one retry, one that repeats, and a
+#              failure with neither (a build error), which is never retried.
+#              The stub fuzzes nothing: it prints what `go test -fuzz` prints
+#              and, for a crasher, writes an inert marker file where the input
+#              would go.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly PKG='example.com/fixture/web-app'
+
+# @description Write a go stand-in for one package holding one target,
+#              FuzzParse. `go list` prints the package and `go test -list`
+#              the target. Each `go test -fuzz` call is appended to `calls`
+#              and acts out the next line of `plan` in the stub's directory:
+#              pass, crash, deadline or error.
+# @arg $1 dir  directory to put the stub in
+# @arg $2 repo the repository the stub writes a crasher's input into
+function write_stub() {
+  local -r dir="$1" repo="$2"
+  local q_dir q_repo
+  q_dir="$(printf '%q' "${dir}")"
+  q_repo="$(printf '%q' "${repo}")"
+  cat > "${dir}/go" << STUB
+#!/usr/bin/env bash
+case "\$1" in
+  list) printf '%s\n' '${PKG}'; exit 0 ;;
+esac
+if [[ "\$2" == -list ]]; then
+  printf 'FuzzParse\nok  \t%s\t0.01s\n' '${PKG}'
+  exit 0
+fi
+printf '%s\n' "\$*" >> ${q_dir}/calls
+step="\$(head --lines=1 ${q_dir}/plan)"
+sed --in-place 1d ${q_dir}/plan
+case "\${step}" in
+  pass) printf 'PASS\nok  \t%s\t300.1s\n' '${PKG}' ;;
+  crash)
+    mkdir --parents ${q_repo}/web-app/testdata/fuzz/FuzzParse
+    printf 'MARKER\n' > ${q_repo}/web-app/testdata/fuzz/FuzzParse/0123abcd
+    printf -- '--- FAIL: FuzzParse (1.2s)\n    Failing input written to testdata/fuzz/FuzzParse/0123abcd\nFAIL\n'
+    exit 1
+    ;;
+  deadline)
+    printf -- '--- FAIL: FuzzParse (300.11s)\n    context deadline exceeded\nFAIL\n'
+    exit 1
+    ;;
+  *)
+    printf 'web-app/parse.go:1:1: expected package\nFAIL\t%s [build failed]\n' '${PKG}'
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "${dir}/go"
+}
+
+# @description Run one case: reset the stub's plan and calls and the repo's
+#              untracked inputs, run the script, and check its exit status,
+#              the number of `go test -fuzz` calls and what its output says.
+# @arg $1 name   the case's name, for failure messages
+# @arg $2 plan   the stub's plan, one step per line
+# @arg $3 status the exit status the script must end with
+# @arg $4 calls  how many times the target must be fuzzed
+# @arg $5 want   a line the output must contain
+# @arg $6 unwanted a line the output must not contain, or ""
+# @stdout nothing; failures are logged
+# @exitcode 0 the case passed
+# @exitcode 1 it failed
+function check_case() {
+  local -r name="$1" plan="$2" want_status="$3" want_calls="$4" want="$5" unwanted="$6"
+  local rc=0 status=0 calls
+  printf '%s\n' "${plan}" > "${bin}/plan"
+  : > "${bin}/calls"
+  rm -rf -- "${repo:?}/web-app/testdata"
+  (cd "${repo}" && PATH="${bin}:${PATH}" "${REPO_DIR}/.ci/run-fuzz" 5m > "${work}/out" 2>&1) || status=$?
+  if ((status != want_status)); then
+    ci::log "FAIL: ${name}: exited ${status}, want ${want_status}"
+    rc=1
+  fi
+  calls="$(wc --lines < "${bin}/calls")"
+  if ((calls != want_calls)); then
+    ci::log "FAIL: ${name}: fuzzed the target ${calls} time(s), want ${want_calls}"
+    rc=1
+  fi
+  if ! grep --quiet --fixed-strings -- "${want}" "${work}/out"; then
+    ci::log "FAIL: ${name}: the output lacks '${want}'"
+    rc=1
+  fi
+  if [[ -n "${unwanted}" ]] && grep --quiet --fixed-strings -- "${unwanted}" "${work}/out"; then
+    ci::log "FAIL: ${name}: the output has '${unwanted}'"
+    rc=1
+  fi
+  if ((rc != 0)); then
+    sed 's/^/    | /' "${work}/out" >&2
+  fi
+  return "${rc}"
+}
+
+function main() {
+  local rc=0
+  # work, repo and bin are not local: check_case reads them, and work is read
+  # by the EXIT trap (see the note in .ci/check-account-data main()).
+  work="$(mktemp --directory)"
+  trap 'rm -rf -- "${work}"' EXIT
+  repo="${work}/repo"
+  bin="${work}/bin"
+
+  mkdir --parents "${repo}/.ci" "${bin}"
+  cp -- "${REPO_DIR}/.ci/lib.sh" "${repo}/.ci/lib.sh"
+  git -C "${repo}" init --quiet --initial-branch=main
+  write_stub "${bin}" "${repo}"
+
+  local -r summary='[run-fuzz] INFO   '
+  check_case 'pass' 'pass' 0 1 "${summary}PASS ${PKG} FuzzParse" 'retried' || rc=1
+  check_case 'crasher' 'crash' 1 1 "${summary}CRASH ${PKG} FuzzParse" 'fuzzing-infrastructure' || rc=1
+  check_case 'crasher names its input' 'crash' 1 1 'a CRASH target wrote its input under' '' || rc=1
+  check_case 'deadline then pass' $'deadline\npass' 0 2 \
+    "${summary}PASS ${PKG} FuzzParse (retried after a deadline-only failure)" 'fuzzing-infrastructure' || rc=1
+  check_case 'deadline then pass warns' $'deadline\npass' 0 2 '::warning title=fuzz deadline-only failure::' '' || rc=1
+  check_case 'deadline twice' $'deadline\ndeadline' 1 2 "${summary}FAIL ${PKG} FuzzParse" 'a CRASH target' || rc=1
+  check_case 'deadline twice is infrastructure' $'deadline\ndeadline' 1 2 \
+    'a FAIL target wrote no input: that is a fuzzing-infrastructure failure, not a crasher' '' || rc=1
+  check_case 'deadline then crasher' $'deadline\ncrash' 1 2 "${summary}CRASH ${PKG} FuzzParse" '' || rc=1
+  check_case 'build error is not retried' 'error' 1 1 "${summary}FAIL ${PKG} FuzzParse" 'retrying' || rc=1
+
+  if ((rc == 0)); then
+    ci::log 'all run-fuzz cases passed'
+  fi
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"
