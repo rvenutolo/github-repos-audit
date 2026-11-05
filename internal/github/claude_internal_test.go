@@ -393,7 +393,7 @@ func TestClaudeFacts_pluginAndProjectFiles(t *testing.T) {
 		Commands: []audit.ClaudeSkill{
 			withDescription(inline("command-01", 4, "skill-01"), "Placeholder entry description."),
 			inline("command-02", 4, ""),
-			{Path: ".claude-plugin/plugin.json#commands/command-03", Dir: "command-03", Unreadable: "frontmatter is not valid YAML: yaml: did not find expected key"},
+			{Path: ".claude-plugin/plugin.json#commands/command-03", Dir: "command-03", Unreadable: "frontmatter is not valid YAML: yaml: line 2: did not find expected node content"},
 		},
 		Hooks: []audit.ClaudeHook{
 			{Source: ".claude-plugin/plugin.json", Plugin: true, Event: "Stop", Type: "prompt"},

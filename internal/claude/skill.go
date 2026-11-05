@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // Skill is what a SKILL.md or a command file says about itself. Frontmatter is
