@@ -134,18 +134,17 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 // empty state, and what any of that means is internal/rules' decision.
 func (r *repository) toAudit(name string) audit.Repo {
 	repo := audit.Repo{
-		Name:             name,
-		Visibility:       strings.ToLower(r.Visibility),
-		Description:      r.Description,
-		Homepage:         r.HomepageURL,
-		Topics:           r.Topics.TotalCount,
-		OpenPullRequests: r.OpenPullRequests.TotalCount,
-		Branches:         r.Branches.TotalCount,
-		Files:            r.files(),
-		Releases:         r.releases(),
-		Rulesets:         r.rulesets(),
-		CI:               r.ci(),
-
+		Name:              name,
+		Visibility:        strings.ToLower(r.Visibility),
+		Description:       r.Description,
+		Homepage:          r.HomepageURL,
+		Topics:            r.Topics.TotalCount,
+		OpenPullRequests:  r.OpenPullRequests.TotalCount,
+		Branches:          r.Branches.TotalCount,
+		Files:             r.files(),
+		Releases:          r.releases(),
+		Rulesets:          r.rulesets(),
+		CI:                r.ci(),
 		RenovateDashboard: r.renovateDashboard(),
 		Settings: audit.Settings{
 			HasIssues:           r.HasIssues,
