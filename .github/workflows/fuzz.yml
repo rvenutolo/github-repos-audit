@@ -13,8 +13,10 @@ name: fuzz
 #
 # A crasher is filed as a pull request rather than lost with the run (why:
 # .ci/fuzz-pull-request); the run still fails afterwards, so a finding also
-# arrives by mail. A failed scheduled run, for any reason, is also recorded in
-# an open issue (why: .ci/fuzz-failure-issue).
+# arrives by mail. A target that fails at its deadline without writing an input
+# is retried once rather than failing the run (why: .ci/run-fuzz). A failed
+# scheduled run, for any reason, is also recorded in an open issue (why:
+# .ci/fuzz-failure-issue).
 on:
   schedule:
     # :17 because on-the-hour slots are the most contended on GitHub's
@@ -38,9 +40,10 @@ jobs:
   fuzz:
     name: fuzz
     runs-on: ubuntu-latest
-    # Four targets at the 5m default plus the Nix and Go restores is roughly
-    # twenty-five minutes; the rest is headroom for a longer dispatched duration.
-    timeout-minutes: 45
+    # Every target at the 5m default plus the Nix and Go restores, with room for
+    # a deadline-only retry (one more target's worth) and a longer dispatched
+    # duration. A new fuzz target adds five minutes; raise this with it.
+    timeout-minutes: 60
     # contents: read is for actions/checkout and nothing else. The pull request
     # a crasher produces is opened with REFRESH_TOKEN for the same reason the
     # refresh does (audit.yml): the built-in token's pull request would get no
@@ -115,7 +118,7 @@ jobs:
           {
             printf 'summary<<FUZZ_SUMMARY_END\n'
             if [[ -f "${RUNNER_TEMP}/run-fuzz.log" ]]; then
-              sed --quiet --regexp-extended 's/^\[run-fuzz\] INFO   ((PASS|FAIL) .*)$/\1/p' \
+              sed --quiet --regexp-extended 's/^\[run-fuzz\] INFO   ((PASS|CRASH|FAIL) .*)$/\1/p' \
                 "${RUNNER_TEMP}/run-fuzz.log"
             fi
             printf 'FUZZ_SUMMARY_END\n'
@@ -139,7 +142,9 @@ jobs:
           path: ~/.cache/github-repos-audit/go-build/fuzz
           key: fuzz-corpus-${{ github.run_id }}
 
-      - name: Fail because fuzzing found a crasher
+      # A target failed: CRASH or FAIL in the summary above, and the fuzz
+      # step's log says which and what it means.
+      - name: Fail because a target failed
         if: steps.fuzz.outcome == 'failure'
         run: exit 1
 
