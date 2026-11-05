@@ -5,7 +5,8 @@
 #
 #              A scheduled run fails for several reasons: a crasher (which
 #              .ci/fuzz-pull-request also files as a pull request), a target
-#              that fails at its deadline without writing an input, or setup
+#              that fails without writing an input (a build error, or a
+#              deadline-only failure that repeated on its retry), or setup
 #              that never got as far as fuzzing. Each is worth a look, and a
 #              red X in the Actions tab is easy to miss. So every failure
 #              lands in one issue: the first opens it, and each later one
@@ -21,9 +22,9 @@
 #                GITHUB_REPOSITORY  owner/name of this repository
 #                RUN_URL            the failed run's URL
 #                RUN_SHA            the commit the run fuzzed
-#                FUZZ_SUMMARY       .ci/run-fuzz's PASS/FAIL lines, one per
-#                                   target; empty when the run never got that
-#                                   far
+#                FUZZ_SUMMARY       .ci/run-fuzz's PASS/CRASH/FAIL lines, one
+#                                   per target; empty when the run never got
+#                                   that far
 # @noargs
 # @exitcode 0 the failure is recorded in an issue
 # @exitcode 1 a required variable is unset, or gh could not record it
@@ -69,7 +70,7 @@ function write_body() {
         printf -- '- %s\n' "${pr}"
       done <<< "${prs}"
     else
-      printf 'No crasher pull request is open, so no target wrote a failing input; a deadline-only failure or a setup failure is likely.\n'
+      printf 'No crasher pull request is open, so no target wrote a failing input: a target that failed without one (FAIL above) or a setup failure is likely.\n'
     fi
   } > "${file}"
 }
