@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
@@ -111,4 +112,29 @@ func thresholdDeadReason(typ Type, spec typeSpec, exp expectation, value string)
 		// A threshold check never takes these words.
 	}
 	return ""
+}
+
+// observeRenovateDashboard judges whether Renovate has run on a repository
+// that configures it. Renovate opens its Dependency Dashboard on its first
+// run, so an open dashboard shows it has access and runs, where the
+// configuration file alone shows only that it was meant to.
+//
+// A closed dashboard fails: without dependencyDashboardAutoclose, which this
+// check does not support, Renovate reopens a closed dashboard on its next
+// run, so one that stays closed means Renovate has stopped. A repository with
+// issues off cannot have a dashboard at all, and says so rather than "no
+// dashboard", since the fix is a setting, not Renovate's access.
+func observeRenovateDashboard(r audit.Repo) observation {
+	d := r.RenovateDashboard
+	switch {
+	case r.Files.RenovateConfig == "":
+		return observation{unknown: true}
+	case !r.Settings.HasIssues:
+		return observation{value: "issues off", mark: true}
+	case d.State == "OPEN":
+		return observation{ok: true, value: "#" + strconv.Itoa(d.Number), mark: true}
+	case d.State == "CLOSED":
+		return observation{value: "closed #" + strconv.Itoa(d.Number), mark: true}
+	}
+	return observation{value: "no dashboard", mark: true}
 }

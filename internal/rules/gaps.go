@@ -27,6 +27,7 @@ var gapLabels = map[Check]string{
 	CheckRenovate:                "No Renovate config",
 	CheckRenovateMinReleaseAge:   "Renovate minimum release age unset, unresolved or too short",
 	CheckRenovateAutomergeMajor:  "Renovate does not auto-merge major updates",
+	CheckRenovateDashboard:       "Renovate has no open Dependency Dashboard",
 	CheckEditorconfig:            "No .editorconfig",
 	CheckFlakeNix:                "No flake.nix",
 	CheckJustfile:                "No justfile",

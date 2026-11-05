@@ -31,6 +31,7 @@ const (
 	CheckRenovate
 	CheckRenovateMinReleaseAge
 	CheckRenovateAutomergeMajor
+	CheckRenovateDashboard
 	CheckEditorconfig
 	CheckFlakeNix
 	CheckJustfile
@@ -121,6 +122,7 @@ var checkNames = [...]string{
 	CheckRenovate:                "renovate",
 	CheckRenovateMinReleaseAge:   "renovate_min_release_age",
 	CheckRenovateAutomergeMajor:  "renovate_automerge_major",
+	CheckRenovateDashboard:       "renovate_dashboard",
 	CheckEditorconfig:            "editorconfig",
 	CheckFlakeNix:                "flake_nix",
 	CheckJustfile:                "justfile",

@@ -349,6 +349,21 @@ Grouped by theme here; the report lists them in the fixed worklist order
   not parse, the repository's own file not parsing, `extends` not an array,
   a wrong-typed `minimumReleaseAge`), as `renovate_min_release_age` does; `audit.json` records the verdict as
   `automerge_major`. n/a without a Renovate configuration.
+- **renovate_dashboard** — whether Renovate actually runs on the repository,
+  not merely whether it is configured: Renovate opens its Dependency
+  Dashboard issue on its first run, so the check passes when an issue created
+  by Renovate's hosted app (`renovate[bot]`) titled exactly
+  `Dependency Dashboard` is open, and shows its number. It fails with
+  `no dashboard` when there is none (Renovate has no access, has never run,
+  or the configuration turns the dashboard off), `closed #N` when the
+  dashboard is closed, and `issues off` when the repository has issues
+  disabled. A dashboard renamed with `dependencyDashboardTitle`, closed by
+  `dependencyDashboardAutoclose`, or opened by self-hosted Renovate under
+  another login fails the same way. When the dashboard last changed is
+  not judged: Renovate edits it only when its content changes, so a quiet
+  repository's dashboard can go weeks untouched while Renovate runs.
+  `audit.json` records the issue as `renovate_dashboard`. n/a without a
+  Renovate configuration.
 - **homepage**, **topics**, **community_files** — repository metadata that
   only matters once a repository is meant to be found: a homepage URL, any
   topics, and how many of a security policy, contributing guide and code of
