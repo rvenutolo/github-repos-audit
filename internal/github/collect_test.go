@@ -183,6 +183,9 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		// The value is set in the repository's own JSONC file, so the source is
 		// that file's path rather than a preset.
 		Renovate: audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: ".github/renovate.json"},
+		// Its open renovate[bot] issue is a configuration error, not the
+		// dashboard, so the closed dashboard is the one recorded.
+		RenovateDashboard: audit.RenovateDashboard{Number: 4, State: "CLOSED"},
 		// Sorted by key then ref, whatever order GitHub listed them in; the
 		// expired artifact is listed but neither counted nor summed.
 		Storage: audit.ActionsStorage{
@@ -248,6 +251,7 @@ func wantWebApp(t *testing.T) audit.Repo {
 			MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store",
 			LockFileMaintenance: true,
 		},
+		RenovateDashboard: audit.RenovateDashboard{Number: 7, State: "OPEN"},
 		Rulesets: []audit.Ruleset{
 			{
 				Name:        "ruleset-01",
@@ -599,6 +603,38 @@ func TestClient_Collect_fileFacts(t *testing.T) {
 			}
 			if diff := cmp.Diff(tc.actions, got[0].Actions); diff != "" {
 				t.Errorf("Actions mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestClient_Collect_renovateDashboard: the dashboard is the renovate[bot]
+// issue titled exactly "Dependency Dashboard". An open one wins over an older
+// closed one; a closed one is still recorded so the report can say so; any
+// other title, a case variant included, is not the dashboard.
+func TestClient_Collect_renovateDashboard(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want audit.RenovateDashboard
+	}{
+		{"web-app", audit.RenovateDashboard{Number: 7, State: "OPEN"}},
+		{"shell-scripts", audit.RenovateDashboard{Number: 4, State: "CLOSED"}},
+		{"mixedCase-flake", audit.RenovateDashboard{}},
+		{"blank-repo", audit.RenovateDashboard{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			api := newFakeAPI(t)
+			got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{tc.name})
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			if diff := cmp.Diff(tc.want, got[0].RenovateDashboard); diff != "" {
+				t.Errorf("RenovateDashboard mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

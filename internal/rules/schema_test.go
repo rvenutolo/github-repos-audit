@@ -266,6 +266,7 @@ var defNames = map[reflect.Type]string{
 	reflect.TypeFor[audit.ConfigDrift]():       "config_drift",
 	reflect.TypeFor[audit.Repo]():              "repo",
 	reflect.TypeFor[audit.Renovate]():          "renovate",
+	reflect.TypeFor[audit.RenovateDashboard](): "renovate_dashboard",
 	reflect.TypeFor[audit.Files]():             "files",
 	reflect.TypeFor[audit.Flake]():             "flake",
 	reflect.TypeFor[audit.Workflow]():          "workflow",

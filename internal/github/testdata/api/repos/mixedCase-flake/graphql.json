@@ -21,6 +21,8 @@
         "total_count": 1
       },
       "has_issues": true,
+      "renovate_open_issues": { "nodes": [{ "number": 3, "title": "dependency dashboard" }] },
+      "renovate_closed_issues": { "nodes": [] },
       "has_wiki": false,
       "has_projects": true,
       "has_discussions": false,
