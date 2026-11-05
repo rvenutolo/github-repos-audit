@@ -142,10 +142,10 @@ and the generated report. These steps describe how that repository is wired up.
 
 4. Set two repository secrets on the report repository:
    - `AUDIT_TOKEN` — a token that can read every repository on the account:
-     contents, metadata, actions, administration, and pull requests, all
-     read-only. Without pull requests the open pull request count of a private
-     repository is unreadable, and actions is what the CI timing is read
-     from. The workflow hands it to `github-repos-audit render` as `GITHUB_TOKEN`, and inside the
+     contents, metadata, actions, administration, issues and pull requests,
+     all read-only. Without pull requests the open pull request count of a
+     private repository is unreadable, actions is what the CI timing is read
+     from, and issues is what the Renovate Dependency Dashboard is read from. The workflow hands it to `github-repos-audit render` as `GITHUB_TOKEN`, and inside the
      workflow it is the only token the tool's own code ever sees (a local run
      without `GITHUB_TOKEN` falls back to whatever `gh auth token` holds).
      `github-repos-audit validate` is offline and needs no token at all, whether
