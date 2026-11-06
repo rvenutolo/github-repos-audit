@@ -1,0 +1,319 @@
+#!/usr/bin/env bash
+
+# @description Exercise .ci/in-devshell against the real devShell: it must run
+#              the command, return its status, and leave nothing behind in the
+#              caller's TMPDIR however the command ends. Every case runs with
+#              IN_DEVSHELL unset so the wrapper really enters `nix develop`.
+#              Payloads are inert (`true`, `sh -c 'exit 3'`, `sleep`, marker
+#              files), and signals go only to processes this script started, by
+#              recorded pid or by the process group of a job it started.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly WRAPPER="${REPO_DIR}/.ci/in-devshell"
+
+# How long a case waits for a process to start or end, in tenths of a second.
+readonly WAIT_TICKS=1200
+
+# Globals, not local to main: the EXIT trap runs after main has returned.
+# work holds each case's scratch TMPDIR and marker files; started_pids holds
+# every wrapper and command pid this script recorded, so a case that fails
+# midway cannot leave one running.
+work=''
+started_pids=()
+
+# shellcheck disable=SC2329 # invoked by the EXIT trap in main
+function cleanup() {
+  local pid
+  for pid in "${started_pids[@]}"; do
+    kill -s KILL "${pid}" 2> '/dev/null' || true
+  done
+  if [[ -n "${work}" ]]; then
+    rm --recursive --force -- "${work:?}"
+  fi
+}
+trap cleanup EXIT
+
+# @description Poll until a file exists and is non-empty.
+# @arg $1 path
+# @exitcode 0 it appeared
+# @exitcode 1 it did not appear in time
+function wait_for_file() {
+  local ticks=0
+  while [[ ! -s "$1" ]]; do
+    ((++ticks > WAIT_TICKS)) && return 1
+    sleep 0.1
+  done
+}
+
+# @description Poll until a pid no longer answers `kill -0`.
+# @arg $1 pid
+# @exitcode 0 it is gone
+# @exitcode 1 it is still there after the timeout
+function wait_for_exit() {
+  local ticks=0
+  while kill -0 "$1" 2> '/dev/null'; do
+    ((++ticks > WAIT_TICKS)) && return 1
+    sleep 0.1
+  done
+}
+
+# @description Create a fresh case directory holding an empty scratch TMPDIR
+#              and print its path.
+# @stdout the case directory's absolute path
+function new_case() {
+  local dir
+  dir="$(mktemp --directory --tmpdir="${work}")"
+  mkdir -- "${dir}/tmp"
+  printf '%s\n' "${dir}"
+}
+
+# @description Print the entries of a directory, one per line, so an
+#              assertion can show what was left behind.
+# @arg $1 directory
+function entries() {
+  find "$1" -mindepth 1 -maxdepth 1 -printf '%f\n'
+}
+
+# @description Fail unless a directory is empty.
+# @arg $1 case name
+# @arg $2 directory
+function expect_empty() {
+  local left
+  left="$(entries "$2")"
+  if [[ -n "${left}" ]]; then
+    ci::log "FAIL: $1: left behind in TMPDIR: ${left//$'\n'/ }"
+    return 1
+  fi
+}
+
+# @description Run the wrapper in the foreground with IN_DEVSHELL unset, the
+#              given TMPDIR, stdin from /dev/null and stderr merged into the
+#              output. The output goes to the case's out file, the status to
+#              its rc file.
+# @arg $1 case directory
+# @arg $2 TMPDIR value
+# @arg $@ the command to wrap
+function run_wrapper() {
+  local -r dir="$1" tmpdir="$2"
+  shift 2
+  local rc=0
+  (cd "${REPO_DIR}" && env --unset=IN_DEVSHELL TMPDIR="${tmpdir}" "${WRAPPER}" "$@") \
+    < '/dev/null' > "${dir}/out" 2>&1 || rc=$?
+  printf '%s\n' "${rc}" > "${dir}/rc"
+}
+
+# @description A wrapped `true` succeeds and leaves the scratch TMPDIR empty.
+function test_true_leaves_nothing() {
+  local dir
+  dir="$(new_case)"
+  run_wrapper "${dir}" "${dir}/tmp" true
+  if [[ "$(< "${dir}/rc")" != 0 ]]; then
+    ci::log "FAIL: true leaves nothing: exit $(< "${dir}/rc") (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  expect_empty 'true leaves nothing' "${dir}/tmp"
+}
+
+# @description The wrapped command's exit status is the wrapper's.
+function test_exit_status() {
+  local dir
+  dir="$(new_case)"
+  run_wrapper "${dir}" "${dir}/tmp" sh -c 'exit 3'
+  if [[ "$(< "${dir}/rc")" != 3 ]]; then
+    ci::log "FAIL: exit status: got $(< "${dir}/rc"), want 3 (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  expect_empty 'exit status' "${dir}/tmp"
+}
+
+# @description The command sees an absolute TMPDIR that is a directory made
+#              inside the caller's, not the caller's own.
+function test_private_tmpdir() {
+  local dir seen
+  dir="$(new_case)"
+  run_wrapper "${dir}" "${dir}/tmp" sh -c 'printf "%s\n" "${TMPDIR}"'
+  seen="$(tail --lines=1 -- "${dir}/out")"
+  if [[ "${seen}" != "${dir}/tmp/"?* ]]; then
+    ci::log "FAIL: private TMPDIR: command saw '${seen}', want a directory inside ${dir}/tmp (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  expect_empty 'private TMPDIR' "${dir}/tmp"
+}
+
+# @description A relative caller TMPDIR that exists is made absolute.
+function test_relative_tmpdir_is_made_absolute() {
+  local dir rel seen
+  dir="$(new_case)"
+  # Relative to the directory the wrapper runs in, which must be the repo for
+  # its `git rev-parse`.
+  rel="$(realpath --relative-to="${REPO_DIR}" "${dir}/tmp")"
+  run_wrapper "${dir}" "${rel}" sh -c 'printf "%s\n" "${TMPDIR}"'
+  if [[ "$(< "${dir}/rc")" != 0 ]]; then
+    ci::log "FAIL: relative TMPDIR: wrapper failed (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  seen="$(tail --lines=1 -- "${dir}/out")"
+  if [[ "${seen}" != "${dir}/tmp/"?* ]]; then
+    ci::log "FAIL: relative TMPDIR: command saw '${seen}', want a directory inside ${dir}/tmp (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  expect_empty 'relative TMPDIR' "${dir}/tmp"
+}
+
+# @description A caller TMPDIR that names no directory, absolute or relative,
+#              gives one clear error and exit 1, and creates nothing.
+function test_missing_tmpdir() {
+  local dir value lines
+  dir="$(new_case)"
+  for value in "${dir}/does-not-exist" 'does-not-exist-relative'; do
+    run_wrapper "${dir}" "${value}" true
+    if [[ "$(< "${dir}/rc")" != 1 ]]; then
+      ci::log "FAIL: missing TMPDIR '${value}': exit $(< "${dir}/rc"), want 1 (output: $(< "${dir}/out"))"
+      return 1
+    fi
+    lines="$(wc --lines < "${dir}/out")"
+    if [[ "${lines}" != 1 || "$(< "${dir}/out")" != *TMPDIR*'does not exist'* ]]; then
+      ci::log "FAIL: missing TMPDIR '${value}': want one line naming TMPDIR (output: $(< "${dir}/out"))"
+      return 1
+    fi
+  done
+  expect_empty 'missing TMPDIR' "${dir}/tmp"
+}
+
+# @description SIGINT to the wrapper's whole process group, as a terminal's
+#              Ctrl-C does, ends the command and leaves the scratch TMPDIR
+#              empty with nothing running.
+function test_sigint_to_process_group() {
+  local dir wrapper_pid cmd_pid
+  dir="$(new_case)"
+  # Job control gives the background wrapper a process group of its own, so
+  # the signal below reaches only the processes this case started.
+  set -m
+  (cd "${REPO_DIR}" && env --unset=IN_DEVSHELL TMPDIR="${dir}/tmp" "${WRAPPER}" \
+    sh -c 'echo $$ > "$1"; exec sleep 300' sh "${dir}/cmd.pid") \
+    < '/dev/null' > "${dir}/out" 2>&1 &
+  wrapper_pid="$!"
+  set +m
+  started_pids+=("${wrapper_pid}")
+  if ! wait_for_file "${dir}/cmd.pid"; then
+    ci::log "FAIL: SIGINT to group: the command never started (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  cmd_pid="$(< "${dir}/cmd.pid")"
+  started_pids+=("${cmd_pid}")
+  kill -s INT -- "-${wrapper_pid}"
+  if ! wait_for_exit "${wrapper_pid}"; then
+    ci::log 'FAIL: SIGINT to group: the wrapper did not end'
+    return 1
+  fi
+  if kill -0 "${cmd_pid}" 2> '/dev/null'; then
+    ci::log 'FAIL: SIGINT to group: the command is still running'
+    return 1
+  fi
+  expect_empty 'SIGINT to group' "${dir}/tmp"
+}
+
+# @description A command that traps INT survives a first Ctrl-C, and the
+#              private directory stays until it exits.
+function test_sigint_trapped_by_command() {
+  local dir wrapper_pid cmd_pid rc=0
+  dir="$(new_case)"
+  set -m
+  (cd "${REPO_DIR}" && env --unset=IN_DEVSHELL TMPDIR="${dir}/tmp" "${WRAPPER}" \
+    sh -c 'trap "echo caught > \"\$2\"" INT; echo $$ > "$1"; while [ ! -e "$3" ]; do sleep 0.1; done' \
+    sh "${dir}/cmd.pid" "${dir}/caught" "${dir}/release") \
+    < '/dev/null' > "${dir}/out" 2>&1 &
+  wrapper_pid="$!"
+  set +m
+  started_pids+=("${wrapper_pid}")
+  if ! wait_for_file "${dir}/cmd.pid"; then
+    ci::log "FAIL: trapped SIGINT: the command never started (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  cmd_pid="$(< "${dir}/cmd.pid")"
+  started_pids+=("${cmd_pid}")
+  kill -s INT -- "-${wrapper_pid}"
+  if ! wait_for_file "${dir}/caught"; then
+    ci::log 'FAIL: trapped SIGINT: the command never saw the signal'
+    return 1
+  fi
+  if ! kill -0 "${wrapper_pid}" 2> '/dev/null' || ! kill -0 "${cmd_pid}" 2> '/dev/null'; then
+    ci::log 'FAIL: trapped SIGINT: the wrapper or the command died on the first INT'
+    return 1
+  fi
+  if [[ -z "$(entries "${dir}/tmp")" ]]; then
+    ci::log 'FAIL: trapped SIGINT: the private directory was removed under a running command'
+    rc=1
+  fi
+  : > "${dir}/release"
+  if ! wait_for_exit "${wrapper_pid}"; then
+    ci::log 'FAIL: trapped SIGINT: the wrapper did not end after the command did'
+    return 1
+  fi
+  expect_empty 'trapped SIGINT' "${dir}/tmp" || rc=1
+  return "${rc}"
+}
+
+# @description SIGTERM to the wrapper alone is forwarded: it exits 143 and the
+#              scratch TMPDIR ends up empty.
+function test_sigterm_to_wrapper() {
+  local dir wrapper_pid cmd_pid rc=0
+  dir="$(new_case)"
+  (cd "${REPO_DIR}" && env --unset=IN_DEVSHELL TMPDIR="${dir}/tmp" "${WRAPPER}" \
+    sh -c 'echo $$ > "$1"; exec sleep 300' sh "${dir}/cmd.pid") \
+    < '/dev/null' > "${dir}/out" 2>&1 &
+  wrapper_pid="$!"
+  started_pids+=("${wrapper_pid}")
+  if ! wait_for_file "${dir}/cmd.pid"; then
+    ci::log "FAIL: SIGTERM to wrapper: the command never started (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  cmd_pid="$(< "${dir}/cmd.pid")"
+  started_pids+=("${cmd_pid}")
+  kill -s TERM "${wrapper_pid}"
+  wait "${wrapper_pid}" || rc="$?"
+  if [[ "${rc}" != 143 ]]; then
+    ci::log "FAIL: SIGTERM to wrapper: exit ${rc}, want 143 (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  expect_empty 'SIGTERM to wrapper' "${dir}/tmp"
+}
+
+function main() {
+  work="$(mktemp --directory)"
+  local rc=0
+  local case_fn
+  for case_fn in \
+    test_true_leaves_nothing \
+    test_exit_status \
+    test_private_tmpdir \
+    test_relative_tmpdir_is_made_absolute \
+    test_missing_tmpdir \
+    test_sigint_to_process_group \
+    test_sigint_trapped_by_command \
+    test_sigterm_to_wrapper; do
+    "${case_fn}" || rc=1
+  done
+
+  ((rc == 0)) && ci::log 'in-devshell: every case passed'
+  # A failing case is this harness's verdict, not a crash; see
+  # .ci/test-check-account-data.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"
