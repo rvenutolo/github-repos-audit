@@ -19,10 +19,13 @@ const devshellExemptMarker = "devshell-exempt:"
 // reading it.
 var devshellTestLine = regexp.MustCompile(`(\[\[|\[|(^|[^A-Za-z0-9_-])test\s).*(^|[^A-Za-z0-9_])IN_DEVSHELL([^A-Za-z0-9_=]|$)`)
 
-// devshellExecLine matches a line that starts with `exec`. Only an exec
-// replaces the script with the wrapper; a plain call to the wrapper returns
-// to a script that has already run unwrapped.
-var devshellExecLine = regexp.MustCompile(`^exec\s`)
+// devshellExecLine matches an `exec` in command position: first on a line, or
+// after `||`, `&&`, `;`, `then`, `do` or `else`, so a compact
+// `[[ -z "${IN_DEVSHELL:-}" ]] && exec ...` or one-line `then exec ...; fi`
+// counts. Only an exec replaces the script with the wrapper; a plain call to
+// the wrapper returns to a script that has already run unwrapped, and
+// `echo exec` is not a command.
+var devshellExecLine = regexp.MustCompile(`(^|\|\||&&|;|\bthen|\bdo|\belse)\s*exec\s`)
 
 // wrapperWaitLine matches a `wait` as the first word of a line, or after
 // `||`, `&&` or `;`. The fixed wrapper's `wait "${child_pid}" || rc="$?"`
@@ -35,16 +38,24 @@ var wrapperWaitLine = regexp.MustCompile(`(^|\|\||&&|;)\s*wait(\s|$)`)
 // single-dash form, so it is not mistaken for `-d`.
 var wrapperMktempLine = regexp.MustCompile(`(^|[^A-Za-z0-9_-])mktemp\b.*(--directory|\s-[A-Za-z]*d[A-Za-z]*(\s|\)|"|$))`)
 
-// wrapperKeepTmpdirLine matches a line that is only TMPDIR, optionally
-// quoted (a KEEP_VARS entry), or that passes `--keep TMPDIR`. An export or a
+// wrapperKeepTmpdirLine matches a line that starts with TMPDIR, optionally
+// quoted (a KEEP_VARS entry), or that passes `--keep TMPDIR`. Nothing may
+// follow TMPDIR but a space, so a trailing comment does not change the
+// verdict while `TMPDIR_X` and `TMPDIR=...` do not match. An export or a
 // `${TMPDIR:-/tmp}` default is not a keep: the wrapper can set TMPDIR for
 // itself while `nix develop` still replaces it.
-var wrapperKeepTmpdirLine = regexp.MustCompile(`^(TMPDIR|"TMPDIR"|'TMPDIR')$|--keep\s+TMPDIR(\s|$)`)
+var wrapperKeepTmpdirLine = regexp.MustCompile(`^(TMPDIR|"TMPDIR"|'TMPDIR')(\s|$)|--keep\s+TMPDIR(\s|$)`)
 
-// wrapperExitTrapLine matches a trap whose last word is EXIT, the cleanup
-// trap. `trap - INT QUIT` resets and `trap x INT` handles a signal; neither
-// runs when the wrapper exits normally.
-var wrapperExitTrapLine = regexp.MustCompile(`^trap\s.*\sEXIT$`)
+// wrapperExitTrapLine matches a trap line that names EXIT as a whole word,
+// the cleanup trap, wherever it sits among the signals and whatever follows
+// (a `;` or a trailing comment). `trap - INT QUIT` resets and `trap x INT`
+// handles a signal; neither runs when the wrapper exits normally.
+var wrapperExitTrapLine = regexp.MustCompile(`^trap\s.*\bEXIT\b`)
+
+// wrapperTrapNoHandlerLine matches a trap whose handler is `-` or an
+// empty quoted string: it resets or ignores EXIT instead of cleaning up, so it is not the
+// cleanup trap even though it names EXIT.
+var wrapperTrapNoHandlerLine = regexp.MustCompile(`^trap\s+(-|''|"")(\s|$)`)
 
 // shellShebang reports whether line 1 of text is a shebang whose interpreter
 // is sh or bash by base name: directly, through env, or through `env -S`,
@@ -63,9 +74,20 @@ func shellShebang(text string) bool {
 	interpreter := path.Base(fields[0])
 	if interpreter == "env" {
 		interpreter = ""
+		skipOperand := false
 		for _, f := range fields[1:] {
 			// env's own flags (-S, -i) and NAME=value settings come before
-			// the program it runs.
+			// the program it runs. -u and -C take the next word as their
+			// operand, which is a variable name or a directory, not the
+			// program.
+			if skipOperand {
+				skipOperand = false
+				continue
+			}
+			if f == "-u" || f == "--unset" || f == "-C" || f == "--chdir" {
+				skipOperand = true
+				continue
+			}
 			if strings.HasPrefix(f, "-") || strings.Contains(f, "=") {
 				continue
 			}
@@ -144,7 +166,7 @@ func wrapperLines(text string) (wait, mktemp, keepTmpdir, exitTrap []string) {
 		if wrapperKeepTmpdirLine.MatchString(line) {
 			keepTmpdir = append(keepTmpdir, line)
 		}
-		if wrapperExitTrapLine.MatchString(line) {
+		if wrapperExitTrapLine.MatchString(line) && !wrapperTrapNoHandlerLine.MatchString(line) {
 			exitTrap = append(exitTrap, line)
 		}
 	}
