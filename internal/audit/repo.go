@@ -135,6 +135,10 @@ type Repo struct {
 	// GOMODCACHE. Zero unless the repository has a root go.mod and a
 	// flake.nix.
 	GoPaths GoPaths `json:"go_paths,omitzero"`
+	// Devshell is what the repository's shell scripts and its
+	// .ci/in-devshell wrapper say about running inside the devShell and
+	// cleaning up its temp directory.
+	Devshell Devshell `json:"devshell,omitzero"`
 	// CIState is the statusCheckRollup state of the head commit: SUCCESS,
 	// FAILURE, PENDING, ERROR or EXPECTED. Empty when the rollup was null,
 	// which means no check has run on that commit.

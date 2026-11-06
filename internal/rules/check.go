@@ -69,6 +69,8 @@ const (
 	CheckNixCache
 	CheckNixInstaller
 	CheckNixGetflakeGit
+	CheckDevshellScripts
+	CheckDevshellTmpCleanup
 	CheckGoPaths
 	CheckGoCache
 	CheckCacheSaveDefaultBranch
@@ -160,6 +162,8 @@ var checkNames = [...]string{
 	CheckNixCache:                "nix_cache",
 	CheckNixInstaller:            "nix_installer",
 	CheckNixGetflakeGit:          "nix_getflake_git",
+	CheckDevshellScripts:         "devshell_scripts",
+	CheckDevshellTmpCleanup:      "devshell_tmp_cleanup",
 	CheckGoPaths:                 "go_paths",
 	CheckGoCache:                 "go_cache",
 	CheckCacheSaveDefaultBranch:  "cache_save_default_branch",

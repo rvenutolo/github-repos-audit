@@ -201,6 +201,22 @@ func fullSnapshot() *audit.Snapshot {
 		Path:  "flake.nix",
 		Lines: []string{`export GOPATH="$HOME/.cache/go"`, `export GOMODCACHE="$HOME/go/mod"`},
 	}}}
+	// Its wrapper never waits for nix develop and keeps no TMPDIR. One script
+	// does not enter the devShell, one has an exemption without a reason, one
+	// holds a valid exemption, and one could not be read.
+	soft.Devshell = audit.Devshell{
+		Wrapper: &audit.DevshellWrapper{
+			Present:  true,
+			Mktemp:   []string{`tmp="$(mktemp --directory)"`},
+			ExitTrap: []string{`trap 'rm --recursive --force "${tmp}"' EXIT`},
+		},
+		Scripts: []audit.DevshellScript{
+			{Path: ".ci/check-lint"},
+			{Path: ".ci/fetch-tool", Exempt: []string{""}},
+			{Path: ".ci/publish", Exempt: []string{"runs on a runner without Nix"}},
+			{Path: "bin/big-script", Unreadable: "bin/big-script: too large to read in full"},
+		},
+	}
 	soft.CI.LastDefaultBranchRun = at(2026, time.September, 4)
 	soft.Storage = audit.ActionsStorage{
 		Caches: []audit.Cache{
@@ -337,6 +353,22 @@ func fullSnapshot() *audit.Snapshot {
 		Path:  "nix/shell.nix",
 		Lines: []string{`export GOPATH="$HOME/.cache/go"`, `export GOMODCACHE="$HOME/.cache/go/mod"`},
 	}}}
+	// Its only script re-enters the devShell and its wrapper removes its temp
+	// directory.
+	tools.Devshell = audit.Devshell{
+		Wrapper: &audit.DevshellWrapper{
+			Present:    true,
+			Wait:       []string{`wait "${child_pid}" || rc="$?"`},
+			Mktemp:     []string{`tmp="$(mktemp --directory)"`},
+			KeepTmpdir: []string{`TMPDIR`},
+			ExitTrap:   []string{`trap 'rm --recursive --force "${tmp}"' EXIT`},
+		},
+		Scripts: []audit.DevshellScript{{
+			Path:           ".ci/check-lint",
+			InDevshellTest: []string{`if [[ -z "${IN_DEVSHELL:-}" ]]; then`},
+			ExecInDevshell: []string{`exec ./.ci/in-devshell "$0" "$@"`},
+		}},
+	}
 	tools.CI.LastDefaultBranchRun = at(2026, time.September, 5)
 	tools.Storage = audit.ActionsStorage{
 		Caches: []audit.Cache{

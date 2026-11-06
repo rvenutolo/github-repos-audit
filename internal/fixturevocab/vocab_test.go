@@ -286,6 +286,12 @@ var claudeFileWords = []string{
 	"builtins.getFlake", "toString", ".",
 	// GOPATH file fixtures.
 	"export", "GOPATH", "GOMODCACHE", "$HOME", ".cache", "go", "mod",
+	// Shell script and devShell wrapper fixtures.
+	"--directory", "--force", "--recursive", "--tmpdir", "-Eeuo", "-n", "-z", "0", ".ci", "EXIT", "HOME", "INT",
+	"IN_DEVSHELL", "KEEP_VARS", "Nix", "QUIT", "REPO_DIR", "TMPDIR", "absent", "base", "bash", "bin", "by",
+	"child_pid", "devshell-exempt", "env", "eval", "exec", "exit", "fetch", "fi", "hook", "if", "in-devshell",
+	"in-devshell.XXXXXX", "is", "lint", "mktemp", "nix", "nix_args", "pipefail", "rc", "remove_tmp_dir", "rm",
+	"run-all-checks", "runs", "set", "then", "tmp_dir", "trap", "usr", "wait", "where", "wrapper",
 }
 
 // claudeFileName matches the synthetic names a Claude file fixture may use
@@ -332,7 +338,7 @@ func isFakeBase64Content(v any) bool {
 
 // treePath is every path a fixture git tree may list.
 const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUDE\.md|LICENSE|` +
-	`\.gitignore|\.editorconfig|flake\.nix|go\.mod|\.ci|\.ci/eval-shell|[Jj]ustfile|\.justfile|renovate\.json|` +
+	`\.gitignore|\.editorconfig|flake\.nix|go\.mod|\.ci|\.ci/(eval-shell|in-devshell|fetch-tool|lint)|run-checks|mvnw|lib\.sh|[Jj]ustfile|\.justfile|renovate\.json|` +
 	`\.commitlintrc\.yml|cliff\.toml|treefmt\.toml|compose\.yaml|typos\.toml|\.yamllint\.yml|` +
 	`\.markdownlint-cli2\.jsonc|\.prettierrc\.json|\.editorconfig-checker\.json|lychee\.toml|mkdocs\.yml|` +
 	`stacks|stacks/media|stacks/media/docker-compose\.yml|vendor/sub|` +
@@ -652,6 +658,16 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.path$`), matches(`^(\.ci/[a-z-]+|\.github/workflows/workflow-\d{2}\.yml)$`), "a synthetic script or workflow path"},
 	{regexp.MustCompile(`^repos\[\]\.go_paths\.files\[\]\.path$`), matches(`^(flake|nix/[a-z-]+)\.nix$`), "a synthetic Nix file path"},
 	{regexp.MustCompile(`^repos\[\]\.go_paths\.files\[\]\.lines\[\]$`), matches(`^export GO(PATH|MODCACHE)="\$HOME/[a-z./]+"$`), "a Go path line under $HOME"},
+	// The devShell checks record script paths, the lines that made a script
+	// self-wrap or the wrapper clean up, exemption reasons and problems. A
+	// line is real shell text in a real repository, so a fixture's is held to
+	// the exact synthetic lines the fixtures use.
+	{regexp.MustCompile(`^repos\[\]\.devshell\.scripts\[\]\.path$`), matches(`^(\.ci/[a-z-]+|bin/[a-z-]+|hooks/hook-\d{2}\.sh)$`), "a synthetic script path"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.scripts\[\]\.in_devshell_test\[\]$`), matches(`^if \[\[ -z "\$\{IN_DEVSHELL:-\}" \]\]; then$`), "the synthetic IN_DEVSHELL test line"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.scripts\[\]\.exec_in_devshell\[\]$`), matches(`^exec \./\.ci/in-devshell "\$0" "\$@"$`), "the synthetic exec line"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.scripts\[\]\.exempt\[\]$`), matches(`^(runs on a runner without Nix)?$`), "the synthetic exemption reason, or none"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.(scripts\[\]|wrapper)\.unreadable$`), matches(`^(\.ci/[a-z-]+|bin/[a-z-]+): (not a text file|too large to read in full|not a regular file)$`), "a devShell problem in the collector's wording"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.wrapper\.(wait|mktemp|keep_tmpdir|exit_trap)\[\]$`), matches(`^(wait "\$\{child_pid\}" \|\| rc="\$\?"|tmp="\$\(mktemp --directory\)"|TMPDIR|trap 'rm --recursive --force "\$\{tmp\}"' EXIT)$`), "a synthetic wrapper line"},
 	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.args\[\]$`), matches(`^(toString )?(\./\.|"[a-z+:/.${}_-]*")$`), "a call argument as the extractor normalizes it"},
 	{regexp.MustCompile(`^claude_marketplace\.unreadable$`), matches(marketplaceUnreadable), "a marketplace problem in the collector's wording"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.problem$`), matches(marketplaceProblem), "a pin problem in the collector's wording"},
@@ -685,6 +701,8 @@ var snapshotRules = []rule{
 		`claude_marketplace\.entries\[\]\.(has_version|release_tag)`,
 		// Whether a repository tracks a Nix file, and whether it tracks too many to read.
 		`repos\[\]\.nix_getflake\.(nix_files|too_many_files)`,
+		// Whether a wrapper exists, and whether too many scripts were left unread.
+		`repos\[\]\.devshell\.(too_many_files|wrapper\.present)`,
 	),
 }
 

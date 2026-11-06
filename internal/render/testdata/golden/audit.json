@@ -23,6 +23,8 @@
       "community_files": "not_required",
       "compose": "not_required",
       "description": "required",
+      "devshell_scripts": "required",
+      "devshell_tmp_cleanup": "required",
       "direct_push": "blocked",
       "editorconfig": "required",
       "editorconfig_checker": "not_required",
@@ -109,6 +111,8 @@
       "community_files": "not_required",
       "compose": "not_required",
       "description": "required",
+      "devshell_scripts": "not_required",
+      "devshell_tmp_cleanup": "not_required",
       "direct_push": "allowed",
       "editorconfig": "required",
       "editorconfig_checker": "not_required",
@@ -195,6 +199,8 @@
       "community_files": "not_required",
       "compose": "not_required",
       "description": "required",
+      "devshell_scripts": "required",
+      "devshell_tmp_cleanup": "required",
       "direct_push": "blocked",
       "editorconfig": "required",
       "editorconfig_checker": "not_required",
@@ -281,6 +287,8 @@
       "community_files": "not_required",
       "compose": "not_required",
       "description": "required",
+      "devshell_scripts": "required",
+      "devshell_tmp_cleanup": "required",
       "direct_push": "blocked",
       "editorconfig": "required",
       "editorconfig_checker": "not_required",
@@ -367,6 +375,8 @@
       "community_files": "public_published",
       "compose": "not_required",
       "description": "required",
+      "devshell_scripts": "required",
+      "devshell_tmp_cleanup": "required",
       "direct_push": "blocked",
       "editorconfig": "required",
       "editorconfig_checker": "not_required",
@@ -453,6 +463,8 @@
       "community_files": "not_required",
       "compose": "not_required",
       "description": "required",
+      "devshell_scripts": "required",
+      "devshell_tmp_cleanup": "required",
       "direct_push": "blocked",
       "editorconfig": "required",
       "editorconfig_checker": "not_required",
@@ -679,6 +691,38 @@
               "export GOPATH=\"$HOME/.cache/go\"",
               "export GOMODCACHE=\"$HOME/go/mod\""
             ]
+          }
+        ]
+      },
+      "devshell": {
+        "wrapper": {
+          "present": true,
+          "mktemp": [
+            "tmp=\"$(mktemp --directory)\""
+          ],
+          "exit_trap": [
+            "trap 'rm --recursive --force \"${tmp}\"' EXIT"
+          ]
+        },
+        "scripts": [
+          {
+            "path": ".ci/check-lint"
+          },
+          {
+            "path": ".ci/fetch-tool",
+            "exempt": [
+              ""
+            ]
+          },
+          {
+            "path": ".ci/publish",
+            "exempt": [
+              "runs on a runner without Nix"
+            ]
+          },
+          {
+            "path": "bin/big-script",
+            "unreadable": "bin/big-script: too large to read in full"
           }
         ]
       },
@@ -1169,6 +1213,34 @@
             "lines": [
               "export GOPATH=\"$HOME/.cache/go\"",
               "export GOMODCACHE=\"$HOME/.cache/go/mod\""
+            ]
+          }
+        ]
+      },
+      "devshell": {
+        "wrapper": {
+          "present": true,
+          "wait": [
+            "wait \"${child_pid}\" || rc=\"$?\""
+          ],
+          "mktemp": [
+            "tmp=\"$(mktemp --directory)\""
+          ],
+          "keep_tmpdir": [
+            "TMPDIR"
+          ],
+          "exit_trap": [
+            "trap 'rm --recursive --force \"${tmp}\"' EXIT"
+          ]
+        },
+        "scripts": [
+          {
+            "path": ".ci/check-lint",
+            "in_devshell_test": [
+              "if [[ -z \"${IN_DEVSHELL:-}\" ]]; then"
+            ],
+            "exec_in_devshell": [
+              "exec ./.ci/in-devshell \"$0\" \"$@\""
             ]
           }
         ]
