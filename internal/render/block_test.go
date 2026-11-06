@@ -1389,3 +1389,29 @@ func TestBlock_claudeCellsAreEscaped(t *testing.T) {
 		t.Errorf("block has no %q:\n%s", want, got)
 	}
 }
+
+func TestBlock_devshellListsKeepTheirSentencesOutOfCode(t *testing.T) {
+	t.Parallel()
+
+	snap := fullSnapshot()
+	for i := range snap.Repos {
+		switch snap.Repos[i].Name {
+		case "mixedCase-flake":
+			snap.Repos[i].Devshell = audit.Devshell{Scripts: []audit.DevshellScript{{Path: "bin/run"}}}
+		case "github-repos-audit":
+			snap.Repos[i].Devshell = audit.Devshell{TooManyFiles: true}
+		}
+	}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v", err)
+	}
+	for _, want := range []string{
+		"- **mixedCase-flake** — no .ci/in-devshell, `bin/run`\n",
+		"- **github-repos-audit** — too many files\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Block() lacks %q:\n%s", want, got)
+		}
+	}
+}
