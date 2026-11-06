@@ -43,6 +43,8 @@
 # @exitcode 2 a usage error: an unknown argument, a missing option or value, or
 #             a --repo or --sha that is not well formed
 
+# devshell-exempt: runs in the report repository's CI, which has no Nix
+
 set -Eeuo pipefail
 shopt -s inherit_errexit
 IFS=$'\n\t'

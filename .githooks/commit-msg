@@ -18,6 +18,12 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/../.ci/in-devshell" "${SELF_PATH}" "$@"
+fi
+
 # @description Run commitlint over the message file git hands the hook.
 # @arg $1 msg_file path to the file holding the commit message
 function main() {

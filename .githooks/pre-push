@@ -17,6 +17,12 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/../.ci/in-devshell" "${SELF_PATH}" "$@"
+fi
+
 # names is deliberately global, not local to scan_if_public: the EXIT trap
 # below must clean it up on every exit path out of that function, including
 # the two `exit 1`s, which a RETURN trap never sees, and it fires after the
