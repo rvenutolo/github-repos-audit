@@ -214,7 +214,7 @@ func fullSnapshot() *audit.Snapshot {
 			{Path: ".ci/check-lint"},
 			{Path: ".ci/fetch-tool", Exempt: []string{""}},
 			{Path: ".ci/publish", Exempt: []string{"runs on a runner without Nix"}},
-			{Path: "bin/big-script", Unreadable: "truncated"},
+			{Path: "bin/big-script", Unreadable: "bin/big-script: too large to read in full"},
 		},
 	}
 	soft.CI.LastDefaultBranchRun = at(2026, time.September, 4)

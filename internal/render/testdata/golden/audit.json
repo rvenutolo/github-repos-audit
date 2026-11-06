@@ -722,7 +722,7 @@
           },
           {
             "path": "bin/big-script",
-            "unreadable": "truncated"
+            "unreadable": "bin/big-script: too large to read in full"
           }
         ]
       },

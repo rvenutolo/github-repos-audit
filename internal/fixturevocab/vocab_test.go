@@ -658,6 +658,16 @@ var snapshotRules = []rule{
 	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.path$`), matches(`^(\.ci/[a-z-]+|\.github/workflows/workflow-\d{2}\.yml)$`), "a synthetic script or workflow path"},
 	{regexp.MustCompile(`^repos\[\]\.go_paths\.files\[\]\.path$`), matches(`^(flake|nix/[a-z-]+)\.nix$`), "a synthetic Nix file path"},
 	{regexp.MustCompile(`^repos\[\]\.go_paths\.files\[\]\.lines\[\]$`), matches(`^export GO(PATH|MODCACHE)="\$HOME/[a-z./]+"$`), "a Go path line under $HOME"},
+	// The devShell checks record script paths, the lines that made a script
+	// self-wrap or the wrapper clean up, exemption reasons and problems. A
+	// line is real shell text in a real repository, so a fixture's is held to
+	// the exact synthetic lines the fixtures use.
+	{regexp.MustCompile(`^repos\[\]\.devshell\.scripts\[\]\.path$`), matches(`^(\.ci/[a-z-]+|bin/[a-z-]+|hooks/hook-\d{2}\.sh)$`), "a synthetic script path"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.scripts\[\]\.in_devshell_test\[\]$`), matches(`^if \[\[ -z "\$\{IN_DEVSHELL:-\}" \]\]; then$`), "the synthetic IN_DEVSHELL test line"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.scripts\[\]\.exec_in_devshell\[\]$`), matches(`^exec \./\.ci/in-devshell "\$0" "\$@"$`), "the synthetic exec line"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.scripts\[\]\.exempt\[\]$`), matches(`^(runs on a runner without Nix)?$`), "the synthetic exemption reason, or none"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.(scripts\[\]|wrapper)\.unreadable$`), matches(`^(\.ci/[a-z-]+|bin/[a-z-]+): (not a text file|too large to read in full|not a regular file)$`), "a devShell problem in the collector's wording"},
+	{regexp.MustCompile(`^repos\[\]\.devshell\.wrapper\.(wait|mktemp|keep_tmpdir|exit_trap)\[\]$`), matches(`^(wait "\$\{child_pid\}" \|\| rc="\$\?"|tmp="\$\(mktemp --directory\)"|TMPDIR|trap 'rm --recursive --force "\$\{tmp\}"' EXIT)$`), "a synthetic wrapper line"},
 	{regexp.MustCompile(`^repos\[\]\.nix_getflake\.files\[\]\.args\[\]$`), matches(`^(toString )?(\./\.|"[a-z+:/.${}_-]*")$`), "a call argument as the extractor normalizes it"},
 	{regexp.MustCompile(`^claude_marketplace\.unreadable$`), matches(marketplaceUnreadable), "a marketplace problem in the collector's wording"},
 	{regexp.MustCompile(`^claude_marketplace\.entries\[\]\.problem$`), matches(marketplaceProblem), "a pin problem in the collector's wording"},
@@ -691,6 +701,8 @@ var snapshotRules = []rule{
 		`claude_marketplace\.entries\[\]\.(has_version|release_tag)`,
 		// Whether a repository tracks a Nix file, and whether it tracks too many to read.
 		`repos\[\]\.nix_getflake\.(nix_files|too_many_files)`,
+		// Whether a wrapper exists, and whether too many scripts were left unread.
+		`repos\[\]\.devshell\.(too_many_files|wrapper\.present)`,
 	),
 }
 
