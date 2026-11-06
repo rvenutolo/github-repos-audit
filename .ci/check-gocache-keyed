@@ -21,7 +21,8 @@
 #              itself, would otherwise build into a shared cache and say
 #              nothing.
 #
-#              Must be run INSIDE the devShell (run-all-checks always is).
+#              Re-runs itself through .ci/in-devshell when started outside the
+#              devShell, so a direct run enters it too.
 # @noargs
 # @exitcode 0 GOCACHE is the directory keyed to the go and cc on PATH
 # @exitcode 1 it is not, or go or cc does not resolve

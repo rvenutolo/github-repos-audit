@@ -20,7 +20,7 @@
 #              is already filed must not be refiled every month, and a bump
 #              someone is still reviewing must not be clobbered.
 #
-#              It runs inside the devshell (.ci/in-devshell), so it may use
+#              It re-runs itself through .ci/in-devshell, so it may use
 #              any tool in .ci/required-tools, jq among them; unlike
 #              .ci/refresh-pull-request, which runs on a bare runner.
 # @noargs
