@@ -4,6 +4,24 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v11.0.0
+
+### Breaking changes
+
+- add the devshell_scripts and devshell_tmp_cleanup checks
+
+### Features
+
+- scan shell scripts for devshell self-wrap and wrapper cleanup lines
+- collect the devshell script and wrapper facts
+- show the devshell checks in the Nix section
+
+### Fixes
+
+- **deps:** update module go.yaml.in/yaml/v3 to v4
+- **deps:** import go.yaml.in/yaml/v4
+- read wrapper markers, exec wraps and env operands as the spec says
+
 ## v10.0.0
 
 ### Breaking changes
