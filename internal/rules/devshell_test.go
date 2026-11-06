@@ -70,7 +70,7 @@ func TestEvaluate_devshell_passes(t *testing.T) {
 
 	rep := devshellReport(t, audit.Devshell{
 		Wrapper: fullWrapper(),
-		Scripts: []audit.DevshellScript{wrapping("a.sh"), {Path: "b.sh", Exempt: []string{"runs on the host"}}},
+		Scripts: []audit.DevshellScript{wrapping("a.sh"), {Path: "b.sh", Exempt: []string{"runs on the host"}}, {Path: "c.sh", Exempt: []string{"", "real reason"}}},
 	})
 	wantPlainPass(t, rep.Repos[0].Cell(rules.CheckDevshellScripts))
 	wantPlainPass(t, rep.Repos[0].Cell(rules.CheckDevshellTmpCleanup))
