@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+
+# @description Exercise the self-wrap rule against .ci/testdata/self-wrap-probe,
+#              a script that follows it: run with IN_DEVSHELL unset and a
+#              scratch directory first on PATH, the script must re-run itself
+#              inside the devShell. Run with IN_DEVSHELL already set, it must
+#              not; the fixture mode of .ci/check-devshell-provides must not either.
+#              Payloads are inert (a probe that prints and exits), and the
+#              only paths removed are the scratch directory this script made.
+# @noargs
+# @exitcode 0 every case passed
+# @exitcode 1 a case failed
+
+set -Eeuo pipefail
+shopt -s inherit_errexit
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# shellcheck source=.ci/lib.sh
+source "${REPO_DIR}/.ci/lib.sh"
+
+readonly PROBE="${REPO_DIR}/.ci/testdata/self-wrap-probe"
+
+# Global, not local to main: the EXIT trap runs after main has returned.
+work=''
+
+# shellcheck disable=SC2329 # invoked by the EXIT trap
+function cleanup() {
+  if [[ -n "${work}" ]]; then
+    rm --recursive --force -- "${work:?}"
+  fi
+}
+trap cleanup EXIT
+
+# @description Run a command from the repository root with IN_DEVSHELL unset
+#              (unless IN_DEVSHELL_VALUE is given) and the scratch host
+#              directory first on PATH. Output goes to $work/out, the status to
+#              $work/rc.
+# @arg $@ the command and its arguments
+function run_case() {
+  local rc=0
+  (
+    cd "${REPO_DIR}"
+    if [[ -n "${IN_DEVSHELL_VALUE:-}" ]]; then
+      export IN_DEVSHELL="${IN_DEVSHELL_VALUE}"
+    else
+      unset IN_DEVSHELL
+    fi
+    PATH="${work}/host:${PATH}" "$@"
+  ) < '/dev/null' > "${work}/out" 2>&1 || rc=$?
+  printf '%s\n' "${rc}" > "${work}/rc"
+}
+
+# @description Print the value of a `KEY=` line of the probe's output.
+# @arg $1 key
+function field() {
+  local line
+  while IFS= read -r line; do
+    if [[ "${line}" == "$1="* ]]; then
+      printf '%s\n' "${line#*=}"
+      return 0
+    fi
+  done < "${work}/out"
+  return 1
+}
+
+# @description Fail unless the last run ended inside the devShell and the
+#              scratch host directory was not on its PATH.
+# @arg $1 case name
+function expect_wrapped() {
+  local in_devshell path
+  in_devshell="$(field IN_DEVSHELL || true)"
+  path="$(field PATH || true)"
+  if [[ "${in_devshell}" != 1 ]]; then
+    ci::log "FAIL: $1: IN_DEVSHELL is '${in_devshell}', want 1 (output: $(< "${work}/out"))"
+    return 1
+  fi
+  if [[ ":${path}:" == *":${work}/host:"* ]]; then
+    ci::log "FAIL: $1: the host directory is still on PATH"
+    return 1
+  fi
+}
+
+# @description A direct run ends inside the devShell.
+function test_direct_run_is_wrapped() {
+  run_case "${PROBE}"
+  if [[ "$(< "${work}/rc")" != 0 ]]; then
+    ci::log "FAIL: direct run: exit $(< "${work}/rc") (output: $(< "${work}/out"))"
+    return 1
+  fi
+  expect_wrapped 'direct run'
+}
+
+# @description Arguments survive unchanged: spaces, an empty argument, a glob
+#              character.
+function test_args_survive() {
+  local want got
+  run_case "${PROBE}" 'a b' '' '*' 'c'
+  want=$'ARG=a b\nARG=\nARG=*\nARG=c'
+  got="$(grep '^ARG=' "${work}/out" || true)"
+  if [[ "${got}" != "${want}" ]]; then
+    ci::log "FAIL: args: got '${got//$'\n'/|}', want '${want//$'\n'/|}'"
+    return 1
+  fi
+}
+
+# @description The script's exit status is the caller's.
+function test_exit_status_propagates() {
+  run_case "${PROBE}" --exit=3
+  if [[ "$(< "${work}/rc")" != 3 ]]; then
+    ci::log "FAIL: exit status: got $(< "${work}/rc"), want 3 (output: $(< "${work}/out"))"
+    return 1
+  fi
+}
+
+# @description A run through a symlink also ends inside the devShell.
+function test_symlink_run_is_wrapped() {
+  ln --symbolic -- "${PROBE}" "${work}/link"
+  run_case "${work}/link"
+  if [[ "$(< "${work}/rc")" != 0 ]]; then
+    ci::log "FAIL: symlink run: exit $(< "${work}/rc") (output: $(< "${work}/out"))"
+    return 1
+  fi
+  expect_wrapped 'symlink run'
+}
+
+# @description With IN_DEVSHELL already set the script does not re-run, so the
+#              scratch host directory stays on PATH.
+function test_no_rerun_inside_devshell() {
+  local path
+  IN_DEVSHELL_VALUE=1 run_case "${PROBE}"
+  path="$(field PATH || true)"
+  if [[ ":${path}:" != *":${work}/host:"* ]]; then
+    ci::log "FAIL: no re-run: the host directory is gone from PATH, so the script re-entered the devShell (output: $(< "${work}/out"))"
+    return 1
+  fi
+}
+
+# @description Fixture mode of .ci/check-devshell-provides runs where it is
+#              started: with IN_DEVSHELL unset it must not re-enter the
+#              devShell. A stub nix first on PATH records any attempt in a
+#              marker file and fails.
+function test_fixture_mode_skips_rerun() {
+  mkdir -- "${work}/stub" "${work}/fixture"
+  printf '#!/bin/sh\ntouch "%s/nix-called"\nexit 9\n' "${work}" > "${work}/stub/nix"
+  chmod +x -- "${work}/stub/nix"
+  : > "${work}/fixture/required-tools"
+  : > "${work}/fixture/packages.tsv"
+  : > "${work}/fixture/formatters.txt"
+  PATH="${work}/stub:${PATH}" run_case "${REPO_DIR}/.ci/check-devshell-provides" "${work}/fixture"
+  if [[ -e "${work}/nix-called" ]]; then
+    ci::log 'FAIL: fixture mode: the script tried to enter the devShell'
+    return 1
+  fi
+}
+
+function main() {
+  work="$(mktemp --directory)"
+  mkdir -- "${work}/host"
+  local rc=0
+  local case_fn
+  for case_fn in \
+    test_direct_run_is_wrapped \
+    test_args_survive \
+    test_exit_status_propagates \
+    test_symlink_run_is_wrapped \
+    test_no_rerun_inside_devshell \
+    test_fixture_mode_skips_rerun; do
+    "${case_fn}" || rc=1
+  done
+
+  ((rc == 0)) && ci::log 'self-wrap: every case passed'
+  # A failing case is this harness's verdict, not a crash.
+  trap - ERR
+  return "${rc}"
+}
+
+main "$@"

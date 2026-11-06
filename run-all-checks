@@ -6,14 +6,20 @@
 # the coverage baseline, patch coverage and baseline drops,
 # govulncheck and the offline config validation. Exit codes aggregate so one
 # run surfaces every failing category. Every caller (just check,
-# .githooks/pre-push, CI) runs this through .ci/in-devshell, so local and CI
-# runs cannot drift.
+# .githooks/pre-push, CI) ends up inside .ci/in-devshell, which this script
+# enters itself when started outside it, so local and CI runs cannot drift.
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/.ci/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 REPO_DIR="$(git rev-parse --show-toplevel)"
 readonly REPO_DIR
@@ -63,6 +69,8 @@ function main() {
   "${REPO_DIR}/.ci/test-check-breaking-check-list" || rc=1
   "${REPO_DIR}/.ci/test-check-doc-rot" || rc=1
   "${REPO_DIR}/.ci/test-check-uses-sha-pinned" || rc=1
+  "${REPO_DIR}/.ci/test-in-devshell" || rc=1
+  "${REPO_DIR}/.ci/test-self-wrap" || rc=1
   "${REPO_DIR}/.ci/test-check-vulns" || rc=1
   "${REPO_DIR}/.ci/test-check-gocache-keyed" || rc=1
   "${REPO_DIR}/.ci/test-lib" || rc=1

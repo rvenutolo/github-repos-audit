@@ -14,6 +14,12 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
+
 REPO_DIR="$(git rev-parse --show-toplevel)"
 readonly REPO_DIR
 

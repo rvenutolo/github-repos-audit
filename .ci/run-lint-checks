@@ -8,13 +8,19 @@
 # a merge-conflict-marker scan and a whole-tree gitleaks scan. Formatting of
 # everything else is `nix flake check`'s job. Exit codes aggregate rather than
 # fail fast, so one run surfaces every failing category. Must run inside the
-# devShell.
+# devShell; a direct run re-runs itself through .ci/in-devshell to get there.
 
 set -Eeuo pipefail
 shopt -s inherit_errexit
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 REPO_DIR="$(git rev-parse --show-toplevel)"
 readonly REPO_DIR

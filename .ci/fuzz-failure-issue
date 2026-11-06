@@ -29,6 +29,8 @@
 # @exitcode 0 the failure is recorded in an issue
 # @exitcode 1 a required variable is unset, or gh could not record it
 
+# devshell-exempt: runs on a bare runner in the fuzz workflow's failure job, which has no Nix
+
 set -Eeuo pipefail
 shopt -s inherit_errexit
 IFS=$'\n\t'

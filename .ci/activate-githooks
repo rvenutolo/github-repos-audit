@@ -12,6 +12,8 @@
 # @exitcode 0 hooks path is set (or was already correct)
 # @exitcode 1 not a git repo
 
+# devshell-exempt: the devShell's shellHook runs it; a re-run would nest nix develop
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

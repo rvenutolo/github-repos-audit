@@ -56,6 +56,8 @@
 # @exitcode 1 gremlins failed to run
 # @exitcode 2 no package was given
 
+# devshell-exempt: runs inside devShells.mutate through the mutate recipe; .ci/in-devshell enters the default shell, which has no gremlins
+
 set -Eeuo pipefail
 shopt -s inherit_errexit
 IFS=$'\n\t'

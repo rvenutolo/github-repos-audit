@@ -131,6 +131,12 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
+
 # From beside this script, not from the repository it is run in: its tests
 # run it inside throwaway repositories, which carry no .ci/ of their own.
 SCRIPT_DIR="$(dirname -- "${BASH_SOURCE[0]}")"

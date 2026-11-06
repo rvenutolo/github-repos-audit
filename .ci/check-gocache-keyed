@@ -21,7 +21,8 @@
 #              itself, would otherwise build into a shared cache and say
 #              nothing.
 #
-#              Must be run INSIDE the devShell (run-all-checks always is).
+#              Re-runs itself through .ci/in-devshell when started outside the
+#              devShell, so a direct run enters it too.
 # @noargs
 # @exitcode 0 GOCACHE is the directory keyed to the go and cc on PATH
 # @exitcode 1 it is not, or go or cc does not resolve
@@ -31,6 +32,12 @@ shopt -s inherit_errexit
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 # @description Print the name of the package directory a tool on PATH lives
 #              in: for <store>/<name>/bin/<tool>, print <name>. The tool is
