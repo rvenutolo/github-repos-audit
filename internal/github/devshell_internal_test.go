@@ -200,7 +200,6 @@ func TestDevshellFacts_symlinkWrapper(t *testing.T) {
 
 // TestDevshellFacts_tooManyFiles: past the bound no script is read, the
 // repository is recorded as having too many, and the wrapper is still read.
-// Skip-listed names do not count toward the bound.
 func TestDevshellFacts_tooManyFiles(t *testing.T) {
 	t.Parallel()
 
@@ -224,7 +223,9 @@ func TestDevshellFacts_tooManyFiles(t *testing.T) {
 	}
 }
 
-// TestDevshellFacts_atTheBound: exactly the bound is still read.
+// TestDevshellFacts_atTheBound: exactly the bound of real candidates is still
+// read, and the generated wrappers are dropped before the bound, so adding
+// them does not tip it over and they are not requested.
 func TestDevshellFacts_atTheBound(t *testing.T) {
 	t.Parallel()
 
@@ -232,12 +233,22 @@ func TestDevshellFacts_atTheBound(t *testing.T) {
 	for i := range getFlakeFilesMax {
 		paths = append(paths, fmt.Sprintf("bin/s%03d", i))
 	}
-	got, err := newClaudeClient(t, devshellServer(nil)).devshellFacts(t.Context(), "shell-scripts", execFiles(paths...))
+	s := devshellServer(nil)
+	entries := append(execFiles(paths...), execFiles("mvnw", "sub/gradlew")...)
+	got, err := newClaudeClient(t, s).devshellFacts(t.Context(), "shell-scripts", entries)
 	if err != nil {
 		t.Fatalf("devshellFacts() error = %v, want nil", err)
 	}
 	if got.TooManyFiles {
 		t.Errorf("devshellFacts() TooManyFiles = true at the bound, want false")
+	}
+	// The read is chunked, so the requested paths are the queries together.
+	var requested []string
+	for _, q := range s.asked() {
+		requested = append(requested, q...)
+	}
+	if diff := cmp.Diff(paths, requested); diff != "" {
+		t.Errorf("requested paths mismatch (-want +got):\n%s", diff)
 	}
 }
 
