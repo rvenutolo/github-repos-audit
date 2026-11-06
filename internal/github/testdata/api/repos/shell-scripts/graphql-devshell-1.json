@@ -1,0 +1,26 @@
+{
+  "data": {
+    "repository": {
+      "f0": {
+        "text": "#!/usr/bin/env bash\n# devshell-exempt: runs where Nix is absent\nset -Eeuo pipefail\necho fetch\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "f1": {
+        "text": "#!/usr/bin/env bash\nset -Eeuo pipefail\n\nKEEP_VARS=(\n  HOME\n  IN_DEVSHELL\n  TMPDIR\n)\n\nif [[ -n \"${IN_DEVSHELL:-}\" ]]; then\n  exec \"$@\"\nfi\n\nremove_tmp_dir() { rm --recursive --force \"${tmp_dir}\"; }\ntrap remove_tmp_dir EXIT\ntmp_dir=\"$(mktemp --directory --tmpdir=\"${base}\" in-devshell.XXXXXX)\"\nexport TMPDIR=\"${tmp_dir}\"\n\n(\n  trap - INT QUIT\n  exec nix \"${nix_args[@]}\" \"$@\"\n) <&0 &\nchild_pid=\"$!\"\nrc=0\nwait \"${child_pid}\" || rc=\"$?\"\nexit \"${rc}\"\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "f2": {
+        "text": "#!/usr/bin/env bash\nset -Eeuo pipefail\necho lint\n",
+        "is_truncated": false,
+        "is_binary": false
+      },
+      "f3": {
+        "text": "#!/usr/bin/env bash\nset -Eeuo pipefail\n# IN_DEVSHELL is set by the wrapper\nif [[ -z \"${IN_DEVSHELL:-}\" ]]; then\n  exec \"${REPO_DIR}/.ci/in-devshell\" \"${REPO_DIR}/run-all-checks\" \"$@\"\nfi\n",
+        "is_truncated": false,
+        "is_binary": false
+      }
+    }
+  }
+}

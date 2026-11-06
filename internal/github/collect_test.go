@@ -31,6 +31,29 @@ func at(t *testing.T, s string) time.Time {
 	return parsed.UTC()
 }
 
+// wantShellScriptsDevshell is the devshell fact of the shell-scripts fixture,
+// which TestClient_Collect_devshell also expects.
+func wantShellScriptsDevshell() audit.Devshell {
+	return audit.Devshell{
+		Wrapper: &audit.DevshellWrapper{
+			Present:    true,
+			Wait:       []string{`wait "${child_pid}" || rc="$?"`},
+			Mktemp:     []string{`tmp_dir="$(mktemp --directory --tmpdir="${base}" in-devshell.XXXXXX)"`},
+			KeepTmpdir: []string{"TMPDIR"},
+			ExitTrap:   []string{"trap remove_tmp_dir EXIT"},
+		},
+		Scripts: []audit.DevshellScript{
+			{Path: ".ci/fetch-tool", Exempt: []string{"runs where Nix is absent"}},
+			{Path: ".ci/lint"},
+			{
+				Path:           "run-checks",
+				InDevshellTest: []string{`if [[ -z "${IN_DEVSHELL:-}" ]]; then`},
+				ExecInDevshell: []string{`exec "${REPO_DIR}/.ci/in-devshell" "${REPO_DIR}/run-all-checks" "$@"`},
+			},
+		},
+	}
+}
+
 // wantShellScripts is the public, fully-equipped repository: a license, topics, a
 // green rollup, both rulesets, a required-check list and an Actions allowlist.
 func wantShellScripts(t *testing.T) audit.Repo {
@@ -70,6 +93,7 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		// The file listing and the file read name the same workflow.
 		// flake.nix is tracked and holds no builtins.getFlake call.
 		NixGetFlake: audit.NixGetFlake{NixFiles: true},
+		Devshell:    wantShellScriptsDevshell(),
 		Workflows: []audit.Workflow{{
 			Path:         ".github/workflows/ci.yml",
 			Events:       []string{"pull_request", "push"},
@@ -452,7 +476,7 @@ func TestClient_Collect_oneHistoryPage(t *testing.T) {
 			// flake, and not what this test is about.
 			var n int
 			for _, doc := range api.graphQLDocuments() {
-				if !strings.Contains(doc, "query GetFlakeFiles") && !strings.Contains(doc, "query GoPathsFiles") {
+				if !strings.Contains(doc, "query GetFlakeFiles") && !strings.Contains(doc, "query GoPathsFiles") && !strings.Contains(doc, "query DevshellFiles") {
 					n++
 				}
 			}
@@ -1612,8 +1636,8 @@ func TestClient_Collect_survivesAGraphQLRateLimit(t *testing.T) {
 	if diff := cmp.Diff(wantShellScripts(t), got[0]); diff != "" {
 		t.Errorf("Collect mismatch (-want +got):\n%s", diff)
 	}
-	if n := api.callsTo("/graphql"); n != 4 {
-		t.Errorf("/graphql saw %d calls, want 4: the limited answer, its retry, the file query and the builtins.getFlake query", n)
+	if n := api.callsTo("/graphql"); n != 5 {
+		t.Errorf("/graphql saw %d calls, want 5: the limited answer, its retry, the file query, the builtins.getFlake query and the executable-file query", n)
 	}
 }
 
@@ -2056,5 +2080,49 @@ func TestClient_Collect_getFlake(t *testing.T) {
 	}
 	if queries != 1 {
 		t.Errorf("sent %d GetFlakeFiles queries, want 1", queries)
+	}
+}
+
+// TestClient_Collect_devshellQueryFailureAborts: a DevshellFiles query that
+// fails fails the run rather than recording the files as unreadable.
+func TestClient_Collect_devshellQueryFailureAborts(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	api.failDevshell(scriptedFailure{status: http.StatusOK, body: `{"errors": [{"type": "FORBIDDEN", "message": "denied"}]}`})
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts"})
+	if err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Errorf("Collect() error = %v, want the DevshellFiles query's error", err)
+	}
+	if got != nil {
+		t.Errorf("Collect() = %v, want no repositories", got)
+	}
+}
+
+// TestClient_Collect_devshell: shell-scripts has a wrapper that cleans up, a
+// script that self-wraps, one that is exempt and one that does not wrap; its
+// generated wrapper and its non-executable library are not read. web-app has
+// no executable file and records nothing.
+func TestClient_Collect_devshell(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeAPI(t)
+	got, err := newTestClient(t, api.url()).Collect(t.Context(), []string{"shell-scripts", "web-app", "mixedCase-flake"})
+	if err != nil {
+		t.Fatalf("Collect() error = %v, want nil", err)
+	}
+	byName := map[string]audit.Devshell{}
+	for _, r := range got {
+		byName[r.Name] = r.Devshell
+	}
+	want := wantShellScriptsDevshell()
+	if diff := cmp.Diff(want, byName["shell-scripts"]); diff != "" {
+		t.Errorf("shell-scripts Devshell mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(audit.Devshell{}, byName["web-app"]); diff != "" {
+		t.Errorf("web-app Devshell mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(audit.Devshell{Scripts: []audit.DevshellScript{{Path: ".ci/eval-shell"}}}, byName["mixedCase-flake"]); diff != "" {
+		t.Errorf("mixedCase-flake Devshell mismatch (-want +got):\n%s", diff)
 	}
 }

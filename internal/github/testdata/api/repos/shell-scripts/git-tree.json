@@ -42,6 +42,36 @@
       "type": "blob"
     },
     {
+      "path": ".ci/in-devshell",
+      "mode": "100755",
+      "type": "blob"
+    },
+    {
+      "path": "run-checks",
+      "mode": "100755",
+      "type": "blob"
+    },
+    {
+      "path": ".ci/fetch-tool",
+      "mode": "100755",
+      "type": "blob"
+    },
+    {
+      "path": ".ci/lint",
+      "mode": "100755",
+      "type": "blob"
+    },
+    {
+      "path": "mvnw",
+      "mode": "100755",
+      "type": "blob"
+    },
+    {
+      "path": "lib.sh",
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
       "path": "vendor/sub",
       "type": "commit"
     }

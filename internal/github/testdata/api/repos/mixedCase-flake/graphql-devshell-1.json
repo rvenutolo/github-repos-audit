@@ -1,0 +1,11 @@
+{
+  "data": {
+    "repository": {
+      "f0": {
+        "text": "#!/usr/bin/env bash\nset -Eeuo pipefail\necho eval\n",
+        "is_truncated": false,
+        "is_binary": false
+      }
+    }
+  }
+}

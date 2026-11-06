@@ -77,6 +77,8 @@ type fakeAPI struct {
 	getFlakeFailure *scriptedFailure
 	// goPathsFailure, when set, answers every GoPathsFiles query the same way.
 	goPathsFailure *scriptedFailure
+	// devshellFailure, when set, answers every DevshellFiles query the same way.
+	devshellFailure *scriptedFailure
 	// getFlakeQueries counts each repository's builtins.getFlake file
 	// queries, numbering the fixture that answers the next one.
 	getFlakeQueries map[string]int
@@ -177,6 +179,14 @@ func (f *fakeAPI) failGoPaths(answer scriptedFailure) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.goPathsFailure = &answer
+}
+
+// failDevshell makes every DevshellFiles query answer answer, for the reason
+// failClaude gives.
+func (f *fakeAPI) failDevshell(answer scriptedFailure) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.devshellFailure = &answer
 }
 
 // serveFailure answers with the next scripted failure for path, if there is
@@ -361,6 +371,22 @@ func (f *fakeAPI) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.serve(w, dir, "graphql-gopaths-1")
+		return
+	}
+	// A repository's executable files fit one query in every fixture.
+	if strings.Contains(body.Query, "query DevshellFiles") {
+		f.mu.Lock()
+		failure := f.devshellFailure
+		f.mu.Unlock()
+		if failure != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(failure.status)
+			if _, err := w.Write([]byte(failure.body)); err != nil {
+				f.t.Errorf("write scripted DevshellFiles failure: %v", err)
+			}
+			return
+		}
+		f.serve(w, dir, "graphql-devshell-1")
 		return
 	}
 	f.serve(w, dir, "graphql")

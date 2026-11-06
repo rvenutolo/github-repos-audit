@@ -286,6 +286,12 @@ var claudeFileWords = []string{
 	"builtins.getFlake", "toString", ".",
 	// GOPATH file fixtures.
 	"export", "GOPATH", "GOMODCACHE", "$HOME", ".cache", "go", "mod",
+	// Shell script and devShell wrapper fixtures.
+	"--directory", "--force", "--recursive", "--tmpdir", "-Eeuo", "-n", "-z", "0", ".ci", "EXIT", "HOME", "INT",
+	"IN_DEVSHELL", "KEEP_VARS", "Nix", "QUIT", "REPO_DIR", "TMPDIR", "absent", "base", "bash", "bin", "by",
+	"child_pid", "devshell-exempt", "env", "eval", "exec", "exit", "fetch", "fi", "hook", "if", "in-devshell",
+	"in-devshell.XXXXXX", "is", "lint", "mktemp", "nix", "nix_args", "pipefail", "rc", "remove_tmp_dir", "rm",
+	"run-all-checks", "runs", "set", "then", "tmp_dir", "trap", "usr", "wait", "where", "wrapper",
 }
 
 // claudeFileName matches the synthetic names a Claude file fixture may use
@@ -332,7 +338,7 @@ func isFakeBase64Content(v any) bool {
 
 // treePath is every path a fixture git tree may list.
 const treePath = `^(README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLAUDE\.md|LICENSE|` +
-	`\.gitignore|\.editorconfig|flake\.nix|go\.mod|\.ci|\.ci/eval-shell|[Jj]ustfile|\.justfile|renovate\.json|` +
+	`\.gitignore|\.editorconfig|flake\.nix|go\.mod|\.ci|\.ci/(eval-shell|in-devshell|fetch-tool|lint)|run-checks|mvnw|lib\.sh|[Jj]ustfile|\.justfile|renovate\.json|` +
 	`\.commitlintrc\.yml|cliff\.toml|treefmt\.toml|compose\.yaml|typos\.toml|\.yamllint\.yml|` +
 	`\.markdownlint-cli2\.jsonc|\.prettierrc\.json|\.editorconfig-checker\.json|lychee\.toml|mkdocs\.yml|` +
 	`stacks|stacks/media|stacks/media/docker-compose\.yml|vendor/sub|` +
