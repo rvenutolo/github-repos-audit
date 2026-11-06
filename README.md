@@ -560,18 +560,83 @@ Grouped by theme here; the report lists them in the fixed worklist order
   files in a repository fails it as `too many Nix files`, since they were not
   read. n/a without a tracked `.nix` file; a repository whose files hold no
   call passes. The report's Nix section shows it.
-- **devshell_scripts** — whether every executable shell script enters the Nix
-  devShell itself, by a non-comment line that tests `IN_DEVSHELL` and another
-  that `exec`s `.ci/in-devshell`. A script excused by a `devshell-exempt:
-<reason>` comment is left out; the marker needs a reason. n/a when no
-  script is left to judge. The cell counts the failing scripts, and otherwise
-  names the problem: `no .ci/in-devshell`, `unreadable <path>`,
-  `<path>: exempt without a reason` or `too many files`.
+- **devshell_scripts** — whether every executable shell script re-runs itself
+  through `.ci/in-devshell`. A script run straight from a direnv or
+  `nix develop` shell has `IN_DEVSHELL` unset and still sees the host `PATH`
+  behind the flake's tools, so a tool missing from the flake resolves from the
+  host and a local run passes where CI fails. The tool reads every tracked file
+  of git mode `100755` (a symlink, mode `120000`, and a `100644` file such as a
+  sourced library are not candidates), and a candidate is a shell script when
+  line 1 is a shebang whose interpreter has the base name `sh` or `bash`:
+  directly (`#!/bin/bash`), through `env` (`#!/usr/bin/env bash`), or through
+  `env -S`, with or without flags. Any interpreter path counts when its base
+  name is `sh` or `bash`, and only line 1 is read. Files named `mvnw` or
+  `gradlew`, at any depth, are the Maven and Gradle wrappers those tools
+  generate; they are skipped before reading, are not recorded in `audit.json`
+  and do not count toward the file bound below. `.ci/in-devshell` itself is
+  never judged here; `devshell_tmp_cleanup` judges it. A script self-wraps when
+  it has both of these, each on a non-comment line, anywhere in the file:
+
+  ```sh
+  if [[ -z "${IN_DEVSHELL:-}" ]]; then
+    exec ./.ci/in-devshell "$0" "$@"
+  fi
+  ```
+
+  The first is a `[[ … ]]`, `[ … ]` or `test` expression that names
+  `IN_DEVSHELL` as a whole word and not as an assignment; an `export IN_DEVSHELL=1`
+  line or a bare `IN_DEVSHELL` array entry does not count. The
+  second is a line that starts with `exec` and names `in-devshell`. A script
+  that calls the wrapper without `exec` does not self-wrap. Lines whose first
+  non-blank character is `#` are ignored, so a comment never satisfies the
+  check. A script that must run without Nix opts out with a comment holding
+  `devshell-exempt: <reason>`; the marker is read only from comment lines, and
+  an exemption needs a non-empty reason. The tool records the lines it matched
+  and the reasons, not a verdict, so `audit.json` shows every exemption over
+  time. The check judges the repository when it has a script that is not
+  exempt, an unreadable candidate, or too many candidates; a repository whose
+  scripts are all exempt is n/a, like one with no scripts. A judged repository
+  passes when every such script self-wraps and `.ci/in-devshell` exists. It
+  fails on any problem, and the report lists them under the table in this
+  order: `too many files` (more than 200 candidates, none read, which hides
+  everything else); `no .ci/in-devshell`; each script that does not self-wrap,
+  by path; `<path>: exempt without a reason`; `unreadable <path>` (a file cut
+  short or not valid text may hold either line; a binary file is skipped). The
+  cell counts the failing scripts when scripts are the only problem and
+  otherwise names the problems. The report's Nix section shows it.
+
 - **devshell_tmp_cleanup** — whether `.ci/in-devshell` removes the temp
-  directory it makes: a `wait` for the background `nix develop`, a
-  `mktemp --directory`, `TMPDIR` kept through the environment filter, and an
-  `EXIT` trap, each on a non-comment line. The cell names each missing
-  marker. n/a when there is no wrapper and no script to judge.
+  directory it makes. `nix develop` creates `/tmp/nix-shell.XXXXXX` and points
+  `TMPDIR` at it; a wrapper that ends in `exec nix develop` has nothing left
+  to delete the directory, so every run leaks one, and on a tmpfs `/tmp` they
+  pile up in RAM. The fixed shape runs `nix develop` as a background child,
+  makes its own temp directory, keeps `TMPDIR` through the environment
+  filter, and removes the directory on exit:
+
+  ```sh
+  tmp="$(mktemp --directory)"
+  trap 'rm --recursive --force "${tmp}"' EXIT
+  ( exec nix develop --ignore-environment --keep TMPDIR --command "$@" ) <&0 &
+  child_pid="$!"
+  wait "${child_pid}" || rc="$?"
+  ```
+
+  The tool matches text, so a wrapper passes when all four of these appear,
+  each on a non-comment line, and comments are ignored because a leaking
+  wrapper's header may discuss all four: a `wait` as the first word of a line
+  or after `||`, `&&` or `;`; a `mktemp` with `--directory` or `-d` among its
+  flags; `TMPDIR` kept, meaning a line that is only `TMPDIR` (optionally
+  quoted, a `KEEP_VARS` array entry) or a `--keep TMPDIR` argument, since
+  `export TMPDIR=…` and `${TMPDIR:-/tmp}` can leave `nix develop` replacing it;
+  and a `trap … EXIT`, a trap whose last word is `EXIT`. The checks do not
+  prove signal handling or exit statuses. Only `.ci/in-devshell` is judged. It
+  is judged when the file exists or when `devshell_scripts` has something to
+  judge, and it is n/a otherwise. The cell and the list under the table name
+  each problem: `no wait for nix develop`, `no mktemp --directory`,
+  `TMPDIR not kept` and `no EXIT trap`; `unreadable` for a wrapper that is a symlink or
+  other non-regular file, or was cut short; and `no .ci/in-devshell` when
+  scripts are judged and the file is absent. The report's Nix section shows it.
+
 - **go_paths** — whether a Go flake's devShell sets the standard Go paths, so
   `go` never falls back to `~/go` and every project shares one module cache.
   The tool reads every tracked `*.nix` file, not only `flake.nix`, and passes
