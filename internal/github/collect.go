@@ -71,7 +71,10 @@ func (c *Client) Collect(ctx context.Context, names []string) ([]audit.Repo, err
 // of the workflow, composite-action and flake.lock files; then the
 // builtins.getFlake file query, for a repository that tracks a Nix file (see
 // getFlakeFacts); and last the GOPATH file query, for a repository with a
-// root go.mod and a flake.nix (see goPathsFacts). All of these are skipped
+// root go.mod and a flake.nix (see goPathsFacts); and last of all the
+// executable-file query for the shell scripts and the .ci/in-devshell
+// wrapper, for a repository with an executable file or a wrapper (see
+// devshellFacts). All of these are skipped
 // for an empty repository: it has no files, and with no commit no workflow
 // can have run to store anything.
 func (c *Client) collectOne(ctx context.Context, name string, presets *presetCache) (audit.Repo, error) {
@@ -124,6 +127,9 @@ func (c *Client) collectOne(ctx context.Context, name string, presets *presetCac
 		return audit.Repo{}, err
 	}
 	if repo.GoPaths, err = c.goPathsFacts(ctx, name, entries, repo.Files); err != nil {
+		return audit.Repo{}, err
+	}
+	if repo.Devshell, err = c.devshellFacts(ctx, name, entries); err != nil {
 		return audit.Repo{}, err
 	}
 	return repo, nil

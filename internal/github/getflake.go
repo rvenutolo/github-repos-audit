@@ -12,7 +12,8 @@ import (
 )
 
 // getFlakeFilesMax bounds the files read for builtins.getFlake calls: every
-// Nix file and every file under .ci/, together. Past it nothing is read and
+// Nix file and every file under .ci/, together. It also bounds the executable
+// files read for shell shebangs (see devshellFacts). Past it nothing is read and
 // the repository is recorded as having too many, for the reason claudeFilesMax
 // gives. The workflow and action texts are not counted: filesQuery has
 // already fetched them.
