@@ -27,7 +27,8 @@
 #                 moved. --no-eval-cache is mandatory, not tidiness.
 #
 #              Re-runs itself through .ci/in-devshell when started outside the
-#              devShell, so a direct run enters it too.
+#              devShell, so a direct run enters it too. Fixture mode is the
+#              exception: it runs where it is started, with no Nix.
 # @arg $1 dir optional fixture directory, which makes the script read
 #         `required-tools`, `packages.tsv` and `formatters.txt` from there
 #         instead of asking Nix. It exists so a fixture-driven test can drive
@@ -47,7 +48,9 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
-if [[ -z "${IN_DEVSHELL:-}" ]]; then
+# Fixture mode (a directory in $1) is meant to run without Nix, so only the real
+# run re-enters the devShell.
+if [[ -z "${IN_DEVSHELL:-}" && -z "${1:-}" ]]; then
   SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
   SELF_DIR="${SELF_PATH%/*}"
   exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
