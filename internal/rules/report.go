@@ -158,6 +158,15 @@ type Report struct {
 	// job_timeouts cell fails or is info with a count, the jobs it counts;
 	// see timeoutMissing and detailLists.
 	TimeoutMissing []RepoList[string]
+	// DevshellScriptProblems is, for each repository in report order whose
+	// devshell_scripts cell fails or is info with a count, its problems: the
+	// scripts that do not self-wrap, and the repository-wide ones; see
+	// devshellScriptProblems and detailLists.
+	DevshellScriptProblems []RepoList[string]
+	// DevshellWrapperProblems is, for each repository in report order whose
+	// devshell_tmp_cleanup cell fails or is info with a count, the markers
+	// .ci/in-devshell lacks; see devshellWrapperProblems and detailLists.
+	DevshellWrapperProblems []RepoList[string]
 	// UnrecognisedCaches is, for each repository in report order holding a
 	// cache under neither the tool's prefixes nor an action's, those caches;
 	// see cacheLists. Shown, never judged.

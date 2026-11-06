@@ -560,6 +560,18 @@ Grouped by theme here; the report lists them in the fixed worklist order
   files in a repository fails it as `too many Nix files`, since they were not
   read. n/a without a tracked `.nix` file; a repository whose files hold no
   call passes. The report's Nix section shows it.
+- **devshell_scripts** — whether every executable shell script enters the Nix
+  devShell itself, by a non-comment line that tests `IN_DEVSHELL` and another
+  that `exec`s `.ci/in-devshell`. A script excused by a `devshell-exempt:
+<reason>` comment is left out; the marker needs a reason. n/a when no
+  script is left to judge. The cell counts the failing scripts, and otherwise
+  names the problem: `no .ci/in-devshell`, `unreadable <path>`,
+  `<path>: exempt without a reason` or `too many files`.
+- **devshell_tmp_cleanup** — whether `.ci/in-devshell` removes the temp
+  directory it makes: a `wait` for the background `nix develop`, a
+  `mktemp --directory`, `TMPDIR` kept through the environment filter, and an
+  `EXIT` trap, each on a non-comment line. The cell names each missing
+  marker. n/a when there is no wrapper and no script to judge.
 - **go_paths** — whether a Go flake's devShell sets the standard Go paths, so
   `go` never falls back to `~/go` and every project shares one module cache.
   The tool reads every tracked `*.nix` file, not only `flake.nix`, and passes

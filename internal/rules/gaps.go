@@ -63,6 +63,8 @@ var gapLabels = map[Check]string{
 	CheckNixCache:                "Nix cache missing, empty, oversized or misconfigured",
 	CheckNixInstaller:            "Nix not installed by determinate-nix-action, or a DeterminateSystems action reporting home",
 	CheckNixGetflakeGit:          "builtins.getFlake reads the working tree outside git",
+	CheckDevshellScripts:         "Shell scripts that do not enter the devShell",
+	CheckDevshellTmpCleanup:      ".ci/in-devshell leaks its temp directory",
 	CheckGoPaths:                 "Go devShell without the standard GOPATH and GOMODCACHE",
 	CheckGoCache:                 "Go cache missing or empty on the default branch",
 	CheckCacheSaveDefaultBranch:  "Actions caches saved off the default branch",

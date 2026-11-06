@@ -99,6 +99,8 @@ func Evaluate(snap *audit.Snapshot) (*Report, error) {
 	rep.CITiming = ciTimingLines(rep.Repos)
 	rep.CancelMissing = detailLists(rep.Repos, CheckCICancelSuperseded, cancelMissing)
 	rep.TimeoutMissing = detailLists(rep.Repos, CheckJobTimeouts, timeoutMissing)
+	rep.DevshellScriptProblems = detailLists(rep.Repos, CheckDevshellScripts, devshellScriptProblems)
+	rep.DevshellWrapperProblems = detailLists(rep.Repos, CheckDevshellTmpCleanup, devshellWrapperProblems)
 	rep.UnrecognisedCaches, rep.ActionOwnedCaches = cacheLists(rep.Repos)
 	rep.PRCaches = prCaches(rep.Repos)
 	rep.Overrides = collectOverrides(rep.Repos)
@@ -335,6 +337,10 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observeNixInstaller(r)
 	case CheckNixGetflakeGit:
 		return observeNixGetflakeGit(r)
+	case CheckDevshellScripts:
+		return observeDevshellScripts(r)
+	case CheckDevshellTmpCleanup:
+		return observeDevshellTmpCleanup(r)
 	case CheckGoPaths:
 		return observeGoPaths(r)
 	case CheckGoCache:
