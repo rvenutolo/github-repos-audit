@@ -11,6 +11,9 @@
 # @exitcode 0 every case passed
 # @exitcode 1 a case failed
 
+# The single-quoted scripts handed to the wrapper are meant to expand inside the
+# command it runs, not here.
+# shellcheck disable=SC2016
 set -Eeuo pipefail
 shopt -s inherit_errexit
 IFS=$'\n\t'
@@ -59,7 +62,7 @@ function wait_for_file() {
   done
 }
 
-# @description Poll until a pid no longer answers `kill -0`.
+# @description Poll until a pid stops answering `kill -0`.
 # @arg $1 pid
 # @exitcode 0 it is gone
 # @exitcode 1 it is still there after the timeout
@@ -273,7 +276,8 @@ function test_sigint_trapped_by_command() {
 function test_sigterm_to_wrapper() {
   local dir wrapper_pid cmd_pid rc=0
   dir="$(new_case)"
-  (cd "${REPO_DIR}" && env --unset=IN_DEVSHELL TMPDIR="${dir}/tmp" "${WRAPPER}" \
+  # exec, so the recorded pid is the wrapper's own and not a subshell's.
+  (cd "${REPO_DIR}" && exec env --unset=IN_DEVSHELL TMPDIR="${dir}/tmp" "${WRAPPER}" \
     sh -c 'echo $$ > "$1"; exec sleep 300' sh "${dir}/cmd.pid") \
     < '/dev/null' > "${dir}/out" 2>&1 &
   wrapper_pid="$!"
