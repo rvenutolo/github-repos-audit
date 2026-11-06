@@ -7,9 +7,15 @@ import (
 	"github.com/rvenutolo/github-repos-audit/internal/audit"
 )
 
-// noDevshellWrapper is the problem both devshell checks report for a judged
-// repository without .ci/in-devshell.
-const noDevshellWrapper = "no .ci/in-devshell"
+// NoDevshellWrapper is the problem both devshell checks report for a judged
+// repository without .ci/in-devshell. The report renders it as plain text, so
+// the renderer matches on this constant.
+const NoDevshellWrapper = "no .ci/in-devshell"
+
+// DevshellTooManyFiles is the devshell_scripts problem for a repository with
+// more candidate scripts than the tool reads. The report renders it as plain
+// text, so the renderer matches on this constant.
+const DevshellTooManyFiles = "too many files"
 
 // exempted reports whether s carries a devshell-exempt marker with a reason.
 // A marker with an empty reason is recorded as found but excuses nothing.
@@ -55,10 +61,10 @@ func devshellScriptProblems(r audit.Repo) (problems []string, judged bool) {
 	d := r.Devshell
 	judged = devshellJudged(d)
 	if d.TooManyFiles {
-		return []string{"too many files"}, judged
+		return []string{DevshellTooManyFiles}, judged
 	}
 	if judged && d.Wrapper == nil {
-		problems = append(problems, noDevshellWrapper)
+		problems = append(problems, NoDevshellWrapper)
 	}
 	problems = append(problems, failingScripts(d)...)
 	var reasonless, unreadable []string
@@ -85,7 +91,7 @@ func devshellWrapperProblems(r audit.Repo) (problems []string, judged bool) {
 	switch {
 	case w == nil:
 		if judged {
-			problems = []string{noDevshellWrapper}
+			problems = []string{NoDevshellWrapper}
 		}
 	case w.Unreadable != "":
 		problems = []string{"unreadable"}

@@ -394,7 +394,7 @@ func nixSection(rep *rules.Report, at time.Time) string {
 // inline code, with the "exempt without a reason" verdict outside the span
 // as pathItem keeps "unreadable" outside it.
 func devshellScriptItem(s string) string {
-	if s == "no .ci/in-devshell" || s == "too many files" {
+	if s == rules.NoDevshellWrapper || s == rules.DevshellTooManyFiles {
 		return s
 	}
 	if path, ok := strings.CutSuffix(s, ": exempt without a reason"); ok {
