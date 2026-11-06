@@ -694,6 +694,38 @@
           }
         ]
       },
+      "devshell": {
+        "wrapper": {
+          "present": true,
+          "mktemp": [
+            "tmp=\"$(mktemp --directory)\""
+          ],
+          "exit_trap": [
+            "trap 'rm --recursive --force \"${tmp}\"' EXIT"
+          ]
+        },
+        "scripts": [
+          {
+            "path": ".ci/check-lint"
+          },
+          {
+            "path": ".ci/fetch-tool",
+            "exempt": [
+              ""
+            ]
+          },
+          {
+            "path": ".ci/publish",
+            "exempt": [
+              "runs on a runner without Nix"
+            ]
+          },
+          {
+            "path": "bin/big-script",
+            "unreadable": "truncated"
+          }
+        ]
+      },
       "ci_state": "SUCCESS",
       "ci": {
         "pull_requests": [
@@ -1181,6 +1213,34 @@
             "lines": [
               "export GOPATH=\"$HOME/.cache/go\"",
               "export GOMODCACHE=\"$HOME/.cache/go/mod\""
+            ]
+          }
+        ]
+      },
+      "devshell": {
+        "wrapper": {
+          "present": true,
+          "wait": [
+            "wait \"${child_pid}\" || rc=\"$?\""
+          ],
+          "mktemp": [
+            "tmp=\"$(mktemp --directory)\""
+          ],
+          "keep_tmpdir": [
+            "TMPDIR"
+          ],
+          "exit_trap": [
+            "trap 'rm --recursive --force \"${tmp}\"' EXIT"
+          ]
+        },
+        "scripts": [
+          {
+            "path": ".ci/check-lint",
+            "in_devshell_test": [
+              "if [[ -z \"${IN_DEVSHELL:-}\" ]]; then"
+            ],
+            "exec_in_devshell": [
+              "exec ./.ci/in-devshell \"$0\" \"$@\""
             ]
           }
         ]

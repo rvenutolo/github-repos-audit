@@ -361,9 +361,12 @@ func anyApplies(r *rules.RepoReport, columns []pathColumn) bool {
 }
 
 // nixSection shows how each repository uses Nix beyond having a flake.nix,
-// which the Tree section already reports.
+// which the Tree section already reports. The scripts that skip the devShell
+// and the wrapper's missing cleanup markers go in lists under the table, as
+// ciEfficiencySection's do, since a count does not say which file to fix.
 func nixSection(rep *rules.Report, at time.Time) string {
-	t := newTable("Repository", "Lock age", "Lock refresh", "Nix cache", "Installer", "getFlake via git", "Go paths")
+	t := newTable("Repository", "Lock age", "Lock refresh", "Nix cache", "Installer", "getFlake via git",
+		"Scripts in devShell", "Wrapper cleanup", "Go paths")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
@@ -373,10 +376,31 @@ func nixSection(rep *rules.Report, at time.Time) string {
 			cell(r.Cell(rules.CheckNixCache)),
 			cell(r.Cell(rules.CheckNixInstaller)),
 			cell(r.Cell(rules.CheckNixGetflakeGit)),
+			cell(r.Cell(rules.CheckDevshellScripts)),
+			cell(r.Cell(rules.CheckDevshellTmpCleanup)),
 			cell(r.Cell(rules.CheckGoPaths)),
 		)
 	}
-	return heading("Nix", t)
+	s := heading("Nix", t)
+	if s == "" {
+		return ""
+	}
+	return s + repoListSection("Scripts outside the devShell", rep.DevshellScriptProblems, devshellScriptItem) +
+		repoListSection("in-devshell cleanup", rep.DevshellWrapperProblems, plainItem)
+}
+
+// devshellScriptItem renders one devshell_scripts problem. The two problems
+// that are sentences, not paths, stay plain text; a script's path goes in
+// inline code, with the "exempt without a reason" verdict outside the span
+// as pathItem keeps "unreadable" outside it.
+func devshellScriptItem(s string) string {
+	if s == "no .ci/in-devshell" || s == "too many files" {
+		return s
+	}
+	if path, ok := strings.CutSuffix(s, ": exempt without a reason"); ok {
+		return code(oneLine(path)) + ": exempt without a reason"
+	}
+	return pathItem(s)
 }
 
 // ciEfficiencySection shows whether each repository's CI spends its time and
