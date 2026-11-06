@@ -4,7 +4,8 @@
 #              a script that follows it: run with IN_DEVSHELL unset and a
 #              scratch directory first on PATH, the script must re-run itself
 #              inside the devShell. Run with IN_DEVSHELL already set, it must
-#              not. Payloads are inert (a probe that prints and exits), and the
+#              not; the fixture mode of .ci/check-devshell-provides must not either.
+#              Payloads are inert (a probe that prints and exits), and the
 #              only paths removed are the scratch directory this script made.
 # @noargs
 # @exitcode 0 every case passed
@@ -145,6 +146,24 @@ function test_no_rerun_inside_devshell() {
   fi
 }
 
+# @description Fixture mode of .ci/check-devshell-provides runs where it is
+#              started: with IN_DEVSHELL unset it must not re-enter the
+#              devShell. A stub nix first on PATH records any attempt in a
+#              marker file and fails.
+function test_fixture_mode_skips_rerun() {
+  mkdir -- "${work}/stub" "${work}/fixture"
+  printf '#!/bin/sh\ntouch "%s/nix-called"\nexit 9\n' "${work}" > "${work}/stub/nix"
+  chmod +x -- "${work}/stub/nix"
+  : > "${work}/fixture/required-tools"
+  : > "${work}/fixture/packages.tsv"
+  : > "${work}/fixture/formatters.txt"
+  PATH="${work}/stub:${PATH}" run_case "${REPO_DIR}/.ci/check-devshell-provides" "${work}/fixture"
+  if [[ -e "${work}/nix-called" ]]; then
+    ci::log 'FAIL: fixture mode: the script tried to enter the devShell'
+    return 1
+  fi
+}
+
 function main() {
   work="$(mktemp --directory)"
   mkdir -- "${work}/host"
@@ -155,7 +174,8 @@ function main() {
     test_args_survive \
     test_exit_status_propagates \
     test_symlink_run_is_wrapped \
-    test_no_rerun_inside_devshell; do
+    test_no_rerun_inside_devshell \
+    test_fixture_mode_skips_rerun; do
     "${case_fn}" || rc=1
   done
 
