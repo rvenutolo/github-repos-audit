@@ -569,7 +569,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
   sourced library are not candidates), and a candidate is a shell script when
   line 1 is a shebang whose interpreter has the base name `sh` or `bash`:
   directly (`#!/bin/bash`), through `env` (`#!/usr/bin/env bash`), or through
-  `env -S`, with or without flags. Any interpreter path counts when its base
+  `env -S`, with or without flags. The operand of `env -u`/`--unset` and
+  `-C`/`--chdir` is skipped, so `#!/usr/bin/env -u NAME bash` runs `bash`. Any interpreter path counts when its base
   name is `sh` or `bash`, and only line 1 is read. Files named `mvnw` or
   `gradlew`, at any depth, are the Maven and Gradle wrappers those tools
   generate; they are skipped before reading, are not recorded in `audit.json`
@@ -586,7 +587,10 @@ Grouped by theme here; the report lists them in the fixed worklist order
   The first is a `[[ … ]]`, `[ … ]` or `test` expression that names
   `IN_DEVSHELL` as a whole word and not as an assignment; an `export IN_DEVSHELL=1`
   line or a bare `IN_DEVSHELL` array entry does not count. The
-  second is a line that starts with `exec` and names `in-devshell`. A script
+  second is a line with an `exec` in command position (first on the line, or
+  after `||`, `&&`, `;`, `then`, `do` or `else`, so
+  `[[ -z "${IN_DEVSHELL:-}" ]] && exec ./.ci/in-devshell "$0" "$@"` counts) that
+  names `in-devshell`. A script
   that calls the wrapper without `exec` does not self-wrap. Lines whose first
   non-blank character is `#` are ignored, so a comment never satisfies the
   check. A script that must run without Nix opts out with a comment holding
@@ -625,16 +629,19 @@ Grouped by theme here; the report lists them in the fixed worklist order
   each on a non-comment line, and comments are ignored because a leaking
   wrapper's header may discuss all four: a `wait` as the first word of a line
   or after `||`, `&&` or `;`; a `mktemp` with `--directory` or `-d` among its
-  flags; `TMPDIR` kept, meaning a line that is only `TMPDIR` (optionally
-  quoted, a `KEEP_VARS` array entry) or a `--keep TMPDIR` argument, since
-  `export TMPDIR=…` and `${TMPDIR:-/tmp}` can leave `nix develop` replacing it;
-  and a `trap … EXIT`, a trap whose last word is `EXIT`. The checks do not
+  flags; `TMPDIR` kept, meaning a line that starts with `TMPDIR` (optionally
+  quoted, a `KEEP_VARS` array entry, a trailing comment allowed) or a
+  `--keep TMPDIR` argument, since `export TMPDIR=…` and `${TMPDIR:-/tmp}` can
+  leave `nix develop` replacing it; and a `trap … EXIT`, a `trap` line that
+  names `EXIT` as a whole word among its signals, with a trailing `;` or
+  comment allowed, but not with the handler `-`, `''` or `""`, which resets
+  or ignores EXIT. The checks do not
   prove signal handling or exit statuses. Only `.ci/in-devshell` is judged. It
   is judged when the file exists or when `devshell_scripts` has something to
   judge, and it is n/a otherwise. The cell and the list under the table name
   each problem: `no wait for nix develop`, `no mktemp --directory`,
   `TMPDIR not kept` and `no EXIT trap`; `unreadable` for a wrapper that is a symlink or
-  other non-regular file, or was cut short; and `no .ci/in-devshell` when
+  other non-regular file, was cut short, or is not text; and `no .ci/in-devshell` when
   scripts are judged and the file is absent. The report's Nix section shows it.
 
 - **go_paths** — whether a Go flake's devShell sets the standard Go paths, so
