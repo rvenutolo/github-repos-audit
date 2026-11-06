@@ -6,8 +6,8 @@
 # the coverage baseline, patch coverage and baseline drops,
 # govulncheck and the offline config validation. Exit codes aggregate so one
 # run surfaces every failing category. Every caller (just check,
-# .githooks/pre-push, CI) runs this through .ci/in-devshell, so local and CI
-# runs cannot drift.
+# .githooks/pre-push, CI) ends up inside .ci/in-devshell, which this script
+# enters itself when started outside it, so local and CI runs cannot drift.
 
 set -Eeuo pipefail
 shopt -s inherit_errexit

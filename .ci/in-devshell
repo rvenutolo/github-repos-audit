@@ -38,7 +38,9 @@
 #
 #              Standalone on purpose: it runs before the environment it creates,
 #              so it cannot source a function library. It needs only bash, git,
-#              mktemp, readlink, rm and nix from the host.
+#              GNU mktemp, readlink and rm, and nix from the host. Every script
+#              that re-runs itself through this wrapper has the same
+#              requirement before the devShell exists.
 # @arg $@ command the command to run inside the devShell, plus its arguments
 # @stderr the usage line, or the reason the script cannot run
 # @exitcode 0 the wrapped command succeeded
@@ -56,9 +58,11 @@ set -Eeuo pipefail
 # below is a bash 4.4 builtin option: on stock macOS bash 3.2 the shell aborts
 # with `shopt: inherit_errexit: invalid shell option name`, which tells a
 # coworker running `just check` nothing about what to install. Check first, and
-# say what to do. Must stay ABOVE the `shopt` line it is protecting.
+# say what to do. Must stay ABOVE the `shopt` line it is protecting. The GNU
+# long options of readlink, mktemp and rm used below are a host requirement
+# too; on macOS that is GNU coreutils.
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
-  printf '%s: bash 4.4+ required to run the gate (found %s.%s). On macOS: brew install bash.\n' \
+  printf '%s: bash 4.4+ and GNU coreutils required to run the gate (found bash %s.%s). On macOS: brew install bash coreutils, with the coreutils gnubin directory first on PATH.\n' \
     "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
   exit 1
 fi

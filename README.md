@@ -1123,7 +1123,15 @@ Every recipe below runs its tools through `.ci/in-devshell`, a hermetic
 directly; `mutate`, which enters its own `nix develop .#mutate` shell;
 `gremlins-bump`, which is `nix run` on the host; and `hooks`, which runs
 before the devshell exists. `just check` is exactly what CI runs; nothing but
-Nix is expected to be installed on the host.
+Nix is expected to be installed on the host, plus bash 4.4 or newer and GNU
+`readlink`, `mktemp` and `rm`, which the wrapper and the scripts use before
+the devshell exists (on macOS: `brew install bash coreutils`, with the
+coreutils `gnubin` directory first on `PATH`).
+
+Executable scripts re-run themselves through `.ci/in-devshell` when started
+outside it, so a direct run enters the devshell too. The exceptions carry a
+`devshell-exempt` marker with the reason: they run on a bare runner, inside
+another devShell, or from the devshell's own `shellHook`.
 
 | Command              | Does                                                      |
 | -------------------- | --------------------------------------------------------- |

@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 
-# Git pre-push hook: runs the full gate inside the devShell and aborts the push
-# if it fails. Bypass with `git push --no-verify`.
+# Git pre-push hook: re-runs itself inside the devShell, runs the full gate
+# there and aborts the push if it fails. Bypass with `git push --no-verify`.
 
 set -Eeuo pipefail
-# Git runs hooks under the HOST bash, before .ci/in-devshell enters the
+# Git runs hooks under the HOST bash, before the re-run below enters the
 # devShell, so the same bash version guard is repeated here; the rationale is
-# in .ci/in-devshell. Must stay ABOVE the `shopt` line it is protecting.
+# in .ci/in-devshell. Must stay ABOVE the `shopt` line it is protecting. The
+# re-run also needs GNU readlink, mktemp and rm on the host. On macOS:
+# brew install bash coreutils, with the coreutils gnubin directory first on
+# PATH.
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
-  printf '%s: bash 4.4+ required to run this hook (found %s.%s). On macOS: brew install bash.\n' \
+  printf '%s: bash 4.4+ and GNU coreutils required to run this hook (found bash %s.%s). On macOS: brew install bash coreutils, with the coreutils gnubin directory first on PATH.\n' \
     "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
   exit 1
 fi
@@ -31,9 +34,11 @@ fi
 names=''
 trap 'rm -f -- "${names}"' EXIT
 
-# @description Run the full local gate through .ci/in-devshell, then, when the
-#              push goes to a public repository, refuse it if any outgoing
-#              commit carries the pushing account's login or repository names.
+# @description Run the full local gate, then, when the push goes to a public
+#              repository, refuse it if any outgoing commit carries the pushing
+#              account's login or repository names. The hook itself already
+#              runs inside the devShell, so `gh` here reads its auth from HOME,
+#              which .ci/in-devshell keeps.
 # @arg $1 remote name
 # @arg $2 remote url
 function main() {
@@ -46,9 +51,9 @@ function main() {
   # GITHUB_TOKEN is optional for the gate (lychee uses it only to get an
   # authenticated api.github.com rate limit; see the lychee step in
   # .ci/run-lint-checks). `|| true` means a contributor with no `gh` login
-  # (or no `gh` at all) still reaches the gate rather than failing here under
-  # `set -e`. gh runs outside the devShell so it sees the host's auth;
-  # .ci/in-devshell keeps GITHUB_TOKEN across the boundary.
+  # still reaches the gate rather than failing here under `set -e`. The gate
+  # runs through .ci/in-devshell with the token in its environment because
+  # that wrapper wipes the environment and keeps GITHUB_TOKEN.
   local -a gate_env=()
   local token=''
   token="$(gh auth token --hostname github.com 2> /dev/null || true)"
