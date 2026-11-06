@@ -4,6 +4,15 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v11.0.1
+
+### Fixes
+
+- run nix develop as a waited child so in-devshell removes its temp directory
+- have every script re-run itself through .ci/in-devshell
+- exempt the fuzz failure job and the mutate shell from self-wrapping
+- skip the devShell re-run in check-devshell-provides fixture mode
+
 ## v11.0.0
 
 ### Breaking changes
