@@ -303,9 +303,13 @@ function test_sigint_trapped_by_command() {
   return "${rc}"
 }
 
-# @description SIGTERM to the wrapper alone is forwarded: it exits 143, the
-#              scratch TMPDIR ends up empty and nothing is left running.
-function test_sigterm_to_wrapper() {
+# @description A signal sent to the wrapper alone is forwarded: the wrapper
+#              exits with the signal's conventional status, the scratch TMPDIR
+#              ends up empty and nothing is left running.
+# @arg $1 signal name, as `kill -s` takes it
+# @arg $2 the wrapper's expected exit status
+function expect_forwarded() {
+  local -r signal="$1" want="$2" name="SIG$1 to wrapper"
   local dir wrapper_pid cmd_pid rc=0
   dir="$(new_case)"
   # exec, so the recorded pid is the wrapper's own and not a subshell's.
@@ -315,20 +319,30 @@ function test_sigterm_to_wrapper() {
   wrapper_pid="$!"
   started_pids+=("${wrapper_pid}")
   if ! wait_for_file "${dir}/cmd.pid"; then
-    ci::log "FAIL: SIGTERM to wrapper: the command never started (output: $(< "${dir}/out"))"
+    ci::log "FAIL: ${name}: the command never started (output: $(< "${dir}/out"))"
     return 1
   fi
   cmd_pid="$(< "${dir}/cmd.pid")"
   started_pids+=("${cmd_pid}")
-  kill -s TERM "${wrapper_pid}"
+  kill -s "${signal}" "${wrapper_pid}"
   wait "${wrapper_pid}" || rc="$?"
   forget_pid "${wrapper_pid}"
-  if [[ "${rc}" != 143 ]]; then
-    ci::log "FAIL: SIGTERM to wrapper: exit ${rc}, want 143 (output: $(< "${dir}/out"))"
+  if [[ "${rc}" != "${want}" ]]; then
+    ci::log "FAIL: ${name}: exit ${rc}, want ${want} (output: $(< "${dir}/out"))"
     return 1
   fi
-  expect_gone 'SIGTERM to wrapper' "${cmd_pid}" || return 1
-  expect_empty 'SIGTERM to wrapper' "${dir}/tmp"
+  expect_gone "${name}" "${cmd_pid}" || return 1
+  expect_empty "${name}" "${dir}/tmp"
+}
+
+# @description SIGTERM to the wrapper alone is forwarded and it exits 143.
+function test_sigterm_to_wrapper() {
+  expect_forwarded TERM 143
+}
+
+# @description SIGHUP to the wrapper alone is forwarded and it exits 129.
+function test_sighup_to_wrapper() {
+  expect_forwarded HUP 129
 }
 
 # @description A command that handles a forwarded SIGTERM and exits on its own
@@ -371,6 +385,7 @@ function main() {
     test_sigint_to_process_group \
     test_sigint_trapped_by_command \
     test_sigterm_to_wrapper \
+    test_sighup_to_wrapper \
     test_sigterm_handled_by_command; do
     "${case_fn}" || rc=1
   done
