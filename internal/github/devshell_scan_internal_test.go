@@ -196,6 +196,27 @@ func TestScriptLines(t *testing.T) {
 	}
 }
 
+// TestUnquoted: quoted text is removed with its quotes kept, and a backslash
+// escapes a quote outside single quotes only.
+func TestUnquoted(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ in, want string }{
+		{"echo plain", "echo plain"},
+		{"log 'a; b' x", "log '' x"},
+		{`log "a && b" x`, `log "" x`},
+		{`log "a \" b" x`, `log "" x`},
+		{`log 'a \' x`, `log '' x`},
+		{`echo \' ; x`, `echo \' ; x`},
+		{"log 'unterminated; x", "log '"},
+		{`log "it's" x`, `log "" x`},
+	} {
+		if got := unquoted(tc.in); got != tc.want {
+			t.Errorf("unquoted(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 // leakingWrapper is the wrapper shape that leaks its temp directory: prose
 // about the markers in the header, a KEEP_VARS list without TMPDIR, and a
 // top-level exec of nix.

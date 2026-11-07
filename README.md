@@ -588,9 +588,11 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `IN_DEVSHELL` as a whole word and not as an assignment; an `export IN_DEVSHELL=1`
   line or a bare `IN_DEVSHELL` array entry does not count. The
   second is a line with an `exec` in command position (first on the line, or
-  after `||`, `&&`, `;`, `then`, `do` or `else`, so
-  `[[ -z "${IN_DEVSHELL:-}" ]] && exec ./.ci/in-devshell "$0" "$@"` counts) that
-  names `in-devshell`. A script
+  after `||`, `&&` or `;`, optionally behind `then`, `do` or `else` there, so
+  `[[ -z "${IN_DEVSHELL:-}" ]] && exec ./.ci/in-devshell "$0" "$@"` and
+  `if …; then exec …; fi` count) that names `in-devshell`. Text inside quotes
+  is not shell syntax, so `echo 'a; exec in-devshell'` and
+  `echo then exec in-devshell` do not count. A script
   that calls the wrapper without `exec` does not self-wrap. Lines whose first
   non-blank character is `#` are ignored, so a comment never satisfies the
   check. A script that must run without Nix opts out with a comment holding
@@ -634,8 +636,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `--keep TMPDIR` argument, since `export TMPDIR=…` and `${TMPDIR:-/tmp}` can
   leave `nix develop` replacing it; and a `trap … EXIT`, a `trap` line that
   names `EXIT` as a whole word among its signals, with a trailing `;` or
-  comment allowed, but not with the handler `-`, `''` or `""`, which resets
-  or ignores EXIT. The checks do not
+  comment allowed, but not with the handler `-`, `''` or `""` (with or
+  without a `--` before it), which resets or ignores EXIT. The checks do not
   prove signal handling or exit statuses. Only `.ci/in-devshell` is judged. It
   is judged when the file exists or when `devshell_scripts` has something to
   judge, and it is n/a otherwise. The cell and the list under the table name
