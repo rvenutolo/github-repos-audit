@@ -20,12 +20,14 @@ const devshellExemptMarker = "devshell-exempt:"
 var devshellTestLine = regexp.MustCompile(`(\[\[|\[|(^|[^A-Za-z0-9_-])test\s).*(^|[^A-Za-z0-9_])IN_DEVSHELL([^A-Za-z0-9_=]|$)`)
 
 // devshellExecLine matches an `exec` in command position: first on a line, or
-// after `||`, `&&`, `;`, `then`, `do` or `else`, so a compact
-// `[[ -z "${IN_DEVSHELL:-}" ]] && exec ...` or one-line `then exec ...; fi`
-// counts. Only an exec replaces the script with the wrapper; a plain call to
-// the wrapper returns to a script that has already run unwrapped, and
-// `echo exec` is not a command.
-var devshellExecLine = regexp.MustCompile(`(^|\|\||&&|;|\bthen|\bdo|\belse)\s*exec\s`)
+// after `||`, `&&` or `;`, optionally behind `then`, `do` or `else` there, so
+// a compact `[[ -z "${IN_DEVSHELL:-}" ]] && exec ...` or one-line
+// `if ...; then exec ...; fi` counts. Only an exec replaces the script with
+// the wrapper; a plain call to the wrapper returns to a script that has
+// already run unwrapped, and `echo exec` or `echo then exec` is not a command.
+// It is matched against the line with quoted text removed (unquoted), so a
+// separator inside a string does not make a command position.
+var devshellExecLine = regexp.MustCompile(`(^|\|\||&&|;)\s*((then|do|else)\s+)?exec\s`)
 
 // wrapperWaitLine matches a `wait` as the first word of a line, or after
 // `||`, `&&` or `;`. The fixed wrapper's `wait "${child_pid}" || rc="$?"`
@@ -53,9 +55,10 @@ var wrapperKeepTmpdirLine = regexp.MustCompile(`^(TMPDIR|"TMPDIR"|'TMPDIR')(\s|$
 var wrapperExitTrapLine = regexp.MustCompile(`^trap\s.*\bEXIT\b`)
 
 // wrapperTrapNoHandlerLine matches a trap whose handler is `-` or an
-// empty quoted string: it resets or ignores EXIT instead of cleaning up, so it is not the
-// cleanup trap even though it names EXIT.
-var wrapperTrapNoHandlerLine = regexp.MustCompile(`^trap\s+(-|''|"")(\s|$)`)
+// empty quoted string, after an optional `--` ending the options: it resets
+// or ignores EXIT instead of cleaning up, so it is not the cleanup trap even
+// though it names EXIT.
+var wrapperTrapNoHandlerLine = regexp.MustCompile(`^trap\s+(--\s+)?(-|''|"")(\s|$)`)
 
 // shellShebang reports whether line 1 of text is a shebang whose interpreter
 // is sh or bash by base name: directly, through env, or through `env -S`,
@@ -115,6 +118,43 @@ func codeLines(text string) []string {
 	return out
 }
 
+// unquoted returns line with the contents of every single- and double-quoted
+// string removed, the quotes kept, so separators and keywords inside a string
+// are not read as shell syntax. A backslash escapes the next character
+// outside single quotes, as in the shell. An unterminated string runs to the
+// end of the line. Command substitutions are not parsed: their text is
+// treated like any other.
+func unquoted(line string) string {
+	var b strings.Builder
+	var quote rune
+	escaped := false
+	for _, r := range line {
+		switch {
+		case escaped:
+			escaped = false
+			if quote == 0 {
+				b.WriteRune(r)
+			}
+		case r == '\\' && quote != '\'':
+			escaped = true
+			if quote == 0 {
+				b.WriteRune(r)
+			}
+		case quote != 0:
+			if r == quote {
+				quote = 0
+				b.WriteRune(r)
+			}
+		case r == '\'' || r == '"':
+			quote = r
+			b.WriteRune(r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // exemptReasons returns, for each comment line containing the devshell-exempt
 // marker, the trimmed text after it. The reason may be empty, which the
 // caller treats as an exemption with no reason. A marker on a code line is
@@ -143,7 +183,7 @@ func scriptLines(text string) (inDevshellTest, execInDevshell []string) {
 		if devshellTestLine.MatchString(line) {
 			inDevshellTest = append(inDevshellTest, line)
 		}
-		if devshellExecLine.MatchString(line) && strings.Contains(line, "in-devshell") {
+		if devshellExecLine.MatchString(unquoted(line)) && strings.Contains(line, "in-devshell") {
 			execInDevshell = append(execInDevshell, line)
 		}
 	}
