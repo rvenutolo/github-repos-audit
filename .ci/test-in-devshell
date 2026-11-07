@@ -39,8 +39,11 @@ readonly WAIT_TICKS=1200
 
 # Globals, not local to main: the EXIT trap runs after main has returned.
 # work holds each case's scratch TMPDIR and marker files; started_pids holds
-# every wrapper and command pid this script recorded, so a case that fails
-# midway cannot leave one running.
+# every wrapper and command pid this script recorded and has not yet seen exit,
+# so a case that fails midway cannot leave one running. A case drops a pid once
+# it confirms the process ended: the kernel may hand that pid to an unrelated
+# process, which cleanup's KILL would then hit, and `kill -0` cannot tell the
+# two apart.
 work=''
 started_pids=()
 
@@ -56,6 +59,18 @@ function cleanup() {
 }
 trap cleanup EXIT
 
+# @description Drop a pid from started_pids once its process is known to have
+#              ended.
+# @arg $1 pid
+function forget_pid() {
+  local -a kept=()
+  local pid
+  for pid in "${started_pids[@]}"; do
+    [[ "${pid}" == "$1" ]] || kept+=("${pid}")
+  done
+  started_pids=("${kept[@]}")
+}
+
 # @description Poll until a file exists and is non-empty.
 # @arg $1 path
 # @exitcode 0 it appeared
@@ -68,7 +83,7 @@ function wait_for_file() {
   done
 }
 
-# @description Poll until a pid stops answering `kill -0`.
+# @description Poll until a pid stops answering `kill -0`, then forget it.
 # @arg $1 pid
 # @exitcode 0 it is gone
 # @exitcode 1 it is still there after the timeout
@@ -78,6 +93,7 @@ function wait_for_exit() {
     ((++ticks > WAIT_TICKS)) && return 1
     sleep 0.1
   done
+  forget_pid "$1"
 }
 
 # @description Create a fresh case directory holding an empty scratch TMPDIR
@@ -107,6 +123,18 @@ function expect_empty() {
     ci::log "FAIL: $1: left behind in TMPDIR: ${left//$'\n'/ }"
     return 1
   fi
+}
+
+# @description Fail if a recorded command is still running once its wrapper
+#              has ended; otherwise forget its pid.
+# @arg $1 case name
+# @arg $2 pid
+function expect_gone() {
+  if kill -0 "$2" 2> '/dev/null'; then
+    ci::log "FAIL: $1: the command is still running"
+    return 1
+  fi
+  forget_pid "$2"
 }
 
 # @description Run the wrapper in the foreground with IN_DEVSHELL unset, the
@@ -229,10 +257,7 @@ function test_sigint_to_process_group() {
     ci::log 'FAIL: SIGINT to group: the wrapper did not end'
     return 1
   fi
-  if kill -0 "${cmd_pid}" 2> '/dev/null'; then
-    ci::log 'FAIL: SIGINT to group: the command is still running'
-    return 1
-  fi
+  expect_gone 'SIGINT to group' "${cmd_pid}" || return 1
   expect_empty 'SIGINT to group' "${dir}/tmp"
 }
 
@@ -273,12 +298,13 @@ function test_sigint_trapped_by_command() {
     ci::log 'FAIL: trapped SIGINT: the wrapper did not end after the command did'
     return 1
   fi
+  expect_gone 'trapped SIGINT' "${cmd_pid}" || return 1
   expect_empty 'trapped SIGINT' "${dir}/tmp" || rc=1
   return "${rc}"
 }
 
-# @description SIGTERM to the wrapper alone is forwarded: it exits 143 and the
-#              scratch TMPDIR ends up empty.
+# @description SIGTERM to the wrapper alone is forwarded: it exits 143, the
+#              scratch TMPDIR ends up empty and nothing is left running.
 function test_sigterm_to_wrapper() {
   local dir wrapper_pid cmd_pid rc=0
   dir="$(new_case)"
@@ -296,10 +322,12 @@ function test_sigterm_to_wrapper() {
   started_pids+=("${cmd_pid}")
   kill -s TERM "${wrapper_pid}"
   wait "${wrapper_pid}" || rc="$?"
+  forget_pid "${wrapper_pid}"
   if [[ "${rc}" != 143 ]]; then
     ci::log "FAIL: SIGTERM to wrapper: exit ${rc}, want 143 (output: $(< "${dir}/out"))"
     return 1
   fi
+  expect_gone 'SIGTERM to wrapper' "${cmd_pid}" || return 1
   expect_empty 'SIGTERM to wrapper' "${dir}/tmp"
 }
 
