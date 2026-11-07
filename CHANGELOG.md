@@ -4,6 +4,13 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v11.0.2
+
+### Fixes
+
+- tighten devshell scanner exec position and trap -- handling
+- keep the command's real exit status when in-devshell forwards a signal
+
 ## v11.0.1
 
 ### Fixes
