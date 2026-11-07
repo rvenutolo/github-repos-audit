@@ -49,8 +49,9 @@
 # @exitcode 129 hung up before the command started (130 interrupted, 143
 #               terminated)
 # @exitcode * otherwise the wrapped command's exit status (128+N when a signal
-#             killed it), nix's own when the devShell cannot be entered, or the
-#             failing mktemp or readlink status
+#             killed it, or when bash lost the status of a command that ended
+#             during a forwarded signal), nix's own when the devShell cannot be
+#             entered, or the failing mktemp or readlink status
 
 set -Eeuo pipefail
 # This script runs under the HOST bash, before the devShell it creates exists,
@@ -221,25 +222,30 @@ function main() {
     exec nix "${nix_args[@]}" "$@"
   ) <&0 &
   child_pid="$!"
-  # A trapped signal cuts `wait` short, so wait again until one returns because
-  # the child ended. When the child ends during a wait a trap cut short, bash
-  # reaps it but loses its status (5.2 then reports 255, 5.3 reports 127), and
-  # the pid stops answering `kill -0`; the child almost surely died of that
-  # signal, so the conventional 128+N stands in for the status.
+  # A trapped signal cuts `wait` short, so wait again until one returns without
+  # a trap having run. A child that ended meanwhile usually still has its
+  # status saved, and that wait returns it: a command that handles the signal
+  # and exits 0 is reported as 0. Only when the child ends during the very wait
+  # a trap cut short does bash reap it and lose the status: the next wait finds
+  # no such child (5.2 reports 255, 5.3 reports 127, with a message silenced
+  # here) and the pid does not answer `kill -0`. Then the conventional 128+N
+  # of the last signal stands in, so a real 127 or 255 after a forwarded
+  # signal is reported as 128+N too.
   local rc=0
   local signal_status=''
   while true; do
     got_signal=''
-    if [[ -n "${signal_status}" ]] && ! kill -0 "${child_pid}" 2> '/dev/null'; then
-      rc="${signal_status}"
-      break
-    fi
     rc=0
-    wait "${child_pid}" || rc="$?"
-    if [[ -z "${got_signal}" ]]; then
-      break
+    wait "${child_pid}" 2> '/dev/null' || rc="$?"
+    if [[ -n "${got_signal}" ]]; then
+      signal_status="${got_signal}"
+      continue
     fi
-    signal_status="${got_signal}"
+    if [[ -n "${signal_status}" ]] && ((rc == 127 || rc == 255)) \
+      && ! kill -0 "${child_pid}" 2> '/dev/null'; then
+      rc="${signal_status}"
+    fi
+    break
   done
   exit "${rc}"
 }
