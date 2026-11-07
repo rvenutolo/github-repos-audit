@@ -331,6 +331,33 @@ function test_sigterm_to_wrapper() {
   expect_empty 'SIGTERM to wrapper' "${dir}/tmp"
 }
 
+# @description A command that handles a forwarded SIGTERM and exits on its own
+#              terms is reported with its own status, not the conventional 143.
+function test_sigterm_handled_by_command() {
+  local dir wrapper_pid cmd_pid rc=0
+  dir="$(new_case)"
+  (cd "${REPO_DIR}" && exec env --unset=IN_DEVSHELL TMPDIR="${dir}/tmp" "${WRAPPER}" \
+    sh -c 'trap "kill \$! 2> /dev/null; exit 0" TERM; echo $$ > "$1"; sleep 300 & wait' sh "${dir}/cmd.pid") \
+    < '/dev/null' > "${dir}/out" 2>&1 &
+  wrapper_pid="$!"
+  started_pids+=("${wrapper_pid}")
+  if ! wait_for_file "${dir}/cmd.pid"; then
+    ci::log "FAIL: handled SIGTERM: the command never started (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  cmd_pid="$(< "${dir}/cmd.pid")"
+  started_pids+=("${cmd_pid}")
+  kill -s TERM "${wrapper_pid}"
+  wait "${wrapper_pid}" || rc="$?"
+  forget_pid "${wrapper_pid}"
+  if [[ "${rc}" != 0 ]]; then
+    ci::log "FAIL: handled SIGTERM: exit ${rc}, want the command's 0 (output: $(< "${dir}/out"))"
+    return 1
+  fi
+  expect_gone 'handled SIGTERM' "${cmd_pid}" || return 1
+  expect_empty 'handled SIGTERM' "${dir}/tmp"
+}
+
 function main() {
   work="$(mktemp --directory)"
   local rc=0
@@ -343,7 +370,8 @@ function main() {
     test_missing_tmpdir \
     test_sigint_to_process_group \
     test_sigint_trapped_by_command \
-    test_sigterm_to_wrapper; do
+    test_sigterm_to_wrapper \
+    test_sigterm_handled_by_command; do
     "${case_fn}" || rc=1
   done
 
