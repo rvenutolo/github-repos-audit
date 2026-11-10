@@ -20,6 +20,6 @@ require (
 	github.com/titanous/json5 v1.0.0
 )
 
-require golang.org/x/text v0.43.0
+require golang.org/x/text v0.44.0
 
 require go.yaml.in/yaml/v4 v4.0.0
