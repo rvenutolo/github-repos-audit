@@ -531,6 +531,11 @@ func TestResolve_batching(t *testing.T) {
 		{"a major-only rule turning majors together under a group that reaches them", `{"extends":["schedule:weekly"],"packageRules":[` + anyGroupRule + `,{"matchUpdateTypes":["major"],"separateMajorMinor":false}]}`, "majors_grouped", nil, nil},
 		{"a rule's major object turning majors together", `{"extends":["schedule:weekly"],"packageRules":[` + anyGroupRule + `,{"matchManagers":["npm"],"major":{"separateMajorMinor":false}}]}`, "majors_grouped", nil, nil},
 		{"a major object under a group that leaves majors out", `{"extends":["schedule:weekly"],"major":{"separateMajorMinor":false},"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"a top-level group of a wrong type", `{"group":5,"extends":["schedule:weekly"],"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a patch object's separateMinorPatch", `{"extends":["schedule:weekly"],"patch":{"separateMinorPatch":true},"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a major of a wrong type", `{"extends":["schedule:weekly"],"major":5,"packageRules":[` + anyGroupRule + `]}`, "majors_grouped", nil, nil},
+		{"a wrongly typed major.separateMajorMinor", `{"extends":["schedule:weekly"],"major":{"separateMajorMinor":"no"},"packageRules":[` + anyGroupRule + `]}`, "majors_grouped", nil, nil},
+		{"a major object leaving majors apart", `{"extends":["schedule:weekly"],"major":{"separateMajorMinor":true},"packageRules":[` + anyGroupRule + `]}`, "ok", []string{weeklyCron}, nil},
 		// Package rules apply again after lockFileMaintenance is merged.
 		{"a lock-file rule's schedule off the group's", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"schedule":["every weekend"]}]}`, "lock_files_off_schedule", []string{weeklyCron}, nil},
 		{"a lock-file rule's schedule inside the group's", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"schedule":["before 2am on monday"]}]}`, "ok", []string{weeklyCron}, nil},
