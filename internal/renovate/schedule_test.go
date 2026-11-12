@@ -212,7 +212,7 @@ func TestWindow_within(t *testing.T) {
 	early, _ := parseSchedule([]string{"before 4am on monday"})
 	weekend, _ := parseSchedule([]string{"every weekend"})
 	monday, _ := parseSchedule([]string{"on monday"})
-	any, _ := parseSchedule(nil)
+	anyTime, _ := parseSchedule(nil)
 
 	tests := []struct {
 		name         string
@@ -223,8 +223,8 @@ func TestWindow_within(t *testing.T) {
 		{"early monday within monday", early, monday, true},
 		{"monday not within early monday", monday, early, false},
 		{"within itself", early, early, true},
-		{"anything within any time", weekend, any, true},
-		{"any time not within a narrower window", any, weekend, false},
+		{"anything within any time", weekend, anyTime, true},
+		{"any time not within a narrower window", anyTime, weekend, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

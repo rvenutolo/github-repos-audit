@@ -44,6 +44,8 @@ const (
 )
 
 // periodStart is the first hour of the reference period, a Monday.
+//
+//nolint:gochecknoglobals // immutable constant instant
 var periodStart = time.Date(2028, time.January, 3, 0, 0, 0, 0, time.UTC)
 
 // window is the set of hours of the reference period a schedule allows.
@@ -153,6 +155,8 @@ type hourFields struct {
 }
 
 // hourTable is built once: parsing a schedule is then a bitmask test per hour.
+//
+//nolint:gochecknoglobals // computed once; read-only
 var hourTable = sync.OnceValue(func() []hourFields {
 	t := make([]hourFields, periodHours)
 	for i := range t {
@@ -255,11 +259,13 @@ func parseCron(text string) (clause, bool) {
 	return c, true
 }
 
+//nolint:gochecknoglobals // immutable lookup table
 var monthNames = map[string]int{
 	"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
 	"jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
 }
 
+//nolint:gochecknoglobals // immutable lookup table
 var dayNames = map[string]int{
 	"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6,
 }
@@ -353,8 +359,8 @@ func rewriteText(entry string) []string {
 		}
 	}
 	s = strings.Join(tokens, " ")
-	if strings.HasSuffix(s, "days") {
-		s = strings.TrimSuffix(s, "days") + "day"
+	if base, ok := strings.CutSuffix(s, "days"); ok {
+		s = base + "day"
 	}
 
 	tokens = strings.Fields(s)
