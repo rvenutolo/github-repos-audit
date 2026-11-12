@@ -98,6 +98,35 @@ func TestResolve_batching(t *testing.T) {
 			"split_group", nil, nil,
 		},
 		{
+			"an earlier rule with its own schedule splits the group",
+			`{"schedule":"before 4am on monday","packageRules":[{"matchManagers":["npm"],"schedule":["every weekend"]},` + groupRule + `]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"an earlier major-only rule with its own schedule is ignored",
+			`{"schedule":"before 4am on monday","packageRules":[{"matchUpdateTypes":["major"],"schedule":["every weekend"]},` + groupRule + `]}`,
+			"ok",
+			[]string{"before 4am on monday"},
+			nil,
+		},
+		{
+			"a catch-all then group:linters",
+			`{"extends":["github>gh-owner/preset-store:group","group:linters","schedule:weekly"]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"group:linters then an own catch-all",
+			`{"extends":["group:linters","schedule:weekly"],"packageRules":[` + groupRule + `]}`,
+			"ok",
+			[]string{weeklyCron},
+			nil,
+		},
+		{
+			"a catch-all then group:nodeJs",
+			`{"extends":["github>gh-owner/preset-store:group","group:nodeJs","schedule:weekly"]}`,
+			"split_group", nil, nil,
+		},
+		{
 			"a later major-only rule with its own schedule is ignored",
 			`{"schedule":"before 4am on monday","packageRules":[` + groupRule + `,{"matchUpdateTypes":["major"],"schedule":["every weekend"]}]}`,
 			"ok",

@@ -275,8 +275,8 @@ func majorsShareBranch(l layered, g pkgRule, rules []pkgRule) bool {
 // a rule after the group's that sets groupName (to anything, null included)
 // for update types the batch covers, or a separateMinorPatch or
 // separateMultipleMinor of true, at the top level or in any rule that reaches
-// non-major updates, or a rule after the group's that sets its own schedule
-// for them, which takes part of the group off the group's schedule. The
+// non-major updates, or any other rule that sets its own schedule for them,
+// which takes part of the group off the group's schedule. The
 // switches add a branch-name prefix, so minors and patches do not share one
 // branch.
 // https://github.com/renovatebot/renovate/blob/main/lib/workers/repository/updates/branch-name.ts
@@ -291,7 +291,13 @@ func splits(l layered, rules []pkgRule, groupAt int) bool {
 				(r.separateMultipleMinor.set && r.separateMultipleMinor.value)) {
 			return true
 		}
-		if i > groupAt && (r.group.set || r.schedule.set) && r.updateTypes != 0 {
+		if i == groupAt || r.updateTypes == 0 {
+			continue
+		}
+		// A schedule on any other rule keeps those updates off the group's
+		// schedule, wherever the rule sits: before the group rule it still
+		// stands when the group rule sets none.
+		if r.schedule.set || (i > groupAt && r.group.set) {
 			return true
 		}
 	}

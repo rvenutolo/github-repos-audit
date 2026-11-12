@@ -8,9 +8,10 @@ import "strings"
 // schedule that decide batching (groupName, separateMajorMinor and schedule).
 // Built-ins live in Renovate's source rather than on GitHub, so they cannot
 // be fetched; this fixed table is the only knowledge of them, and it models
-// those keys alone. Every built-in not listed reads as setting nothing, and
-// config:recommended and config:base are deliberately absent because they set
-// none of these keys beyond one narrowed group rule (see narrowedGroups).
+// those keys alone. Every built-in not listed reads as setting nothing, except
+// that any group:* preset not listed, config:recommended and config:base read
+// as one narrowed group rule (see narrowedGroups), since each sets a groupName
+// for some packages.
 // The major-update, lock-file and separate* presets are as defined in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/default.preset.ts
 // the schedule presets in
@@ -120,6 +121,11 @@ func builtinLayer(ref string) layered {
 	case "default:enableRenovate":
 		return layered{automerge: automergeLayer{enabled: yes}}
 	default:
+		// Every other group:* preset sets a groupName for some packages, so
+		// it reads as a narrowed group: a catch-all group before it is split.
+		if strings.HasPrefix(name, "group:") {
+			return narrowedGroups()
+		}
 		return layered{}
 	}
 }
