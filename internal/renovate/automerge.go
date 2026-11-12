@@ -54,6 +54,37 @@ type pkgRule struct {
 	approval  tri
 	// malformed is a rule or value this tool cannot read as Renovate would.
 	malformed bool
+
+	// The fields below serve the batching check (batching.go) alone.
+
+	// selective is narrowed minus the matchers that match every package
+	// (see matchesEverything): the rule reaches only some dependencies.
+	// narrowed keeps counting those, so the automerge reading is unchanged.
+	selective bool
+	// typed is a matchUpdateTypes or updateTypes that is present, so
+	// updateTypes says which kinds of update the rule reaches.
+	typed bool
+	// updateTypes is the non-major update types the rule may reach. A glob,
+	// a negation or an unreadable list reaches all of them, because the
+	// batching check treats a rule it cannot read as one that splits.
+	updateTypes updateTypes
+	// group is the rule's groupName: set when present, nonEmpty when it
+	// names a group. A null, an empty string or any other type ungroups.
+	group groupName
+	// separateMajorMinor, separateMinorPatch and separateMultipleMinor are
+	// the rule's own switches; a wrong type reads the way that fails the
+	// batching check (see ownSwitch).
+	separateMajorMinor    tri
+	separateMinorPatch    tri
+	separateMultipleMinor tri
+	schedule              scheduleValue
+}
+
+// malformedRule is a rule the tool cannot read. The batching check reads it
+// as a selective rule that touches every update type and the group, so it
+// can only split a batch, never form one.
+func malformedRule() pkgRule {
+	return pkgRule{malformed: true, selective: true, updateTypes: allUpdateTypes, group: groupName{set: true}}
 }
 
 // ownTri reads a boolean key; bad reports a present value that is not one.
@@ -103,13 +134,13 @@ func ownRules(cfg map[string]any) []pkgRule {
 	}
 	list, ok := v.([]any)
 	if !ok {
-		return []pkgRule{{malformed: true}}
+		return []pkgRule{malformedRule()}
 	}
 	rules := make([]pkgRule, 0, len(list))
 	for _, e := range list {
 		obj, ok := e.(map[string]any)
 		if !ok {
-			rules = append(rules, pkgRule{malformed: true})
+			rules = append(rules, malformedRule())
 			continue
 		}
 		rules = append(rules, ownRule(obj))
@@ -148,6 +179,9 @@ func ownRule(obj map[string]any) pkgRule {
 			strings.HasPrefix(key, "exclude"), isLegacySelector(key):
 			selector = true
 			r.narrowed = true
+			if !matchesEverything(key, obj[key]) {
+				r.selective = true
+			}
 		}
 	}
 	// Renovate rejects a rule with no selector rather than applying it to
@@ -162,6 +196,7 @@ func ownRule(obj map[string]any) pkgRule {
 	// https://github.com/renovatebot/renovate/blob/main/lib/config/migrations/custom/package-rules-migration.ts
 	var types []any
 	present := 0
+	unreadable := false
 	for _, key := range []string{"matchUpdateTypes", "updateTypes"} {
 		v, has := obj[key]
 		if !has {
@@ -170,18 +205,19 @@ func ownRule(obj map[string]any) pkgRule {
 		present++
 		list, ok := updateTypeList(v)
 		if !ok || len(list) == 0 {
-			r.malformed = true
+			r.malformed, unreadable = true, true
 		}
 		types = append(types, list...)
 	}
 	if present == 2 {
-		r.narrowed = true
+		r.narrowed, r.selective = true, true
 	}
+	r.typed = present > 0
 	for _, e := range types {
 		s, ok := e.(string)
 		switch {
 		case !ok:
-			r.malformed = true
+			r.malformed, unreadable = true, true
 		case s == "major":
 			r.appliesToMajor = true
 		case strings.ContainsAny(s, "*!/?{"):
@@ -189,17 +225,27 @@ func ownRule(obj map[string]any) pkgRule {
 			// negations. Which majors such an entry reaches is not
 			// decided here: it reaches majors and is narrowed, so a
 			// hold in the rule fails and automerge-on via it is ignored.
-			r.appliesToMajor, r.narrowed = true, true
+			r.appliesToMajor, r.narrowed, r.selective = true, true, true
+			unreadable = true
+		default:
+			r.updateTypes |= updateTypeBit(s)
 		}
 	}
 	if present == 0 {
 		r.appliesToMajor = true
+	}
+	if present == 0 || unreadable {
+		r.updateTypes = allUpdateTypes
 	}
 	var b1, b2, b3 bool
 	r.automerge, b1 = ownTri(obj, "automerge")
 	r.enabled, b2 = ownTri(obj, "enabled")
 	r.approval, b3 = ownTri(obj, "dependencyDashboardApproval")
 	r.malformed = r.malformed || b1 || b2 || b3
+	r.selective = r.selective || r.malformed
+	r.group = ownGroupName(obj)
+	r.separateMajorMinor, r.separateMinorPatch, r.separateMultipleMinor = ownSwitches(obj)
+	r.schedule = ownSchedule(obj)
 	return r
 }
 

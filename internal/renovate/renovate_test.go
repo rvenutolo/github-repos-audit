@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -29,6 +30,14 @@ func resolve(t *testing.T, root string, store files) renovate.Result {
 		t.Fatalf("Resolve() error = %v, want nil", err)
 	}
 	return res
+}
+
+// sameFacts compares two results on every fact but the batching ones, which
+// batching_test.go covers; the tests that use it are about the other keys.
+func sameFacts(got, want renovate.Result) bool {
+	got.Batching, got.BatchingSchedule, got.LockFileSchedule = "", nil, nil
+	want.Batching, want.BatchingSchedule, want.LockFileSchedule = "", nil, nil
+	return reflect.DeepEqual(got, want)
 }
 
 func TestResolve(t *testing.T) {
@@ -135,7 +144,7 @@ func TestResolve(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := resolve(t, tt.root, store); got != tt.want {
+			if got := resolve(t, tt.root, store); !sameFacts(got, tt.want) {
 				t.Errorf("Resolve() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -330,7 +339,7 @@ func TestResolve_managerFactsKeepMinReleaseAge(t *testing.T) {
 	store := files{"preset-store/nix.json@": `{"nix": {"enabled": true}, "minimumReleaseAge": "7 days"}`}
 	got := resolve(t, `{"extends": ["github>gh-owner/preset-store:nix"]}`, store)
 	want := renovate.Result{MinReleaseAge: "7 days", Source: "github>gh-owner/preset-store:nix", NixManager: true}
-	if got != want {
+	if !sameFacts(got, want) {
 		t.Errorf("Resolve() = %+v, want %+v", got, want)
 	}
 }
@@ -368,7 +377,7 @@ func TestResolve_wrongTypedManagerKeysAreFalse(t *testing.T) {
 				MinReleaseAge: "7 days", Source: "renovate.json",
 				NixManager: tt.wantNix, LockFileMaintenance: tt.wantLFM,
 			}
-			if got != want {
+			if !sameFacts(got, want) {
 				t.Errorf("Resolve() = %+v, want %+v", got, want)
 			}
 		})
