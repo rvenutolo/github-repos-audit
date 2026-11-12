@@ -10,13 +10,12 @@ import "strings"
 // be fetched; this fixed table is the only knowledge of them, and it models
 // those keys alone. Every built-in not listed reads as setting nothing, and
 // config:recommended and config:base are deliberately absent because they set
-// none of these keys: the group rules config:recommended pulls in all carry a
-// package or datasource matcher, so none is a catch-all group. The
-// major-update and lock-file presets are as defined in
+// none of these keys beyond one narrowed group rule (see narrowedGroups).
+// The major-update, lock-file and separate* presets are as defined in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/default.preset.ts
 // the schedule presets in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/schedule.preset.ts
-// and group:all, group:allNonMajor and the config:semverAll presets in
+// and group:*, config:recommended and the config:semverAll presets in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/group.preset.ts
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/config.preset.ts
 //
@@ -33,11 +32,29 @@ func builtinLayer(ref string) layered {
 	}
 	yes, no := tri{set: true, value: true}, tri{set: true}
 	switch name {
-	case "default:maintainLockFilesWeekly",
-		// config:best-practices extends :maintainLockFilesWeekly from Renovate
-		// v43 on; an older Renovate does not, which this table cannot see.
-		"config:best-practices":
+	case "default:maintainLockFilesWeekly":
 		return lockFilesOn(earlyMondaysCron)
+	case "config:best-practices":
+		// It extends config:recommended and, from Renovate v43 on,
+		// :maintainLockFilesWeekly; an older Renovate does not extend the
+		// latter, which this table cannot see.
+		return stacked("config:recommended", "default:maintainLockFilesWeekly")
+	case "config:recommended", "config:base", "group:monorepos", "group:recommended":
+		return narrowedGroups()
+	case "default:separatePatchReleases", "default:automergePatch":
+		// automergePatch sets separateMinorPatch beside its patch automerge.
+		return layered{separateMinorPatch: yes}
+	case "default:combinePatchMinorReleases":
+		return layered{separateMinorPatch: no}
+	case "default:separateMultipleMinorReleases":
+		return layered{separateMultipleMinor: yes}
+	case "default:separateMajorReleases", "default:separateMultipleMajorReleases":
+		return layered{separateMajorMinor: yes}
+	case "group:allDigest":
+		return layered{rules: []pkgRule{{
+			narrowed: true, typed: true,
+			updateTypes: typeDigest, group: groupName{set: true, nonEmpty: true},
+		}}}
 	case "default:maintainLockFilesMonthly":
 		return lockFilesOn(monthlyCron)
 	case "config:semverAllWeekly":
@@ -48,8 +65,9 @@ func builtinLayer(ref string) layered {
 		return stacked("group:all", "schedule:monthly", "default:maintainLockFilesMonthly", "config:separateMajorMinorOff")
 	case "config:separateMajorMinorOff":
 		// Not a Renovate preset: the switch the semverAll presets set beside
-		// their extends. Its name cannot be written in a config, because
-		// builtinLayer is only reached for a ref that is not a repository.
+		// their extends, named here so stacked can apply it. A config can
+		// also extend this name, which Renovate would reject as an unknown
+		// preset; reading it as the switch only makes the check fail.
 		return layered{separateMajorMinor: no}
 	case "group:all":
 		// A top-level groupName and the same group as a packageRule over every
@@ -136,4 +154,16 @@ func stacked(refs ...string) layered {
 		out.over(l)
 	}
 	return out
+}
+
+// narrowedGroups is what the group rules inside group:monorepos,
+// group:recommended and config:recommended amount to: rules that set a
+// groupName for some packages and every update type. None is a catch-all,
+// but a catch-all group placed before them in an extends list is split by
+// them, and one in the repository's own file (after every preset) is not.
+func narrowedGroups() layered {
+	return layered{rules: []pkgRule{{
+		appliesToMajor: true, narrowed: true, selective: true,
+		updateTypes: allUpdateTypes, group: groupName{set: true, nonEmpty: true},
+	}}}
 }

@@ -314,6 +314,11 @@ func ownLockSchedule(cfg map[string]any) scheduleValue {
 	if !ok {
 		return scheduleValue{}
 	}
+	if _, has := obj["extends"]; has {
+		// The preset it names (usually a schedule:*) can set the schedule and
+		// is not expanded here, so the schedule cannot be read.
+		return scheduleValue{set: true, bad: true}
+	}
 	return ownSchedule(obj)
 }
 

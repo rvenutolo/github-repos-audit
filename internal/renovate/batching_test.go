@@ -11,8 +11,8 @@ import (
 const groupRule = `{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"all non-major"}`
 
 const (
-	weeklyCron = "* 0-3 * * 1"
-	monthlyCro = "* 0-3 1 * *"
+	weeklyCron  = "* 0-3 * * 1"
+	monthlyCron = "* 0-3 1 * *"
 )
 
 func TestResolve_batching(t *testing.T) {
@@ -31,7 +31,7 @@ func TestResolve_batching(t *testing.T) {
 	}{
 		{"group:all groups majors", `{"extends":["group:all","schedule:weekly"]}`, "majors_grouped", nil, nil},
 		{"semverAllWeekly groups majors", `{"extends":["config:semverAllWeekly"]}`, "majors_grouped", nil, []string{weeklyCron}},
-		{"semverAllMonthly groups majors", `{"extends":["config:semverAllMonthly"]}`, "majors_grouped", nil, []string{monthlyCro}},
+		{"semverAllMonthly groups majors", `{"extends":["config:semverAllMonthly"]}`, "majors_grouped", nil, []string{monthlyCron}},
 		{
 			"group:all with majors separated is batched", `{"extends":["group:all","schedule:weekly"],"separateMajorMinor":true}`,
 			"ok",
@@ -66,8 +66,151 @@ func TestResolve_batching(t *testing.T) {
 		{
 			"a rule naming every update type, with a string schedule",
 			`{"packageRules":[{"matchUpdateTypes":["major","minor","patch","digest"],"groupName":"all"}],"schedule":"before 4am on monday"}`,
+			"ok",
+			[]string{"before 4am on monday"},
+			nil,
+		},
+		{
+			"a rule naming every update type, with majors together",
+			`{"separateMajorMinor":false,"packageRules":[{"matchUpdateTypes":["major","minor","patch","digest"],"groupName":"all"}],"schedule":"before 4am on monday"}`,
 			"majors_grouped", nil, nil,
 		},
+		{
+			"a rule naming every update type, with its own majors switch",
+			`{"packageRules":[{"matchUpdateTypes":["major","minor","patch","digest"],"groupName":"all","separateMajorMinor":false}]}`,
+			"majors_grouped", nil, nil,
+		},
+		{
+			"a later narrowed rule turns majors together",
+			`{"schedule":"before 4am on monday","packageRules":[` + groupRule + `,{"matchManagers":["npm"],"separateMajorMinor":false}]}`,
+			"majors_grouped", nil, nil,
+		},
+		{
+			"a later rule turning majors together for majors only is ignored",
+			`{"schedule":"before 4am on monday","packageRules":[` + groupRule + `,{"matchUpdateTypes":["major"],"separateMajorMinor":false}]}`,
+			"ok",
+			[]string{"before 4am on monday"},
+			nil,
+		},
+		{
+			"a later rule with its own schedule splits the group",
+			`{"schedule":"before 4am on monday","packageRules":[` + groupRule + `,{"matchManagers":["npm"],"schedule":["every weekend"]}]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"a later major-only rule with its own schedule is ignored",
+			`{"schedule":"before 4am on monday","packageRules":[` + groupRule + `,{"matchUpdateTypes":["major"],"schedule":["every weekend"]}]}`,
+			"ok",
+			[]string{"before 4am on monday"},
+			nil,
+		},
+		{
+			"a narrowed rule with separateMultipleMinor splits the group",
+			`{"packageRules":[` + groupRule + `,{"matchManagers":["npm"],"matchUpdateTypes":["minor"],"separateMultipleMinor":true}]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"an earlier narrowed rule with separateMinorPatch splits the group",
+			`{"packageRules":[{"matchManagers":["npm"],"separateMinorPatch":true},` + groupRule + `]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"a disabled group rule", `{"schedule":"before 4am on monday","packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"g","enabled":false}]}`,
+			"no_group", nil, nil,
+		},
+		{
+			"an enabled group rule", `{"schedule":"before 4am on monday","packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"g","enabled":true}]}`,
+			"ok",
+			[]string{"before 4am on monday"},
+			nil,
+		},
+		{
+			"lock files extending a preset are unreadable",
+			`{"extends":["schedule:weekly"],"lockFileMaintenance":{"enabled":true,"extends":["schedule:monthly"]},"packageRules":[` + groupRule + `]}`,
+			"unreadable_schedule",
+			[]string{weeklyCron},
+			nil,
+		},
+		{
+			"lock files off extending a preset are ignored",
+			`{"extends":["schedule:weekly"],"lockFileMaintenance":{"enabled":false,"extends":["schedule:monthly"]},"packageRules":[` + groupRule + `]}`,
+			"ok",
+			[]string{weeklyCron},
+			nil,
+		},
+		{
+			":separatePatchReleases", `{"extends":["schedule:weekly",":separatePatchReleases"],"packageRules":[` + groupRule + `]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"default:separatePatchReleases", `{"extends":["schedule:weekly","default:separatePatchReleases"],"packageRules":[` + groupRule + `]}`,
+			"split_group", nil, nil,
+		},
+		{
+			":automergePatch", `{"extends":["schedule:weekly",":automergePatch"],"packageRules":[` + groupRule + `]}`,
+			"split_group", nil, nil,
+		},
+		{
+			":separateMultipleMinorReleases", `{"extends":["schedule:weekly",":separateMultipleMinorReleases"],"packageRules":[` + groupRule + `]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"default:separateMultipleMinorReleases", `{"extends":["schedule:weekly","default:separateMultipleMinorReleases"],"packageRules":[` + groupRule + `]}`,
+			"split_group", nil, nil,
+		},
+		{
+			":combinePatchMinorReleases undoes a split", `{"extends":["schedule:weekly",":separatePatchReleases",":combinePatchMinorReleases"],"packageRules":[` + groupRule + `]}`,
+			"ok",
+			[]string{weeklyCron},
+			nil,
+		},
+		{
+			":separateMajorReleases undoes majors together", `{"extends":["group:all","schedule:weekly",":separateMajorReleases"]}`,
+			"ok",
+			[]string{weeklyCron},
+			nil,
+		},
+		{
+			":separateMultipleMajorReleases undoes majors together", `{"extends":["group:all","schedule:weekly",":separateMultipleMajorReleases"]}`,
+			"ok",
+			[]string{weeklyCron},
+			nil,
+		},
+		{
+			"config:recommended splits an earlier catch-all",
+			`{"extends":["github>gh-owner/preset-store:group","config:recommended","schedule:weekly"]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"group:monorepos splits an earlier catch-all",
+			`{"extends":["github>gh-owner/preset-store:group","group:monorepos","schedule:weekly"]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"group:recommended splits an earlier catch-all",
+			`{"extends":["github>gh-owner/preset-store:group","group:recommended","schedule:weekly"]}`,
+			"split_group", nil, nil,
+		},
+		{
+			"config:best-practices splits an earlier catch-all",
+			`{"extends":["github>gh-owner/preset-store:group","config:best-practices","schedule:weekly"]}`,
+			"split_group", nil,
+			[]string{weeklyCron},
+		},
+		{
+			"group:allDigest after a catch-all becomes the group and leaves minors out",
+			`{"extends":["github>gh-owner/preset-store:group","group:allDigest","schedule:weekly"]}`,
+			"no_group", nil, nil,
+		},
+		{
+			"config:recommended before an own catch-all",
+			`{"extends":["config:recommended","schedule:weekly"],"packageRules":[` + groupRule + `]}`,
+			"ok",
+			[]string{weeklyCron},
+			nil,
+		},
+		{"config:recommended alone", `{"extends":["config:recommended"]}`, "no_group", nil, nil},
+		{"config:base alone", `{"extends":["config:base"]}`, "no_group", nil, nil},
 		{"majors left to the default", `{"packageRules":[` + groupRule + `],"schedule":"before 4am on monday"}`, "ok", []string{"before 4am on monday"}, nil},
 		{
 			"majors grouped through the top-level switch",
@@ -239,7 +382,7 @@ func TestResolve_batching(t *testing.T) {
 			`{"extends":["schedule:weekly",":maintainLockFilesMonthly"],"packageRules":[` + groupRule + `]}`,
 			"lock_files_off_schedule",
 			[]string{weeklyCron},
-			[]string{monthlyCro},
+			[]string{monthlyCron},
 		},
 		{
 			"best-practices lock files",
@@ -269,7 +412,7 @@ func TestResolve_batching(t *testing.T) {
 			[]string{"before 4am on monday"},
 			nil,
 		},
-		{"schedule:monthly", `{"extends":["schedule:monthly"],"packageRules":[` + groupRule + `]}`, "ok", []string{monthlyCro}, nil},
+		{"schedule:monthly", `{"extends":["schedule:monthly"],"packageRules":[` + groupRule + `]}`, "ok", []string{monthlyCron}, nil},
 		{"schedule:daily", `{"extends":["schedule:daily"],"packageRules":[` + groupRule + `]}`, "too_often", []string{"* 0-3 * * *"}, nil},
 		{"schedule:weekends", `{"extends":["schedule:weekends"],"packageRules":[` + groupRule + `]}`, "ok", []string{"* * * * 0,6"}, nil},
 		{"schedule:earlyMondays", `{"extends":["schedule:earlyMondays"],"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
