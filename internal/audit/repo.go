@@ -191,6 +191,19 @@ type Renovate struct {
 	// holding some of them in a narrower packageRule. False when off,
 	// unset, of the wrong type, or unresolved.
 	AutomergeMajor bool `json:"automerge_major,omitzero"`
+	// Batching is whether non-major updates arrive as one pull request on a
+	// schedule that opens it at most weekly: "ok", or the first reason they
+	// do not (no_group, digests_ungrouped, majors_grouped, split_group,
+	// no_schedule, too_often, unreadable_schedule, lock_files_off_schedule).
+	// Empty when there is no configuration or it is unresolved.
+	Batching string `json:"batching,omitzero"`
+	// BatchingSchedule is the schedule judged for the group, as written.
+	// Empty when none was set or the verdict was reached before it was read.
+	BatchingSchedule []string `json:"batching_schedule,omitzero"`
+	// LockFileSchedule is the lock-file maintenance schedule judged, which is
+	// Renovate's default when no layer sets one. Empty when maintenance is
+	// off or its schedule is unreadable.
+	LockFileSchedule []string `json:"lock_file_schedule,omitzero"`
 }
 
 // RenovateDashboard is the issue created by renovate[bot] whose title is

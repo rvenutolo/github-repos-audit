@@ -70,6 +70,7 @@
       "releases": "not_required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_batching": "required",
       "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
@@ -158,6 +159,7 @@
       "releases": "not_required",
       "renovate": "not_required",
       "renovate_automerge_major": "required",
+      "renovate_batching": "required",
       "renovate_dashboard": "required",
       "renovate_min_release_age": "not_required",
       "required_checks": "not_required",
@@ -246,6 +248,7 @@
       "releases": "not_required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_batching": "required",
       "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
@@ -334,6 +337,7 @@
       "releases": "not_required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_batching": "required",
       "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
@@ -422,6 +426,7 @@
       "releases": "required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_batching": "required",
       "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
@@ -510,6 +515,7 @@
       "releases": "not_required",
       "renovate": "required",
       "renovate_automerge_major": "required",
+      "renovate_batching": "required",
       "renovate_dashboard": "required",
       "renovate_min_release_age": "7 days",
       "required_checks": "required",
@@ -586,7 +592,8 @@
         "min_release_age_source": "renovate.json",
         "nix_manager": true,
         "lock_file_maintenance": true,
-        "automerge_major": true
+        "automerge_major": true,
+        "batching": "ok"
       },
       "renovate_dashboard": {
         "number": 1,
@@ -735,7 +742,8 @@
         "min_release_age_source": "renovate.json",
         "nix_manager": true,
         "lock_file_maintenance": true,
-        "automerge_major": true
+        "automerge_major": true,
+        "batching": "ok"
       },
       "renovate_dashboard": {
         "number": 1,

@@ -130,7 +130,7 @@ func TestCollect_presetFallbackIsRead(t *testing.T) {
 		status: http.StatusOK,
 		body:   `{"type":"file","encoding":"base64","content":"eyJtaW5pbXVtUmVsZWFzZUFnZSI6ICI1IGRheXMifQo=\n"}`,
 	})
-	want := audit.Renovate{MinReleaseAge: "5 days", MinReleaseAgeSource: "github>gh-owner/preset-store"}
+	want := audit.Renovate{MinReleaseAge: "5 days", MinReleaseAgeSource: "github>gh-owner/preset-store", Batching: "no_group"}
 	if diff := cmp.Diff(want, collectFlake(t, api)); diff != "" {
 		t.Errorf("Renovate mismatch (-want +got):\n%s", diff)
 	}
@@ -149,6 +149,7 @@ func TestCollect_presetManagerFactsAreRead(t *testing.T) {
 	want := audit.Renovate{
 		MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store",
 		NixManager: true, LockFileMaintenance: true, AutomergeMajor: true,
+		Batching: "no_group", LockFileSchedule: []string{"before 4am on monday"},
 	}
 	if diff := cmp.Diff(want, collectFlake(t, api)); diff != "" {
 		t.Errorf("Renovate mismatch (-want +got):\n%s", diff)
@@ -255,7 +256,7 @@ func TestCollect_namedPresetIsRead(t *testing.T) {
 		"is_truncated": false,
 		"is_binary":    false,
 	})
-	want := audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store:go"}
+	want := audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: "github>gh-owner/preset-store:go", Batching: "no_group"}
 	if diff := cmp.Diff(want, collectFlake(t, api)); diff != "" {
 		t.Errorf("Renovate mismatch (-want +got):\n%s", diff)
 	}

@@ -206,7 +206,7 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		},
 		// The value is set in the repository's own JSONC file, so the source is
 		// that file's path rather than a preset.
-		Renovate: audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: ".github/renovate.json"},
+		Renovate: audit.Renovate{MinReleaseAge: "3 days", MinReleaseAgeSource: ".github/renovate.json", Batching: "no_group"},
 		// Its open renovate[bot] issue is a configuration error, not the
 		// dashboard, so the closed dashboard is the one recorded.
 		RenovateDashboard: audit.RenovateDashboard{Number: 4, State: "CLOSED"},
@@ -273,7 +273,8 @@ func wantWebApp(t *testing.T) audit.Repo {
 		// is a built-in the tool knows turns lock-file maintenance on.
 		Renovate: audit.Renovate{
 			MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store",
-			LockFileMaintenance: true,
+			LockFileMaintenance: true, Batching: "no_group",
+			LockFileSchedule: []string{"* 0-3 * * 1"},
 		},
 		RenovateDashboard: audit.RenovateDashboard{Number: 7, State: "OPEN"},
 		Rulesets: []audit.Ruleset{
@@ -552,7 +553,7 @@ func TestClient_Collect_releasesAndAlternates(t *testing.T) {
 	if diff := cmp.Diff(wantFiles, repo.Files); diff != "" {
 		t.Errorf("Files mismatch (-want +got):\n%s", diff)
 	}
-	wantRenovate := audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store"}
+	wantRenovate := audit.Renovate{MinReleaseAge: "7 days", MinReleaseAgeSource: "github>gh-owner/preset-store", Batching: "no_group"}
 	if diff := cmp.Diff(wantRenovate, repo.Renovate); diff != "" {
 		t.Errorf("Renovate mismatch (-want +got):\n%s", diff)
 	}

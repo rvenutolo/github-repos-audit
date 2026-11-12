@@ -117,6 +117,7 @@
               "renovate_min_release_age",
               "renovate_automerge_major",
               "renovate_dashboard",
+              "renovate_batching",
               "editorconfig",
               "flake_nix",
               "justfile",
@@ -315,6 +316,7 @@
         "renovate_min_release_age",
         "renovate_automerge_major",
         "renovate_dashboard",
+        "renovate_batching",
         "editorconfig",
         "flake_nix",
         "justfile",
@@ -403,6 +405,7 @@
         "renovate_min_release_age": { "$ref": "#/$defs/release_age_threshold" },
         "renovate_automerge_major": { "$ref": "#/$defs/expectation" },
         "renovate_dashboard": { "$ref": "#/$defs/expectation" },
+        "renovate_batching": { "$ref": "#/$defs/expectation" },
         "editorconfig": { "$ref": "#/$defs/expectation" },
         "flake_nix": { "$ref": "#/$defs/expectation" },
         "justfile": { "$ref": "#/$defs/expectation" },
@@ -532,7 +535,7 @@
           "minLength": 1
         },
         "min_release_age_error": {
-          "description": "Why the configuration could not be decided: a missing or unparsable preset, a cycle, a template, a malformed minimumReleaseAge or stabilityDays. When set, nix_manager and lock_file_maintenance are absent too.",
+          "description": "Why the configuration could not be decided: a missing or unparsable preset, a cycle, a template, a malformed minimumReleaseAge or stabilityDays. When set, nix_manager, lock_file_maintenance, automerge_major and batching are absent too.",
           "type": "string",
           "minLength": 1
         },
@@ -550,6 +553,32 @@
           "description": "Whether Renovate merges every major update on its own after the same merge: automerge on for majors, with nothing disabling them, requiring Dependency Dashboard approval for them, or holding some of them in a narrower packageRule. Absent when off, unset, of the wrong type or unresolved.",
           "type": "boolean",
           "const": true
+        },
+        "batching": {
+          "description": "Whether non-major updates arrive as one pull request on a schedule that opens it at most weekly: ok, or the first reason they do not, in this order. no_group: some non-major update is in no group. digests_ungrouped: digest updates are outside it. majors_grouped: majors share the group because separateMajorMinor is off. split_group: a later rule, separateMinorPatch or separateMultipleMinor, or another rule's own schedule splits it. no_schedule: the group has no schedule. too_often: the schedule allows more than one block of at most 48 hours a week. unreadable_schedule: the schedule is not syntax Renovate reads. lock_files_off_schedule: lock-file maintenance runs outside the group's schedule. Absent when there is no configuration or it is unresolved.",
+          "enum": [
+            "ok",
+            "no_group",
+            "digests_ungrouped",
+            "majors_grouped",
+            "split_group",
+            "no_schedule",
+            "too_often",
+            "unreadable_schedule",
+            "lock_files_off_schedule"
+          ]
+        },
+        "batching_schedule": {
+          "description": "The schedule judged for the group, as written (a bare string is one entry). Absent when none was set or the verdict was reached before it was read.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "lock_file_schedule": {
+          "description": "The lock-file maintenance schedule judged, which is Renovate's default when no layer sets one. Absent when maintenance is off or its schedule is unreadable.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
         }
       }
     },

@@ -365,6 +365,51 @@ Grouped by theme here; the report lists them in the fixed worklist order
   repository's dashboard can go weeks untouched while Renovate runs.
   `audit.json` records the issue as `renovate_dashboard`. n/a without a
   Renovate configuration.
+- **renovate_batching** — whether Renovate sends all non-major updates as one
+  pull request opened at most weekly, since every Renovate pull request costs
+  CI minutes and notification emails. Three rules, the first missed naming
+  the cell. Grouping: every minor, patch and digest update, for every manager
+  and package, falls in one group (a top-level `groupName`, or a `packageRules`
+  entry with a `groupName` and no matcher beyond a catch-all such as
+  `["*"]`); digests are required, so `group:allNonMajor` alone shows
+  `digests ungrouped`, and anything outside the group shows `no group`.
+  Majors stay out of the group's pull request: it shows `majors grouped` when
+  the effective `separateMajorMinor` is false (set at the top level, by
+  `group:all`, `config:semverAllWeekly`, `config:semverAllMonthly`, or by a
+  rule that reaches minor, patch or digest updates), whereas a group rule that
+  also lists `major` passes while `separateMajorMinor` is true, as Renovate
+  gives majors their own branch. Anything that splits the group shows
+  `split group`: a later rule giving some non-major updates another
+  `groupName` (or `null`), `separateMinorPatch` or `separateMultipleMinor`
+  true (at the top level, by a preset such as `:separatePatchReleases` or
+  `:automergePatch`, or in a rule), or a non-group rule over non-major
+  updates with its own `schedule`. Every `group:*` built-in other than
+  `group:all`, `group:allNonMajor` and `group:allDigest`, and
+  `config:recommended` (which extends the monorepo groups), reads as a group
+  over only some packages, so a catch-all group placed before one in
+  `extends` is split by it; a catch-all in the repository's own file is not.
+  Schedule: the group's `schedule` (otherwise the top-level one), the union
+  of its entries, must allow at most one contiguous block of no more than 48
+  hours whose starts are at least 7 days apart. `every weekend`,
+  `before 4am on monday` and monthly or quarterly schedules pass;
+  `every weekday` and a daily window show `too often`. No schedule, or
+  `at any time`, shows `no schedule`; syntax the tool cannot read shows
+  `unreadable schedule`, never a guess; the timezone is ignored.
+  Lock files: when `lockFileMaintenance` is on, its schedule (Renovate's
+  default `before 4am on monday` when none is set, since it does not inherit
+  the top-level one) must fall inside the group's block, else `lock files
+  off-schedule`; a `lockFileMaintenance` with its own `extends` reads as an
+  unreadable schedule. Of Renovate's built-in presets, only those that set
+  grouping, a schedule or lock-file maintenance are known (`group:*`,
+  `schedule:*`, `config:recommended`, `config:best-practices`, the
+  `config:semverAll*` presets and `:maintainLockFiles*`); the rest, and other
+  accounts' presets, set nothing. Takes the same expectation words as
+  `renovate_automerge_major`. Shows `unresolved` for any configuration that
+  could not be resolved, as that check does. `audit.json` records the verdict
+  as `batching` (`ok`, `no_group`, `digests_ungrouped`, `majors_grouped`,
+  `split_group`, `no_schedule`, `too_often`, `unreadable_schedule` or
+  `lock_files_off_schedule`) and the schedules judged as `batching_schedule`
+  and `lock_file_schedule`. n/a without a Renovate configuration.
 - **homepage**, **topics**, **community_files** — repository metadata that
   only matters once a repository is meant to be found: a homepage URL, any
   topics, and how many of a security policy, contributing guide and code of
