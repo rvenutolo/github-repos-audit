@@ -569,13 +569,13 @@
           ]
         },
         "batching_schedule": {
-          "description": "The schedule judged for the group, as written (a bare string is one entry). Absent when none was set or the verdict was reached before it was read.",
+          "description": "The schedule judged for the group, as written (a bare string is one entry) less any empty entries. Absent when none was set, none is left, or the verdict was reached before it was read.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
         },
         "lock_file_schedule": {
-          "description": "The lock-file maintenance schedule judged, which is Renovate's default when no layer sets one. Absent when maintenance is off or its schedule is unreadable.",
+          "description": "The lock-file maintenance schedule judged, which is Renovate's default when no layer sets one, less any empty entries. Absent when maintenance is off, its schedule is unreadable or empty, or a package rule may replace it.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }

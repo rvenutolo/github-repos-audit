@@ -1,14 +1,27 @@
 package renovate_test
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/rvenutolo/github-repos-audit/internal/audit"
+	"github.com/rvenutolo/github-repos-audit/internal/schema"
 )
 
 // groupRule groups minor, patch and digest updates of every package, the shape
 // a hand-written weekly batch takes. It leaves majors alone, so a row built on
-// it exercises the steps after the majors check.
-const groupRule = `{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"all non-major"}`
+// it exercises the steps after the majors check. Its groupSlug replaces any a
+// preset's narrower group rule set earlier; bareGroupRule is the same rule
+// without one.
+const (
+	groupRule     = `{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"all non-major","groupSlug":"all-non-major"}`
+	bareGroupRule = `{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"all non-major"}`
+	// anyGroupRule reaches every update type, majors included.
+	anyGroupRule = `{"matchPackageNames":["*"],"groupName":"all","groupSlug":"all"}`
+)
 
 const (
 	weeklyCron  = "* 0-3 * * 1"
@@ -21,6 +34,7 @@ func TestResolve_batching(t *testing.T) {
 	store := files{
 		"preset-store/group.json@":    `{"packageRules": [` + groupRule + `]}`,
 		"preset-store/schedule.json@": `{"schedule": ["before 4am on monday"]}`,
+		"preset-store/prefix.json@":   `{"additionalBranchPrefix": "{{parentDir}}-"}`,
 	}
 	tests := []struct {
 		name         string
@@ -476,6 +490,61 @@ func TestResolve_batching(t *testing.T) {
 		{"a wrongly typed packageRules", `{"packageRules":5}`, "no_group", nil, nil},
 		{"legacy updateTypes", `{"schedule":"before 4am on monday","packageRules":[{"matchPackageNames":["*"],"updateTypes":["minor","patch","digest"],"groupName":"g"}]}`, "ok", []string{"before 4am on monday"}, nil},
 		{"both update type spellings are narrowed", `{"packageRules":[{"matchPackageNames":["*"],"updateTypes":["minor","patch","digest"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"g"}]}`, "no_group", nil, nil},
+		// groupSlug: Renovate names a group's branch from groupSlug ?? groupName.
+		{"group:allNonMajor then a catch-all without a slug", `{"extends":["group:allNonMajor","schedule:weekly"],"packageRules":[` + bareGroupRule + `]}`, "split_group", nil, nil},
+		{"group:allDigest then a catch-all without a slug", `{"extends":["group:allDigest","schedule:weekly"],"packageRules":[` + bareGroupRule + `]}`, "split_group", nil, nil},
+		{"config:recommended then a catch-all without a slug", `{"extends":["config:recommended","schedule:weekly"],"packageRules":[` + bareGroupRule + `]}`, "split_group", nil, nil},
+		{"group:allNonMajor then a catch-all with its own slug", `{"extends":["group:allNonMajor","schedule:weekly"],"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"a later rule setting only a slug", `{"extends":["schedule:weekly"],"packageRules":[` + groupRule + `,{"matchManagers":["npm"],"groupSlug":"npm"}]}`, "split_group", nil, nil},
+		{"an earlier rule's slug inherited by a catch-all without one", `{"extends":["schedule:weekly"],"packageRules":[{"matchManagers":["npm"],"groupSlug":"npm"},` + bareGroupRule + `]}`, "split_group", nil, nil},
+		{"an earlier rule's slug replaced by the catch-all's own", `{"extends":["schedule:weekly"],"packageRules":[{"matchManagers":["npm"],"groupSlug":"npm"},` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"a templated group name without a slug", `{"extends":["schedule:weekly"],"packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"{{parentDir}}"}]}`, "split_group", nil, nil},
+		{"a templated slug", `{"extends":["schedule:weekly"],"packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"g","groupSlug":"{{parentDir}}"}]}`, "split_group", nil, nil},
+		{"a null slug on the group rule", `{"extends":["schedule:weekly"],"packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"g","groupSlug":null}]}`, "split_group", nil, nil},
+		{"a top-level slug with a top-level group name", `{"groupName":"all","groupSlug":"all","separateMajorMinor":true,"schedule":["before 4am on monday"]}`, "ok", []string{"before 4am on monday"}, nil},
+		{"a top-level slug under a catch-all rule without one", `{"groupSlug":"x","schedule":["before 4am on monday"],"packageRules":[` + bareGroupRule + `]}`, "split_group", nil, nil},
+		// Branch names: branchPrefix + additionalBranchPrefix + branchTopic.
+		{"a templated top-level additionalBranchPrefix", `{"additionalBranchPrefix":"{{parentDir}}-","extends":["schedule:weekly"],"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a templated top-level branchPrefix", `{"branchPrefix":"deps/{{manager}}/","extends":["schedule:weekly"],"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a fixed top-level additionalBranchPrefix", `{"additionalBranchPrefix":"deps-","branchPrefix":"bot/","extends":["schedule:weekly"],"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"a templated additionalBranchPrefix undone by a later layer", `{"extends":["github>gh-owner/preset-store:prefix","schedule:weekly"],"additionalBranchPrefix":"","packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"a top-level branchName", `{"branchName":"renovate/{{depNameSanitized}}","extends":["schedule:weekly"],"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a rule's additionalBranchPrefix", `{"extends":["schedule:weekly"],"packageRules":[` + groupRule + `,{"matchManagers":["npm"],"additionalBranchPrefix":"npm-"}]}`, "split_group", nil, nil},
+		{"an earlier rule's branchPrefix", `{"extends":["schedule:weekly"],"packageRules":[{"matchManagers":["npm"],"branchPrefix":"npm/"},` + groupRule + `]}`, "split_group", nil, nil},
+		{"the group rule's templated additionalBranchPrefix", `{"extends":["schedule:weekly"],"packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"g","groupSlug":"g","additionalBranchPrefix":"{{parentDir}}-"}]}`, "split_group", nil, nil},
+		{"the group rule's fixed additionalBranchPrefix", `{"extends":["schedule:weekly"],"packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"g","groupSlug":"g","additionalBranchPrefix":"deps-"}]}`, "ok", []string{weeklyCron}, nil},
+		{"a top-level group branchTopic", `{"group":{"branchTopic":"{{depNameSanitized}}"},"extends":["schedule:weekly"],"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a rule's group branchName", `{"extends":["schedule:weekly"],"packageRules":[` + groupRule + `,{"matchManagers":["npm"],"group":{"branchName":"npm"}}]}`, "split_group", nil, nil},
+		{"a top-level group with no branch keys", `{"group":{"commitMessageTopic":"deps"},"extends":["schedule:weekly"],"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		// A rule's own extends is not expanded, so it can set anything.
+		{"a later rule extending a preset", `{"extends":["schedule:weekly"],"packageRules":[` + groupRule + `,{"matchManagers":["npm"],"extends":["schedule:daily"]}]}`, "split_group", nil, nil},
+		{"an earlier rule extending a preset", `{"extends":["schedule:weekly"],"packageRules":[{"matchManagers":["npm"],"extends":["schedule:daily"]},` + groupRule + `]}`, "split_group", nil, nil},
+		// minor, patch and digest objects merge into every update of that type.
+		{"a patch object's schedule and switch", `{"extends":["schedule:weekly"],"patch":{"schedule":["at any time"],"separateMinorPatch":true},"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a digest object ungrouping a top-level group", `{"groupName":"all","separateMajorMinor":true,"schedule":["before 4am on monday"],"digest":{"groupName":null}}`, "split_group", nil, nil},
+		{"a minor object's branch prefix", `{"extends":["schedule:weekly"],"minor":{"additionalBranchPrefix":"minor-"},"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a minor object of a wrong type", `{"extends":["schedule:weekly"],"minor":5,"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a digest object that only automerges", `{"extends":["schedule:weekly",":automergeDigest"],"digest":{"automerge":true},"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"a rule's minor object", `{"extends":["schedule:weekly"],"packageRules":[` + groupRule + `,{"matchManagers":["npm"],"minor":{"schedule":["every weekend"]}}]}`, "split_group", nil, nil},
+		{"a minor object's separateMajorMinor is inert", `{"extends":["schedule:weekly"],"minor":{"separateMajorMinor":false},"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"a major object turning majors together", `{"extends":["schedule:weekly"],"major":{"separateMajorMinor":false},"packageRules":[` + anyGroupRule + `]}`, "majors_grouped", nil, nil},
+		{"a major-only rule turning majors together under a group that reaches them", `{"extends":["schedule:weekly"],"packageRules":[` + anyGroupRule + `,{"matchUpdateTypes":["major"],"separateMajorMinor":false}]}`, "majors_grouped", nil, nil},
+		{"a rule's major object turning majors together", `{"extends":["schedule:weekly"],"packageRules":[` + anyGroupRule + `,{"matchManagers":["npm"],"major":{"separateMajorMinor":false}}]}`, "majors_grouped", nil, nil},
+		{"a major object under a group that leaves majors out", `{"extends":["schedule:weekly"],"major":{"separateMajorMinor":false},"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		// Package rules apply again after lockFileMaintenance is merged.
+		{"a lock-file rule's schedule off the group's", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"schedule":["every weekend"]}]}`, "lock_files_off_schedule", []string{weeklyCron}, nil},
+		{"a lock-file rule's schedule inside the group's", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"schedule":["before 2am on monday"]}]}`, "ok", []string{weeklyCron}, nil},
+		{"a lock-file rule's unreadable schedule", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"schedule":["whenever"]}]}`, "unreadable_schedule", []string{weeklyCron}, nil},
+		{"a lock-file rule extending a preset", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"extends":["schedule:monthly"]}]}`, "unreadable_schedule", []string{weeklyCron}, nil},
+		{"a major-only rule's schedule leaves lock files alone", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["major"],"schedule":["every weekend"]}]}`, "ok", []string{weeklyCron}, []string{weeklyCron}},
+		{"a lock-file rule while maintenance is off", `{"extends":["schedule:weekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"schedule":["every weekend"]}]}`, "ok", []string{weeklyCron}, nil},
+		// Built-ins.
+		{"schedule:officeHours", `{"extends":["schedule:officeHours"],"packageRules":[` + groupRule + `]}`, "too_often", []string{"* 8-17 * * 1-5"}, nil},
+		{"schedule:yearly", `{"extends":["schedule:yearly"],"packageRules":[` + groupRule + `]}`, "ok", []string{"* * 1 */12 *"}, nil},
+		{"a catch-all then :group of a monorepo", `{"extends":["github>gh-owner/preset-store:group",":group(monorepo:react, react)","schedule:weekly"]}`, "split_group", nil, nil},
+		{":group of a monorepo then an own catch-all", `{"extends":[":group(monorepo:react, react)","schedule:weekly"],"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{":group of another preset then an own catch-all", `{"extends":["default:group(schedule:daily, daily)","schedule:weekly"],"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{":group alone", `{"extends":[":group(packages:linters, linters)","schedule:weekly"]}`, "no_group", nil, nil},
 		{"a non-string update type is malformed", `{"packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor",5],"groupName":"g"}]}`, "no_group", nil, nil},
 	}
 	for _, tt := range tests {
@@ -507,5 +576,59 @@ func TestResolve_batchingUnresolved(t *testing.T) {
 	}
 	if got.Batching != "" || got.BatchingSchedule != nil || got.LockFileSchedule != nil {
 		t.Errorf("Resolve() = %+v, want no batching facts when unresolved", got)
+	}
+}
+
+// TestResolve_batchingSchedulesFitTheSchema: every schedule list Resolve
+// records reaches audit.json, whose schema forbids an empty list or an empty
+// entry, so an empty schedule must not be recorded as one.
+func TestResolve_batchingSchedulesFitTheSchema(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join("..", "render", "testdata", "golden", "audit.json"))
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	tests := []struct {
+		name, root string
+	}{
+		{"an empty schedule", `{"schedule":[],"packageRules":[` + groupRule + `]}`},
+		{"an empty schedule entry", `{"schedule":["at any time",""],"packageRules":[` + groupRule + `]}`},
+		{"an empty lock-file schedule", `{"schedule":["before 4am on monday"],"lockFileMaintenance":{"enabled":true,"schedule":[]},"packageRules":[` + groupRule + `]}`},
+		{"an empty lock-file schedule entry", `{"schedule":["before 4am on monday"],"lockFileMaintenance":{"enabled":true,"schedule":["at any time",""]},"packageRules":[` + groupRule + `]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := resolve(t, tt.root, nil)
+			facts, err := json.Marshal(audit.Renovate{
+				Batching:         got.Batching,
+				BatchingSchedule: got.BatchingSchedule,
+				LockFileSchedule: got.LockFileSchedule,
+			})
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			var doc map[string]any
+			if err := json.Unmarshal(raw, &doc); err != nil {
+				t.Fatalf("parse golden: %v", err)
+			}
+			repos, ok := doc["repos"].([]any)
+			if !ok || len(repos) == 0 {
+				t.Fatalf("golden repos = %v, want a non-empty array", doc["repos"])
+			}
+			repo, ok := repos[0].(map[string]any)
+			if !ok {
+				t.Fatalf("golden repos[0] = %v, want an object", repos[0])
+			}
+			repo["renovate"] = json.RawMessage(facts)
+			out, err := json.Marshal(doc)
+			if err != nil {
+				t.Fatalf("marshal doc: %v", err)
+			}
+			if err := schema.Validate(out); err != nil {
+				t.Errorf("Validate(renovate %s) = %v, want nil", facts, err)
+			}
+		})
 	}
 }

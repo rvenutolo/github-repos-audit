@@ -8,6 +8,10 @@ type tri struct {
 	value bool
 }
 
+// on reports a layer that says true; off one that says false.
+func (t tri) on() bool  { return t.set && t.value }
+func (t tri) off() bool { return t.set && !t.value }
+
 // overlay returns o when o says something, else t.
 func (t tri) overlay(o tri) tri {
 	if o.set {
@@ -78,6 +82,24 @@ type pkgRule struct {
 	separateMinorPatch    tri
 	separateMultipleMinor tri
 	schedule              scheduleValue
+	// slug is the rule's groupSlug.
+	slug textValue
+	// branch is the rule's branch-name keys.
+	branch branchKeys
+	// extends is a rule's own extends, which is not expanded, so the rule
+	// can set anything.
+	extends bool
+	// typeObjects is a minor, patch or digest object that splits a batch
+	// (see ownTypeObjects).
+	typeObjects bool
+	// majorSeparateMajorMinor is the rule's major.separateMajorMinor.
+	majorSeparateMajorMinor tri
+	// reachesLockFiles is update types that are absent, unreadable or list
+	// "lockFileMaintenance": Renovate applies the rule to lock-file
+	// maintenance too.
+	reachesLockFiles bool
+	// lockObject is the rule's own lockFileMaintenance object.
+	lockObject bool
 }
 
 // malformedRule is a rule the tool cannot read. The batching check reads it
@@ -227,6 +249,8 @@ func ownRule(obj map[string]any) pkgRule {
 			// hold in the rule fails and automerge-on via it is ignored.
 			r.appliesToMajor, r.narrowed, r.selective = true, true, true
 			unreadable = true
+		case s == "lockFileMaintenance":
+			r.reachesLockFiles = true
 		default:
 			r.updateTypes |= updateTypeBit(s)
 		}
@@ -236,6 +260,7 @@ func ownRule(obj map[string]any) pkgRule {
 	}
 	if present == 0 || unreadable {
 		r.updateTypes = allUpdateTypes
+		r.reachesLockFiles = true
 	}
 	var b1, b2, b3 bool
 	r.automerge, b1 = ownTri(obj, "automerge")
@@ -246,6 +271,12 @@ func ownRule(obj map[string]any) pkgRule {
 	r.group = ownGroupName(obj)
 	r.separateMajorMinor, r.separateMinorPatch, r.separateMultipleMinor = ownSwitches(obj)
 	r.schedule = ownSchedule(obj)
+	r.slug = ownText(obj, "groupSlug")
+	r.branch = ownBranchKeys(obj)
+	_, r.extends = obj["extends"]
+	r.typeObjects = ownTypeObjects(obj)
+	r.majorSeparateMajorMinor = ownMajorSwitch(obj)
+	_, r.lockObject = obj["lockFileMaintenance"]
 	return r
 }
 

@@ -376,32 +376,57 @@ Grouped by theme here; the report lists them in the fixed worklist order
   Majors stay out of the group's pull request: it shows `majors grouped` when
   the effective `separateMajorMinor` is false (set at the top level, by
   `group:all`, `config:semverAllWeekly`, `config:semverAllMonthly`, or by a
-  rule that reaches minor, patch or digest updates), whereas a group rule that
-  also lists `major` passes while `separateMajorMinor` is true, as Renovate
-  gives majors their own branch. Anything that splits the group shows
-  `split group`: a later rule giving some non-major updates another
-  `groupName` (or `null`), `separateMinorPatch` or `separateMultipleMinor`
-  true (at the top level, by a preset such as `:separatePatchReleases` or
-  `:automergePatch`, or in a rule), or a non-group rule over non-major
-  updates with its own `schedule`. Every `group:*` built-in other than
-  `group:all`, `group:allNonMajor` and `group:allDigest`, and
-  `config:recommended` (which extends the monorepo groups), reads as a group
-  over only some packages, so a catch-all group placed before one in
-  `extends` is split by it; a catch-all in the repository's own file is not.
+  rule that reaches minor, patch or digest updates; and, when the group
+  reaches majors, by `major.separateMajorMinor` or a rule that reaches
+  majors), whereas a group rule that also lists `major` passes while
+  `separateMajorMinor` is true, as Renovate gives majors their own branch.
+  Anything that splits the group, into several branches or off its
+  schedule, shows `split group`: a later rule giving some non-major updates
+  another `groupName` (or `null`) or `groupSlug`; `separateMinorPatch` or
+  `separateMultipleMinor` true (at the top level, by a preset such as
+  `:separatePatchReleases` or `:automergePatch`, or in a rule); a `minor`,
+  `patch` or `digest` object (at the top level or in a rule) that sets a
+  schedule, `groupName`, `groupSlug`, a branch key, `extends` or one of
+  those switches; any other rule over non-major updates with its own
+  `schedule`, its own `extends` (not expanded, so it could set anything) or
+  any branch key (`branchPrefix`, `additionalBranchPrefix`, `branchName`, or
+  `group.branchName` / `group.branchTopic`); or a branch key at the top
+  level or in the group's rule that differs by update (a `{{template}}` in
+  either prefix, or any `branchName` or `group` branch key). Renovate names
+  a group's branch from its `groupSlug`, falling back to its `groupName`, so
+  the slug must be the same for the whole group: a group whose slug or
+  (without one) name is a template splits, and a group rule without its own
+  `groupSlug` inherits any slug set before it. `group:all`,
+  `group:allNonMajor`, `group:allDigest` and the groups `config:recommended`
+  brings in (through `group:recommended`) set slugs, so a catch-all group
+  after them must set a `groupSlug` of its own, for example
+  `"groupSlug": "all-non-major"`. Every `group:*` built-in other than
+  `group:all`, `group:allNonMajor` and `group:allDigest`,
+  `config:recommended` (which extends the monorepo groups) and `:group(...)`
+  read as a group over only some packages that sets a slug (`:group` sets
+  none), so a catch-all group placed before one in `extends` is split by it;
+  a catch-all in the repository's own file that sets its own `groupSlug` is
+  not. `:group` over a preset other than a `monorepo:*` or `packages:*` one
+  reads as a rule with its own `extends`, and splits.
   Schedule: the group's `schedule` (otherwise the top-level one), the union
   of its entries, must allow at most one contiguous block of no more than 48
   hours whose starts are at least 7 days apart. `every weekend`,
-  `before 4am on monday` and monthly or quarterly schedules pass;
-  `every weekday` and a daily window show `too often`. No schedule, or
-  `at any time`, shows `no schedule`; syntax the tool cannot read shows
-  `unreadable schedule`, never a guess; the timezone is ignored.
+  `before 4am on monday` and monthly, quarterly or yearly schedules pass;
+  `every weekday`, office hours and a daily window show `too often`. No
+  schedule, or `at any time`, shows `no schedule`; syntax the tool cannot
+  read shows `unreadable schedule`, never a guess; the timezone is ignored.
   Lock files: when `lockFileMaintenance` is on, its schedule (Renovate's
   default `before 4am on monday` when none is set, since it does not inherit
   the top-level one) must fall inside the group's block, else the cell shows
-  `lock files off-schedule`; a `lockFileMaintenance` with its own `extends` reads as an
-  unreadable schedule. Of Renovate's built-in presets, only those that set
-  grouping, a schedule or lock-file maintenance are known (`group:*`,
-  `schedule:*`, `config:recommended`, `config:best-practices`, the
+  `lock files off-schedule`. Renovate applies package rules to lock-file
+  maintenance after that schedule, so the schedule of every rule that can
+  reach it (no update types, or ones listing `lockFileMaintenance` or using
+  a pattern) must fall inside the block too. A `lockFileMaintenance` with its
+  own `extends`, or a rule that can reach it with its own `extends` or
+  `lockFileMaintenance` object, reads as an unreadable schedule. Of
+  Renovate's built-in presets, only those that set grouping, a schedule or
+  lock-file maintenance are known (`group:*`, `:group`, every `schedule:*`
+  that sets `schedule`, `config:recommended`, `config:best-practices`, the
   `config:semverAll*` presets and `:maintainLockFiles*`); the rest, and other
   accounts' presets, set nothing. Takes the same expectation words as
   `renovate_automerge_major`. Shows `unresolved` for any configuration that
@@ -409,7 +434,9 @@ Grouped by theme here; the report lists them in the fixed worklist order
   as `batching` (`ok`, `no_group`, `digests_ungrouped`, `majors_grouped`,
   `split_group`, `no_schedule`, `too_often`, `unreadable_schedule` or
   `lock_files_off_schedule`) and the schedules judged as `batching_schedule`
-  and `lock_file_schedule`. n/a without a Renovate configuration.
+  and `lock_file_schedule` (empty entries dropped; `lock_file_schedule` is
+  absent when a package rule may replace it). n/a without a Renovate
+  configuration.
 - **homepage**, **topics**, **community_files** — repository metadata that
   only matters once a repository is meant to be found: a homepage URL, any
   topics, and how many of a security policy, contributing guide and code of

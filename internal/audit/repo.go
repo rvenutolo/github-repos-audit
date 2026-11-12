@@ -197,12 +197,14 @@ type Renovate struct {
 	// no_schedule, too_often, unreadable_schedule, lock_files_off_schedule).
 	// Empty when there is no configuration or it is unresolved.
 	Batching string `json:"batching,omitzero"`
-	// BatchingSchedule is the schedule judged for the group, as written.
-	// Empty when none was set or the verdict was reached before it was read.
+	// BatchingSchedule is the schedule judged for the group, as written,
+	// less any empty entries. Empty when none was set, none is left, or the
+	// verdict was reached before it was read.
 	BatchingSchedule []string `json:"batching_schedule,omitzero"`
 	// LockFileSchedule is the lock-file maintenance schedule judged, which is
-	// Renovate's default when no layer sets one. Empty when maintenance is
-	// off or its schedule is unreadable.
+	// Renovate's default when no layer sets one, less any empty entries.
+	// Empty when maintenance is off, its schedule is unreadable or empty, or
+	// a package rule may replace it.
 	LockFileSchedule []string `json:"lock_file_schedule,omitzero"`
 }
 

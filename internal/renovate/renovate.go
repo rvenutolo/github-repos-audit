@@ -71,12 +71,15 @@ type Result struct {
 	// when Unresolved is set.
 	Batching string
 	// BatchingSchedule is the schedule judged for the group, as written
-	// (a bare string is one entry); nil when none was set or the verdict
-	// was reached before the schedule was read.
+	// (a bare string is one entry) less any empty entries; nil when none
+	// was set, none is left, or the verdict was reached before the schedule
+	// was read.
 	BatchingSchedule []string
 	// LockFileSchedule is the lock-file maintenance schedule judged, which
-	// is Renovate's default when no layer sets one; nil when maintenance is
-	// off or its schedule is unreadable.
+	// is Renovate's default when no layer sets one, less any empty entries;
+	// nil when maintenance is off, its schedule is unreadable or empty, or
+	// a package rule may replace it (every such rule's schedule is judged
+	// too, but none of them is recorded).
 	LockFileSchedule []string
 	// Unresolved is why the configuration could not be decided; when set,
 	// the others are empty or false. A wrong-typed manager key never sets
@@ -106,6 +109,13 @@ type layered struct {
 	separateMajorMinor    tri
 	separateMinorPatch    tri
 	separateMultipleMinor tri
+	slug                  textValue  // top-level groupSlug
+	branch                branchKeys // top-level branch-name keys
+	// typeObjects is a minor, patch or digest object that splits a batch
+	// (see ownTypeObjects). Those objects merge field by field, so it
+	// sticks once any layer sets it.
+	typeObjects             bool
+	majorSeparateMajorMinor tri // major.separateMajorMinor
 }
 
 // over lays o on top of l, key by key, the way a later layer overrides an
@@ -131,6 +141,10 @@ func (l *layered) over(o layered) {
 	l.separateMajorMinor = l.separateMajorMinor.overlay(o.separateMajorMinor)
 	l.separateMinorPatch = l.separateMinorPatch.overlay(o.separateMinorPatch)
 	l.separateMultipleMinor = l.separateMultipleMinor.overlay(o.separateMultipleMinor)
+	l.slug = l.slug.overlay(o.slug)
+	l.branch.over(o.branch)
+	l.typeObjects = l.typeObjects || o.typeObjects
+	l.majorSeparateMajorMinor = l.majorSeparateMajorMinor.overlay(o.majorSeparateMajorMinor)
 	l.automerge.over(o.automerge)
 	l.rules = append(l.rules, o.rules...)
 }
@@ -301,6 +315,11 @@ func ownLayer(source string, cfg map[string]any) (layered, error) {
 		schedule:     ownSchedule(cfg),
 		lockSchedule: ownLockSchedule(cfg),
 		group:        ownGroupName(cfg),
+		slug:         ownText(cfg, "groupSlug"),
+		branch:       ownBranchKeys(cfg),
+		typeObjects:  ownTypeObjects(cfg),
+
+		majorSeparateMajorMinor: ownMajorSwitch(cfg),
 	}
 	out.separateMajorMinor, out.separateMinorPatch, out.separateMultipleMinor = ownSwitches(cfg)
 	return out, nil

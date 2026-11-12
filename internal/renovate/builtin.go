@@ -5,14 +5,15 @@ import "strings"
 // builtinLayer returns what a Renovate built-in preset says, for the few
 // built-ins that set lockFileMaintenance.enabled or its schedule, the
 // automerge, approval and enablement of major updates, or the grouping and
-// schedule that decide batching (groupName, separateMajorMinor and schedule).
+// schedule that decide batching (groupName, groupSlug, separateMajorMinor and
+// schedule).
 // Built-ins live in Renovate's source rather than on GitHub, so they cannot
 // be fetched; this fixed table is the only knowledge of them, and it models
 // those keys alone. Every built-in not listed reads as setting nothing, except
 // that any group:* preset not listed, config:recommended and config:base read
 // as one narrowed group rule (see narrowedGroups), since each sets a groupName
-// for some packages.
-// The major-update, lock-file and separate* presets are as defined in
+// for some packages, and so does :group (see argGroup).
+// The major-update, lock-file, separate* and :group presets are as defined in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/default.preset.ts
 // the schedule presets in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/schedule.preset.ts
@@ -32,6 +33,8 @@ func builtinLayer(ref string) layered {
 		name = "default" + name
 	}
 	yes, no := tri{set: true, value: true}, tri{set: true}
+	named := groupName{set: true, nonEmpty: true}
+	slugged := textValue{set: true, fixed: true}
 	switch name {
 	case "default:maintainLockFilesWeekly":
 		return lockFilesOn(earlyMondaysCron)
@@ -54,7 +57,7 @@ func builtinLayer(ref string) layered {
 	case "group:allDigest":
 		return layered{rules: []pkgRule{{
 			narrowed: true, typed: true,
-			updateTypes: typeDigest, group: groupName{set: true, nonEmpty: true},
+			updateTypes: typeDigest, group: named, slug: slugged,
 		}}}
 	case "default:maintainLockFilesMonthly":
 		return lockFilesOn(monthlyCron)
@@ -71,22 +74,23 @@ func builtinLayer(ref string) layered {
 		// preset; reading it as the switch only makes the check fail.
 		return layered{separateMajorMinor: no}
 	case "group:all":
-		// A top-level groupName and the same group as a packageRule over every
-		// package with no update types, plus separateMajorMinor false: majors
-		// share the group's branch.
+		// A top-level groupName and groupSlug and the same group as a
+		// packageRule over every package with no update types, plus
+		// separateMajorMinor false: majors share the group's branch.
 		return layered{
-			group:              groupName{set: true, nonEmpty: true},
+			group:              named,
+			slug:               slugged,
 			separateMajorMinor: no,
 			rules: []pkgRule{{
-				appliesToMajor: true, narrowed: true,
-				updateTypes: allUpdateTypes, group: groupName{set: true, nonEmpty: true},
+				appliesToMajor: true, narrowed: true, reachesLockFiles: true,
+				updateTypes: allUpdateTypes, group: named, slug: slugged,
 			}},
 		}
 	case "group:allNonMajor":
 		// Minor and patch only: digests stay ungrouped.
 		return layered{rules: []pkgRule{{
 			narrowed: true, typed: true,
-			updateTypes: typeMinor | typePatch, group: groupName{set: true, nonEmpty: true},
+			updateTypes: typeMinor | typePatch, group: named, slug: slugged,
 		}}}
 	case "schedule:daily":
 		return scheduled("* 0-3 * * *")
@@ -102,6 +106,12 @@ func builtinLayer(ref string) layered {
 		return scheduled("* * 1 */3 *")
 	case "schedule:nonOfficeHours":
 		return scheduled("* 0-4,22-23 * * 1-5", "* * * * 0,6")
+	case "schedule:officeHours":
+		return scheduled("* 8-17 * * 1-5")
+	case "schedule:yearly":
+		return scheduled("* * 1 */12 *")
+	case "default:group":
+		return argGroup(ref)
 	case "default:maintainLockFilesDisabled":
 		return layered{lockFile: flag{set: true}}
 	case "default:automergeAll", "default:automergeMajor":
@@ -164,12 +174,35 @@ func stacked(refs ...string) layered {
 
 // narrowedGroups is what the group rules inside group:monorepos,
 // group:recommended and config:recommended amount to: rules that set a
-// groupName for some packages and every update type. None is a catch-all,
-// but a catch-all group placed before them in an extends list is split by
-// them, and one in the repository's own file (after every preset) is not.
+// groupName for some packages and every update type, and a groupSlug, as
+// several of group:recommended's do (group:symfony, group:pulumi and
+// others). None is a catch-all, but a catch-all group placed before them in
+// an extends list is split by them, and one in the repository's own file
+// (after every preset) is split by the slug it inherits unless it sets its
+// own groupSlug.
 func narrowedGroups() layered {
 	return layered{rules: []pkgRule{{
-		appliesToMajor: true, narrowed: true, selective: true,
+		appliesToMajor: true, narrowed: true, selective: true, reachesLockFiles: true,
 		updateTypes: allUpdateTypes, group: groupName{set: true, nonEmpty: true},
+		slug: textValue{set: true, fixed: true},
 	}}}
+}
+
+// argGroup is :group(preset, name): one rule that extends the preset named
+// by its first argument and sets groupName to its second. A monorepo:* or
+// packages:* preset holds only package matchers, so the rule is a narrowed
+// group; any other preset is not expanded and can set anything, so the rule
+// reads as having its own extends, which splits a batch.
+// https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/monorepos.preset.ts
+// https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/packages.preset.ts
+func argGroup(ref string) layered {
+	var arg0 string
+	if open, end := strings.IndexByte(ref, '('), strings.LastIndexByte(ref, ')'); open >= 0 && end > open {
+		arg0, _, _ = strings.Cut(ref[open+1:end], ",")
+		arg0 = strings.TrimSpace(arg0)
+	}
+	l := narrowedGroups()
+	l.rules[0].slug = textValue{}
+	l.rules[0].extends = !strings.HasPrefix(arg0, "monorepo:") && !strings.HasPrefix(arg0, "packages:")
+	return l
 }
