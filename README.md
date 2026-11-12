@@ -367,8 +367,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
   Renovate configuration.
 - **renovate_batching** — whether Renovate sends all non-major updates as one
   pull request opened at most weekly, since every Renovate pull request costs
-  CI minutes and notification emails. Three rules, the first missed naming
-  the cell. Grouping: every minor, patch and digest update, for every manager
+  CI minutes and notification emails. The cell names the first requirement
+  the repository misses, in the order listed here. Grouping: every minor, patch and digest update, for every manager
   and package, falls in one group (a top-level `groupName`, or a `packageRules`
   entry with a `groupName` and no matcher beyond a catch-all such as
   `["*"]`); digests are required, so `group:allNonMajor` alone shows
@@ -397,8 +397,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `unreadable schedule`, never a guess; the timezone is ignored.
   Lock files: when `lockFileMaintenance` is on, its schedule (Renovate's
   default `before 4am on monday` when none is set, since it does not inherit
-  the top-level one) must fall inside the group's block, else `lock files
-  off-schedule`; a `lockFileMaintenance` with its own `extends` reads as an
+  the top-level one) must fall inside the group's block, else the cell shows
+  `lock files off-schedule`; a `lockFileMaintenance` with its own `extends` reads as an
   unreadable schedule. Of Renovate's built-in presets, only those that set
   grouping, a schedule or lock-file maintenance are known (`group:*`,
   `schedule:*`, `config:recommended`, `config:best-practices`, the
