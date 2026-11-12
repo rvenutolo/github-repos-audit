@@ -74,6 +74,13 @@ func TestParseSchedule_judge(t *testing.T) {
 		{"trailing days", []string{"on mondays"}, "ok"},
 		{"every 4 months text", []string{"every 4 months"}, "too_often"},
 		{"on the first day and a time", []string{"before 5am on the first day of the month"}, "ok"},
+		{"adjacent days union into one 48h block", []string{"on monday on tuesday"}, "ok"},
+		{"repeated day clauses union", []string{"on monday on wednesday"}, "too_often"},
+		{"and before a non-day ends the day list", []string{"on monday and before 4am"}, "ok"},
+		{"weekday and monday union", []string{"every weekday on monday"}, "too_often"},
+		{"repeated day clauses with a duplicate", []string{"on monday on friday on monday"}, "too_often"},
+		{"day then time", []string{"on monday before 4am"}, "ok"},
+		{"repeated before unions to the later bound", []string{"before 4am before 8am on monday"}, "ok"},
 		{"and between clauses", []string{"before 4am and on monday"}, "ok"},
 	}
 	for _, tt := range tests {
@@ -143,6 +150,8 @@ func TestParseSchedule_unreadable(t *testing.T) {
 		{"on"},
 		{"on the second day of the month"},
 		{"on funday"},
+		{"on monday thursday"},
+		{"on monday and thursday friday"},
 		{"on monday and"},
 		{"every"},
 		{"every day"},
@@ -183,7 +192,7 @@ func TestParseSchedule_equivalentSpellings(t *testing.T) {
 		for _, entries := range group[1:] {
 			got, ok := parseSchedule(entries)
 			if !ok || got != want {
-				t.Errorf("parseSchedule(%q) = %v (ok %v), want the same hours as %q", entries, got == want, ok, group[0])
+				t.Errorf("parseSchedule(%q) ok = %v, hours differ from %q: %v", entries, ok, group[0], got != want)
 			}
 		}
 	}

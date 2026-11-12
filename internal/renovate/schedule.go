@@ -354,7 +354,7 @@ func rewriteText(entry string) []string {
 	}
 	s = strings.Join(tokens, " ")
 	if strings.HasSuffix(s, "days") {
-		s = strings.Replace(s, "days", "day", 1)
+		s = strings.TrimSuffix(s, "days") + "day"
 	}
 
 	tokens = strings.Fields(s)
@@ -409,21 +409,29 @@ func parseClock(s string) (int, bool) {
 	return h * 60, true
 }
 
-// parseText reads one rewritten later.js entry: a sequence of clauses that all
-// must hold ("and" between them is only punctuation). Anything outside the
-// forms below fails closed.
+// parseText reads one rewritten later.js entry: a sequence of clauses ("and"
+// between them is only punctuation). Clauses on different fields all must
+// hold, but repeated clauses on the same field add up, as in later.js: "on
+// monday on friday" allows both days, and "every weekday on monday" allows
+// all five weekdays. "before" and "after" are their own fields and, once each
+// is unioned, intersect ("after 1am and before 3am" is the two hours between).
+// Reading repeated clauses as an intersection would narrow the window below
+// what Renovate runs and could pass a schedule it should fail. Anything
+// outside the forms below fails closed.
 //
 //	before <time> | after <time>
-//	on <day> [and <day>]...        full or three-letter names
+//	on <day> [and <day>]...        full or three-letter names, "and" required
 //	on the first day of the month
 //	every weekday | every weekend
 //	every <n> months               months 1, 1+n, 1+2n, ...
 func parseText(text string) (clause, bool) {
-	c := anyClause()
 	tokens := strings.Fields(text)
 	if len(tokens) == 0 {
 		return clause{}, false
 	}
+	// A field starts empty and, once any clause names it, holds the union of
+	// the clauses; a field no clause names allows everything.
+	var before, after, dow, dom, month uint64
 	for i := 0; i < len(tokens); {
 		switch tokens[i] {
 		case "and":
@@ -442,53 +450,51 @@ func parseText(text string) (clause, bool) {
 			}
 			below := uint64(1)<<(minutes/60) - 1
 			if tokens[i] == "before" {
-				c.hour &= below
+				// An empty set ("before 12am") still marks the field as named.
+				before |= below | 1<<24
 			} else {
-				c.hour &^= below
+				after |= (1<<24-1)&^below | 1<<24
 			}
 			i += 2
 		case "on":
 			if hasPrefix(tokens[i:], "on", "the", "first", "day", "of", "the", "month") {
-				c.dom &= 1 << 1
+				dom |= 1 << 1
 				i += 7
 				continue
 			}
-			var days uint64
 			j := i + 1
-			for j < len(tokens) {
-				d, ok := dayNames[shortDay(tokens[j])]
+			d, ok := dayNames[shortDay(tokens[min(j, len(tokens)-1)])]
+			if j >= len(tokens) || !ok {
+				return clause{}, false
+			}
+			dow |= 1 << d
+			j++
+			// Only "and" chains day names: later.js rejects "monday thursday".
+			for j+1 < len(tokens) && tokens[j] == "and" {
+				d, ok := dayNames[shortDay(tokens[j+1])]
 				if !ok {
 					break
 				}
-				days |= 1 << d
-				j++
-				if j+1 < len(tokens) && tokens[j] == "and" {
-					j++
-				}
+				dow |= 1 << d
+				j += 2
 			}
-			if days == 0 {
-				return clause{}, false
-			}
-			c.dow &= days
 			i = j
 		case "every":
 			switch {
 			case hasPrefix(tokens[i:], "every", "weekday"):
-				c.dow &= 1<<6 - 1<<1 // monday..friday
+				dow |= 1<<6 - 1<<1 // monday..friday
 				i += 2
 			case hasPrefix(tokens[i:], "every", "weekend"):
-				c.dow &= 1<<0 | 1<<6
+				dow |= 1<<0 | 1<<6
 				i += 2
 			case i+2 < len(tokens) && (tokens[i+2] == "months" || tokens[i+2] == "month"):
 				n, err := strconv.Atoi(tokens[i+1])
 				if err != nil || n < 1 || n > 12 || tokens[i+1][0] == '+' {
 					return clause{}, false
 				}
-				var months uint64
 				for m := 1; m <= 12; m += n {
-					months |= 1 << m
+					month |= 1 << m
 				}
-				c.month &= months
 				i += 3
 			default:
 				return clause{}, false
@@ -496,6 +502,22 @@ func parseText(text string) (clause, bool) {
 		default:
 			return clause{}, false
 		}
+	}
+	c := anyClause()
+	if before != 0 {
+		c.hour &= before
+	}
+	if after != 0 {
+		c.hour &= after
+	}
+	if dow != 0 {
+		c.dow = dow
+	}
+	if dom != 0 {
+		c.dom = dom
+	}
+	if month != 0 {
+		c.month = month
 	}
 	return c, true
 }
