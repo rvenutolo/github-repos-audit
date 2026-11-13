@@ -36,6 +36,9 @@ func (c *Client) renovateFacts(
 		NixManager:          res.NixManager,
 		LockFileMaintenance: res.LockFileMaintenance,
 		AutomergeMajor:      res.AutomergeMajor,
+		Batching:            res.Batching,
+		BatchingSchedule:    res.BatchingSchedule,
+		LockFileSchedule:    res.LockFileSchedule,
 	}, nil
 }
 

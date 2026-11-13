@@ -1,14 +1,16 @@
-// Package renovate decides four facts about a Renovate configuration, each as
+// Package renovate decides five facts about a Renovate configuration, each as
 // Renovate itself would merge it from the repository's own file and the
 // presets it extends: the effective top-level minimumReleaseAge, whether the
-// nix manager runs, whether lock-file maintenance is on, and whether major
-// updates merge on their own.
+// nix manager runs, whether lock-file maintenance is on, whether major
+// updates merge on their own, and whether non-major updates are batched into
+// one infrequent pull request (and the schedules that judgement read).
 //
 // Only presets in the audited account are followed. A built-in preset lives
 // in Renovate's source rather than on GitHub, so it cannot be fetched: a fixed
-// table (builtinLayer) knows the few that set lockFileMaintenance.enabled or
-// the automerge, approval and enablement of majors, and every other built-in
-// is treated as setting nothing. Another owner's preset is outside what this
+// table (builtinLayer) knows the few that set lockFileMaintenance, the
+// automerge, approval and enablement of majors, or the grouping and schedule
+// that decide batching, and every other built-in is treated as setting
+// nothing. Another owner's preset is outside what this
 // tool reads and also sets nothing. A repository relying on one of those alone
 // shows "none" or "off", which is conservative and is fixed by stating the
 // value explicitly.
@@ -62,6 +64,23 @@ type Result struct {
 	// AutomergeMajor is true only when, after the merge, every major update
 	// is auto-merged and nothing disables or gates it.
 	AutomergeMajor bool
+	// Batching is whether non-major updates arrive as one infrequent pull
+	// request: "ok", or the first reason they do not (see batching): one of
+	// no_group, digests_ungrouped, majors_grouped, split_group, no_schedule,
+	// too_often, unreadable_schedule or lock_files_off_schedule. Empty only
+	// when Unresolved is set.
+	Batching string
+	// BatchingSchedule is the schedule judged for the group, as written
+	// (a bare string is one entry) less any empty entries; nil when none
+	// was set, none is left, or the verdict was reached before the schedule
+	// was read.
+	BatchingSchedule []string
+	// LockFileSchedule is the lock-file maintenance schedule judged, which
+	// is Renovate's default when no layer sets one, less any empty entries;
+	// nil when maintenance is off, its schedule is unreadable or empty, or
+	// a package rule may replace it (every such rule's schedule is judged
+	// too, but none of them is recorded).
+	LockFileSchedule []string
 	// Unresolved is why the configuration could not be decided; when set,
 	// the others are empty or false. A wrong-typed manager key never sets
 	// it: that leaves only its own fact false.
@@ -82,6 +101,21 @@ type layered struct {
 	// to the parent's, preset rules first and the own file's last.
 	// https://github.com/renovatebot/renovate/blob/main/lib/config/utils.ts
 	rules []pkgRule
+
+	// The keys below decide batching (batching.go); each replaces as a whole.
+	schedule              scheduleValue
+	lockSchedule          scheduleValue // lockFileMaintenance.schedule
+	group                 groupName     // top-level groupName
+	separateMajorMinor    tri
+	separateMinorPatch    tri
+	separateMultipleMinor tri
+	slug                  textValue  // top-level groupSlug
+	branch                branchKeys // top-level branch-name keys
+	// typeObjects is a minor, patch or digest object that splits a batch
+	// (see ownTypeObjects). Those objects merge field by field, so it
+	// sticks once any layer sets it.
+	typeObjects             bool
+	majorSeparateMajorMinor tri // major.separateMajorMinor
 }
 
 // over lays o on top of l, key by key, the way a later layer overrides an
@@ -99,6 +133,18 @@ func (l *layered) over(o layered) {
 	if o.managers.set {
 		l.managers = o.managers
 	}
+	l.schedule = l.schedule.overlay(o.schedule)
+	l.lockSchedule = l.lockSchedule.overlay(o.lockSchedule)
+	if o.group.set {
+		l.group = o.group
+	}
+	l.separateMajorMinor = l.separateMajorMinor.overlay(o.separateMajorMinor)
+	l.separateMinorPatch = l.separateMinorPatch.overlay(o.separateMinorPatch)
+	l.separateMultipleMinor = l.separateMultipleMinor.overlay(o.separateMultipleMinor)
+	l.slug = l.slug.overlay(o.slug)
+	l.branch.over(o.branch)
+	l.typeObjects = l.typeObjects || o.typeObjects
+	l.majorSeparateMajorMinor = l.majorSeparateMajorMinor.overlay(o.majorSeparateMajorMinor)
 	l.automerge.over(o.automerge)
 	l.rules = append(l.rules, o.rules...)
 }
@@ -139,7 +185,8 @@ type resolver struct {
 
 // Resolve returns the effective configuration (see Result: the top-level
 // minimumReleaseAge, whether the nix manager runs, whether lock-file
-// maintenance is on, and whether majors auto-merge) for a repository whose
+// maintenance is on, whether majors auto-merge, and whether non-major updates
+// are batched) for a repository whose
 // Renovate configuration at rootPath has the text rootText.
 func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch) (Result, error) {
 	r := resolver{owner: owner, fetch: fetch}
@@ -162,6 +209,7 @@ func Resolve(ctx context.Context, owner, rootPath, rootText string, fetch Fetch)
 		LockFileMaintenance: l.lockFile.value,
 		AutomergeMajor:      majorsAutoMerge(l.automerge, l.rules),
 	}
+	res.Batching, res.BatchingSchedule, res.LockFileSchedule = batching(l)
 	if l.releaseAge.set && l.releaseAge.value != "" {
 		res.MinReleaseAge, res.Source = l.releaseAge.value, l.releaseAge.source
 	}
@@ -216,7 +264,7 @@ func (r resolver) preset(ctx context.Context, ref string, stack []string) (layer
 	if !follow {
 		// Built-ins land here (they have no owner/repo), as do other owners'
 		// presets; builtinLayer matches only the exact built-in names.
-		l, _ := builtinLayer(ref)
+		l := builtinLayer(ref)
 		return l, nil
 	}
 	if problem != "" {
@@ -257,14 +305,40 @@ func ownLayer(source string, cfg map[string]any) (layered, error) {
 	if err != nil {
 		return layered{}, err
 	}
-	return layered{
-		releaseAge: releaseAge,
-		nix:        ownFlag(cfg, "nix"),
-		lockFile:   ownFlag(cfg, "lockFileMaintenance"),
-		managers:   ownManagers(cfg),
-		automerge:  ownAutomerge(cfg),
-		rules:      ownRules(cfg),
-	}, nil
+	out := layered{
+		releaseAge:   releaseAge,
+		nix:          ownFlag(cfg, "nix"),
+		lockFile:     ownFlag(cfg, "lockFileMaintenance"),
+		managers:     ownManagers(cfg),
+		automerge:    ownAutomerge(cfg),
+		rules:        ownRules(cfg),
+		schedule:     ownSchedule(cfg),
+		lockSchedule: ownLockSchedule(cfg),
+		group:        ownGroupName(cfg),
+		slug:         ownText(cfg, "groupSlug"),
+		branch:       ownBranchKeys(cfg),
+		typeObjects:  ownTypeObjects(cfg),
+
+		majorSeparateMajorMinor: ownMajorSwitch(cfg),
+	}
+	out.separateMajorMinor, out.separateMinorPatch, out.separateMultipleMinor = ownSwitches(cfg)
+	return out, nil
+}
+
+// ownLockSchedule reads lockFileMaintenance.schedule. A lockFileMaintenance
+// that is not an object says nothing here; ownFlag already reads it as
+// switching maintenance off.
+func ownLockSchedule(cfg map[string]any) scheduleValue {
+	obj, ok := cfg["lockFileMaintenance"].(map[string]any)
+	if !ok {
+		return scheduleValue{}
+	}
+	if _, has := obj["extends"]; has {
+		// The preset it names (usually a schedule:*) can set the schedule and
+		// is not expanded here, so the schedule cannot be read.
+		return scheduleValue{set: true, bad: true}
+	}
+	return ownSchedule(obj)
 }
 
 // ownFlag reads key.enabled. A key that is present but not an object, or an

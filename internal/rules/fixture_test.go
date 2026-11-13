@@ -82,7 +82,7 @@ func fixture(name string, typ rules.Type) audit.Repo {
 		// Renovate refreshes flake.lock: its nix manager runs, with lock-file
 		// maintenance.
 		Renovate: audit.Renovate{
-			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json", AutomergeMajor: true,
+			MinReleaseAge: "7 days", MinReleaseAgeSource: "renovate.json", AutomergeMajor: true, Batching: "ok",
 			NixManager: true, LockFileMaintenance: true,
 		},
 		// Renovate has run: its Dependency Dashboard is open.

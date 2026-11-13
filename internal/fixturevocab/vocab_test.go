@@ -686,7 +686,9 @@ var snapshotRules = []rule{
 		`repos\[\]\.releases\.(drafts|total)`,
 		// A duration such as "7 days" is never account data.
 		`repos\[\]\.renovate\.min_release_age`,
-		`repos\[\]\.renovate\.(automerge_major|lock_file_maintenance|nix_manager)`,
+		`repos\[\]\.renovate\.(automerge_major|batching|lock_file_maintenance|nix_manager)`,
+		// Schedules are Renovate's own timing syntax, never account data.
+		`repos\[\]\.renovate\.(batching_schedule|lock_file_schedule)\[\]`,
 		`repos\[\]\.renovate_dashboard\.(number|state)`,
 		`repos\[\]\.rulesets\[\]\.(enforcement|include\[\]|rules\[\]|target)`,
 		`repos\[\]\.settings\.[a-z_]+`,
