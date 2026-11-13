@@ -4,6 +4,27 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v12.0.0
+
+### Breaking changes
+
+- add renovate_batching check
+
+### Features
+
+- **renovate:** parse schedules and judge weekly windows
+- **renovate:** resolve whether updates are batched weekly
+
+### Fixes
+
+- **deps:** update module golang.org/x/sync to v0.25.0
+- **deps:** update module golang.org/x/text to v0.44.0
+- **renovate:** union repeated schedule clauses as later.js does
+- **renovate:** read every switch that splits a weekly batch
+- **renovate:** count every group rule and schedule that splits a batch
+- **renovate:** read every key that splits or reschedules a batch
+- **renovate:** read config:js-app, config:js-lib and hashedBranchLength
+
 ## v11.0.2
 
 ### Fixes
