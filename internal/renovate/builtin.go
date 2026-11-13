@@ -12,12 +12,15 @@ import "strings"
 // those keys alone. Every built-in not listed reads as setting nothing, except
 // that any group:* preset not listed, config:recommended and config:base read
 // as one narrowed group rule (see narrowedGroups), since each sets a groupName
-// for some packages, and so does :group (see argGroup).
-// The major-update, lock-file, separate* and :group presets are as defined in
+// for some packages, as do config:js-app and config:js-lib through
+// config:recommended, and so does :group (see argGroup).
+// The major-update, lock-file, separate*, :pin* and :group presets are as
+// defined in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/default.preset.ts
 // the schedule presets in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/schedule.preset.ts
-// and group:*, config:recommended and the config:semverAll presets in
+// and group:*, config:recommended, config:js-app, config:js-lib and the
+// config:semverAll presets in
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/group.preset.ts
 // https://github.com/renovatebot/renovate/blob/main/lib/config/presets/internal/config.preset.ts
 //
@@ -45,6 +48,10 @@ func builtinLayer(ref string) layered {
 		return stacked("config:recommended", "default:maintainLockFilesWeekly")
 	case "config:recommended", "config:base", "group:monorepos", "group:recommended":
 		return narrowedGroups()
+	case "config:js-app", "config:js-lib":
+		// Each extends config:recommended and one :pin* preset, whose rules
+		// set only rangeStrategy.
+		return stacked("config:recommended")
 	case "default:separatePatchReleases", "default:automergePatch":
 		// automergePatch sets separateMinorPatch beside its patch automerge.
 		return layered{separateMinorPatch: yes}

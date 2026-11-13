@@ -385,14 +385,16 @@ Grouped by theme here; the report lists them in the fixed worklist order
   another `groupName` (or `null`) or `groupSlug`; `separateMinorPatch` or
   `separateMultipleMinor` true (at the top level, by a preset such as
   `:separatePatchReleases` or `:automergePatch`, or in a rule); a `minor`,
-  `patch` or `digest` object (at the top level or in a rule) that sets a
-  schedule, `groupName`, `groupSlug`, a branch key, `extends` or one of
-  those switches; any other rule over non-major updates with its own
-  `schedule`, its own `extends` (not expanded, so it could set anything) or
-  any branch key (`branchPrefix`, `additionalBranchPrefix`, `branchName`, or
+  `patch` or `digest` object (at the top level or in a rule) that is not an
+  object or sets a schedule, `groupName`, `groupSlug`, a branch key,
+  `extends`, `packageRules` or one of those switches; any other rule over
+  non-major updates with its own `schedule`, its own `extends` (not
+  expanded, so it could set anything) or any branch key (`branchPrefix`,
+  `additionalBranchPrefix`, `branchName`, `hashedBranchLength`, or
   `group.branchName` / `group.branchTopic`); or a branch key at the top
   level or in the group's rule that differs by update (a `{{template}}` in
-  either prefix, or any `branchName` or `group` branch key). Renovate names
+  either prefix, or any `branchName` or `group` branch key;
+  `hashedBranchLength` there hashes the same input for the whole group). Renovate names
   a group's branch from its `groupSlug`, falling back to its `groupName`, so
   the slug must be the same for the whole group: a group whose slug or
   (without one) name is a template splits, and a group rule without its own
@@ -402,7 +404,9 @@ Grouped by theme here; the report lists them in the fixed worklist order
   after them must set a `groupSlug` of its own, for example
   `"groupSlug": "all-non-major"`. Every `group:*` built-in other than
   `group:all`, `group:allNonMajor` and `group:allDigest`,
-  `config:recommended` (which extends the monorepo groups) and `:group(...)`
+  `config:recommended` (which extends the monorepo groups and
+  `group:recommended`, as `config:js-app` and `config:js-lib` extend it) and
+  `:group(...)`
   read as a group over only some packages that sets a slug (`:group` sets
   none), so a catch-all group placed before one in `extends` is split by it;
   a catch-all in the repository's own file that sets its own `groupSlug` is
@@ -426,7 +430,8 @@ Grouped by theme here; the report lists them in the fixed worklist order
   `lockFileMaintenance` object, reads as an unreadable schedule. Of
   Renovate's built-in presets, only those that set grouping, a schedule or
   lock-file maintenance are known (`group:*`, `:group`, every `schedule:*`
-  that sets `schedule`, `config:recommended`, `config:best-practices`, the
+  that sets `schedule`, `config:recommended`, `config:best-practices`,
+  `config:js-app`, `config:js-lib`, the
   `config:semverAll*` presets and `:maintainLockFiles*`); the rest, and other
   accounts' presets, set nothing. Takes the same expectation words as
   `renovate_automerge_major`. Shows `unresolved` for any configuration that

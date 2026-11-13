@@ -136,6 +136,11 @@ type branchKeys struct {
 	// mergeable object merges field by field, so the layered value sticks
 	// once any layer sets one.
 	group bool
+	// hashed is hashedBranchLength, which replaces the branch name with
+	// branchPrefix plus a hash of additionalBranchPrefix and branchTopic.
+	// Set for every update of a group it hashes the same input, so only a
+	// rule or object that reaches part of the group is a split.
+	hashed bool
 }
 
 func ownBranchKeys(cfg map[string]any) branchKeys {
@@ -144,7 +149,13 @@ func ownBranchKeys(cfg map[string]any) branchKeys {
 		additional: ownText(cfg, "additionalBranchPrefix"),
 		name:       ownText(cfg, "branchName"),
 		group:      ownGroupBranch(cfg),
+		hashed:     hasKey(cfg, "hashedBranchLength"),
 	}
+}
+
+func hasKey(cfg map[string]any, key string) bool {
+	_, has := cfg[key]
+	return has
 }
 
 func (b *branchKeys) over(o branchKeys) {
@@ -152,17 +163,19 @@ func (b *branchKeys) over(o branchKeys) {
 	b.additional = b.additional.overlay(o.additional)
 	b.name = b.name.overlay(o.name)
 	b.group = b.group || o.group
+	b.hashed = b.hashed || o.hashed
 }
 
 // any reports a key that is set at all: on a rule that reaches only some
 // updates, any value gives them a branch of their own.
 func (b branchKeys) any() bool {
-	return b.prefix.set || b.additional.set || b.name.set || b.group
+	return b.prefix.set || b.additional.set || b.name.set || b.group || b.hashed
 }
 
 // varies reports a key that can give the updates it reaches different
 // branch names: a templated prefix, or any branchName or group branch key,
-// which replace the slug-based topic outright.
+// which replace the slug-based topic outright. hashedBranchLength is not one:
+// it hashes the same input for every update in the group.
 func (b branchKeys) varies() bool {
 	return b.prefix.varies() || b.additional.varies() || b.name.set || b.group
 }

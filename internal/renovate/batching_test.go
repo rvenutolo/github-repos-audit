@@ -536,6 +536,13 @@ func TestResolve_batching(t *testing.T) {
 		{"a major of a wrong type", `{"extends":["schedule:weekly"],"major":5,"packageRules":[` + anyGroupRule + `]}`, "majors_grouped", nil, nil},
 		{"a wrongly typed major.separateMajorMinor", `{"extends":["schedule:weekly"],"major":{"separateMajorMinor":"no"},"packageRules":[` + anyGroupRule + `]}`, "majors_grouped", nil, nil},
 		{"a major object leaving majors apart", `{"extends":["schedule:weekly"],"major":{"separateMajorMinor":true},"packageRules":[` + anyGroupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"config:js-app then a catch-all without a slug", `{"extends":["config:js-app","schedule:weekly"],"packageRules":[` + bareGroupRule + `]}`, "split_group", nil, nil},
+		{"config:js-lib then a catch-all without a slug", `{"extends":["config:js-lib","schedule:weekly"],"packageRules":[` + bareGroupRule + `]}`, "split_group", nil, nil},
+		{"config:js-app then a catch-all with its own slug", `{"extends":["config:js-app","schedule:weekly"],"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"a rule's hashedBranchLength", `{"extends":["schedule:weekly"],"packageRules":[` + groupRule + `,{"matchManagers":["npm"],"hashedBranchLength":20}]}`, "split_group", nil, nil},
+		{"a minor object's hashedBranchLength", `{"extends":["schedule:weekly"],"minor":{"hashedBranchLength":20},"packageRules":[` + groupRule + `]}`, "split_group", nil, nil},
+		{"a top-level hashedBranchLength", `{"hashedBranchLength":20,"extends":["schedule:weekly"],"packageRules":[` + groupRule + `]}`, "ok", []string{weeklyCron}, nil},
+		{"the group rule's hashedBranchLength", `{"extends":["schedule:weekly"],"packageRules":[{"matchPackageNames":["*"],"matchUpdateTypes":["minor","patch","digest"],"groupName":"g","groupSlug":"g","hashedBranchLength":20}]}`, "ok", []string{weeklyCron}, nil},
 		// Package rules apply again after lockFileMaintenance is merged.
 		{"a lock-file rule's schedule off the group's", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"schedule":["every weekend"]}]}`, "lock_files_off_schedule", []string{weeklyCron}, nil},
 		{"a lock-file rule's schedule inside the group's", `{"extends":["schedule:weekly",":maintainLockFilesWeekly"],"packageRules":[` + groupRule + `,{"matchUpdateTypes":["lockFileMaintenance"],"schedule":["before 2am on monday"]}]}`, "ok", []string{weeklyCron}, nil},
