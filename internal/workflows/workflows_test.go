@@ -519,6 +519,32 @@ func TestParseWorkflow_permissionsStringForm(t *testing.T) {
 	}
 }
 
+// TestParseWorkflow_name pins the top-level `name:`, which is what a
+// `workflow_run: workflows:` list in another workflow matches: kept exactly
+// as written, case included, and empty when the key is absent.
+func TestParseWorkflow_name(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{"plain", "name: ci\non: push\n", "ci"},
+		{"quoted", "name: \"ci\"\non: push\n", "ci"},
+		{"case kept", "name: CI\non: push\n", "CI"},
+		{"absent", "on: push\n", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := parse(t, tt.text).Name; got != tt.want {
+				t.Errorf("Name = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseWorkflow_keepsPath(t *testing.T) {
 	t.Parallel()
 
@@ -593,6 +619,8 @@ func TestParse_wrongShape(t *testing.T) {
 		{"empty document", "", "not a mapping"},
 		{"top-level sequence", "- a\n", "not a mapping"},
 		{"top-level scalar", "hello\n", "not a mapping"},
+		{"name is a mapping", "name: {x: y}\n", "name"},
+		{"name is a sequence", "name: [a]\n", "name"},
 		{"jobs is a sequence", "jobs: [a]\n", "jobs"},
 		{"job is a scalar", "jobs:\n  a: x\n", "jobs.a"},
 		{"steps is a mapping", "jobs:\n  a:\n    steps: {x: y}\n", "steps"},

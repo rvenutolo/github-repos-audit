@@ -9,6 +9,10 @@ type Workflow struct {
 	// Path is the file's path in the repository, such as
 	// ".github/workflows/ci.yml".
 	Path string `json:"path"`
+	// Name is the top-level `name:` as written, empty when the key is
+	// absent. It is recorded because it, not the file name, is what another
+	// workflow's `workflow_run: workflows:` list matches.
+	Name string `json:"name,omitzero"`
 	// ParseError is why the file could not be read as a workflow: invalid
 	// YAML, or YAML in a shape GitHub would not accept. When it is set
 	// nothing else but Path is, so a check cannot pass on the part it did

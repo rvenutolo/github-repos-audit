@@ -64,6 +64,9 @@ func parseWorkflow(text string) (audit.Workflow, error) {
 	if err != nil {
 		return w, err
 	}
+	if w.Name, err = scalar(lookup(top, "name"), "name"); err != nil {
+		return w, err
+	}
 	t, err := events(lookup(top, "on"))
 	if err != nil {
 		return w, err

@@ -972,6 +972,11 @@
           "type": "string",
           "minLength": 1
         },
+        "name": {
+          "description": "The top-level `name:` as written; absent when the key is. Another workflow's `workflow_run: workflows:` list matches this, not the file name.",
+          "type": "string",
+          "minLength": 1
+        },
         "parse_error": {
           "description": "Why the file could not be read as a workflow: invalid YAML, a shape GitHub would not run, or a blob that is binary or too large to read in full. When present nothing but path is.",
           "type": "string",

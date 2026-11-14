@@ -96,6 +96,7 @@ func wantShellScripts(t *testing.T) audit.Repo {
 		Devshell:    wantShellScriptsDevshell(),
 		Workflows: []audit.Workflow{{
 			Path:         ".github/workflows/ci.yml",
+			Name:         "ci",
 			Events:       []string{"pull_request", "push"},
 			PushBranches: []string{"main"},
 			Permissions:  audit.Permissions{Set: true, Scopes: map[string]string{"contents": "read"}},
@@ -590,6 +591,7 @@ func TestClient_Collect_fileFacts(t *testing.T) {
 			workflows: []audit.Workflow{
 				{
 					Path:         ".github/workflows/ci.yml",
+					Name:         "ci",
 					Events:       []string{"pull_request", "push"},
 					PushBranches: []string{"main"},
 					Concurrency:  audit.Concurrency{Set: true, CancelInProgress: "true"},
