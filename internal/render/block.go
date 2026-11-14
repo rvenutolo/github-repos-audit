@@ -509,7 +509,7 @@ func plainItem(s string) string { return s }
 
 func policySection(rep *rules.Report) string {
 	t := newTable("Repository", "Direct push", "Signed", "Identity", "CI workflows", "Required checks",
-		"PR CI", "Push CI", "Up to date", "Tag ruleset", "Secret scanning", "Vuln. reporting")
+		"PR CI", "Push CI", "ci.yml", "Up to date", "Tag ruleset", "Secret scanning", "Vuln. reporting")
 	for i := range rep.Repos {
 		r := &rep.Repos[i]
 		t.add(
@@ -521,8 +521,10 @@ func policySection(rep *rules.Report) string {
 			cell(r.Cell(rules.CheckRequiredChecks)),
 			cell(r.Cell(rules.CheckCIOnPR)),
 			cell(r.Cell(rules.CheckCIOnPush)),
+			// The workflow name and the ruleset name are the owner's text.
+			escape(cell(r.Cell(rules.CheckCIWorkflow))),
 			cell(r.Cell(rules.CheckBranchUpToDate)),
-			cell(r.Cell(rules.CheckTagRuleset)),
+			escape(cell(r.Cell(rules.CheckTagRuleset))),
 			cell(r.Cell(rules.CheckSecretScanning)),
 			cell(r.Cell(rules.CheckVulnReporting)),
 		)

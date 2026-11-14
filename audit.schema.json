@@ -111,6 +111,7 @@
               "required_checks",
               "ci_on_pr",
               "ci_on_push",
+              "ci_workflow",
               "branch_up_to_date",
               "ci_green",
               "renovate",
@@ -310,6 +311,7 @@
         "required_checks",
         "ci_on_pr",
         "ci_on_push",
+        "ci_workflow",
         "branch_up_to_date",
         "ci_green",
         "renovate",
@@ -399,6 +401,7 @@
         "required_checks": { "$ref": "#/$defs/expectation" },
         "ci_on_pr": { "$ref": "#/$defs/expectation" },
         "ci_on_push": { "$ref": "#/$defs/expectation" },
+        "ci_workflow": { "$ref": "#/$defs/expectation" },
         "branch_up_to_date": { "$ref": "#/$defs/expectation" },
         "ci_green": { "$ref": "#/$defs/expectation" },
         "renovate": { "$ref": "#/$defs/expectation" },
@@ -969,6 +972,11 @@
       "properties": {
         "path": {
           "description": "The file's path in the repository, such as \".github/workflows/ci.yml\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "description": "The top-level `name:` as written; absent when the key is. Another workflow's `workflow_run: workflows:` list matches this, not the file name.",
           "type": "string",
           "minLength": 1
         },

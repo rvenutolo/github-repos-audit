@@ -624,6 +624,7 @@ var snapshotRules = []rule{
 	// expression is left out on purpose: in a real report it may name
 	// anything a workflow file can.
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.path$`), matches(`^\.github/workflows/(ci|workflow-\d{2})\.ya?ml$`), "a synthetic workflow path"},
+	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.name$`), matches(`^ci$`), "the standard CI workflow name"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.events\[\]$`), matches(`^(pull_request|pull_request_target|push|schedule|workflow_dispatch)$`), "a GitHub event name"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.(push|pull_request|pull_request_target)_branches(_ignore)?\[\]$`), matches(`^main$`), "the fixture default branch"},
 	{regexp.MustCompile(`^repos\[\]\.workflow_facts\[\]\.jobs\[\]\.id$`), matches(`^(check|test|lint|docs)$`), "a generic job id"},

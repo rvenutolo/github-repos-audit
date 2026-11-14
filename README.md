@@ -305,6 +305,19 @@ Grouped by theme here; the report lists them in the fixed worklist order
   either. When nothing qualifies and a workflow could not be parsed, the
   cell names the first such file, as `unreadable <file>`, since it may be
   the missing CI.
+- **ci_workflow** — whether all pull-request CI lives in one workflow,
+  `.github/workflows/ci.yml` with the top-level `name: ci`. A workflow that
+  follows CI with `workflow_run: workflows: [ci]` matches that name, not the
+  file, and sees only that workflow's runs, so it can be copied into every
+  repository unedited only when every check a pull request runs is in `ci`.
+  It passes when `ci.yml` (`ci.yaml` does not count) is named exactly `ci`,
+  case included, runs on pull requests into the default branch as
+  ci_on_pr judges it, and no other workflow does. The `merge-gate.yml`
+  placeholder and a workflow run only when a pull request closes are not
+  counted. A failing cell names the first problem: `no ci.yml`,
+  `unreadable ci.yml`, `no name:`, `name: <name>`, `not on PRs`, then
+  `unreadable <file>` for another workflow that cannot be parsed (it may run
+  on pull requests) or `also <file>, …` for the others that do.
 - **branch_up_to_date** — whether the default branch's rules carry a
   required-status-checks rule that is strict (a pull request must be up to
   date with the default branch before it merges) and names at least one

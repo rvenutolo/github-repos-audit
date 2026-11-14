@@ -320,3 +320,57 @@ func (m *filterMatch) at(ti, ni int) bool {
 	}
 	return ok
 }
+
+// ciWorkflowPath is the one file ci_workflow accepts. The name is fixed, not
+// learned from the account, so a workflow copied between repositories
+// unedited can name the CI it follows.
+const ciWorkflowPath = ".github/workflows/ci.yml"
+
+// observeCIWorkflow passes when ci.yml, named exactly ci, runs on pull
+// requests into the default branch and no other workflow does. A workflow
+// that reacts to CI with `workflow_run: workflows: [ci]` matches the
+// top-level name, not the file, and sees only the runs of the workflow so
+// named; every check a pull request runs has to live in that one workflow
+// for it to see every failure. The file name is held to the same word so the
+// standard reads the same from the directory listing.
+//
+// "Runs on pull requests" is runsOnSynchronize, the predicate ci_on_pr uses,
+// so a workflow run only when a pull request closes, as a failure-issue
+// workflow is, is not a second pull-request workflow. The merge-gate
+// placeholder is skipped as everywhere else. The cell names the first
+// problem: ci.yml's own before any other workflow's, since fixing the others
+// is moot until ci.yml qualifies.
+func observeCIWorkflow(r audit.Repo) observation {
+	ws := slices.Clone(r.Workflows)
+	slices.SortFunc(ws, func(a, b audit.Workflow) int { return strings.Compare(a.Path, b.Path) })
+	i := slices.IndexFunc(ws, func(w audit.Workflow) bool { return w.Path == ciWorkflowPath })
+	switch {
+	case i < 0:
+		return observation{value: "no ci.yml", mark: true}
+	case ws[i].ParseError != "":
+		return observation{value: "unreadable ci.yml", mark: true}
+	case ws[i].Name == "":
+		return observation{value: "no name:", mark: true}
+	case ws[i].Name != "ci":
+		return observation{value: "name: " + ws[i].Name, mark: true}
+	case !runsOnSynchronize(ws[i], r.DefaultBranch):
+		return observation{value: "not on PRs", mark: true}
+	}
+	var also []string
+	for _, w := range ws {
+		switch {
+		case w.Path == ciWorkflowPath || isMergeGate(w):
+			continue
+		case w.ParseError != "":
+			// It may run on pull requests; nothing read from it can say it
+			// does not, so it cannot be cleared.
+			return observation{value: "unreadable " + path.Base(w.Path), mark: true}
+		case runsOnSynchronize(w, r.DefaultBranch):
+			also = append(also, path.Base(w.Path))
+		}
+	}
+	if len(also) > 0 {
+		return observation{value: "also " + strings.Join(also, ", "), mark: true}
+	}
+	return observation{ok: true, mark: true}
+}

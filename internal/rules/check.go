@@ -26,6 +26,7 @@ const (
 	CheckRequiredChecks
 	CheckCIOnPR
 	CheckCIOnPush
+	CheckCIWorkflow
 	CheckBranchUpToDate
 	CheckCIGreen
 	CheckRenovate
@@ -120,6 +121,7 @@ var checkNames = [...]string{
 	CheckRequiredChecks:          "required_checks",
 	CheckCIOnPR:                  "ci_on_pr",
 	CheckCIOnPush:                "ci_on_push",
+	CheckCIWorkflow:              "ci_workflow",
 	CheckBranchUpToDate:          "branch_up_to_date",
 	CheckCIGreen:                 "ci_green",
 	CheckRenovate:                "renovate",
