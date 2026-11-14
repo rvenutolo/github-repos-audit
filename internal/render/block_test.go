@@ -1390,6 +1390,32 @@ func TestBlock_claudeCellsAreEscaped(t *testing.T) {
 	}
 }
 
+// TestBlock_policyCellsOwnerTextIsEscaped: a workflow's name and a tag
+// ruleset's name are written by the repository owner and reach the Policy
+// table as cell values; a pipe would end the cell and a line break the row.
+func TestBlock_policyCellsOwnerTextIsEscaped(t *testing.T) {
+	t.Parallel()
+
+	r := baseRepo("alpha", "tools")
+	r.Workflows[0].Name = "Build | Test\nnext"
+	for i := range r.Rulesets {
+		if r.Rulesets[i].Target == "TAG" {
+			r.Rulesets[i].Name = "tags | all"
+			r.Rulesets[i].Include = []string{"refs/tags/v*"}
+		}
+	}
+	snap := &audit.Snapshot{GeneratedAt: renderedAt, Owner: "gh-owner", Types: standardTypes(), Identity: fixtureIdentity(), Repos: []audit.Repo{r}}
+	got, err := render.Block(evaluate(t, snap), clock(renderedAt))
+	if err != nil {
+		t.Fatalf("Block() error = %v, want nil", err)
+	}
+	for _, want := range []string{`✗ name: Build \| Test next |`, "`tags \\| all`"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("block has no %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestBlock_devshellListsKeepTheirSentencesOutOfCode(t *testing.T) {
 	t.Parallel()
 
