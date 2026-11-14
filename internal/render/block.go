@@ -521,9 +521,10 @@ func policySection(rep *rules.Report) string {
 			cell(r.Cell(rules.CheckRequiredChecks)),
 			cell(r.Cell(rules.CheckCIOnPR)),
 			cell(r.Cell(rules.CheckCIOnPush)),
-			cell(r.Cell(rules.CheckCIWorkflow)),
+			// The workflow name and the ruleset name are the owner's text.
+			escape(cell(r.Cell(rules.CheckCIWorkflow))),
 			cell(r.Cell(rules.CheckBranchUpToDate)),
-			cell(r.Cell(rules.CheckTagRuleset)),
+			escape(cell(r.Cell(rules.CheckTagRuleset))),
 			cell(r.Cell(rules.CheckSecretScanning)),
 			cell(r.Cell(rules.CheckVulnReporting)),
 		)
