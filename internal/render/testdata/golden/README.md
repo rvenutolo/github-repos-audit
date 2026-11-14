@@ -14,6 +14,7 @@ Hand-written prose.
 - **No required checks** (1) — github-repos-audit
 - **No CI on pull requests** (1) — go-linter
 - **No CI on the default branch** (2) — github-repos-audit, go-linter
+- **CI workflow is not ci.yml named ci** (2) — github-repos-audit, go-linter
 - **CI not green on the default branch** (1) — go-linter
 - **No Renovate config** (1) — go-linter
 - **Renovate minimum release age unset, unresolved or too short** (2) — mixedCase-flake, web-app
@@ -199,14 +200,14 @@ Only repositories with Claude Code skills, commands, hooks or a plugin are liste
 
 ## Policy
 
-| Repository                                                           | Direct push | Signed | Identity  | CI workflows | Required checks | PR CI | Push CI | Up to date | Tag ruleset  | Secret scanning | Vuln. reporting |
-| -------------------------------------------------------------------- | ----------- | ------ | --------- | ------------ | --------------- | ----- | ------- | ---------- | ------------ | --------------- | --------------- |
-| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | ✗ blocked   | ✓      | n/a       | n/a          | 2               | n/a   | n/a     | ✓          | default      | ✗               | n/a             |
-| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | ✗               | ✓     | ✗       | ✓          | default      | n/a             | n/a             |
-| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗ allowed   | n/a    | n/a       | ✗            | n/a             | ✗     | ✗       | n/a        | ✗            | n/a             | n/a             |
-| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | 2               | ✓     | ✓       | ✓          | `ruleset-02` | ✓               | ✓               |
-| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | ✓ blocked   | ✓      | ✓         | ✓            | 2               | ✓     | ✓       | ✓          | default      | ✓               | ✓               |
-| [web-app](https://github.com/gh-owner/web-app)                       | ✓ blocked   | ✓      | ✓         | ✓            | 2               | ✓     | ✓       | ✓          | default      | n/a             | n/a             |
+| Repository                                                           | Direct push | Signed | Identity  | CI workflows | Required checks | PR CI | Push CI | ci.yml                 | Up to date | Tag ruleset  | Secret scanning | Vuln. reporting |
+| -------------------------------------------------------------------- | ----------- | ------ | --------- | ------------ | --------------- | ----- | ------- | ---------------------- | ---------- | ------------ | --------------- | --------------- |
+| [cipher-lib](https://github.com/gh-owner/cipher-lib)                 | ✗ blocked   | ✓      | n/a       | n/a          | 2               | n/a   | n/a     | n/a                    | ✓          | default      | ✗               | n/a             |
+| [github-repos-audit](https://github.com/gh-owner/github-repos-audit) | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | ✗               | ✓     | ✗       | ✗ also workflow-02.yml | ✓          | default      | n/a             | n/a             |
+| [go-linter](https://github.com/gh-owner/go-linter)                   | ✗ allowed   | n/a    | n/a       | ✗            | n/a             | ✗     | ✗       | ✗ no ci.yml            | n/a        | ✗            | n/a             | n/a             |
+| [mixedCase-flake](https://github.com/gh-owner/mixedCase-flake)       | ✓ blocked   | ✓      | ✗ 1 wrong | ✓            | 2               | ✓     | ✓       | ✓                      | ✓          | `ruleset-02` | ✓               | ✓               |
+| [plugin-kit](https://github.com/gh-owner/plugin-kit)                 | ✓ blocked   | ✓      | ✓         | ✓            | 2               | ✓     | ✓       | ✓                      | ✓          | default      | ✓               | ✓               |
+| [web-app](https://github.com/gh-owner/web-app)                       | ✓ blocked   | ✓      | ✓         | ✓            | 2               | ✓     | ✓       | ✓                      | ✓          | default      | n/a             | n/a             |
 
 ## Activity
 

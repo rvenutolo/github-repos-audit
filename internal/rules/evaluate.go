@@ -432,6 +432,8 @@ func observe(c Check, r audit.Repo, ev evalContext) observation {
 		return observeCIOnPR(r)
 	case CheckCIOnPush:
 		return observeCIOnPush(r)
+	case CheckCIWorkflow:
+		return observeCIWorkflow(r)
 	case CheckBranchUpToDate:
 		return observeUpToDate(r)
 

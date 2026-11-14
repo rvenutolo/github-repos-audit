@@ -94,7 +94,7 @@ func baseRepo(name string, typ rules.Type) audit.Repo {
 		// ci.yml runs on pull requests into the default branch and on a push
 		// to it, cancels superseded runs and bounds its one job.
 		Workflows: []audit.Workflow{{
-			Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
+			Path: ".github/workflows/ci.yml", Name: "ci", Events: []string{"pull_request", "push"},
 			PullRequestBranches: []string{"main"},
 			PushBranches:        []string{"main"},
 			Concurrency:         audit.Concurrency{Set: true, CancelInProgress: "true"},
@@ -233,7 +233,7 @@ func fullSnapshot() *audit.Snapshot {
 	// Its pull-request workflow cancels superseded runs, and its one job
 	// bounds its run time and saves its cache only from the default branch.
 	soft.Workflows = []audit.Workflow{{
-		Path: ".github/workflows/ci.yml", Events: []string{"pull_request", "push"},
+		Path: ".github/workflows/ci.yml", Name: "ci", Events: []string{"pull_request", "push"},
 		Concurrency: audit.Concurrency{Set: true, CancelInProgress: "true"},
 		Jobs: []audit.Job{{ID: "check", TimeoutMinutes: "15", Uses: []audit.StepUse{{
 			Action: "actions/cache/save@" + pinSHA(2),
@@ -389,7 +389,7 @@ func fullSnapshot() *audit.Snapshot {
 	// counted.
 	tools.Workflows = []audit.Workflow{
 		{
-			Path: ".github/workflows/ci.yml", Events: []string{"pull_request"},
+			Path: ".github/workflows/ci.yml", Name: "ci", Events: []string{"pull_request"},
 			Concurrency: audit.Concurrency{Set: true},
 			// Its cache saves from every pull request.
 			Jobs: []audit.Job{{ID: "check", TimeoutMinutes: "30", Uses: []audit.StepUse{{Action: "actions/cache@" + pinSHA(3)}}}},

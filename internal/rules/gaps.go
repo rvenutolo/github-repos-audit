@@ -22,6 +22,7 @@ var gapLabels = map[Check]string{
 	CheckRequiredChecks:          "No required checks",
 	CheckCIOnPR:                  "No CI on pull requests",
 	CheckCIOnPush:                "No CI on the default branch",
+	CheckCIWorkflow:              "CI workflow is not ci.yml named ci",
 	CheckBranchUpToDate:          "Pull requests need not be up to date",
 	CheckCIGreen:                 "CI not green on the default branch",
 	CheckRenovate:                "No Renovate config",

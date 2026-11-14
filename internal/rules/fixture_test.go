@@ -92,6 +92,7 @@ func fixture(name string, typ rules.Type) audit.Repo {
 		// that reads workflows passes.
 		Workflows: []audit.Workflow{{
 			Path:         ".github/workflows/ci.yml",
+			Name:         "ci",
 			Events:       []string{"pull_request", "push"},
 			PushBranches: []string{"main"},
 			Concurrency:  audit.Concurrency{Set: true, CancelInProgress: "true"},
