@@ -4,6 +4,20 @@ Every release of this tool, newest first. Sections list the changes merged
 since the release before them. What a version number means is in the
 [Versioning section of the README](README.md#versioning).
 
+## v13.0.0
+
+### Breaking changes
+
+- add ci_workflow check
+
+### Features
+
+- **workflows:** record a workflow's name
+
+### Fixes
+
+- **render:** escape workflow and tag ruleset names in Policy cells
+
 ## v12.0.0
 
 ### Breaking changes
